@@ -50,11 +50,20 @@ async function storeMediaImage({ tenantId, dataUrl, kind }) {
     throw Object.assign(new Error('تعذّر قراءة الصورة'), { statusCode: 400 });
   }
   const filename = `${crypto.createHash('sha256').update(output).digest('hex').slice(0, 24)}.webp`;
+  const url = `/api/media/${tenant}/${filename}`;
+  // STORAGE_DRIVER=s3 puts it in the bucket (lib/storedFiles.js) under the
+  // same address; when that is off or refuses, it is written here as before.
+  const { noteLocalWhileBucketOn, putSmallObject } = require('./storedFiles');
+  const key = `media/${tenant}/${filename}`;
+  if (await putSmallObject(key, output, { contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' })) {
+    return { url, size: output.length };
+  }
   const directory = path.join(ROOT, tenant);
   await fs.promises.mkdir(directory, { recursive: true });
   try { await fs.promises.writeFile(path.join(directory, filename), output, { flag: 'wx', mode: 0o644 }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
-  return { url: `/api/media/${tenant}/${filename}`, size: output.length };
+  await noteLocalWhileBucketOn(key, { size: output.length, contentType: 'image/webp' });
+  return { url, size: output.length };
 }
 
 /** The file behind an address from storeMediaImage, or null. */

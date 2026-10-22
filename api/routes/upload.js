@@ -10,10 +10,19 @@ const { uploadLimiter } = require('../middleware/rateLimits');
 const { uuidv4 } = require('../lib/id');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { VIDEO_ROOT, VIDEO_ROOT_IN_RELEASE, VIDEO_TYPES, inspectMediaFile, safeTenantSegment } = require('../lib/uploadSafety');
+const { queueUploadOffload } = require('../lib/storedFiles');
 const logger = require('../lib/logger').child({ module: 'upload-route' });
 
 if (VIDEO_ROOT_IN_RELEASE && process.env.NODE_ENV === 'production') {
   logger.warn(`[upload] videos are stored inside the release directory (${VIDEO_ROOT}); set VIDEO_UPLOAD_DIR to a directory outside it`);
+}
+
+{
+  // STORAGE_DRIVER=s3 with settings that cannot work writes to the disk as
+  // before (lib/objectStorage.js) — said here, once, at boot.
+  const storage = require('../lib/objectStorage').storageConfig();
+  if (storage.problems.length) logger.error(`[storage] STORAGE_* settings are not usable; new files stay on this disk: ${storage.problems.join('; ')}`);
+  else if (storage.driver === 's3') logger.info(`[storage] new uploads go to bucket ${storage.s3.bucket}`);
 }
 
 const router = express.Router();
@@ -70,6 +79,11 @@ router.post(
           entityId: filename,
           metadata: { size: req.file.size, mime: media.contentType },
         });
+        // With STORAGE_DRIVER=s3 the file moves to the bucket in the background
+        // (lib/storedFiles.js); it plays from the disk until it has. The address
+        // above is the same either way. A failure here leaves it on the disk.
+        await queueUploadOffload(`videos/${tenant}/${filename}`, { size: req.file.size, contentType: media.contentType })
+          .catch(error => logger.warn('media offload not queued; file stays on disk', { err: error.message }));
         return res.json({ ok: true, url: fileUrl, size: req.file.size, filename });
       } catch (error) {
         logger.warn('media upload rejected', { err: error.message, tenantId: req.tenantId });

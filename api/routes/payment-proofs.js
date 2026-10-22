@@ -23,6 +23,7 @@ const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require(
 const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
+const { discardObject, readProofImage, storeProofImage } = require('../lib/storedFiles');
 const { isJourneyState } = require('../lib/journeyStates');
 const { dateOnlyInTimeZone } = require('../lib/dates');
 const { logFinancialAudit, logPaymentAudit } = require('../lib/finance');
@@ -61,6 +62,8 @@ const isPendingOrder = status => isJourneyState('order', status, 'pending');
 router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
+  // The receipt's bucket object (STORAGE_DRIVER=s3), removed if the row is not saved.
+  let unsavedObjectKey = null;
   try {
     const { uid, email } = req.user;
     const tenantId = tenantIdFor(req);
@@ -133,6 +136,10 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
       amount: order.amount, currency: order.currency || 'EGP', policy: reviewPolicy,
     });
     const reviewDueAt = new Date(Date.now() + review.slaHours * 60 * 60 * 1000);
+    // Local driver: the data URL in the row, as before. s3: the picture in the
+    // bucket and `storage:<key>` in the row (lib/storedFiles.js).
+    const storedImage = await storeProofImage({ tenantId, proofId: id, dataUrl: proof_image || null, db: conn });
+    unsavedObjectKey = storedImage.key;
     await conn.query(
       `INSERT INTO payment_proofs
          (id, order_id, payment_intent_id, payment_attempt_id, subscriber_id, course_id, bundle_id, item_type, amount, currency,
@@ -140,19 +147,23 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, order.id, intent.id, attemptId, sub.id, order.course_id || null, order.bundle_id || null,
        String(order.type || 'OTHER').toLowerCase(), order.amount, order.currency || 'EGP',
-       String(payment_method || 'instapay').slice(0, 50), proof_image || null, safeNote, reviewDueAt,
+       String(payment_method || 'instapay').slice(0, 50), storedImage.value, safeNote, reviewDueAt,
        review.riskLevel, review.secondReviewRequired ? 1 : 0,
        tenantId, order.branch_id || sub.branch_id || 'branch-other']
     );
     await conn.commit();
     transactionStarted = false;
+    unsavedObjectKey = null;
     // When the review is due, so the page can say «قيد المراجعة» with a time
     // rather than a bare «سيتم مراجعته».
     res.json({ ok: true, id, payment_intent_id: intent.id, payment_attempt_id: attemptId, status: 'PENDING', review_due_at: reviewDueAt.toISOString(), review_hours: review.slaHours });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
-  } finally { conn.release(); }
+  } finally {
+    conn.release();
+    if (unsavedObjectKey) await discardObject(unsavedObjectKey);
+  }
 });
 
 // PATCH /api/me/progress — client saves their own lecture progress (no admin needed)
@@ -654,7 +665,11 @@ router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrSta
     );
     if (!row || !row.proof_image) return res.status(404).json({ error: 'No image' });
     if (!financialRecordMatches(scope, row)) return res.status(403).json({ error: 'Payment proof is outside your financial scope' });
-    res.json({ image: row.proof_image });
+    // A receipt kept in the bucket is read back here, after the same checks,
+    // and answered in the same shape (lib/storedFiles.js).
+    const image = await readProofImage(row.proof_image);
+    if (!image) return res.status(404).json({ error: 'No image' });
+    res.json({ image });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
