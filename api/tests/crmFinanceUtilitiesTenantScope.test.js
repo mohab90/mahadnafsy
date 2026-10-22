@@ -202,11 +202,12 @@ test('executive dashboards and funnel cache/query data per tenant', () => {
 });
 
 test('employee subscriber lists cannot mix CRM ownership or payment history across tenants', () => {
+  // What the lists themselves return — /api/staff/subscribers, /api/staff/payments
+  // and the admin lists beside them — is proven over HTTP with two seeded
+  // institutes in tests/integration/tenantIsolation.integration.test.js. The
+  // writes and the branch and officer views below are not covered there.
   const route = read('routes/admin/stafflists.js');
   const detail = read('routes/admin/subscribers.js');
-  assert.match(route, /FROM payments\s+WHERE tenant_id=\? AND subscriber_id IN/);
-  assert.match(route, /FROM enrollments\s+WHERE tenant_id=\? AND status='active' AND subscriber_id IN/);
-  assert.match(route, /LEFT JOIN leads l ON l\.id = s\.lead_id AND l\.tenant_id=s\.tenant_id/);
   // The branch's own list: Dokki, or Tagamoa (lib/physicalBranches.js).
   assert.match(route, /WHERE s\.tenant_id=\? AND s\.deleted_at IS NULL AND s\.branch = \?/);
   assert.match(route, /assign-collection'[^\n]+requirePermission\('manage_subscribers'\)/);
