@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Receipt, XCircle, CreditCard } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Receipt, XCircle, CreditCard, Loader2, PlayCircle } from 'lucide-react';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { useSiteData } from '../context/SiteDataContext';
 import { setCanonical } from '../lib/useSeo';
 import { purchaseFromReturn, trackPurchase } from '../lib/tracking';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 /**
  * Where a customer lands after paying — by card or by transfer.
@@ -35,13 +36,74 @@ const CARD_STEPS = [
   { icon: LayoutDashboard, title: 'ابدأ التعلّم', desc: 'يُفتح المحتوى في حسابك بعد تسجيل الدفعة' },
 ];
 
+// The order as GET /api/me/orders/:id/status reads it.
+type OrderStatus = {
+  status: string; type: string; itemTitle: string; courseId: string | null; bundleId: string | null;
+  startCourseId: string | null; planEntry: boolean; proof: { status: string; reviewDueAt: string | null } | null;
+};
+type Tracked = { state: 'checking' | 'paid' | 'failed' | 'timeout' | 'unknown'; order?: OrderStatus };
+const POLL_EVERY_MS = 3000;
+const POLL_FOR_MS = 90 * 1000;
+
+/**
+ * Follows the order Paymob returned to until the verified callback marks it paid
+ * (or failed), for a minute and a half at most. The redirect only says what the
+ * bank answered; the order's status is what opened the course.
+ */
+function useOrderStatus(orderId: string, poll: boolean): Tracked {
+  const [tracked, setTracked] = useState<Tracked>({ state: orderId ? 'checking' : 'unknown' });
+  useEffect(() => {
+    if (!orderId) return undefined;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = Date.now();
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/me/orders/${encodeURIComponent(orderId)}/status`, { credentials: 'include' });
+        if (res.status === 401 || res.status === 404) { if (!stopped) setTracked({ state: 'unknown' }); return; }
+        const order = await res.json() as OrderStatus;
+        if (stopped) return;
+        if (order.status === 'paid') { setTracked({ state: 'paid', order }); return; }
+        if (order.status === 'failed') { setTracked({ state: 'failed', order }); return; }
+        setTracked({ state: 'checking', order });
+      } catch { /* a dropped request is retried on the next tick */ }
+      if (stopped) return;
+      if (!poll || Date.now() - started > POLL_FOR_MS) { setTracked(prev => ({ ...prev, state: poll ? 'timeout' : 'unknown' })); return; }
+      timer = setTimeout(tick, POLL_EVERY_MS);
+    };
+    void tick();
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, [orderId, poll]);
+  return tracked;
+}
+
+const reviewDueLabel = (iso: string | null | undefined) => {
+  const at = iso ? new Date(iso) : null;
+  if (!at || Number.isNaN(at.getTime())) return 'خلال 24 ساعة';
+  return `قبل ${at.toLocaleString('ar-EG-u-nu-latn', { weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: CAIRO_TIME_ZONE })}`;
+};
+
 const PaymentSuccess: React.FC = () => {
   const { content } = useSiteData();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   // Paymob sends success=true/false; arriving with neither means this is the
   // manual checkout's own confirmation, which is what the page always was.
   const paymobResult = searchParams.get('success');
   const outcome = paymobResult === null ? 'transfer' : paymobResult.toLowerCase() === 'true' ? 'card' : 'declined';
+  // The merchant order id is «<order>~<attempt>» (api/lib/paymobGateway.js); a
+  // transfer confirmation names its order as ?order=.
+  const orderId = String(searchParams.get('merchant_order_id') || searchParams.get('order') || '').split('~')[0].trim();
+  const tracked = useOrderStatus(outcome === 'declined' ? '' : orderId, outcome === 'card');
+  const startCourseId = tracked.state === 'paid' && !tracked.order?.planEntry ? tracked.order?.startCourseId || null : null;
+  const playHref = startCourseId ? `/my-account?tab=learning&play=${encodeURIComponent(startCourseId)}` : '';
+
+  // Paid for a course: straight into its first lecture, not the payments list.
+  useEffect(() => {
+    if (!playHref) return undefined;
+    const timer = setTimeout(() => navigate(playHref), 2500);
+    return () => clearTimeout(timer);
+  }, [playHref, navigate]);
 
   useEffect(() => {
     setCanonical('/success');
@@ -61,7 +123,7 @@ const PaymentSuccess: React.FC = () => {
 
   const whatsapp = instituteWhatsApp(content);
 
-  if (outcome === 'declined') {
+  if (outcome === 'declined' || tracked.state === 'failed') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-10" dir="rtl">
         <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line sm:p-10">
@@ -109,6 +171,10 @@ const PaymentSuccess: React.FC = () => {
 
   const paidByCard = outcome === 'card';
   const steps = paidByCard ? CARD_STEPS : TRANSFER_STEPS;
+  const confirmed = tracked.state === 'paid';
+  const underReview = !paidByCard && tracked.order?.proof?.status === 'PENDING';
+  const courseHref = tracked.order?.courseId ? `/course/${encodeURIComponent(tracked.order.courseId)}`
+    : tracked.order?.bundleId ? `/bundle/${encodeURIComponent(tracked.order.bundleId)}` : '';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-10" dir="rtl">
@@ -118,13 +184,22 @@ const PaymentSuccess: React.FC = () => {
             <CheckCircle size={44} className="text-green-600" />
           </div>
           <h1 className="mb-2 text-2xl font-black text-ink sm:text-3xl">
-            {paidByCard ? 'تم الدفع بنجاح! 🎉' : 'تم استلام طلبك! 🎉'}
+            {confirmed ? 'تم تأكيد الدفع! 🎉' : paidByCard ? 'تم الدفع بنجاح! 🎉' : underReview ? 'إيصالك قيد المراجعة' : 'تم استلام طلبك! 🎉'}
           </h1>
           <p className="mb-6 leading-relaxed text-muted-body">
-            {paidByCard
-              ? 'وصلنا تأكيد الدفع من البنك. بنسجّل الدفعة ونفتح المحتوى في حسابك — لو مافتحش خلال شوية، كلمنا واتساب ونظبطه فوراً.'
-              : 'خطوة واحدة بسيطة تفصلك عن بدء رحلتك — ارفع إيصال التحويل وفريقنا هيأكّد ويفعّل حسابك بسرعة.'}
+            {confirmed
+              ? (tracked.order?.planEntry ? 'القسط اتسجّل والمحتوى اتفتح في حسابك على قد اللي اتدفع.' : startCourseId ? 'الكورس اتفتح في حسابك — هنوديك لأول محاضرة دلوقتي.' : 'الدفعة اتسجّلت في حسابك.')
+              : paidByCard
+                ? (tracked.state === 'checking'
+                  ? 'وصلنا تأكيد البنك، وبنستنى تأكيد بوابة الدفع علشان نفتح المحتوى — ثواني.'
+                  : 'وصلنا تأكيد الدفع من البنك. بنسجّل الدفعة ونفتح المحتوى في حسابك — لو مافتحش خلال شوية، كلمنا واتساب ونظبطه فوراً.')
+                : underReview
+                  ? `فريق الحسابات بيراجع الإيصال وهيفعّل وصولك ${reviewDueLabel(tracked.order?.proof?.reviewDueAt)}.`
+                  : 'خطوة واحدة بسيطة تفصلك عن بدء رحلتك — ارفع إيصال التحويل وفريقنا هيأكّد ويفعّل حسابك بسرعة.'}
           </p>
+          {paidByCard && tracked.state === 'checking' && (
+            <p className="mb-5 flex items-center justify-center gap-2 text-sm font-bold text-muted"><Loader2 size={16} className="animate-spin text-primary-700" /> بنأكد الدفعة...</p>
+          )}
         </div>
 
         {/* Next-steps timeline */}
@@ -151,12 +226,29 @@ const PaymentSuccess: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-3">
-          <Link
-            to="/my-account?section=payments"
-            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800"
-          >
-            {paidByCard ? <><LayoutDashboard size={20} /> الذهاب لحسابي</> : <><Upload size={20} /> ارفع إيصال التحويل الآن</>}
-          </Link>
+          {playHref ? (
+            <Link
+              to={playHref}
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800"
+            >
+              <PlayCircle size={20} /> ابدأ أول محاضرة
+            </Link>
+          ) : (
+            <Link
+              to={paidByCard || underReview ? (confirmed && tracked.order?.planEntry ? '/my-account?section=payments' : '/my-account?tab=learning') : '/my-account?section=payments'}
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800"
+            >
+              {paidByCard || underReview ? <><LayoutDashboard size={20} /> الذهاب لحسابي</> : <><Upload size={20} /> ارفع إيصال التحويل الآن</>}
+            </Link>
+          )}
+          {courseHref && (
+            <Link
+              to={courseHref}
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white px-7 font-extrabold text-ink transition hover:border-ink/40"
+            >
+              صفحة الكورس
+            </Link>
+          )}
           {whatsapp && (
             <a
               href={`https://wa.me/${whatsapp}`}

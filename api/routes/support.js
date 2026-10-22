@@ -25,7 +25,8 @@ const { findSubscriberForIdentity } = require('../lib/privacyService');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { phoneIdentityClause } = require('../lib/leadMatching');
 const { logClientEvent } = require('../lib/clientHistory');
-const { branchForId } = require('../lib/branches');
+const { branchForId, branchIdForBranch, normalizeBranch } = require('../lib/branches');
+const { DEPARTMENT_BRANCH, branchDepartment, branchQueueOf, routeToBranch, staffBranch } = require('../lib/ticketBranchQueue');
 // Where a client writes on the site: the contact form, the enquiry box, their dashboard, the assistant.
 const WEBSITE_CHANNELS = ['web', 'web_contact', 'user_dashboard', 'ai_assistant'];
 const {
@@ -49,6 +50,13 @@ const ownsTicket = (ticket, subscriber, email) => Boolean(ticket && (
 const departmentsForRole = role => Object.entries(DEPARTMENT_ROLES)
   .filter(([, roles]) => roles.includes(String(role || '').toLowerCase()))
   .map(([department]) => department);
+// A member of a branch's staff also answers the branch's own queue
+// (lib/ticketBranchQueue.js), whatever their role.
+const departmentsForStaff = staff => {
+  const departments = departmentsForRole(staff?.role);
+  const branch = staffBranch(staff);
+  return branch && !departments.includes(branchDepartment(branch)) ? [...departments, branchDepartment(branch)] : departments;
+};
 // The categories each department owns (lib/ticketRouting.js), so a ticket the
 // SLA sweep escalated is still its department's to answer.
 const categoriesOf = departments => Object.entries(CATEGORY_META)
@@ -57,7 +65,7 @@ const ticketScope = (req, alias = 't') => {
   if (req.isSuperAdmin || ['manager', 'admin'].includes(String(req.staffRecord?.role || '').toLowerCase())) {
     return { sql: '1=1', params: [] };
   }
-  const departments = departmentsForRole(req.staffRecord?.role);
+  const departments = departmentsForStaff(req.staffRecord);
   if (!departments.length) return { sql: '1=0', params: [] };
   // 16 tickets had no department (made before routing existed) and 13 had been
   // escalated to management, which moved them out of customer service's list —
@@ -74,7 +82,7 @@ const ticketScope = (req, alias = 't') => {
 const canAccessTicket = (req, ticket) => {
   if (!ticket) return false;
   if (req.isSuperAdmin || ['manager', 'admin'].includes(String(req.staffRecord?.role || '').toLowerCase())) return true;
-  const departments = departmentsForRole(req.staffRecord?.role);
+  const departments = departmentsForStaff(req.staffRecord);
   return ticket.assigned_to === req.staffRecord?.id
     || departments.includes(ticket.department)
     || (!ticket.department && departments.includes('support'))
@@ -108,12 +116,11 @@ async function createRoutedTicket(conn, {
   body = cleanText(body, TEXT_LIMITS.body);
   if (!subject || !body) throw new Error('Ticket subject and body are required');
   const cat = CATEGORY_META[category] ? category : 'general';
-  const dept = resolveDepartment(cat);
+  let dept = resolveDepartment(cat);
   const prio = VALID_PRIORITIES.has(String(priority || '').toLowerCase())
     ? String(priority).toLowerCase()
     : defaultPriority(cat);
   const slaDue = computeSlaDue(prio);
-  const assignee = await pickAssignee(conn, tenantId, dept);
   // Which branch it is for: the client's, else the branch of the employee who
   // raised it (10 Oct 2026: «تبع فرع ايه … مين المسئول في الفرع اللى رفعتها»).
   let ticketBranch = branch;
@@ -121,17 +128,25 @@ async function createRoutedTicket(conn, {
     const [[client]] = await conn.query('SELECT branch FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
     ticketBranch = client?.branch || ticketBranch;
   }
+  // A Dokki (or any branch's) client's problem goes to that branch's queue,
+  // when the branch has someone who can open it (lib/ticketBranchQueue.js).
+  const queueBranch = branchQueueOf({ branch: ticketBranch, category: cat });
+  const branchRoute = queueBranch ? await routeToBranch(conn, { tenantId, branch: queueBranch }) : null;
+  if (branchRoute) dept = branchRoute.department;
+  const assignee = branchRoute ? branchRoute.assignee : await pickAssignee(conn, tenantId, dept);
+  const normalizedTicketBranch = ticketBranch ? normalizeBranch(ticketBranch, null) : null;
   const id = uuidv4();
   await conn.query(
     `INSERT INTO support_tickets
        (id, tenant_id, subscriber_id, subscriber_email, subscriber_name, subject, body,
         status, priority, category, department, channel, source_type, source_id,
-        assigned_to, sla_due_at, created_by_id, created_by_name, branch)
-     VALUES (?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,?,?,?,?,?)`,
+        assigned_to, sla_due_at, created_by_id, created_by_name, branch, branch_id)
+     VALUES (?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,?,?,?,?,?,?)`,
     [id, tenantId, subscriberId || null, email || null, name || null, subject, body,
      prio, cat, dept, channel || 'system', sourceType || null, sourceId || null,
      assignee?.id || null, slaDue, raisedBy?.id || null, raisedBy?.name || null,
-     ticketBranch ? String(ticketBranch).toUpperCase().slice(0, 16) : null]
+     ticketBranch ? String(normalizedTicketBranch || ticketBranch).toUpperCase().slice(0, 16) : null,
+     normalizedTicketBranch ? branchIdForBranch(normalizedTicketBranch) : null]
   );
   await logTicketEvent(conn, { tenantId, ticketId: id, type: 'created', actorId: actor?.id, actorName: actor?.name, to: cat, detail: subject });
   await logTicketEvent(conn, { tenantId, ticketId: id, type: 'routed', actorId: actor?.id, actorName: actor?.name, to: `${DEPARTMENT_LABEL[dept] || dept}${assignee ? ' → ' + assignee.name : ''}` });
@@ -142,7 +157,16 @@ async function createRoutedTicket(conn, {
       { ticketId: id, department: dept }, tenantId, assignee.id
     );
   }
-  return { id, department: dept, priority: prio, assignee, slaDue };
+  // The branch's managers hear of every problem in their queue.
+  for (const manager of branchRoute?.managers || []) {
+    if (manager.id === assignee?.id) continue;
+    await insertNotification(
+      conn, 'ticket', `${cat === 'complaint' ? 'شكوى' : 'مشكلة'} جديدة في فرع ${DEPARTMENT_LABEL[dept] || queueBranch}`,
+      `${name || email || 'عميل'}: ${subject}${assignee ? ` — مع ${assignee.name}` : ' — لسه محدش استلمها'}`,
+      { ticketId: id, department: dept, branch: queueBranch }, tenantId, manager.id
+    );
+  }
+  return { id, department: dept, priority: prio, assignee, slaDue, branch: branchRoute ? queueBranch : null };
 }
 
 // ── UNIFIED INBOX ────────────────────────────────────────────────────────────
@@ -244,6 +268,9 @@ router.get('/api/admin/cx-performance', requireAuth, requireAdminOrStaff,
 router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { department, category, status, sla, assignee, q } = req.query;
+    // «الفرع»: a branch's clients' problems (DAQQI, TAGAMOA, …), or «المركزي» —
+    // everything not in a branch's own queue.
+    const branchFilter = String(req.query.branch || '').trim().toUpperCase();
     // «اي مشكله قديمه بتتحل المفروض بتتمسح من الشاشه الرئيسية لكن لازم يكون في تاب داخلي لكل المشاكل القديمه ومتتمسحش»:
     // the screen shows the work in hand (open, under follow-up); every solved or closed problem is in the archive,
     // paged and searchable, with no cap of 300 — nothing is deleted, only moved out of the way.
@@ -267,7 +294,21 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     // And whatever a client wrote on the site — the contact form, their dashboard,
     // the assistant — whichever department it went to: «اتاكد ان اي تواصل من
     // العملاء من السايت بيسمع في الصفحه دي» (10 Oct 2026).
-    else if (!department && unscoped) where.push(`(t.department IN ('support','management') OR t.escalated_at IS NOT NULL OR t.channel IN (${WEBSITE_CHANNELS.map(() => '?').join(',')}))`), params.push(...WEBSITE_CHANNELS);
+    // A branch's own queue (lib/ticketBranchQueue.js) is in view as well.
+    else if (!department && unscoped) {
+      const queues = ['support', 'management', ...Object.keys(DEPARTMENT_BRANCH)];
+      where.push(`(t.department IN (${queues.map(() => '?').join(',')}) OR t.escalated_at IS NOT NULL OR t.channel IN (${WEBSITE_CHANNELS.map(() => '?').join(',')}))`);
+      params.push(...queues, ...WEBSITE_CHANNELS);
+    }
+    if (branchFilter === 'CENTRAL') {
+      where.push(`(t.department IS NULL OR t.department NOT IN (${Object.keys(DEPARTMENT_BRANCH).map(() => '?').join(',')}))`);
+      params.push(...Object.keys(DEPARTMENT_BRANCH));
+    } else if (branchFilter && branchFilter !== 'ALL') {
+      const wanted = normalizeBranch(branchFilter, null);
+      if (!wanted) return res.status(400).json({ error: 'Unknown branch' });
+      where.push('(t.branch = ? OR (t.branch IS NULL AND t.subscriber_id IN (SELECT id FROM subscribers WHERE tenant_id=t.tenant_id AND branch=?)))');
+      params.push(wanted, wanted);
+    }
     if (category) { where.push('t.category = ?'); params.push(category); }
     if (archive) where.push(`t.status IN ('resolved','closed')`);
     else if (status === 'open' || !status) where.push(`t.status IN ('open','in_progress')`);
@@ -329,7 +370,8 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     // service team never saw them. A course or price question is a lead as well
     // (routes/public.js).
     let contacts = [];
-    if ((!department || department === 'all') && !category && !assignee && (!status || status === 'open')) {
+    if ((!department || department === 'all') && !category && !assignee && (!status || status === 'open')
+      && ['', 'ALL', 'CENTRAL'].includes(branchFilter)) {
       const [crows] = await pool.query(
         `SELECT id, name, email, phone, subject, message, status, priority, created_at
            FROM contact_messages
@@ -343,7 +385,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
         priority: r.priority || 'medium', created_at: r.created_at, sla: 'untriaged',
       }));
     }
-    res.json({ tickets, contacts, archiveCount, categories: CATEGORY_META, departments: DEPARTMENT_LABEL });
+    res.json({ tickets, contacts, archiveCount, categories: CATEGORY_META, departments: DEPARTMENT_LABEL, branchQueues: Object.values(DEPARTMENT_BRANCH) });
   } catch (e) { logger.error('[cs/inbox]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -683,11 +725,11 @@ router.put('/api/admin/tickets/:id/assign', requireAuth, requireAdminOrStaff, re
     const [[ticket]] = await conn.query('SELECT id,department FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
     if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
-    const [[st]] = staff_id ? await conn.query('SELECT id,name,role FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [staff_id, req.tenantId]) : [[null]];
+    const [[st]] = staff_id ? await conn.query('SELECT id,name,role,data_scope,branch_id FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [staff_id, req.tenantId]) : [[null]];
     if (staff_id && !st) { await conn.rollback(); conn.release(); conn = null; return res.status(400).json({ error: 'Invalid staff member' }); }
-    const compatibleRoles = DEPARTMENT_ROLES[ticket.department] || [];
+    // The department's roles, or — for a branch's queue — anyone of the branch's staff.
     if (st && !['manager', 'admin'].includes(String(st.role || '').toLowerCase())
-      && !compatibleRoles.includes(String(st.role || '').toLowerCase())) {
+      && !departmentsForStaff(st).includes(ticket.department)) {
       await conn.rollback(); conn.release(); conn = null;
       return res.status(400).json({ error: 'Staff role is not compatible with the ticket department' });
     }

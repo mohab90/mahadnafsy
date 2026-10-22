@@ -2,6 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { captureAttribution } from './lib/attribution';
+
+// The ad parameters of the page the visit landed on, before any route drops them (lib/attribution.ts).
+captureAttribution();
 
 // Auto-reload when a lazy chunk 404s after a new deploy.
 //

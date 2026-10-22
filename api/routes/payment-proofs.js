@@ -36,6 +36,7 @@ const { getTenantSetting } = require('../lib/tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('../lib/consultationRequests');
 const { classifyPaymentProof, paymentProofReviewStep } = require('../lib/paymentProofReview');
 const { orderPlan, planAccess } = require('../lib/orderPlan');
+const { planEntryOf, settlePlanEntry, grantPlanEntryAccess, planEntryNote } = require('../lib/planEntryPayment');
 
 function tenantIdFor(req) {
   return req.tenantId || req.user?.tenant_id || 'tenant-default';
@@ -145,7 +146,9 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     );
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, id, payment_intent_id: intent.id, payment_attempt_id: attemptId });
+    // When the review is due, so the page can say «قيد المراجعة» with a time
+    // rather than a bare «سيتم مراجعته».
+    res.json({ ok: true, id, payment_intent_id: intent.id, payment_attempt_id: attemptId, status: 'PENDING', review_due_at: reviewDueAt.toISOString(), review_hours: review.slaHours });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
@@ -452,6 +455,13 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       // it read 30 September in every report, a month already closed.
       const paidDay = dateOnlyInTimeZone();
       await assertWritable(paidDay, conn, tenantId);
+      // A receipt for one entry of the client's installment plan marks that entry
+      // paid and opens what the plan now covers (lib/planEntryPayment.js).
+      const planEntry = planEntryOf(proof.order_notes);
+      const settledEntry = planEntry ? await settlePlanEntry(conn, {
+        tenantId, planId: planEntry.planId, index: planEntry.index, subscriberId: proof.subscriber_id,
+        paymentId: payId, amount: proof.amount, currency: proof.currency || 'EGP', paidDay,
+      }) : null;
       await conn.query(
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
@@ -460,8 +470,8 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'paid',?,?,?,?,?,?,?,NOW())`,
         [payId, proof.subscriber_id, proof.course_id || null, proof.bundle_id || null,
          proof.amount, proof.currency || 'EGP', paymentType, proof.payment_method || 'تحويل', proof.id,
-         plan.installment ? 1 : 0, plan.expected,
-         `تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
+         plan.installment || settledEntry ? 1 : 0, settledEntry ? settledEntry.courseExpected : plan.expected,
+         `${settledEntry ? planEntryNote(settledEntry, planEntry.index) + ' — ' : ''}تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
          paidDay, reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
          proof.branch || branchForId(proof.branch_id), proof.branch_id || 'branch-other', tenantId]
       );
@@ -486,7 +496,12 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         actor: reviewer?.id || req.user?.email || 'system',
       }, conn);
 
-      if ((paymentType === 'COURSE' && proof.course_id) || (paymentType === 'BUNDLE' && proof.bundle_id)) {
+      if (settledEntry) {
+        await grantPlanEntryAccess(conn, {
+          tenantId, settled: settledEntry, subscriberId: proof.subscriber_id, paymentId: payId,
+          amount: proof.amount, currency: proof.currency || 'EGP', source: 'payment_proof', actor: req.user?.email || 'system',
+        });
+      } else if ((paymentType === 'COURSE' && proof.course_id) || (paymentType === 'BUNDLE' && proof.bundle_id)) {
         const access = await planAccess(conn, {
           plan, tenantId, subscriberId: proof.subscriber_id, paymentId: payId, amount: proof.amount, currency: proof.currency || 'EGP',
           courseId: paymentType === 'COURSE' ? proof.course_id : null, bundleId: paymentType === 'BUNDLE' ? proof.bundle_id : null,

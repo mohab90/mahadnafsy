@@ -27,6 +27,7 @@ const {
 } = require('./_shared');
 
 const { toIdentity } = require('../../lib/phoneNumber');
+const { attributionFromRequest } = require('../../lib/visitAttribution');
 
 const router = Router();
 
@@ -180,6 +181,7 @@ async function signup(req, res) {
         tenantId,
         user: { id, name, email: normalizedEmail, phone: normalizeWhatsAppNumber(phone) },
         branch,
+        attribution: attributionFromRequest(req),
       });
     } catch (leadError) {
       logger.warn('[register] could not add the signup to the client base', { error: leadError.message });

@@ -697,6 +697,8 @@ const Auth: React.FC = () => {
                    type={showPassword ? 'text' : 'password'}
                    value={password}
                    onChange={(e) => setPassword(e.target.value)}
+                   placeholder={isLogin ? undefined : '8 أحرف على الأقل'}
+                   minLength={isLogin ? undefined : 8}
                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 pl-12"
                  />
                  <button
@@ -708,6 +710,12 @@ const Auth: React.FC = () => {
                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                  </button>
                </div>
+               {/* The 8-character rule, said before the form is sent rather than after. */}
+               {!isLogin && (
+                 <p className={`mt-1 text-xs font-bold ${password.length >= 8 ? 'text-green-700' : 'text-muted'}`}>
+                   {password.length >= 8 ? 'كلمة المرور تمام ✓' : `كلمة المرور لازم تكون 8 حروف أو أرقام على الأقل${password ? ` — فاضل ${8 - password.length}` : ''}`}
+                 </p>
+               )}
            </div>
            {isLogin && (
              <div className="text-left">

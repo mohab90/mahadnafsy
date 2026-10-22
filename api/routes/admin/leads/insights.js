@@ -176,7 +176,7 @@ router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requireP
     // took over a minute at 500k leads: it had to score every lead to find the
     // top fifty.
     const [rows] = await pool.query(
-      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -297,7 +297,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // seven days. LIMIT is a backstop, not a filter — a database holding more
     // than 500 open follow-ups was never going to render them all anyway.
     const [reminderRows] = await pool.query(
-      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -324,7 +324,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     const followUpSql = `COALESCE(DATE_FORMAT(l.next_follow_up_date, '%Y-%m-%d'),
       NULLIF(LEFT(IF(JSON_VALID(l.crm_json) AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')) = 'STRING',
         JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')), ''), 10), ''))`;
-    const queueColumns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+    const queueColumns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -545,7 +545,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     let idleRows = [];
     if (quietest.length) {
       [idleRows] = await pool.query(
-        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
                 l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
                 l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
                 l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,

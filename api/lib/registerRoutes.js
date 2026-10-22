@@ -93,6 +93,7 @@ const routeModules = [
   ['/', '../routes/branding-assets'],
   ['/', '../routes/seo-pages'],
   ['/', '../routes/me-next-step'],
+  ['/', '../routes/me-payments'],
   ['/', '../routes/tenant-domains'],
 ];
 

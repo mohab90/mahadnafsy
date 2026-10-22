@@ -8,7 +8,9 @@ import type { Currency } from '../types';
 // 2,800 on one page and was asked for 3,600 at the end.
 //
 // The pay mode (cash / instalment) and a promo code go on top at checkout, by
-// POST /api/public/price-quote.
+// POST /api/public/price-quote. A doctor's session is in the list as
+// consultation:<doctor id> (the express one as consultation:express), with the
+// discount marketing aimed at consultations.
 
 export type PriceDiscount = { source: string; percent: number | null; label: string; expiresAt: string | null; code?: string | null };
 type Entry = { base: number; price: number; discount: PriceDiscount | null };
@@ -47,7 +49,7 @@ export type EffectivePrice = { base: number; price: number; discount: PriceDisco
  * One item's price in one currency. Until the list has loaded (or for an item
  * it does not carry) it is the catalogue price the page already has.
  */
-export function effectivePrice(list: PriceList, kind: 'course' | 'bundle', id: string | undefined | null, currency: Currency, catalogue: number): EffectivePrice {
+export function effectivePrice(list: PriceList, kind: 'course' | 'bundle' | 'consultation', id: string | undefined | null, currency: Currency, catalogue: number): EffectivePrice {
   const entry = id ? list[`${kind}:${id}`]?.[currency] : undefined;
   if (entry && entry.price > 0) return { base: entry.base, price: entry.price, discount: entry.discount, loaded: true };
   return { base: catalogue, price: catalogue, discount: null, loaded: false };

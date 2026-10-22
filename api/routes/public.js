@@ -10,6 +10,7 @@ const router = Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
+const { courseRating, courseRatings } = require('../lib/courseRatings');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { escapeHtml } = require('../lib/html');
@@ -354,8 +355,8 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
        ON DUPLICATE KEY UPDATE rating=VALUES(rating), comment=VALUES(comment), created_at=NOW()`,
       [courseId, sub.id, ratingNum, comment ? comment.slice(0, 2000) : null, req.tenantId]
     );
-    const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
-    res.json({ ok: true, avg: parseFloat((+agg.avg || 0).toFixed(1)), count: agg.cnt });
+    const { avg, count } = await courseRating(pool, { tenantId: req.tenantId, courseId });
+    res.json({ ok: true, avg, count });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -367,7 +368,8 @@ router.get('/api/courses/:id/ratings', publicLimiter, optionalAuth, async (req, 
     // not «0 from 0».
     const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [courseId, req.tenantId]);
     if (!course) return res.status(404).json({ error: 'Course not found' });
-    const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
+    // Only the ratings of the course's own students (lib/courseRatings.js).
+    const { avg, count } = await courseRating(pool, { tenantId: req.tenantId, courseId });
     let myRating = null;
     if (req.user?.uid) {
       const sub = await resolveSubscriberRow(req, ['id']);
@@ -376,8 +378,20 @@ router.get('/api/courses/:id/ratings', publicLimiter, optionalAuth, async (req, 
         if (mine) myRating = mine;
       }
     }
-    res.json({ avg: parseFloat((+agg.avg || 0).toFixed(1)), count: agg.cnt, myRating });
+    res.json({ avg, count, myRating });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/public/course-ratings — every course's verified rating, for the course
+// cards: { ratings: { [courseId]: { avg, count } } }. A course with no rating
+// from its students is not in it, and the card shows none.
+router.get('/api/public/course-ratings', publicLimiter, async (req, res) => {
+  try {
+    const ratings = await cached(`course-ratings:${req.tenantId}`, 5 * 60 * 1000,
+      () => courseRatings(pool, { tenantId: req.tenantId }));
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ ratings });
+  } catch (e) { logger.error('[course-ratings]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Content Analytics: POST /api/lectures/:id/view ──────────────────────────

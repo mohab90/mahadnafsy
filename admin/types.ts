@@ -264,6 +264,8 @@ export type NewLeadDraft = Partial<LeadItem> & { name: string };
 
 export interface LeadItem {
   id: string;
+  /** The ad visit that brought them: «facebook · cpc · campaign» (api/lib/visitAttribution.js). */
+  adSource?: string;
   clientCode?: string;   // Stable unified client URL code, e.g. "CLT-A1B2C3"
   name: string;
   email: string;

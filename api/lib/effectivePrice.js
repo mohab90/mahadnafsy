@@ -25,6 +25,13 @@
  * The site reads (2) from GET /api/public/prices and (3)+(4) from
  * POST /api/public/price-quote; checkout-intent and orders/reserve charge
  * exactly what this returns.
+ *
+ * A consultation is priced the same way from its doctor's fee: the rules
+ * marketing aims at consultations («مستشار بعينه» — the item is the doctor —
+ * and «كل الاستشارات»), with or without a code. The admin screen offered both
+ * and nothing applied them. Nothing else touches a consultation: the course
+ * offers, the pop-up and the promo-codes table are for courses and paths, and
+ * there is no cash or instalment rate on a session.
  */
 
 const { resolveCatalogPrice } = require('./catalogPrice');
@@ -80,6 +87,10 @@ function ruleCovers(rule, { type, itemId, today }) {
     return (rule.type === 'course' && String(rule.targetId || '') === String(itemId)) || rule.type === 'all_courses';
   }
   if (type === 'bundle') return rule.type === 'bundle' && String(rule.targetId || '') === String(itemId);
+  if (type === 'consultation') {
+    return rule.type === 'all_consultations'
+      || (rule.type === 'therapist_consultation' && String(rule.targetId || '') === String(itemId));
+  }
   return false;
 }
 
@@ -94,7 +105,7 @@ function automaticDiscounts({ type, itemId, currency, base, discounts = [], cont
   const found = [];
   // Rules without a code. The item's own rule wins over «all courses», as the site always showed it.
   const rules = (Array.isArray(discounts) ? discounts : []).filter(rule => !cleanCode(rule?.promoCode || rule?.code) && ruleCovers(rule, { type, itemId, today }));
-  const rule = rules.find(r => r.type !== 'all_courses') || rules[0];
+  const rule = rules.find(r => r.type !== 'all_courses' && r.type !== 'all_consultations') || rules[0];
   if (rule) found.push(ruleDiscount(rule, base));
   if (type === 'course') {
     const featuredPct = percentOff(content['home.featured.discountPercent']);
@@ -124,6 +135,10 @@ function codeDiscount(code, { type, itemId, currency, base, discounts = [], cont
   const rule = (Array.isArray(discounts) ? discounts : [])
     .find(r => cleanCode(r?.promoCode || r?.code) === wanted && ruleCovers(r, { type, itemId, today }));
   if (rule) return { discount: { ...ruleDiscount(rule, base), source: 'code', code: wanted } };
+
+  // The pop-up's code and the promo-codes table are for courses and paths: a
+  // consultation is the doctor's fee, discounted only by a rule aimed at it.
+  if (type === 'consultation') return { error: { code: 'PROMO_NOT_FOR_ITEM', message: 'الكود ده مش على الاستشارات' } };
 
   const popupPct = percentOff(content['popup.discountPercent']);
   if (popupPct && cleanCode(content['popup.code']) === wanted && popupLive(content, now)) {
@@ -180,7 +195,9 @@ function priceItem({ type, itemId, currency, base, discounts, content, now = Dat
 }
 
 /** The price with the pay mode on top: what is due now, and an instalment plan's total. */
-function quoteItem(priced, { payMode = 'cash', rates }) {
+function quoteItem(priced, { payMode = 'cash', rates, type = 'course' }) {
+  // A session is paid as it is priced: no cash rate, no instalment plan.
+  if (type === 'consultation') return { ...priced, payMode: 'cash', dueNow: priced.price, planTotal: null };
   const mode = payMode === 'installment' ? 'installment' : 'cash';
   return {
     ...priced,
@@ -228,15 +245,27 @@ async function findPromoRow(db, { tenantId, code }) {
  * price for it in this currency (not for sale in it).
  */
 async function resolveEffectivePrice(db, { type, itemId, currency = 'EGP', tenantId, payMode = 'cash', promoCode = '', base = null, context = null, now = Date.now() }) {
-  if (!['course', 'bundle'].includes(type) || !itemId) return null;
+  if (!['course', 'bundle', 'consultation'].includes(type) || !itemId) return null;
   const cur = String(currency || 'EGP').toUpperCase();
   if (!CURRENCIES.includes(cur)) return null;
-  const listed = Number(base) > 0 ? Number(base) : await resolveCatalogPrice(db, { type, itemId, currency: cur, tenantId });
+  const listed = Number(base) > 0 ? Number(base)
+    : type === 'consultation' ? await therapistFee(db, { therapistId: itemId, currency: cur, tenantId })
+      : await resolveCatalogPrice(db, { type, itemId, currency: cur, tenantId });
   if (!(listed > 0)) return null;
   const ctx = context || await loadPricingContext(db, tenantId);
-  const promoRow = cleanCode(promoCode) ? await findPromoRow(db, { tenantId, code: promoCode }) : null;
+  const promoRow = cleanCode(promoCode) && type !== 'consultation' ? await findPromoRow(db, { tenantId, code: promoCode }) : null;
   const priced = priceItem({ type, itemId, currency: cur, base: listed, discounts: ctx.discounts, content: ctx.content, now, promoCode, promoRow });
-  return quoteItem(priced, { payMode, rates: ctx.rates });
+  return quoteItem(priced, { payMode, rates: ctx.rates, type });
+}
+
+/** A doctor's session fee in the currency, as checkout charges it. */
+async function therapistFee(db, { therapistId, currency, tenantId }) {
+  const [[row]] = await db.query(
+    `SELECT price_egp, price_sar, price_usd FROM therapists
+      WHERE id=? AND tenant_id=? AND is_active=1 AND is_consultation_enabled=1 LIMIT 1`,
+    [therapistId, tenantId]
+  );
+  return row ? Number(row[`price_${currency.toLowerCase()}`]) || 0 : 0;
 }
 
 module.exports = {

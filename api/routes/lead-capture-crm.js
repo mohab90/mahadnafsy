@@ -29,6 +29,7 @@ const { phoneIdentityClause, findLeadByContact } = require('../lib/leadMatching'
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
+const { attributionFromRequest, attributionValues, fillAttributionSql } = require('../lib/visitAttribution');
 const { createNotification } = require('../lib/notification');
 const metaCapi = require('../lib/metaCapi');
 const { scalarFields } = require('../lib/inputFields');
@@ -160,8 +161,9 @@ router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', '
     await conn.query(
       `INSERT INTO leads
          (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, branch_id,
-          assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NOW())
+          assigned_sales_id, assigned_sales_name, crm_json, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+          fbclid, gclid, hidden, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NOW())
        ON DUPLICATE KEY UPDATE
          -- A public form submitted again by the same number adds to the lead; it
          -- never renames it or replaces the email the desk has (anyone can type
@@ -174,10 +176,16 @@ router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', '
          crm_json=VALUES(crm_json), client_code=COALESCE(client_code,VALUES(client_code)),
          assigned_sales_id=COALESCE(assigned_sales_id,VALUES(assigned_sales_id)),
          assigned_sales_name=COALESCE(assigned_sales_name,VALUES(assigned_sales_name)),
-         branch=COALESCE(NULLIF(branch,''),VALUES(branch)), branch_id=COALESCE(branch_id,VALUES(branch_id))`,
+         branch=COALESCE(NULLIF(branch,''),VALUES(branch)), branch_id=COALESCE(branch_id,VALUES(branch_id)),
+         -- The visit that first brought them is kept (lib/visitAttribution.js).
+         utm_source=COALESCE(NULLIF(utm_source,''),VALUES(utm_source)), utm_medium=COALESCE(NULLIF(utm_medium,''),VALUES(utm_medium)),
+         utm_campaign=COALESCE(NULLIF(utm_campaign,''),VALUES(utm_campaign)), utm_content=COALESCE(NULLIF(utm_content,''),VALUES(utm_content)),
+         utm_term=COALESCE(NULLIF(utm_term,''),VALUES(utm_term)), fbclid=COALESCE(NULLIF(fbclid,''),VALUES(fbclid)),
+         gclid=COALESCE(NULLIF(gclid,''),VALUES(gclid))`,
       [id, tenantId, code, name, email, phone, source || 'تسجيل اهتمام',
        'new', existing ? [`[نموذج الموقع] ${name}${email ? ` · ${email}` : ''}`, notes].filter(Boolean).join(' — ').slice(0, 1000) : notes,
-       branchVal, branchIdForBranch(branchVal), salesId, salesName, JSON.stringify(crmPayload)]
+       branchVal, branchIdForBranch(branchVal), salesId, salesName, JSON.stringify(crmPayload),
+       ...attributionValues(attributionFromRequest(req))]
     );
     await logLeadEvent(id, existing ? 'updated' : 'created', existing ? 'Public registration refreshed' : 'Public registration captured', { source: source || 'registration', assignedSalesId: salesId }, tenantId, conn);
     await conn.commit();
@@ -211,7 +219,7 @@ router.post('/api/leads-public', publicLimiter, scalarFields('name', 'phone', 'n
     // Same customer submitting again (chatbot re-visit, double-click) must not create a
     // second lead row — match the number and append the note instead.
     // (owner requirement: no duplicate data)
-    const lead = await capturePublicLead({ tenantId: scopedTenantId(req), name, phone, notes, source, branch });
+    const lead = await capturePublicLead({ tenantId: scopedTenantId(req), name, phone, notes, source, branch, attribution: attributionFromRequest(req) });
     if (lead.busy) return res.status(409).json({ error: 'Lead submission is already being processed' });
     void metaCapi.trackLead(req, { name, phone, leadId: lead.id, contentName: source || 'lead' });
     res.json(lead.existing ? { ok: true, id: lead.id, existing: true } : { ok: true, id: lead.id });
@@ -383,6 +391,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
     // the client: /enroll showed a discounted price and sent none of it, so a
     // customer who picked قسط was billed the full list price at checkout.
     const normalizedPayMode = payMode === 'installment' ? 'installment' : 'cash';
+    // Where the visitor came from (lib/visitAttribution.js), on the order and the lead.
+    const attribution = attributionFromRequest(req);
     const { uid, email } = req.user;
     if (!uid) return res.status(401).json({ error: 'Authenticated customer required' });
     // The account is the identity, not the body. A WhatsApp-only client has no
@@ -548,6 +558,14 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
           });
         }
         canonicalTitle = 'Express consultation';
+        // A rule marketing aimed at consultations — all of them, or the express
+        // doctor's — by lib/effectivePrice.js, as a course's discount is.
+        basePrice = expectedAmount;
+        quote = await resolveEffectivePrice(conn, {
+          type: 'consultation', itemId: String(content['express.therapistId'] || 'express'), currency: expectedCurrency,
+          tenantId, promoCode: wantedCode, base: expectedAmount, context: pricingContext,
+        });
+        if (quote) expectedAmount = quote.dueNow;
         const [[expressTherapist]] = content['express.therapistId']
           ? await conn.query('SELECT id, name FROM therapists WHERE id=? AND tenant_id=? LIMIT 1', [content['express.therapistId'], tenantId])
           : [[null]];
@@ -571,7 +589,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
         const slot = await findSlot(conn, { tenantId, therapistId, slotId: String(req.body?.slotId || '').trim() });
         const refused = bookingRuleError({ sessionDate, slot, settings: consultationSettings(content) });
         if (refused) return res.status(400).json(refused);
-        expectedAmount = Number(therapist[`price_${expectedCurrency.toLowerCase()}`]) || 0;
+        basePrice = Number(therapist[`price_${expectedCurrency.toLowerCase()}`]) || 0;
+        quote = basePrice > 0 ? await resolveEffectivePrice(conn, {
+          type: 'consultation', itemId: therapistId, currency: expectedCurrency, tenantId,
+          promoCode: wantedCode, base: basePrice, context: pricingContext,
+        }) : null;
+        expectedAmount = quote ? quote.dueNow : basePrice;
         canonicalTitle = `Consultation - ${therapist.name}`;
         consultationBooking = {
           therapistId, sessionDate, slot, source: 'site_regular',
@@ -658,9 +681,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
       await conn.query(
         `UPDATE leads
             SET crm_json=JSON_SET(IF(JSON_VALID(crm_json), crm_json, '{}'), '$.itemTitle', ?, '$.itemType', ?),
-                branch=COALESCE(NULLIF(branch,''), ?), branch_id=COALESCE(branch_id, ?)
+                branch=COALESCE(NULLIF(branch,''), ?), branch_id=COALESCE(branch_id, ?), ${fillAttributionSql()}
           WHERE id=? AND tenant_id=?`,
-        [canonicalTitle || null, normalizedType, branch, branchId, leadId, tenantId]
+        [canonicalTitle || null, normalizedType, branch, branchId, ...attributionValues(attribution), leadId, tenantId]
       );
     } else {
       const crmJson = JSON.stringify({ interestedCourseIds: itemId ? [itemId] : [], itemTitle: canonicalTitle, itemType: normalizedType });
@@ -671,15 +694,15 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
       // left as it is: the no-op update writes nothing over it.
       await conn.query(
         `INSERT INTO leads (id, tenant_id, client_code, name, email, phone, source, status, branch, branch_id, hidden, crm_json,
-           assigned_sales_id, assigned_sales_name, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'checkout_intent', 'new', ?, ?, 0, ?, ?, ?, NOW())
+           assigned_sales_id, assigned_sales_name, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'checkout_intent', 'new', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE id=id`,
         // NULL rather than '' — leads.email is unique per tenant, so a blank string
         // would make the second email-less checkout collide with the first.
         [uuidv4(), tenantId, await getNextClientCode(conn, tenantId),
          String(customerName || normalizedEmail.split('@')[0] || 'عميل').trim().slice(0, 255),
          normalizedEmail || null,
-         contactPhone.slice(0, 50), branch, branchId, crmJson, rep?.id || null, rep?.name || null]
+         contactPhone.slice(0, 50), branch, branchId, crmJson, rep?.id || null, rep?.name || null, ...attributionValues(attribution)]
       );
     }
     // Reuse of a recent pending order is keyed on the customer. With no email the
@@ -700,6 +723,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
          WHERE o.tenant_id=? AND o.${ownerSql} AND o.type=? AND o.item_id=? AND o.status='pending'
            AND o.created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
            AND o.charge_amount IS NULL
+           -- Never an order for one entry of an installment plan (routes/me-payments.js):
+           -- it is for the same course, and reused here its amount and plan would be rewritten.
+           AND NOT (JSON_VALID(o.notes) AND JSON_VALUE(o.notes, '$.payMode') <=> 'plan_entry')
            AND NOT EXISTS (SELECT 1 FROM payment_proofs pp
                             WHERE pp.order_id=o.id AND pp.tenant_id=o.tenant_id AND pp.status IN ('PENDING','APPROVED'))
          ORDER BY o.created_at DESC LIMIT 1 FOR UPDATE`,
@@ -729,8 +755,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
     await conn.query(
       `INSERT INTO orders
          (id, subscriber_id, item_id, item_title, type, status, amount, currency, payment_method,
-          customer_name, customer_email, customer_phone, course_id, bundle_id, notes, coupon_code, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,?,'pending',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,?,NOW())
+          customer_name, customer_email, customer_phone, course_id, bundle_id, notes, coupon_code, tenant_id, branch_id,
+          utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, created_at)
+       VALUES (?,?,?,?,?,'pending',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE amount=VALUES(amount), currency=VALUES(currency), coupon_code=VALUES(coupon_code),
          item_title=VALUES(item_title), customer_name=VALUES(customer_name),
          customer_phone=VALUES(customer_phone), notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
@@ -738,7 +765,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
        normalizedType.toUpperCase(), expectedAmount, expectedCurrency,
        String(customerName || '').trim().slice(0, 255), normalizedEmail || null, contactPhone.slice(0, 50),
        normalizedType === 'course' ? itemId : null, normalizedType === 'bundle' ? itemId : null,
-       notes, quote?.discount?.code || null, tenantId, branchId]
+       notes, quote?.discount?.code || null, tenantId, branchId, ...attributionValues(attribution)]
     );
     if (paymentLink) {
       const [consumed] = await conn.query(
