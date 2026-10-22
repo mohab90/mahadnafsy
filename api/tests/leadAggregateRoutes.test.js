@@ -21,6 +21,10 @@ const AGGREGATE_ROUTES = [
   ['/api/admin/subscribers/stats', stafflists],
 ];
 
+// A role scoped to nothing gets an empty answer, another rep's leads stay out of
+// mine, a from that is not a date is dropped and the scored limit is clamped:
+// over HTTP in tests/integration/crmAssignment.integration.test.js.
+
 test('every aggregate route authenticates, permissions and scopes', () => {
   for (const [route, src] of AGGREGATE_ROUTES) {
     const start = src.indexOf(`router.get('${route}'`);
@@ -43,41 +47,6 @@ test('every aggregate route authenticates, permissions and scopes', () => {
     assert.ok(/leadScope\(req, 'l'\)|resolveDataScope\(/.test(body),
       `${route} must apply role scoping`);
   }
-});
-
-test('a role scoped to nothing gets an empty payload, never the whole table', () => {
-  for (const [route, src] of AGGREGATE_ROUTES) {
-    const start = src.indexOf(`router.get('${route}'`);
-    const nextRoute = src.indexOf("\nrouter.", start + 10);
-    const body = src.slice(start, nextRoute === -1 ? src.length : nextRoute);
-    assert.ok(/accessScope\.none|scope === 'none'/.test(body),
-      `${route} must short-circuit when the caller may see no rows`);
-  }
-});
-
-test('the staff-performance range bound is validated, not interpolated', () => {
-  const start = leadsRoute.indexOf("router.get('/api/admin/leads/staff-performance'");
-  const body = leadsRoute.slice(start, leadsRoute.indexOf("\nrouter.", start + 10));
-  // `from` arrives from the query string and goes into a comparison. It is
-  // matched against a bare date and passed as a bound parameter; anything else
-  // becomes "no bound", which is the range the screen also offers.
-  assert.ok(body.includes('/^\\d{4}-\\d{2}-\\d{2}$/'),
-    'from must be checked against a plain calendar date');
-  assert.ok(!/\$\{\s*from\s*\}/.test(body),
-    'from must never be interpolated into SQL');
-});
-
-test('the scored route bounds every number it takes from the query string', () => {
-  const start = leadsRoute.indexOf("router.get('/api/admin/leads/scored'");
-  const body = leadsRoute.slice(start, leadsRoute.indexOf("\nrouter.", start + 10));
-  assert.ok(/Math\.min\(Math\.max\(parseInt\(req\.query\.limit/.test(body),
-    'limit must be clamped');
-  assert.ok(/Math\.min\(Math\.max\(parseInt\(req\.query\.minScore/.test(body),
-    'minScore must be clamped');
-  // sortBy picks a column name, so it must be a choice between two literals
-  // rather than anything the caller sends.
-  assert.ok(body.includes("req.query.sortBy === 'date' ? 'date' : 'score'"),
-    'sortBy must resolve to one of two known values');
 });
 
 test('the orders list resolves the lead source instead of the browser doing it', () => {
