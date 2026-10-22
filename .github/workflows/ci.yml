@@ -74,7 +74,11 @@ jobs:
         timeout-minutes: 20
         shell: bash
         run: set -o pipefail; env -u DB_HOST -u DB_USER -u DB_PASSWORD -u DB_NAME -u DB_PORT npm --prefix api run test:unit 2>&1 | tee "$RUNNER_TEMP/unit.tap"
-      - name: Integration tests (real MySQL — schema/ledger invariants)
+      # Each file runs on its own copy of a template built from schema.sql and
+      # the migrations (api/tests/integration/support/isolatedDb.mjs), dropped
+      # when the file ends: mahad_ci stays as migrated for the API below, and
+      # no file depends on what another left behind.
+      - name: Integration tests (real MariaDB, one throwaway database per file)
         timeout-minutes: 30
         shell: bash
         run: set -o pipefail; npm --prefix api run test:integration 2>&1 | tee "$RUNNER_TEMP/integration.tap"
