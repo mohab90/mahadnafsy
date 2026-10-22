@@ -472,7 +472,8 @@ async function enforceMfa(req, res, staff = req.staffRecord, requestedPermission
       // them — which is the enrolment and nothing else.
       const ends = await enrolmentGraceEndsAt(policy, req.user, req.tenantId);
       if (ends > Date.now()) {
-        res.setHeader('X-MFA-Enrolment-Due', new Date(ends).toISOString());
+        // A handler called directly (jobs, tests) may pass a bare response.
+        if (typeof res.setHeader === 'function') res.setHeader('X-MFA-Enrolment-Due', new Date(ends).toISOString());
         return true;
       }
       graceEndedAt = new Date(ends).toISOString();
