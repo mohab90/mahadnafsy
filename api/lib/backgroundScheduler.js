@@ -183,6 +183,23 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(check, 6 * 60 * 60 * 1000);
   }, 12 * 60 * 1000);
 
+  // STORAGE_DRIVER=s3: new uploads move to the bucket as they arrive
+  // (lib/storedFiles.js); this picks up any a restart or a bucket outage left
+  // on the disk. Off, and not even scheduled, with the default local driver.
+  if (require('./objectStorage').writesToBucket()) {
+    later(() => {
+      const sweep = lockedJob('storage_offload', async () => {
+        const { createDbLedger } = require('./storageLedger');
+        const result = await require('./storageOffload').offloadPendingUploads({
+          client: require('./objectStorage').remoteStore(), ledger: createDbLedger(pool), logger,
+        });
+        if (result.moved || result.failed) logger.info(`[jobs] storage offload moved=${result.moved} failed=${result.failed}`);
+      });
+      sweep();
+      repeat(sweep, 10 * 60 * 1000);
+    }, 3 * 60 * 1000);
+  }
+
   later(() => {
     const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
       .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));

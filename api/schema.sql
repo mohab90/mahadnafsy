@@ -5208,6 +5208,33 @@ CREATE TABLE `staff_resignations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `storage_objects`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `storage_objects` (
+  `object_key` varchar(255) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `kind` enum('video','image','proof') NOT NULL,
+  `location` enum('local','both','remote') NOT NULL DEFAULT 'local',
+  `size_bytes` bigint(20) unsigned DEFAULT NULL,
+  `sha256` char(64) DEFAULT NULL,
+  `content_type` varchar(100) DEFAULT NULL,
+  `pending_offload` tinyint(1) NOT NULL DEFAULT 0,
+  `claimed_until` datetime DEFAULT NULL,
+  `copied_at` datetime DEFAULT NULL,
+  `local_deleted_at` datetime DEFAULT NULL,
+  `last_error` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`object_key`),
+  KEY `idx_storage_objects_pending` (`pending_offload`,`location`),
+  KEY `idx_storage_objects_tenant` (`tenant_id`,`kind`,`location`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `subscriber_subscriptions`
 --
 

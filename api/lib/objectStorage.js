@@ -25,7 +25,7 @@ const crypto = require('node:crypto');
 const { resolveSecret } = require('./secretResolver');
 const { EMPTY_SHA256, presignUrl, signRequest, uriEncode } = require('./s3Signature');
 
-const KEY_PATTERN = /^(videos|media|proofs)\/([a-z0-9_-]{1,64})\/([A-Za-z0-9._-]{1,120})$/;
+const KEY_PATTERN = /^(videos|media|proofs)\/([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9._-]{1,120})$/;
 const KIND_BY_PREFIX = Object.freeze({ videos: 'video', media: 'image', proofs: 'proof' });
 
 function parseKey(key) {
