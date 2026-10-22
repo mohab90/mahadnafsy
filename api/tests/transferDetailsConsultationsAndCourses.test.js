@@ -11,17 +11,12 @@ const path = require('node:path');
 
 const read = relative => fs.readFileSync(path.join(__dirname, '..', '..', relative), 'utf8');
 
-test('the sender of a transfer is stored on the payment and read back by every payments screen', () => {
-  assert.match(read('api/migrations/296_v26_payment_sender_name.sql'), /ADD COLUMN IF NOT EXISTS sender_name VARCHAR\(255\)/);
-  assert.match(read('api/schema.sql'), /`from_account` varchar\(255\) DEFAULT NULL,\s+`sender_name` varchar\(255\) DEFAULT NULL,/);
+// Stored on the payment and found by it in the payments register: over HTTP in
+// tests/integration/deskPaymentsAndOrders.integration.test.js. A collection
+// officer's request keeps it too, and every payments screen reads it back.
+test('the sender of a transfer is read back by every payments screen', () => {
   const booking = read('api/routes/subscriber-payments.js');
-  assert.match(booking, /from_account, sender_name, source, item_title/);
-  assert.match(booking, /payment\.senderName \|\| payment\.sender_name/);
   assert.match(booking, /senderName: body\.payment\?\.senderName/, 'a collection officer\'s request keeps it too');
-  const register = read('api/routes/finance-payments-register.js');
-  assert.match(register, /p\.from_account, p\.sender_name/);
-  assert.match(register, /senderName: r\.sender_name \|\| null/);
-  assert.match(register, /p\.sender_name LIKE \?/, 'a payment is found by who sent it');
   for (const screen of [
     'admin/pages/dashboard/tabs/financial/PaymentsRegister.tsx',
     'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
