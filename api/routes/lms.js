@@ -345,7 +345,7 @@ router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdminOrS
     // drip_unlock_days is part of the GET /api/lectures payload, which is cached
     // for five minutes — without this the new unlock schedule did not reach the
     // customer's LMS until the cache expired.
-    cacheInvalidate('courses', 'lectures');
+    cacheInvalidate('courses', 'lectures', 'public-prices');
     res.json({ ok: true, drip_unlock_days: days });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

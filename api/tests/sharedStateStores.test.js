@@ -161,3 +161,20 @@ test('until it is started (the single API) nothing is written', async () => {
   assert.deepEqual(local, ['tenant-1']);
   assert.equal(db.rows.length, 0);
 });
+
+test('a saved offer or exchange rate drops the public price list at once', async () => {
+  const dbModule = require('../lib/db');
+  const { setTenantSetting } = require('../lib/tenantSettings');
+  const original = dbModule.cacheInvalidate;
+  const dropped = [];
+  dbModule.cacheInvalidate = (...prefixes) => dropped.push(...prefixes);
+  try {
+    const db = { query: async () => [{}] };
+    await setTenantSetting('discounts', [], { tenantId: 'tenant-a', db });
+    await setTenantSetting('content', {}, { tenantId: 'tenant-a', db });
+    await setTenantSetting('crm_settings', {}, { tenantId: 'tenant-a', db });
+  } finally {
+    dbModule.cacheInvalidate = original;
+  }
+  assert.deepEqual(dropped, ['public-prices:tenant-a', 'public-prices:tenant-a']);
+});

@@ -212,11 +212,11 @@ router.delete('/api/admin/subscribers/:id/devices', requireAuth, requireAdminOrS
 });
 
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
-  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
+  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters', 'public-prices'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/chapters/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
-  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
+  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters', 'public-prices'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // GET /api/admin/therapists — all therapists (including inactive) with slots
@@ -347,7 +347,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
         );
       }
     }
-    cacheInvalidate('bundles');
+    cacheInvalidate('bundles', 'public-prices');
     res.json({ ok: true, id });
   } catch (e) {
     if (sendFieldError(res, e)) return;
@@ -359,7 +359,7 @@ router.delete('/api/admin/bundles/:id', requireAuth, requireAdminOrStaff, requir
     const [r] = await pool.query('DELETE FROM bundles WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Bundle not found' });
     await pool.query('DELETE FROM bundle_courses WHERE tenant_id=? AND bundle_id = ?', [req.tenantId, req.params.id]);
-    cacheInvalidate('bundles');
+    cacheInvalidate('bundles', 'public-prices');
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

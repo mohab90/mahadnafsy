@@ -189,7 +189,7 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
     // carries no tenant column of its own.
     if (c.materials !== undefined) await saveCourseMaterials(pool, id, c.materials);
     await syncOnlineTiersFromColumns(pool, { tenantId: req.tenantId, type: 'course', itemId: id });
-    cacheInvalidate('courses', 'bundles');
+    cacheInvalidate('courses', 'bundles', 'public-prices');
     res.json({ ok: true, id });
   } catch (e) {
     if (sendFieldError(res, e)) return;
@@ -202,7 +202,7 @@ router.delete('/api/admin/courses/:id', requireAuth, requireAdminOrStaff, requir
   try {
     const [r] = await pool.query('DELETE FROM courses WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Course not found' });
-    cacheInvalidate('courses', 'bundles');
+    cacheInvalidate('courses', 'bundles', 'public-prices');
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
