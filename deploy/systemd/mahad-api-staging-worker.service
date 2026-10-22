@@ -22,9 +22,9 @@
 # systemctl restart mahad-api-staging.
 #
 # The reps' WhatsApp sessions stay in the API: its routes send through the
-# connection held in memory. A cache the web process keeps (lib/db.js cached)
-# is not cleared by a job here, so a job's change shows there within that
-# cache's TTL (5 minutes at most) instead of at once.
+# connection held in memory. A cache dropped by a job here is dropped in the
+# web process too, within two seconds (lib/cacheBus.js, on by itself with
+# MAHAD_ROLE=web). Several web instances: deploy/MULTI_INSTANCE.md.
 [Unit]
 Description=Mahad API background jobs (staging)
 After=network-online.target mariadb.service

@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 /**
  * Who may delete — anything, anywhere in the staff panel.
  *
@@ -89,10 +93,10 @@ function exemptionFor(method, pathname) {
 // /api/auth/me, and changes only when the owner saves it.
 const cache = new Map();
 
-function invalidateDeleteRights(tenantId) {
+const invalidateDeleteRights = shared('delete-rights', function invalidateDeleteRightsHere(tenantId) {
   if (tenantId == null) cache.clear();
   else cache.delete(String(tenantId));
-}
+});
 
 function storedIds(stored) {
   if (!stored || typeof stored !== 'object' || !Array.isArray(stored.staffIds)) return null;

@@ -106,6 +106,12 @@ async function getMfaPolicy(tenantId, { fresh = false } = {}) {
   return value;
 }
 
+// In every API process: an instance still holding the old policy would let a
+// session through without the second step for up to half a minute.
+const forgetMfaPolicy = require('./cacheBus').shared('mfa-policy', function forgetMfaPolicyHere(tenantId) {
+  policyCache.delete(String(tenantId || 'tenant-default'));
+});
+
 async function saveMfaPolicy(tenantId, value, actorId) {
   const previous = await getMfaPolicy(tenantId, { fresh: true });
   const normalized = normalizeMfaPolicy({ ...value, version: POLICY_VERSION });
@@ -115,7 +121,7 @@ async function saveMfaPolicy(tenantId, value, actorId) {
     ? (previous.enabled && previous.enforced_from) || new Date().toISOString()
     : null;
   await setTenantSetting('security_mfa_policy', normalized, { tenantId, actorId });
-  policyCache.delete(String(tenantId || 'tenant-default'));
+  forgetMfaPolicy(tenantId);
   return normalized;
 }
 

@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 const logger = require('./logger');
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
@@ -219,7 +223,7 @@ function _expenseAccountCode(category) {
 // is available.
 const _FX_FALLBACK = { SAR: 13, USD: 48 };
 const _fxCache = new Map();
-function invalidateFxCache(tenantId = null) { if (tenantId) _fxCache.delete(tenantId); else _fxCache.clear(); }
+const invalidateFxCache = shared('fx-rates', function invalidateFxCacheHere(tenantId = null) { if (tenantId) _fxCache.delete(tenantId); else _fxCache.clear(); });
 async function getFxSnapshot(tenantId = DEFAULT_TENANT) {
   const cached = _fxCache.get(tenantId);
   if (cached?.rates && Date.now() - cached.ts < 10 * 60 * 1000) return cached;

@@ -1,5 +1,8 @@
 'use strict';
 
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 const { pool } = require('./db');
 const logger = require('./logger').child({ module: 'tenant-scope' });
 
@@ -113,10 +116,10 @@ async function loadTenantContext(tenantId = DEFAULT_TENANT_ID) {
   return value;
 }
 
-function clearTenantContextCache(tenantId) {
+const clearTenantContextCache = shared('tenant-context', function clearTenantContextCacheHere(tenantId) {
   if (tenantId) cache.delete(tenantId);
   else cache.clear();
-}
+});
 
 function requireTenantFeature(featureKey) {
   return async function tenantFeatureGuard(req, res, next) {

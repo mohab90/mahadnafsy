@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 // ── Central institute brand (single source for branded outputs) ───────────────
 // Reads the SAME site_config 'content' blob that the admin's SiteIdentityPanel
 // writes (keys: institute.name, institute.logo, footer.phone/whatsapp/address,
@@ -84,9 +88,9 @@ async function getBrandSettings(tenantId = DEFAULT_TENANT, db = undefined) {
   return value;
 }
 
-function invalidateBrandSettings(tenantId) {
+const invalidateBrandSettings = shared('brand-settings', function invalidateBrandSettingsHere(tenantId) {
   if (tenantId) _cache.delete(tenantId);
   else _cache.clear();
-}
+});
 
 module.exports = { DEFAULT_BRAND, getBrandSettings, invalidateBrandSettings };

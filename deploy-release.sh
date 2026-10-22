@@ -27,7 +27,9 @@
 #   2. migrations run from <apidir>.next — a failure deletes it and the
 #      running code was never touched, so nothing needs restarting;
 #   3. two renames swap the folders (<apidir> -> <apidir>.prev,
-#      <apidir>.next -> <apidir>), uploads move across, one restart.
+#      <apidir>.next -> <apidir>), uploads move across, one restart — or,
+#      with extra web instances enabled on the server, a rolling restart that
+#      keeps one answering throughout (deploy/MULTI_INSTANCE.md).
 # The path systemd starts from never changes, so the units on the server
 # (WorkingDirectory=/var/www/...) need nothing. <apidir>.prev is kept after a
 # good deploy for an instant manual rollback (until the next deploy):
@@ -185,10 +187,20 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
     mv "$apidir.prev" "$apidir"; rm -rf "$next"; restore_static "$label" "$admindir" "$clientdir"; return 1
   fi
   { [ -e "$apidir.prev/uploads" ] || [ -L "$apidir.prev/uploads" ]; } && mv "$apidir.prev/uploads" "$apidir/uploads"
-  systemctl restart "$svc"
-  restart_worker "$svc"
-  sleep 9
-  if ok "$port"; then
+  # One unit: the single restart, exactly as before. Extra web instances
+  # enabled on the server (deploy/MULTI_INSTANCE.md): one at a time, each
+  # answering before the next goes down, so nginx always has one to send to.
+  local instances healthy=0
+  instances=$(web_instances "$svc")
+  if [ -z "$instances" ]; then
+    systemctl restart "$svc"
+    restart_worker "$svc"
+    sleep 9
+    ok "$port" && healthy=1
+  else
+    rolling_restart "$svc" "$port" $instances && healthy=1
+  fi
+  if [ "$healthy" = 1 ]; then
     local got
     got=$(applied_migration "$port")
     if [ -n "$want" ] && [ "$got" != "$want" ]; then
@@ -206,6 +218,61 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   rollback_api "$apidir" "$svc" "$port"
   restore_static "$label" "$admindir" "$clientdir"
   return 1
+}
+
+# Extra web instances of <service>: deploy/systemd/<service>@.service, one per
+# port (mahad-api@3011 listens on 3011), enabled by hand as
+# deploy/MULTI_INSTANCE.md says. None enabled — the default — means the single
+# unit and the single restart above.
+web_instances() { # <service>
+  systemctl list-units --all --plain --no-legend --type=service "$1@*.service" 2>/dev/null \
+    | awk '{print $1}' | grep -E "^$1@[0-9]+\.service$" | sed 's/\.service$//' \
+    | while read -r unit; do
+        systemctl is-enabled --quiet "$unit" 2>/dev/null && echo "$unit"
+      done
+  return 0
+}
+
+# Up to about a minute for an instance to answer /api/health with "ok". While
+# it drains and restarts, nginx sends its requests to the others
+# (proxy_next_upstream, deploy/nginx/mahad-api-multi.conf.example).
+wait_healthy() { # <port>
+  local i
+  for i in $(seq 1 45); do
+    ok "$1" && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# The rolling restart, after the folder swap. Every instance runs from the same
+# folder, so from the swap until each one restarts, an old process serves with
+# the new release on disk under it: what it already loaded is the old code, but
+# a module it requires lazily for the first time — and any file it reads — now
+# comes from the new release. That window is kept to the restarts themselves
+# (each instance is restarted as soon as the one before answers, a few seconds
+# apiece) and is written up in deploy/MULTI_INSTANCE.md. A rollback moves the
+# old folder back, which makes an instance not yet restarted whole again.
+rolling_restart() { # <service> <port> <instance units...>
+  local svc=$1 port=$2 unit p
+  shift 2
+  echo "  rolling restart: $svc (:$port), then $*"
+  systemctl restart "$svc"
+  if ! wait_healthy "$port"; then
+    echo "  $svc did not answer on :$port"
+    return 1
+  fi
+  for unit in "$@"; do
+    p=${unit##*@}
+    systemctl restart "$unit"
+    if ! wait_healthy "$p"; then
+      echo "  $unit did not answer on :$p"
+      return 1
+    fi
+    echo "  $unit answers on :$p"
+  done
+  restart_worker "$svc"
+  return 0
 }
 
 # The optional background-jobs process (api/worker.js) runs from the same
@@ -229,7 +296,14 @@ rollback_api() { # <apidir> <service> <port>
   # stays migrated (see the header).
   { [ -e "$apidir/uploads" ] || [ -L "$apidir/uploads" ]; } && mv "$apidir/uploads" "$apidir.prev/uploads"
   rm -rf "$apidir"; mv "$apidir.prev" "$apidir"
-  systemctl restart "$svc"; restart_worker "$svc"; sleep 9
+  local instances
+  instances=$(web_instances "$svc")
+  if [ -z "$instances" ]; then
+    systemctl restart "$svc"; restart_worker "$svc"; sleep 9
+  else
+    # Every instance back onto the old release, still one at a time.
+    rolling_restart "$svc" "$port" $instances || echo "  an instance did not come back - see systemctl status $svc@*"
+  fi
   echo "  restored - $(h "$port")"
 }
 
@@ -311,6 +385,9 @@ echo "=== final ==="
 echo -n "  service : "; systemctl is-active mahad-api
 echo -n "  health  : "; h 3001; echo
 echo -n "  restarts: "; systemctl show mahad-api -p NRestarts --value
+for unit in $(web_instances mahad-api); do
+  echo -n "  $unit: "; systemctl is-active "$unit"
+done
 echo
 echo
 echo "=== prune old assets ==="

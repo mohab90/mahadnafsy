@@ -124,7 +124,6 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
 function scheduleDailyReport() {
   dailyAtCairo(7, 'daily-report', sendDailyReport);
 }
-scheduleDailyReport();
 
 // GET /api/admin/reports/daily-preview — preview what the daily report would look like
 
@@ -220,9 +219,6 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
 function scheduleFollowUpReminders() {
   dailyAtCairo(8, 'followup-reminders', runFollowUpReminders);
 }
-scheduleFollowUpReminders();
-// And the day's follow-ups as in-app notifications, to each owner and a team one to the managers.
-require('../../lib/followUpDigest').scheduleFollowUpDigest();
 
 // Every open ticket in the system had passed its first-response window, which
 // is what happens when nothing ever raises its hand: a ticket that breaches its
@@ -281,7 +277,6 @@ function scheduleSlaBreachSweep() {
   }, 5 * 60 * 1000).unref?.();
   logger.info('[sla-sweep] scheduled — hourly, first run in 5m');
 }
-scheduleSlaBreachSweep();
 
 // Certificates earn themselves: half the course watched and 90% of it paid;
 // and «شهادات المعهد», 90% paid whatever was watched (lib/instituteCertificates.js).
@@ -297,7 +292,6 @@ function scheduleAutoCertificateSweep() {
   }, 7 * 60 * 1000).unref?.();
   logger.info('[auto-certificate] scheduled — hourly, first run in 7m');
 }
-scheduleAutoCertificateSweep();
 
 // The Dokki manager's Saturday report, the morning brief of the day's rounds and,
 // once switched on, the absence follow-up (lib/dokkiWeeklyReport.js,
@@ -317,7 +311,6 @@ function scheduleDokkiAutomation() {
     setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000).unref?.();
   }, 11 * 60 * 1000).unref?.();
 }
-scheduleDokkiAutomation();
 
 // «التقرير الأسبوعي للفروع» on WhatsApp, Saturday morning, once switched on
 // (lib/weeklyBranchReport.js). Hourly; each number once a week.
@@ -330,7 +323,6 @@ function scheduleWeeklyBranchReport() {
     setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000).unref?.();
   }, 13 * 60 * 1000).unref?.();
 }
-scheduleWeeklyBranchReport();
 
 // A payment waiting on the accountant is money the institute has not decided
 // about yet. One waiting more than a day is a payment nobody is looking at.
@@ -372,7 +364,6 @@ function schedulePaymentReviewSweep() {
   }, 9 * 60 * 1000).unref?.();
   logger.info('[payment-review] scheduled — hourly, first run in 9m');
 }
-schedulePaymentReviewSweep();
 
 // GET /api/admin/leads/due-today — list leads due for follow-up today
 
@@ -447,7 +438,6 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
 function schedulePaymentReminders() {
   dailyAtCairo(9, 'payment-reminders', runPaymentDueReminders);
 }
-schedulePaymentReminders();
 
 // GET /api/admin/payments/due-upcoming?days=7 — payments due soon
 
@@ -641,4 +631,22 @@ const KV_ALLOWED_KEYS = ['tasks_board', 'support_tickets', 'sales_motiv_posts', 
 
 // GET /api/admin/kv/:key
 
-module.exports = { logLogin, sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };
+// The timers above used to start the moment this file was required, so every
+// process that loaded the routes ran them: two web instances sent the daily
+// report and the reminders twice (their locks are skipped, not waited for, and
+// a quick run frees the lock before the other process fires). They start from
+// lib/routeJobs.js now, only in the process that owns the jobs (MAHAD_ROLE).
+function startSharedRouteJobs() {
+  scheduleDailyReport();
+  scheduleFollowUpReminders();
+  // And the day's follow-ups as in-app notifications, to each owner and a team one to the managers.
+  require('../../lib/followUpDigest').scheduleFollowUpDigest();
+  scheduleSlaBreachSweep();
+  scheduleAutoCertificateSweep();
+  scheduleDokkiAutomation();
+  scheduleWeeklyBranchReport();
+  schedulePaymentReviewSweep();
+  schedulePaymentReminders();
+}
+
+module.exports = { startSharedRouteJobs, logLogin, sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };

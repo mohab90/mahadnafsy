@@ -94,8 +94,17 @@ function tokenExpiryMs(payload, fallbackMs = JWT_MAX_AGE_SECONDS * 1000) {
 // Hybrid: in-memory Map for fast O(1) lookups + MySQL for persistence across restarts.
 const tokenBlacklist = new Map(); // jti => expiry ms
 
+// Revoked in every API process: a token signed out (or rotated by a refresh)
+// on one instance used to stay good on the other until it expired.
+const { bus } = require('./cacheBus');
+bus.on('token-revoked', arg => {
+  const [jti, exp] = String(arg || '').split('|');
+  if (jti && Number(exp) > Date.now()) tokenBlacklist.set(jti, Number(exp));
+});
+
 async function revokeToken(jti, expMs) {
   tokenBlacklist.set(jti, expMs);
+  bus.publish('token-revoked', `${jti}|${Number(expMs) || Date.now() + JWT_MAX_AGE_SECONDS * 1000}`).catch(() => {});
   try {
     const expiresAt = new Date(expMs).toISOString().slice(0, 19).replace('T', ' ');
     await pool.query(

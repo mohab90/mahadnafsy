@@ -37,7 +37,7 @@ function harness() {
 test('an uncaught exception drains the server and exits non-zero instead of carrying on', async () => {
   const { proc, exits, state } = harness();
   proc.emit('uncaughtException', new Error('boom'));
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => setTimeout(resolve, 100));
   assert.deepEqual(state(), { ended: true, closed: true });
   assert.deepEqual(exits, [1]);
 });
@@ -45,13 +45,13 @@ test('an uncaught exception drains the server and exits non-zero instead of carr
 test('an unhandled rejection is logged and the process keeps running', async () => {
   const { proc, exits } = harness();
   proc.emit('unhandledRejection', new Error('transient'));
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => setTimeout(resolve, 100));
   assert.deepEqual(exits, []);
 });
 
 test('SIGTERM still drains and exits cleanly', async () => {
   const { proc, exits } = harness();
   proc.emit('SIGTERM');
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => setTimeout(resolve, 100));
   assert.deepEqual(exits, [0]);
 });

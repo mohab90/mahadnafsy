@@ -1,0 +1,73 @@
+# Two or more API instances behind one nginx (deploy/MULTI_INSTANCE.md).
+# NOT in use until someone switches it on: the single-instance config
+# (mahad-api.conf.example, upstream 127.0.0.1:3001 alone) keeps working as is.
+#
+# Replaces the `upstream mahad_api { ... }` block in the site that proxies the
+# API, and adds the WhatsApp location inside its `server { }`. Staging is the
+# same with 3002 / 3012 and its own upstream names.
+
+upstream mahad_api {
+    # The existing unit (mahad-api, :3001) and each extra instance
+    # (mahad-api@3011, …). least_conn keeps a slow report on one from queueing
+    # the next requests behind it.
+    least_conn;
+    server 127.0.0.1:3001 max_fails=2 fail_timeout=5s;
+    server 127.0.0.1:3011 max_fails=2 fail_timeout=5s;
+    keepalive 32;
+}
+
+# The reps' linked WhatsApp sessions live in exactly one process — the one
+# with MAHAD_WA_WEB=1 (or unset), here mahad-api on :3001. Every other
+# instance runs with MAHAD_WA_WEB=0 and answers these routes with 503
+# WA_WEB_OTHER_INSTANCE, so a missing pin shows at once instead of as a
+# «try again in a minute» that never ends.
+upstream mahad_api_whatsapp_web {
+    server 127.0.0.1:3001;
+    keepalive 8;
+}
+
+server {
+    # … the existing listen / server_name / ssl lines stay as they are …
+
+    location ^~ /api/staff/whatsapp-web/ {
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header X-Country-Code "";
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_pass http://mahad_api_whatsapp_web;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 65s;
+        proxy_send_timeout 65s;
+    }
+
+    location /api/ {
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header X-Country-Code "";
+
+        # Keep-alive to the instances: HTTP/1.1 and no Connection header from
+        # the client. A draining instance answers «Connection: close», so nginx
+        # does not reuse a socket that is about to go.
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_pass http://mahad_api;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 65s;
+        proxy_send_timeout 65s;
+
+        # An instance restarting (deploy) or draining refuses the connection;
+        # nginx then tries the other one. A refused connection is retried for
+        # every method, because nothing reached the instance. A request that
+        # did reach it (a timeout, a 502/503/504 answer) is retried only for
+        # GET/HEAD/OPTIONS: nginx never resends a POST/PATCH/DELETE that may
+        # have run — leave `non_idempotent` out.
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+        proxy_next_upstream_tries 2;
+        proxy_next_upstream_timeout 10s;
+    }
+}
