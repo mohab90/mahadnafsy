@@ -2088,6 +2088,29 @@ CREATE TABLE `email_sequences` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `email_verifications`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `email_verifications` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `user_id` varchar(100) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `token_hash` char(64) NOT NULL,
+  `code_hash` char(64) NOT NULL,
+  `attempts` int(11) NOT NULL DEFAULT 0,
+  `expires_at` datetime NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_email_verifications_token` (`token_hash`),
+  KEY `idx_email_verifications_user` (`tenant_id`,`user_id`,`used_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `employee_bonuses`
 --
 
@@ -5863,6 +5886,27 @@ CREATE TABLE `user_mfa_recovery_codes` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `user_sessions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_sessions` (
+  `tenant_id` varchar(64) NOT NULL,
+  `session_id` varchar(36) NOT NULL,
+  `user_id` varchar(100) NOT NULL,
+  `session_version` int(10) unsigned NOT NULL,
+  `ip_hint` varchar(64) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `last_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `revoked_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`tenant_id`,`session_id`),
+  KEY `idx_user_sessions_user` (`tenant_id`,`user_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 
@@ -5895,6 +5939,9 @@ CREATE TABLE `users` (
   `sharing_lock_count` int(11) NOT NULL DEFAULT 0 COMMENT 'How many times this account has been auto-locked for sharing',
   `phone` varchar(32) DEFAULT NULL COMMENT 'Normalised WhatsApp number (digits only, no leading zeros)',
   `phone_verified_at` datetime DEFAULT NULL,
+  `mfa_grace_started_at` datetime DEFAULT NULL,
+  `email_unverified` tinyint(1) NOT NULL DEFAULT 0,
+  `email_verified_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_tenant_email` (`tenant_id`,`email`(191)),
   UNIQUE KEY `uq_users_tenant_active_session` (`tenant_id`,`active_session_id`),

@@ -22,7 +22,7 @@ const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { branchIdForBranch } = require('../../lib/branches');
 const { grantCourseSelections } = require('../../lib/entitlements');
 const {
-  JWT_SECRET, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
+  JWT_SECRET, JWT_MAX_AGE_SECONDS, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
 } = require('../../lib/token');
 const {
   ADMIN_EMAILS, ADMIN_UIDS, isInstituteOwner, requireAuth, requireAdmin, requireSuperAdmin,
@@ -79,6 +79,7 @@ module.exports = {
   branchIdForBranch,
   grantCourseSelections,
   JWT_SECRET,
+  JWT_MAX_AGE_SECONDS,
   signAccessToken,
   setAuthCookie,
   clearAuthCookie,

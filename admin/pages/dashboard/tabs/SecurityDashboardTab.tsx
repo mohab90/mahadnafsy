@@ -14,23 +14,34 @@ interface MfaPolicy {
   enabled: boolean;
   required_roles: string[];
   required_permissions: string[];
+  grace_days?: number;
+  enforced_from?: string | null;
 }
 
+// The server's default (api/lib/mfaPolicy.js): every role that sees money or
+// changes permissions. manage_payments is not offered — every role holds it.
 const MFA_ROLES = [
   ['admin', 'مدير النظام'],
   ['manager', 'مدير عام'],
   ['accountant', 'محاسب'],
+  ['online_manager', 'مدير الأونلاين'],
+  ['sales_collection_manager', 'مدير المبيعات والتحصيل'],
+  ['collection', 'التحصيل'],
+  ['daqqi_manager', 'مدير الدقي'],
+  ['tagamoa_manager', 'مدير التجمع'],
+  ['hr', 'الموارد البشرية'],
 ] as const;
 const MFA_PERMISSIONS = [
+  ['view_financial', 'عرض المالية'],
   ['manage_financial', 'إدارة المالية'],
-  ['manage_payments', 'إدارة المدفوعات'],
   ['approve_refunds', 'اعتماد المرتجعات'],
   ['manage_staff', 'إدارة الموظفين'],
   ['manage_security', 'إدارة الأمان'],
   ['manage_settings', 'إدارة الإعدادات'],
 ] as const;
 const DEFAULT_MFA_POLICY: MfaPolicy = {
-  enabled: false,
+  enabled: true,
+  grace_days: 7,
   required_roles: MFA_ROLES.map(([key]) => key),
   required_permissions: MFA_PERMISSIONS.map(([key]) => key),
 };
@@ -402,6 +413,19 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
                 </span>
               </span>
             </label>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-wrap items-center gap-3 text-sm text-gray-700">
+            <label className="flex items-center gap-2">
+              مهلة التفعيل لكل حساب
+              <input type="number" min={0} max={30} value={mfaPolicy.grace_days ?? 7}
+                onChange={event => setMfaPolicy(policy => ({ ...policy, grace_days: Math.max(0, Math.min(30, Number(event.target.value) || 0)) }))}
+                className="w-20 rounded-lg border px-2 py-1 text-center" />
+              يوم
+            </label>
+            <span className="text-xs text-gray-500">
+              الحساب اللي مفعّلش التحقق الثنائي بيدخل عادي في المهلة وبيظهرله عدّاد، وبعدها مايفتحش غير شاشة التفعيل.
+              {mfaPolicy.enforced_from ? ` السياسة مطبّقة من ${cairoDateOnly(mfaPolicy.enforced_from)}.` : ''}
+            </span>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white border border-gray-200 rounded-2xl p-4">
