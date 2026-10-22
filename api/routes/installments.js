@@ -85,7 +85,8 @@ router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAut
       }
     }
 
-    const id = `ip-${uuidv4()}`;
+    // installment_plans.id is varchar(36): a prefixed uuid (39) is refused under strict SQL mode.
+    const id = uuidv4();
     const amounts = entries.map(e => Number(e.amount) || 0);
     const dueDates = entries.map(e => e.dueDate || null);
     await pool.query(
