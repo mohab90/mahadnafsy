@@ -121,10 +121,15 @@ function reopenTicketSql(when = "status IN ('resolved','closed')") {
  * the fourth is the SLA sweep, where it releases immediately under autocommit
  * and the escalation it performs is idempotent regardless.
  */
-async function pickAssignee(pool, tenantId, department, { today = cairoToday() } = {}) {
+async function pickAssignee(pool, tenantId, department, { today = cairoToday(), staffClause = null, accept = null } = {}) {
   const roles = DEPARTMENT_ROLES[department];
-  if (!roles || !roles.length) return null;
-  const placeholders = roles.map(() => '?').join(',');
+  if (!staffClause && (!roles || !roles.length)) return null;
+  // Who may take it: the department's roles, or — for a branch's own queue
+  // (lib/ticketBranchQueue.js) — the branch's staff, named by `staffClause`.
+  const who = staffClause || {
+    sql: `LOWER(TRIM(s.role)) IN (${roles.map(() => '?').join(',')})`,
+    params: roles.map(role => role.toLowerCase()),
+  };
   // Nobody on an approved day off (an hours-long إذن is still a working day):
   // an urgent ticket went to an agent on leave and sat unanswered past its SLA.
   // Only someone who can open the ticket: every ticket screen asks for
@@ -136,7 +141,7 @@ async function pickAssignee(pool, tenantId, department, { today = cairoToday() }
     // load breaking a tie. By load alone, one agent holding old open tickets
     // received nothing: «متوزعش المشاكل علي حازم ووليد فقط — فريق خدمه العملاء
     // ال3» (10 Oct 2026).
-    `SELECT s.id, s.name, s.role, s.permissions_json, s.tenant_id,
+    `SELECT s.id, s.name, s.role, s.permissions_json, s.tenant_id, s.data_scope, s.branch_id,
             (SELECT MAX(t.created_at) FROM support_tickets t
                WHERE t.tenant_id=s.tenant_id AND t.assigned_to=s.id AND t.deleted_at IS NULL) AS last_at,
             (SELECT COUNT(*) FROM support_tickets t
@@ -144,16 +149,16 @@ async function pickAssignee(pool, tenantId, department, { today = cairoToday() }
                  AND t.deleted_at IS NULL AND t.status IN ('open','in_progress')) AS load_count
        FROM staff s
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
-        AND LOWER(TRIM(s.role)) IN (${placeholders})
+        AND ${who.sql}
         AND NOT EXISTS (SELECT 1 FROM leaves lv
                          WHERE lv.tenant_id=s.tenant_id AND lv.staff_id=s.id AND lv.status='APPROVED'
                            AND lv.type NOT IN (${HOURLY_LEAVE_TYPES.map(() => '?').join(',')})
                            AND lv.start_date<=? AND lv.end_date>=?)
       ORDER BY last_at IS NOT NULL, last_at ASC, load_count ASC, s.name ASC
       FOR UPDATE`,
-    [tenantId, ...roles.map(role => role.toLowerCase()), ...HOURLY_LEAVE_TYPES, today, today]
+    [tenantId, ...who.params, ...HOURLY_LEAVE_TYPES, today, today]
   );
-  const pick = rows.find(row => hasPermission(row, 'manage_inbox'));
+  const pick = rows.find(row => hasPermission(row, 'manage_inbox') && (!accept || accept(row)));
   return pick ? { id: pick.id, name: pick.name } : null;
 }
 

@@ -15,6 +15,7 @@ import { cairoStamp } from '../../../../shared/cairoDate';
 import { TicketContactButtons } from './TicketContact';
 import { TicketEscalateDialog } from './TicketEscalateDialog';
 import { TicketToRefundModal } from './TicketToRefundModal';
+import { SupportBranchTabs, type SupportBranchQueue } from './SupportBranchTabs';
 
 // «محتاجين نطور صفحه تذاكر الدعم … تكون بخلاص صفحه الانبوكس اللى بتيجي المشاكل
 // من الموقع لان نفس المشاكل كدا بتتعرض مرتين … ازرار اجراءات لكل مشكله وللادارة
@@ -132,6 +133,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [priorityFilter, setPriorityFilter] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('');
   const [department, setDepartment] = useState<'' | 'all'>('');
+  const [branchQueue, setBranchQueue] = useState<SupportBranchQueue>('');
   const [creating, setCreating] = useState(false);
 
   // The drawer: the conversation, its record and every action on one problem.
@@ -188,6 +190,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     try {
       const params = new URLSearchParams();
       if (department) params.set('department', department);
+      if (branchQueue) params.set('branch', branchQueue);
       if (archived) {
         params.set('archive', '1');
         params.set('limit', String(ARCHIVE_PAGE));
@@ -207,7 +210,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     } finally {
       setLoading(false);
     }
-  }, [notify, department, archived, pageNo, archiveQ]);
+  }, [notify, department, branchQueue, archived, pageNo, archiveQ]);
   useEffect(() => { loadRemote(); }, [loadRemote]);
 
   const items = useMemo<InboxItem[]>(() => [
@@ -595,6 +598,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           <option value="none">من غير مسئول</option>
           {owners.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
+        {isAdmin && <SupportBranchTabs value={branchQueue} onChange={setBranchQueue} />}
         {isAdmin && (
           <select value={department} onChange={event => setDepartment(event.target.value as typeof department)} className={selectCls} aria-label="القسم">
             <option value="">خدمة العملاء والإدارة</option>

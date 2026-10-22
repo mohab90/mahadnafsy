@@ -90,14 +90,18 @@ test('a call taken by phone finds the client by the number', async () => {
 test('one page: the inbox carries what the old tickets screen showed', async () => {
   const seen = [];
   const original = require('../lib/db').pool.query;
-  require('../lib/db').pool.query = async (sql, params) => { seen.push(String(sql).replace(/\s+/g, ' ')); return original(sql, params); };
+  const seenParams = [];
+  require('../lib/db').pool.query = async (sql, params) => { seen.push(String(sql).replace(/\s+/g, ' ')); seenParams.push(params || []); return original(sql, params); };
   try {
     await call('get', '/api/admin/cs/inbox', { query: {}, isSuperAdmin: true });
   } finally { require('../lib/db').pool.query = original; }
   const list = seen.find(sql => /FROM support_tickets t/.test(sql));
   assert.match(list, /LEFT\(t\.body, 400\) AS body, t\.resolution_note, t\.subscriber_id/);
   assert.match(list, /sb\.phone AS subscriber_phone, sb\.client_code/);
-  assert.match(list, /\(t\.department IN \('support','management'\) OR t\.escalated_at IS NOT NULL OR t\.channel IN \(\?,\?,\?,\?\)\)/, 'complaints, what was escalated, and everything from the website stay in view');
+  // The branches' own queues (lib/ticketBranchQueue.js) are in view beside support and management.
+  assert.match(list, /\(t\.department IN \(\?,\?,\?,\?\) OR t\.escalated_at IS NOT NULL OR t\.channel IN \(\?,\?,\?,\?\)\)/, 'complaints, what was escalated, and everything from the website stay in view');
+  const listParams = seenParams.find(params => params.includes('management'));
+  assert.deepEqual(listParams.slice(1, 5), ['support', 'management', 'daqqi', 'tagamoa']);
   // «تبع فرع ايه … مين المسئول في الفرع اللى رفعتها» (10 Oct 2026).
   assert.match(list, /COALESCE\(t\.branch, sb\.branch\) AS branch/);
   assert.match(list, /COALESCE\(t\.created_by_name, \(SELECT te\.actor_name FROM ticket_events te/);
