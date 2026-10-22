@@ -61,7 +61,7 @@ test('the bell counts on the server for every employee, so it needs no list', ()
   assert.match(badges, /const staffNotifBadge = !currentStaff \? 0 : \(dueFollowups \?\? 0\);/);
   assert.doesNotMatch(badges, /salesOwnLeads/);
   const dashboard = dashboardSource();
-  assert.match(dashboard, /const countsOwnFollowups = !!currentStaff && masterHasPermission\(/, 'for a role that may see leads: HR is refused the count');
+  assert.match(dashboard, /const countsOwnFollowups = !!currentStaff && access\.can\('view_leads'\);/, 'for a role that may see leads: HR is refused the count');
 });
 
 test('the pages that wait for the lists read none of them', () => {

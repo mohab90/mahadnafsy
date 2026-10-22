@@ -3,8 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import { AlarmClock, Phone } from 'lucide-react';
-import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
-import type { PermissionKey, RoleKey } from '../../../constants/permissions';
+import { useAccess } from '../../../hooks/useAccess';
 import { Suspense } from 'react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
@@ -152,18 +151,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   // performance, the distribution panels — «ليه بيظهر في حساب التحصيل قيم
   // العملاء المحتملين كامله؟ خلي يظهرله زي ما بيظهر للسيلز».
   const isSalesOnly = ['sales', 'collection'].includes(String(selfStaff?.role || staffSelfProp?.role || '').toLowerCase());
-  const permissionSubject = currentStaff
-    ? {
-        role: currentStaff.role as RoleKey,
-        permissions: currentStaff.permissions as PermissionKey[] | undefined,
-      }
-    : null;
-  const canExportLeads = isAdmin || hasStaffPermission(permissionSubject, 'export_leads');
-  const canManageLeads = isAdmin || hasStaffPermission(permissionSubject, 'manage_leads');
+  // lib/access.ts: the server's permission table for this account (an admin holds all of them).
+  const access = useAccess();
+  const canExportLeads = access.can('export_leads');
+  const canManageLeads = access.can('manage_leads');
   // Publishing an offer changes what a course may be sold for, so it sits behind
   // the same manager-level gate as sales targets — not `manage_leads`, which
   // every rep holds.
-  const canViewReports = isAdmin || hasStaffPermission(permissionSubject, 'view_reports');
+  const canViewReports = access.can('view_reports');
   // Sales users: do NOT auto-set assignFilter — the table, the board and every other figure are scoped by the server
 
   // Close actions menu on outside click

@@ -13,7 +13,9 @@ import { compressImage } from '../../../shared/imageCompress';
 import { useEffect, useState } from 'react';
 import type { StaffMember, StaffPermission } from '../../types';
 import { mysqlAdmin, mysqlAuth } from '../../lib/mysqlapi';
-import { ROLE_LABELS, PERMISSION_LABELS, ROLE_OPTIONS, ROLE_PRESETS, PERM_CATEGORIES, ACCESS_PREVIEW_TABS, ROLE_DEFAULT_PERMISSIONS } from './staffProfileConstants';
+import { ROLE_LABELS, PERMISSION_LABELS, ROLE_OPTIONS, ROLE_PRESETS, PERM_CATEGORIES, ROLE_DEFAULT_PERMISSIONS } from './staffProfileConstants';
+import { canOpenTab, viewerOf } from '../../lib/access';
+import { DASHBOARD_MENU_GROUPS } from '../dashboard/navigation';
 import { ROLE_DATA_SCOPE } from '../../constants/permissions';
 import { cairoMonthStart } from '../../../shared/cairoDate';
 
@@ -560,20 +562,26 @@ export default function StaffSettingsPanel({
                 <p className="text-xs font-bold text-gray-600 mb-3 flex items-center gap-1.5">
                   <Eye size={12} /> ملخص الوصول — التبويبات المتاحة لهذا الموظف
                 </p>
+                {/* The menu this grid opens, by the rule the menu and the tab gate use (lib/access.ts) — a hand-written
+                    list of thirteen areas stood here and disagreed with both. The owner's role overrides are applied by
+                    the server when the account signs in. */}
                 <div className="flex flex-wrap gap-1.5">
-                  {ACCESS_PREVIEW_TABS.map(t => {
-                    const accessible = (draft.permissions || []).some(p => t.perms.includes(p));
-                    return (
-                      <span key={t.label}
-                        className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border font-bold transition ${
-                          accessible
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-gray-50 text-gray-300 border-gray-200 line-through'
-                        }`}>
-                        {t.icon} {t.label}
-                      </span>
-                    );
-                  })}
+                  {(() => {
+                    const viewer = viewerOf({ isAdmin: false, role: draft.role, staffPermissions: draft.permissions || [] });
+                    return DASHBOARD_MENU_GROUPS.map(group => {
+                      const open = group.items.filter(item => canOpenTab(viewer, item.key)).length;
+                      return (
+                        <span key={group.key} title={group.items.filter(item => canOpenTab(viewer, item.key)).map(item => item.label).join('، ')}
+                          className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border font-bold transition ${
+                            open > 0
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-gray-50 text-gray-300 border-gray-200 line-through'
+                          }`}>
+                          {group.label} ({open}/{group.items.length})
+                        </span>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

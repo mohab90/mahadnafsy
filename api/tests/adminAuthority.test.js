@@ -119,10 +119,13 @@ test('the personal tabs are open to every staff member, and only those', () => {
   }
   // null means "yours"; undefined still means denied, in both gates.
   const container = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'DashboardTabContainer.tsx'), 'utf8');
-  assert.match(container, /requiredPermission === null\s*\?\s*true/);
-  assert.match(container, /requiredPermission !== undefined && hasPermission\(requiredPermission\)/);
+  // The container, the menu and the role bars ask one rule (admin/lib/access.ts canOpenTab).
+  assert.match(container, /const allowed = canOpenTab\(activeTab\);/);
+  const access = fs.readFileSync(path.join(API, '..', 'admin', 'lib', 'access.ts'), 'utf8');
+  assert.match(access, /if \(required === null\) return true;/);
+  assert.match(access, /return required !== undefined && can\(viewer, required\);/);
   const dashboard = require('./_adminSplitSource').dashboardSource();
-  assert.match(dashboard, /if \(required === null\) return true;/);
+  assert.match(dashboard, /return visibleMenu\(groups, access\.viewer\);/);
 });
 
 test('a team-performance key opens one team screen and nothing else', () => {

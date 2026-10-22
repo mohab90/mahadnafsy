@@ -7,7 +7,6 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { StaffPermission, OrderItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { canUseChannel, hasPermission as masterHasPermission, resolvePermissions as masterResolvePermissions, type RoleKey, type PermissionKey } from '../../../constants/permissions';
 import { useToast } from '../../../../shared/ui/Toast';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
@@ -37,7 +36,6 @@ import { useStaffOwnData } from '../useStaffOwnData';
 import { staffClientsArePaged, staffScreenPagesFromServer, staffSkipsSiteLists } from '../staffListTabs';
 import { useDashboardDerived } from '../useDashboardDerived';
 import { useBranches } from '../../../hooks/useBranches';
-import { useCanDelete } from '../../../hooks/useCanDelete';
 import { branchOfRole, screenForTab, tabForScreen } from '../../../lib/physicalBranch';
 import { useVisibleInterval } from '../../../../shared/useVisibleInterval';
 import { TAB_PERMISSION_MAP } from '../dashboardShared';
@@ -48,6 +46,8 @@ import { RETIRED_ANALYTICS_TABS } from '../tabs/AnalyticsHubTab';
 import { RETIRED_CAMPAIGN_TABS } from '../tabs/CampaignsTab';
 import { RETIRED_SALES_TABS } from '../tabs/SalesPlanningTab';
 import { useSaveFailureToasts } from './useSaveFailureToasts';
+import { useAccess } from '../../../hooks/useAccess';
+import { visibleMenu } from '../../../lib/access';
 
 
 /** Every merged tab's base path and the keys that now redirect into it. */
@@ -118,6 +118,8 @@ export function useDashboardModel() {
     staffSelf,
     staffSelfLoading,
   } = useSiteData();
+  // What this account may open and do — one rule over the server's permission table (lib/access.ts).
+  const access = useAccess();
   const [searchParams] = useSearchParams();
   const branchQueryFilter = branchSlugToFilter(searchParams.get('branch'));
 
@@ -219,9 +221,7 @@ export function useDashboardModel() {
     
     
     leadsSalesTargets,
-  } = useLeadCrmTabState(isAdmin || masterHasPermission(
-    currentStaff ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
-    'view_leads'));
+  } = useLeadCrmTabState(access.can('view_leads'));
 
   const {
     setLeadsFollowupFilter,
@@ -435,10 +435,7 @@ export function useDashboardModel() {
   // to be the leads loaded on every screen (the 500 newest for an admin, all of them for an employee) to count
   // their follow-ups. Refreshed every two minutes and after a write anywhere (crmChanged).
   // Only for a role that may see leads: the count is refused (403) to the others.
-  const countsOwnFollowups = !!currentStaff && masterHasPermission(
-    { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined },
-    'view_leads',
-  );
+  const countsOwnFollowups = !!currentStaff && access.can('view_leads');
   const [dueFollowups, setDueFollowups] = useState<number | null>(null);
   const refreshDueFollowups = useCallback(() => {
     mysqlAdmin.getDueFollowups().then(res => setDueFollowups(Number(res?.due) || 0)).catch(() => { /* keep the last count */ });
@@ -543,29 +540,11 @@ export function useDashboardModel() {
   );
 
   // -- Permission helpers -------------------------------------------------
-  // Uses master resolvePermissions — single source of truth from admin/constants/permissions.ts
-  const canDeleteAnything = useCanDelete();
-  const hasPermission = React.useCallback((perm: StaffPermission): boolean => {
-    // Before isAdmin: a manager off the owner's list holds everything but
-    // deleting — «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
-    if (String(perm).startsWith('delete_') && !canDeleteAnything) return false;
-    if (isAdmin) return true;
-    if (!currentStaff) return false;
-    return masterHasPermission(
-      { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined, canDelete: currentStaff.canDelete },
-      perm as PermissionKey,
-    );
-  }, [isAdmin, currentStaff, canDeleteAnything]);
-
-  // The inbox and «واتسابي» go by the job (constants/permissions.ts canUseChannel).
-  const canOpenChannelTab = React.useCallback((tab: TabKey): boolean | undefined => {
-    if (tab !== 'team_inbox' && tab !== 'whatsapp_web') return undefined;
-    if (isAdmin) return true;
-    return canUseChannel(
-      currentStaff ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
-      tab === 'team_inbox' ? 'inbox' : 'whatsapp',
-    );
-  }, [isAdmin, currentStaff]);
+  // One rule for the gate, the menu and the role bars (lib/access.ts), over the permissions the server resolved for
+  // this account (/api/auth/me): the menu used to ask the browser's copy of the role defaults by itself.
+  const { can: accessCan } = access;
+  const hasPermission = React.useCallback((perm: StaffPermission): boolean => accessCan(perm), [accessCan]);
+  const canOpenTab = access.canOpenTab;
 
   // Map each tab key to the minimum required permission (defined at module level)
 
@@ -584,29 +563,9 @@ export function useDashboardModel() {
       if (group.key === 'daqqi') return ownBranch !== 'TAGAMOA';
       return true;
     });
-    if (isAdmin) return groups;
-    // Build effective permissions via master resolvePermissions (admin/constants/permissions.ts)
-    const resolvedPerms = currentStaff
-      ? masterResolvePermissions({ role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined })
-      : ['view_dashboard'];
-    const hasPerm = (p: StaffPermission) => {
-      if (resolvedPerms === '*') return true;
-      return (resolvedPerms as string[]).includes(p);
-    };
-    return groups.map(group => ({
-      ...group,
-      items: group.items.filter(item => {
-        const required = TAB_PERMISSION_MAP[item.key];
-        // Unmapped tabs are hidden for non-admin staff (fail-secure default).
-        // An array means any one of the listed permissions opens the tab —
-        // التكاملات merged seven screens that were gated four different ways.
-        // null is the person's own page: it belongs in every staff sidebar.
-        if (required === null) return true;
-        if (Array.isArray(required)) return required.some(hasPerm);
-        return !!required && hasPerm(required);
-      }),
-    })).filter(group => group.items.length > 0);
-  }, [menuGroups, isAdmin, currentStaff, tagamoaOn, ownBranch]);
+    // Only what the viewer may open, by the gate's own rule (lib/access.ts visibleMenu).
+    return visibleMenu(groups, access.viewer);
+  }, [menuGroups, access.viewer, tagamoaOn, ownBranch]);
 
   // ----------------------------------------------------------------------
 
@@ -753,7 +712,7 @@ export function useDashboardModel() {
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, onlineUsers, kpiModal, setKpiModal,
     physicalBranch, setActiveTab, navigateToTab, activeTab, communityAdminTab, setCommunityAdminTab, filteredContent,
     isNonAdminStaff, onlineManagerSummary, handleClientDbBook, effectiveOrders, filteredOrders, ordersStats,
-    hasPermission, canOpenChannelTab, staffNavTab, ownBranch, visibleMenuGroups, overviewStats,
+    hasPermission, canOpenTab, staffNavTab, ownBranch, visibleMenuGroups, overviewStats,
     exportFilteredOrdersCsv, contentHubSubTab, setContentHubSubTab, handleSubPayment, handleLeadPayment,
   };
 }

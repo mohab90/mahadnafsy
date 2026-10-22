@@ -48,7 +48,7 @@ const Dashboard: React.FC = () => {
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, onlineUsers, kpiModal, setKpiModal,
     physicalBranch, setActiveTab, navigateToTab, activeTab, communityAdminTab, setCommunityAdminTab, filteredContent,
     isNonAdminStaff, onlineManagerSummary, handleClientDbBook, effectiveOrders, filteredOrders, ordersStats,
-    hasPermission, canOpenChannelTab, staffNavTab, ownBranch, visibleMenuGroups, overviewStats,
+    hasPermission, canOpenTab, staffNavTab, ownBranch, visibleMenuGroups, overviewStats,
     exportFilteredOrdersCsv, contentHubSubTab, setContentHubSubTab, handleSubPayment, handleLeadPayment,
   } = useDashboardModel();
 
@@ -120,8 +120,7 @@ const Dashboard: React.FC = () => {
             <DashboardTabContainer
               activeTab={activeTab}
               isAdmin={isAdmin}
-              hasPermission={hasPermission}
-              canOpenTab={canOpenChannelTab}
+              canOpenTab={canOpenTab}
             >
 
             {activeTab === 'overview' && (
