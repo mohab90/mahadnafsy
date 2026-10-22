@@ -19,30 +19,10 @@ const path = require('node:path');
 const entitlements = fs.readFileSync(
   path.join(__dirname, '..', 'lib', 'entitlements.js'), 'utf8');
 
-test('the lecture share is computed from published lectures, not a constant', () => {
-  assert.match(entitlements, /function proportionalLectureLimit/);
-  assert.match(entitlements, /FROM course_lectures[\s\S]{0,80}is_published=1/,
-    'unpublished lectures are not part of what was bought');
-  assert.match(entitlements, /Math\.ceil\(published \* ratio\)/,
-    'rounding up, so any payment opens at least the first lecture');
-  assert.match(entitlements, /Math\.min\(published,/,
-    'the share can never exceed the course');
-});
-
-test('a payment-driven recomputation can raise a limited grant but never lower it', () => {
-  // The guard has to be tied to payment-driven sources only: an admin setting a
-  // smaller number is a decision, not a recomputation, and must still apply.
-  assert.match(entitlements, /paymentDriven && effective\.mode === 'limited' && existing\?\.access_type === 'limited'/);
-  assert.match(entitlements, /if \(held > Number\(effective\.lectureLimit \|\| 0\)\) effective = accessPolicy\('limited', held\)/);
-  // And the older, coarser half of the same promise is still in place.
-  assert.match(entitlements, /existing\?\.access_type === 'full' && policy\.mode === 'limited'/);
-});
-
-test('an explicitly named limit beats the arithmetic', () => {
-  // Staff granting "three lectures" means three, whatever the ratio says. The
-  // ratio is only consulted when nobody named a number.
-  assert.match(entitlements, /lectureLimit != null\s*\?\s*lectureLimit\s*:\s*await proportionalLectureLimit/);
-});
+// The share itself — computed from published lectures, rounded up, never lowered
+// by a recomputation, beaten by a named number — is exercised against the
+// database in tests/integration/learningAccess.integration.test.js. This scan
+// keeps the routes from handing out a flat count again.
 
 test('no caller still hands out the flat two lectures', () => {
   const routes = path.join(__dirname, '..', 'routes');
