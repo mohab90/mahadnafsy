@@ -1,7 +1,22 @@
 'use strict';
 
+// Set from the first SIGTERM until the process exits. lib/httpApp.js reads it:
+// every answer from then on carries «Connection: close», so nginx does not send
+// the next request down a socket that is about to go, and /api/health answers
+// 503 «draining», so neither nginx nor the rolling deploy counts this instance
+// as up while it finishes.
+let draining = false;
+const isDraining = () => draining;
+
+// How long in-flight requests get after SIGTERM. Inside systemd's
+// TimeoutStopSec (30s in deploy/systemd), and long enough for a slow report.
+const drainCapMs = (env = process.env) => {
+  const value = Number(env.SHUTDOWN_DRAIN_MS);
+  return Number.isFinite(value) && value >= 1000 ? Math.min(value, 25000) : 10000;
+};
+
 // `proc` and `exit` are the real process unless a test passes stand-ins.
-function registerProcessLifecycle({ logger, pool, proc = process, exit = code => process.exit(code) }) {
+function registerProcessLifecycle({ logger, pool, proc = process, exit = code => process.exit(code), drainMs = drainCapMs() }) {
   let sigtermCount = 0;
   let sigtermFirst = 0;
   let isShuttingDown = false;
@@ -60,6 +75,7 @@ function registerProcessLifecycle({ logger, pool, proc = process, exit = code =>
       return;
     }
     isShuttingDown = true;
+    draining = true;
     sigtermCount += 1;
     sigtermFirst = Date.now();
     logger.info(`[${signal}] received — memRss=${Math.round(memory.rss / 1048576)}MB — draining`);
@@ -69,19 +85,31 @@ function registerProcessLifecycle({ logger, pool, proc = process, exit = code =>
       setTimeout(() => exit(exitCode), 3000).unref();
       return;
     }
-    // Stop accepting new connections, let in-flight requests finish.
+    // A keep-alive socket whose request finishes after close() sits idle until
+    // its 65s timeout and holds close() open; sweep the idle ones as they appear.
+    const idleSweep = setInterval(() => httpServer.closeIdleConnections?.(), 250);
+    idleSweep.unref?.();
+    // Stop accepting: the listening socket closes now, so nginx's next connect
+    // to this port is refused and (proxy_next_upstream error) goes to the other
+    // instance — for any method, because nothing was sent here yet. Requests
+    // already in flight finish.
     httpServer.close(() => {
+      clearInterval(idleSweep);
       pool.end().catch(() => {}).finally(() => {
         logger.info(`[${signal}] graceful shutdown complete`);
         exit(exitCode);
       });
     });
-    // Well inside systemd's 90s TimeoutStopSec, so the restart is quick even if
-    // a long-poll or a slow query is still holding a socket open.
+    httpServer.closeIdleConnections?.();
+    // The cap: whatever is still running is cut, the pool is closed (briefly
+    // waited for) and the process exits, well inside systemd's TimeoutStopSec.
     setTimeout(() => {
-      logger.info(`[${signal}] force exit after 10s drain timeout`);
-      exit(exitCode);
-    }, 10000).unref();
+      clearInterval(idleSweep);
+      logger.info(`[${signal}] force exit after ${Math.round(drainMs / 1000)}s drain cap`);
+      httpServer.closeAllConnections?.();
+      Promise.race([pool.end().catch(() => {}), new Promise(resolve => setTimeout(resolve, 1500).unref?.())])
+        .finally(() => exit(exitCode));
+    }, drainMs).unref();
   }
 
   proc.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -99,4 +127,4 @@ function registerProcessLifecycle({ logger, pool, proc = process, exit = code =>
   };
 }
 
-module.exports = { registerProcessLifecycle };
+module.exports = { registerProcessLifecycle, isDraining, drainCapMs, _testing: { reset() { draining = false; } } };

@@ -23,6 +23,8 @@ const { adminFeatureGate, isPublicAdminPath } = require('./adminFeatureGate');
 const { requireAuth, hasSignedToken } = require('../middleware/auth');
 const { deleteRightsGuard } = require('./deleteRights');
 const { cleanupMemoryPresence } = require('./onlineUsers');
+const { isDraining } = require('./processLifecycle');
+const { instanceGuard: whatsappWebInstanceGuard } = require('./whatsappWeb');
 
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 eventLoopDelay.enable();
@@ -211,10 +213,25 @@ function dropFiguresAfterWrites(req, res, next) {
   next();
 }
 
+// From SIGTERM to exit (lib/processLifecycle.js): close each connection after
+// its answer, so nginx opens a fresh one — to the other instance, since this
+// one no longer listens — and report «draining» to health checks. Each answer
+// also names the instance (MAHAD_INSTANCE), to see which one served it.
+function drainingAnswers(req, res, next) {
+  if (process.env.MAHAD_INSTANCE) res.setHeader('X-Mahad-Instance', process.env.MAHAD_INSTANCE);
+  if (!isDraining()) return next();
+  res.setHeader('Connection', 'close');
+  if (req.path === '/api/health' || req.path.startsWith('/api/health/')) {
+    return res.status(503).json({ status: 'draining' });
+  }
+  return next();
+}
+
 function createHttpApp({ pool, brandAssetRoot }) {
   const app = express();
   const proxyHops = Number(process.env.TRUST_PROXY_HOPS);
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1);
+  app.use(drainingAnswers);
   app.use(compression());
   app.use(timeRequests);
   app.use(dropFiguresAfterWrites);
@@ -282,6 +299,8 @@ function createHttpApp({ pool, brandAssetRoot }) {
 
   // The staff routes write too — a welcome login, a leave, a resignation, a
   // client's contact — and none of it reached the activity log (MED-13).
+  // The reps' linked WhatsApp lives in one process (lib/whatsappWeb.js waWebMode).
+  app.use('/api/staff/whatsapp-web', whatsappWebInstanceGuard);
   const auditWrites = createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent });
   app.use('/api/admin', auditWrites);
   app.use('/api/staff', auditWrites);
@@ -343,4 +362,4 @@ function createHttpApp({ pool, brandAssetRoot }) {
   return app;
 }
 
-module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites };
+module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites, drainingAnswers };

@@ -76,6 +76,8 @@ migrationReady.then(migrationResult => {
     // MAHAD_ROLE=web leaves the jobs to worker.js (lib/processRole.js).
     if (role === 'all') {
       startBackgroundScheduler({ pool, logger, port: PORT });
+      // The timers beside the routes, once per deployment (lib/routeJobs.js).
+      require('./lib/routeJobs').startRouteJobs({ logger });
       // After the migrations, not beside them: its whole-table checks held the
       // tables a migration's CREATE INDEX was waiting for.
       require('./lib/reconcileJob').startReconcileMonitor(pool);

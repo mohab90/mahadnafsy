@@ -1478,10 +1478,11 @@ function scheduleSlaSweep() {
   if (iv.unref) iv.unref();
   return iv;
 }
-scheduleSlaSweep();
 
 module.exports = router;
 module.exports.createRoutedTicket = createRoutedTicket;
 module.exports.ticketScope = ticketScope;
 module.exports.canAccessTicket = canAccessTicket;
 module.exports.autoResolveSweep = autoResolveSweep;
+// Started by lib/routeJobs.js in the process that owns the jobs, not on require.
+module.exports.scheduleSlaSweep = scheduleSlaSweep;
