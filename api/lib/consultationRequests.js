@@ -16,6 +16,7 @@
 
 const { uuidv4 } = require('./id');
 const { addDaysToDateOnly, cairoClock, cairoToday, isValidDateOnly } = require('./dates');
+const { tellLecturerOfConsultation } = require('./lecturerNotices');
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -173,6 +174,13 @@ async function openConsultationRequest(db, request) {
       values.session_duration_minutes, values.subscriber_id, orderId, values.source]
   );
   if (values.source === 'site_express') await tellManagementOfExpress(db, { tenantId, id, values });
+  // The lecturer hears of it in the portal and on WhatsApp (lib/lecturerNotices.js).
+  if (values.therapist_id) {
+    await tellLecturerOfConsultation(db, {
+      tenantId, consultationId: id, therapistId: values.therapist_id, clientName: values.client_name,
+      source: values.source, sessionAt, sessionType: values.session_type,
+    });
+  }
   return { id, created: true };
 }
 

@@ -278,6 +278,8 @@ function mapTherapist(r, includeMeetingLinks = false) {
       //
       // The booking pages only ever needed the day, the time and the id. The
       // admin editor and the therapist's own portal ask for it explicitly.
+      // Days the lecturer is away: the weekly hours repeat, these do not (lib/therapistAvailability.js).
+      blockedDates: r.blocked_dates || [],
       availableSlots: (r.slots || []).map(s => ({
         id: s.id, day: s.day, startTime: s.start_time, endTime: s.end_time,
         timezone: s.timezone || '', label: s.label || '',

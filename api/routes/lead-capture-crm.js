@@ -29,6 +29,7 @@ const { phoneIdentityClause, findLeadByContact } = require('../lib/leadMatching'
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
+const { isDayBlocked } = require('../lib/therapistAvailability');
 const { createNotification } = require('../lib/notification');
 const metaCapi = require('../lib/metaCapi');
 
@@ -508,6 +509,10 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         const slot = await findSlot(conn, { tenantId, therapistId, slotId: String(req.body?.slotId || '').trim() });
         const refused = bookingRuleError({ sessionDate, slot, settings: consultationSettings(content) });
         if (refused) return res.status(400).json(refused);
+        // A day the lecturer has closed (lib/therapistAvailability.js): the weekly hours repeat, this one does not.
+        if (await isDayBlocked(conn, { tenantId, therapistId, date: sessionDate })) {
+          return res.status(409).json({ code: 'THERAPIST_DAY_BLOCKED', error: 'الدكتور مش متاح في اليوم ده — اختار يوم تاني' });
+        }
         expectedAmount = Number(therapist[`price_${expectedCurrency.toLowerCase()}`]) || 0;
         canonicalTitle = `Consultation - ${therapist.name}`;
         consultationBooking = {

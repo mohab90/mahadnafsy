@@ -44,6 +44,8 @@ export const getTherapistSessionPrice = (therapist: Therapist, currency: Currenc
 
 export const getTherapistActiveSlots = (therapist: Therapist, dateValue?: string) => {
   const slots = therapist.consultationSettings?.availableSlots?.filter((slot) => slot.isActive) || [];
+  // A day the lecturer has closed has no hours, though the weekday has.
+  if (dateValue && therapist.consultationSettings?.blockedDates?.includes(dateValue)) return [];
   const weekDay = dateValue ? getWeekDayKeyFromDate(dateValue) : null;
   if (!weekDay) return slots;
   return slots.filter((slot) => slot.day === weekDay);

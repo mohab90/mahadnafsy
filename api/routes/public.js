@@ -10,6 +10,7 @@ const router = Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
+const { blockedDatesByTherapist } = require('../lib/therapistAvailability');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { escapeHtml } = require('../lib/html');
@@ -765,6 +766,8 @@ router.get('/api/therapists', publicLimiter, async (req, res) => {
         const slotMap = {};
         slots.forEach(s => { (slotMap[s.therapist_id] = slotMap[s.therapist_id] || []).push(s); });
         therapists.forEach(t => { t.slots = slotMap[t.id] || []; });
+        const blocked = await blockedDatesByTherapist(pool, { tenantId: req.tenantId, therapistIds: ids });
+        therapists.forEach(t => { t.blocked_dates = blocked[t.id] || []; });
       }
       // Called with one argument on purpose. `map` passes (element, index,
       // array), so passing mapTherapist directly handed the index to
