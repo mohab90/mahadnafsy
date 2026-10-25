@@ -33,13 +33,13 @@ test('it has a tab for lives, weekly hours, consultations, ratings, students, ea
 test('every call the portal makes is to the lecturer\'s own endpoints, and each one exists on the server', () => {
   const api = read('admin/pages/lecturer/lecturerApi.ts');
   const server = read('api/routes/lecturer-portal.js');
-  const called = [...api.matchAll(/['`]\/lecturer\/([a-z-]+(?:\/[a-z-]+)*)/g)].map(match => match[1]);
+  const called = [...api.matchAll(/['`]\/staff\/lecturer\/([a-z-]+(?:\/[a-z-]+)*)/g)].map(match => match[1]);
   const shortcuts = [...api.matchAll(/get<[^>]*>\('([a-z-]+)/g)].map(match => match[1]);
   for (const route of new Set([...called, ...shortcuts])) {
-    assert.ok(server.includes(`/api/lecturer/${route}`), `${route} is served`);
+    assert.ok(server.includes(`/api/staff/lecturer/${route}`), `${route} is served`);
   }
   // The only calls outside /lecturer are the lecturer's own live status and the community's public feed.
-  const others = [...api.matchAll(/(?:adminGet|adminPatch|adminPost)(?:<[^(]*>)?\(\s*[`']\/(?!lecturer)([a-z/-]+)/g)].map(match => match[1]);
+  const others = [...api.matchAll(/(?:adminGet|adminPatch|adminPost)(?:<[^(]*>)?\(\s*[`']\/(?!staff\/lecturer)([a-z/-]+)/g)].map(match => match[1]);
   assert.deepEqual([...new Set(others)].sort(), ['community/events', 'community/library', 'community/posts', 'community/videos', 'staff/me/live-streams/']);
 });
 

@@ -196,14 +196,14 @@ test('every query of the portal names the tenant and keys on the lecturer\'s own
   const unscoped = queries.filter(q => /FROM (live_streams|consultations|notifications|community_posts|courses|enrollments|instructor_fees|daqqi_rounds|client_ratings|payroll_items)\b|UPDATE (live_streams|consultations|notifications|community_posts|therapists)\b|DELETE FROM (live_streams|community_posts)\b/.test(q) && !/tenant_id/.test(q));
   assert.deepEqual(unscoped, []);
   assert.doesNotMatch(route, /req\.(query|body|params)\.(staffId|instructorId|therapistId)/, 'the lecturer is never named by the caller');
-  assert.match(route, /const guard = \[requireAuth, requireAdminOrStaff, requireLecturer\(pool\)\];/);
+  assert.match(route, /const guard = \[requireAuth, requireAdminOrStaff, requirePermission\('use_lecturer_portal'\), requireLecturer\(pool\)\];/);
   assert.match(read('api/lib/registerRoutes.js'), /'\.\.\/routes\/lecturer-portal'/);
 });
 
 test('hours can be set only while consultations are on for the lecturer', () => {
   const route = read('api/routes/lecturer-portal.js');
   assert.match(route, /CONSULTATIONS_DISABLED/);
-  for (const handler of ["'/api/lecturer/availability/slots'", "'/api/lecturer/availability/blocked'", "'/api/lecturer/availability/blocked/:id'"]) {
+  for (const handler of ["'/api/staff/lecturer/availability/slots'", "'/api/staff/lecturer/availability/blocked'", "'/api/staff/lecturer/availability/blocked/:id'"]) {
     const body = route.slice(route.indexOf(handler), route.indexOf(handler) + 700);
     assert.match(body, /enabledTherapist\(me\)/, handler);
   }

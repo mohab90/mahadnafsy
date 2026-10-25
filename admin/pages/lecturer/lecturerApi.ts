@@ -1,6 +1,6 @@
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
-// «حساب محاضر»: the lecturer's own portal talks to /api/lecturer/* (api/routes/lecturer-portal.js) — every answer is
+// «حساب محاضر»: the lecturer's own portal talks to /api/staff/lecturer/* (api/routes/lecturer-portal.js) — every answer is
 // the signed-in lecturer's own.
 
 export type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -69,38 +69,38 @@ export type CommunityPost = {
   tag: string; pinned?: boolean; commentsList: Array<{ id: string; author: string; body: string; at: string }>;
 };
 
-const get = <T>(path: string) => mysqlAdmin.adminGet<T>(`/lecturer/${path}`);
+const get = <T>(path: string) => mysqlAdmin.adminGet<T>(`/staff/lecturer/${path}`);
 
 export const lecturerApi = {
   overview: () => get<Overview>('overview'),
   lives: () => get<{ lives: Live[]; courses: Course[] }>('lives'),
-  createLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string }>('/lecturer/lives', body),
-  updateLive: (id: string, body: Record<string, unknown>) => mysqlAdmin.adminPatch(`/lecturer/lives/${encodeURIComponent(id)}`, body),
-  deleteLive: (id: string) => mysqlAdmin.adminDelete(`/lecturer/lives/${encodeURIComponent(id)}`),
+  createLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string }>('/staff/lecturer/lives', body),
+  updateLive: (id: string, body: Record<string, unknown>) => mysqlAdmin.adminPatch(`/staff/lecturer/lives/${encodeURIComponent(id)}`, body),
+  deleteLive: (id: string) => mysqlAdmin.adminDelete(`/staff/lecturer/lives/${encodeURIComponent(id)}`),
   setLiveStatus: (id: string, status: 'LIVE' | 'ENDED', recordingUrl = '') =>
     mysqlAdmin.adminPatch(`/staff/me/live-streams/${encodeURIComponent(id)}/status`, { status, recordingUrl }),
-  communityLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string; postId: string }>('/lecturer/community-live', body),
+  communityLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string; postId: string }>('/staff/lecturer/community-live', body),
   availability: () => get<Availability>('availability'),
-  saveSlots: (slots: Slot[]) => mysqlAdmin.adminPut('/lecturer/availability/slots', { slots }),
-  blockDay: (date: string, reason: string) => mysqlAdmin.adminPost<{ alreadyBooked: number }>('/lecturer/availability/blocked', { date, reason }),
-  unblockDay: (id: string) => mysqlAdmin.adminDelete(`/lecturer/availability/blocked/${encodeURIComponent(id)}`),
+  saveSlots: (slots: Slot[]) => mysqlAdmin.adminPut('/staff/lecturer/availability/slots', { slots }),
+  blockDay: (date: string, reason: string) => mysqlAdmin.adminPost<{ alreadyBooked: number }>('/staff/lecturer/availability/blocked', { date, reason }),
+  unblockDay: (id: string) => mysqlAdmin.adminDelete(`/staff/lecturer/availability/blocked/${encodeURIComponent(id)}`),
   consultations: () => get<LecturerConsultation[]>('consultations'),
-  updateConsultation: (id: string, body: Record<string, unknown>) => mysqlAdmin.adminPatch(`/lecturer/consultations/${encodeURIComponent(id)}`, body),
+  updateConsultation: (id: string, body: Record<string, unknown>) => mysqlAdmin.adminPatch(`/staff/lecturer/consultations/${encodeURIComponent(id)}`, body),
   reviews: () => get<Reviews>('reviews'),
   students: () => get<Students>('students'),
   earnings: (month?: number, year?: number) => get<Earnings>(`earnings${month && year ? `?month=${month}&year=${year}` : ''}`),
   notifications: () => get<LecturerNotification[]>('notifications'),
-  readNotifications: () => mysqlAdmin.adminPost('/lecturer/notifications/read', {}),
+  readNotifications: () => mysqlAdmin.adminPost('/staff/lecturer/notifications/read', {}),
   profile: () => get<LecturerProfile>('profile'),
-  saveProfile: (body: Record<string, unknown>) => mysqlAdmin.adminPatch('/lecturer/profile', body),
+  saveProfile: (body: Record<string, unknown>) => mysqlAdmin.adminPatch('/staff/lecturer/profile', body),
   communityPosts: () => mysqlAdmin.adminGet<CommunityPost[]>('/community/posts'),
   communityLibrary: () => mysqlAdmin.adminGet<Array<{ id: string; title: string; description?: string; downloadUrl?: string; fileType?: string; category?: string }>>('/community/library'),
   communityVideos: () => mysqlAdmin.adminGet<Array<{ id: string; title: string; description?: string; video_url?: string; videoUrl?: string; duration?: string }>>('/community/videos'),
   communityEvents: () => mysqlAdmin.adminGet<Array<{ id: string; title: string; description?: string; date_label?: string; dateLabel?: string; slug?: string }>>('/community/events'),
-  post: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string }>('/lecturer/community/posts', body),
-  comment: (postId: string, body: string) => mysqlAdmin.adminPost(`/lecturer/community/posts/${encodeURIComponent(postId)}/comments`, { body }),
-  like: (postId: string) => mysqlAdmin.adminPost(`/lecturer/community/posts/${encodeURIComponent(postId)}/like`, {}),
-  deletePost: (postId: string) => mysqlAdmin.adminDelete(`/lecturer/community/posts/${encodeURIComponent(postId)}`),
+  post: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string }>('/staff/lecturer/community/posts', body),
+  comment: (postId: string, body: string) => mysqlAdmin.adminPost(`/staff/lecturer/community/posts/${encodeURIComponent(postId)}/comments`, { body }),
+  like: (postId: string) => mysqlAdmin.adminPost(`/staff/lecturer/community/posts/${encodeURIComponent(postId)}/like`, {}),
+  deletePost: (postId: string) => mysqlAdmin.adminDelete(`/staff/lecturer/community/posts/${encodeURIComponent(postId)}`),
 };
 
 export const money = (value: number, currency = 'EGP') => `${Number(value || 0).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 })} ${currency === 'EGP' ? 'ج.م' : currency}`;

@@ -73,6 +73,7 @@ export const PERMISSIONS = {
   MANAGE_DISCOUNTS:         'manage_discounts',
   VIEW_CONSULTATIONS:       'view_consultations',
   MANAGE_CONSULTATIONS:     'manage_consultations',
+  USE_LECTURER_PORTAL:      'use_lecturer_portal',
   VIEW_COMMUNITY:           'view_community',
   MANAGE_COMMUNITY:         'manage_community',
   VIEW_STAFF:               'view_staff',
@@ -141,6 +142,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_discounts:        'إدارة الخصومات',
   view_consultations:      'عرض الاستشارات',
   manage_consultations:    'إدارة الاستشارات',
+  use_lecturer_portal:     'بوابة المحاضر (لايفاتي ومواعيدي وأرباحي)',
   view_community:          'عرض المجتمع',
   manage_community:        'إدارة المجتمع',
   view_staff:              'عرض فريق العمل',
@@ -204,7 +206,7 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
   },
   {
     label: 'الاستشارات والمجتمع',
-    perms: ['view_consultations', 'manage_consultations', 'view_community', 'manage_community'],
+    perms: ['view_consultations', 'manage_consultations', 'use_lecturer_portal', 'view_community', 'manage_community'],
   },
   {
     label: 'التقارير والتحليلات',
@@ -380,7 +382,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   ],
 
   consultant: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
@@ -389,14 +391,14 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   ],
 
   trainer: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   expert: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_courses',
     'view_consultations',
@@ -407,7 +409,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   ],
 
   instructor: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',

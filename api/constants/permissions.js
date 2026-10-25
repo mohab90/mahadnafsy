@@ -63,6 +63,8 @@ const PERMISSIONS = Object.freeze({
   // Consultations
   VIEW_CONSULTATIONS:       'view_consultations',
   MANAGE_CONSULTATIONS:     'manage_consultations',
+  // «حساب محاضر»: the lecturer's own portal (routes/lecturer-portal.js) — their lives, hours, ratings, students and fees.
+  USE_LECTURER_PORTAL:      'use_lecturer_portal',
   // Community
   VIEW_COMMUNITY:           'view_community',
   MANAGE_COMMUNITY:         'manage_community',
@@ -293,7 +295,7 @@ const ROLE_PERMS_BASE = {
   ],
 
   [ROLES.CONSULTANT]: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
@@ -302,14 +304,14 @@ const ROLE_PERMS_BASE = {
   ],
 
   [ROLES.TRAINER]: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   [ROLES.EXPERT]: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_courses',
     'view_consultations',
@@ -321,7 +323,7 @@ const ROLE_PERMS_BASE = {
   ],
 
   [ROLES.INSTRUCTOR]: [
-    'view_dashboard',
+    'view_dashboard', 'use_lecturer_portal',
     'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',

@@ -129,8 +129,8 @@ async function blockDay(db, { tenantId, therapistId, date, reason = '', actor = 
   // Bookings already made on that day are not cancelled: the lecturer is told how many to move.
   const [[booked]] = await db.query(
     `SELECT COUNT(*) AS n FROM consultations
-      WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL AND status IN ('PENDING','CONFIRMED') AND DATE(session_date)=?`,
-    [tenantId, therapistId, date]);
+      WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL AND status IN ('PENDING','CONFIRMED') AND session_date >= ? AND session_date < DATE_ADD(?, INTERVAL 1 DAY)`,
+    [tenantId, therapistId, date, date]);
   return { alreadyBooked: Number(booked?.n) || 0 };
 }
 

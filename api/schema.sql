@@ -5720,6 +5720,23 @@ CREATE TABLE `therapist_slots` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `therapist_blocked_dates` (migration 303: days a lecturer is away from their weekly hours)
+--
+
+CREATE TABLE `therapist_blocked_dates` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `therapist_id` varchar(36) NOT NULL,
+  `blocked_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_therapist_blocked_day` (`tenant_id`,`therapist_id`,`blocked_date`),
+  KEY `idx_therapist_blocked_date` (`tenant_id`,`blocked_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
 -- Table structure for table `therapists`
 --
 

@@ -7,6 +7,8 @@
 // their Dokki rounds, their lives, their consultations, their fees. The portal's routes (routes/lecturer-portal.js)
 // pass nothing a caller chose except filters.
 
+const { sqlCairoToday } = require('./dates');
+
 const LECTURER_ROLES = Object.freeze(['instructor', 'trainer', 'consultant', 'expert']);
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -213,7 +215,7 @@ async function overviewOf(db, context) {
   if (therapist) {
     const [[row]] = await db.query(
       `SELECT SUM(status='PENDING') AS pending,
-              SUM(status IN ('PENDING','CONFIRMED') AND session_date >= CURDATE()) AS upcoming,
+              SUM(status IN ('PENDING','CONFIRMED') AND session_date >= ${sqlCairoToday()}) AS upcoming,
               SUM(status IN ('PENDING','CONFIRMED') AND source='site_express') AS urgent
          FROM consultations WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL`, [tenantId, therapist.id]);
     consultations = { pending: Number(row?.pending) || 0, upcoming: Number(row?.upcoming) || 0, urgent: Number(row?.urgent) || 0 };

@@ -4,29 +4,29 @@
 // (lib/lecturerPortal.js): their lives, their consultation hours, their ratings, students, fees and notifications, and
 // their part in the community.
 //
-//   GET    /api/lecturer/overview                       the numbers at the top
-//   GET    /api/lecturer/lives                          their lives (with who came)
-//   POST   /api/lecturer/lives                          schedule one — the audience is told (lib/liveStreams.js)
-//   PATCH  /api/lecturer/lives/:id                      change one that has not started
-//   DELETE /api/lecturer/lives/:id                      cancel one that has not started
-//   POST   /api/lecturer/community-live                 a free live in the community, starting now
-//   GET    /api/lecturer/availability                   weekly hours + the days they are away
-//   PUT    /api/lecturer/availability/slots             set the weekly hours (consultations enabled only)
-//   POST   /api/lecturer/availability/blocked           close a day
-//   DELETE /api/lecturer/availability/blocked/:id       open it again
-//   GET    /api/lecturer/consultations                  their consultations
-//   PATCH  /api/lecturer/consultations/:id              confirm / complete / cancel / note one
-//   GET    /api/lecturer/reviews | students | earnings  ratings, students and attendance, fees and payslips
-//   GET    /api/lecturer/notifications, POST …/read     the bell
-//   GET/PATCH /api/lecturer/profile                     the public profile of their consultation page
-//   POST   /api/lecturer/community/posts …              post, comment and like in the community as a lecturer
+//   GET    /api/staff/lecturer/overview                       the numbers at the top
+//   GET    /api/staff/lecturer/lives                          their lives (with who came)
+//   POST   /api/staff/lecturer/lives                          schedule one — the audience is told (lib/liveStreams.js)
+//   PATCH  /api/staff/lecturer/lives/:id                      change one that has not started
+//   DELETE /api/staff/lecturer/lives/:id                      cancel one that has not started
+//   POST   /api/staff/lecturer/community-live                 a free live in the community, starting now
+//   GET    /api/staff/lecturer/availability                   weekly hours + the days they are away
+//   PUT    /api/staff/lecturer/availability/slots             set the weekly hours (consultations enabled only)
+//   POST   /api/staff/lecturer/availability/blocked           close a day
+//   DELETE /api/staff/lecturer/availability/blocked/:id       open it again
+//   GET    /api/staff/lecturer/consultations                  their consultations
+//   PATCH  /api/staff/lecturer/consultations/:id              confirm / complete / cancel / note one
+//   GET    /api/staff/lecturer/reviews | students | earnings  ratings, students and attendance, fees and payslips
+//   GET    /api/staff/lecturer/notifications, POST …/read     the bell
+//   GET/PATCH /api/staff/lecturer/profile                     the public profile of their consultation page
+//   POST   /api/staff/lecturer/community/posts …              post, comment and like in the community as a lecturer
 
 const express = require('express');
 const router = express.Router();
 const logger = require('../lib/logger');
 const { pool, cacheInvalidate } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
-const { requireAuth, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { announceLiveStream } = require('../lib/liveStreams');
 const { createNotification } = require('../lib/notification');
@@ -37,7 +37,7 @@ const {
   blockDay, blockedDatesOf, normalizeSlots, replaceWeeklySlots, unblockDay,
 } = require('../lib/therapistAvailability');
 
-const guard = [requireAuth, requireAdminOrStaff, requireLecturer(pool)];
+const guard = [requireAuth, requireAdminOrStaff, requirePermission('use_lecturer_portal'), requireLecturer(pool)];
 const PLATFORMS = new Set(['ZOOM', 'YOUTUBE', 'MEET', 'OTHER']);
 const VISIBILITIES = new Set(['ALL_SUBSCRIBERS', 'COURSE_SUBSCRIBERS', 'COMMUNITY_ALL', 'COMMUNITY_AND_SUBSCRIBERS']);
 
@@ -50,7 +50,7 @@ const bad = (error, code, statusCode = 400) => Object.assign(new Error(error), {
 const clean = (value, max) => String(value ?? '').trim().slice(0, max);
 const httpUrl = value => /^https?:\/\/\S+$/i.test(String(value || '').trim());
 
-router.get('/api/lecturer/overview', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/overview', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     res.json({
@@ -107,7 +107,7 @@ async function liveFields(me, body, { partial = false } = {}) {
   return out;
 }
 
-router.get('/api/lecturer/lives', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/lives', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const [rows] = await pool.query(
@@ -122,7 +122,7 @@ router.get('/api/lecturer/lives', ...guard, async (req, res) => {
   } catch (error) { fail(res, error, 'lives'); }
 });
 
-router.post('/api/lecturer/lives', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/lives', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const live = await liveFields(me, req.body || {});
@@ -147,7 +147,7 @@ async function ownUpcomingLive(me, id) {
   return live;
 }
 
-router.patch('/api/lecturer/lives/:id', ...guard, async (req, res) => {
+router.patch('/api/staff/lecturer/lives/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const before = await ownUpcomingLive(me, req.params.id);
@@ -171,7 +171,7 @@ router.patch('/api/lecturer/lives/:id', ...guard, async (req, res) => {
   } catch (error) { fail(res, error, 'lives:update'); }
 });
 
-router.delete('/api/lecturer/lives/:id', ...guard, async (req, res) => {
+router.delete('/api/staff/lecturer/lives/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const live = await ownUpcomingLive(me, req.params.id);
@@ -181,7 +181,7 @@ router.delete('/api/lecturer/lives/:id', ...guard, async (req, res) => {
 });
 
 // «يبدأ لايف مجاني في المجتمع»: open to every community member, no payment — it starts now, and a post tells the community.
-router.post('/api/lecturer/community-live', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/community-live', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const title = clean(req.body?.title, 300);
@@ -211,7 +211,7 @@ router.post('/api/lecturer/community-live', ...guard, async (req, res) => {
 
 // ── Consultation hours ───────────────────────────────────────────────────────
 
-router.get('/api/lecturer/availability', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/availability', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     if (!me.therapist) return res.json({ enabled: false, hasProfile: false, slots: [], blocked: [] });
@@ -235,7 +235,7 @@ function enabledTherapist(me) {
   return me.therapist;
 }
 
-router.put('/api/lecturer/availability/slots', ...guard, async (req, res) => {
+router.put('/api/staff/lecturer/availability/slots', ...guard, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const me = req.lecturer;
@@ -252,7 +252,7 @@ router.put('/api/lecturer/availability/slots', ...guard, async (req, res) => {
   } finally { conn.release(); }
 });
 
-router.post('/api/lecturer/availability/blocked', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/availability/blocked', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const therapist = enabledTherapist(me);
@@ -262,7 +262,7 @@ router.post('/api/lecturer/availability/blocked', ...guard, async (req, res) => 
   } catch (error) { fail(res, error, 'availability:block'); }
 });
 
-router.delete('/api/lecturer/availability/blocked/:id', ...guard, async (req, res) => {
+router.delete('/api/staff/lecturer/availability/blocked/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const therapist = enabledTherapist(me);
@@ -275,7 +275,7 @@ router.delete('/api/lecturer/availability/blocked/:id', ...guard, async (req, re
 
 // ── Consultations ────────────────────────────────────────────────────────────
 
-router.get('/api/lecturer/consultations', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/consultations', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     if (!me.therapist) return res.json([]);
@@ -293,7 +293,7 @@ router.get('/api/lecturer/consultations', ...guard, async (req, res) => {
   } catch (error) { fail(res, error, 'consultations'); }
 });
 
-router.patch('/api/lecturer/consultations/:id', ...guard, async (req, res) => {
+router.patch('/api/staff/lecturer/consultations/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     if (!me.therapist) throw bad('مفيش ملف استشارات مربوط بحسابك', 'NO_CONSULTATION_PROFILE', 409);
@@ -321,18 +321,18 @@ router.patch('/api/lecturer/consultations/:id', ...guard, async (req, res) => {
 
 // ── Ratings, students, money ─────────────────────────────────────────────────
 
-router.get('/api/lecturer/reviews', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/reviews', ...guard, async (req, res) => {
   try { res.json(await reviewsOf(pool, req.lecturer)); } catch (error) { fail(res, error, 'reviews'); }
 });
 
-router.get('/api/lecturer/students', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/students', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     res.json({ ...(await studentsOf(pool, me)), roundsList: await myRounds(pool, me), courses: await myCourses(pool, me) });
   } catch (error) { fail(res, error, 'students'); }
 });
 
-router.get('/api/lecturer/earnings', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/earnings', ...guard, async (req, res) => {
   try {
     const month = Number(req.query.month) || null;
     const year = Number(req.query.year) || null;
@@ -342,7 +342,7 @@ router.get('/api/lecturer/earnings', ...guard, async (req, res) => {
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
-router.get('/api/lecturer/notifications', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/notifications', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const [rows] = await pool.query(
@@ -352,7 +352,7 @@ router.get('/api/lecturer/notifications', ...guard, async (req, res) => {
   } catch (error) { fail(res, error, 'notifications'); }
 });
 
-router.post('/api/lecturer/notifications/read', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/notifications/read', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     await pool.query('UPDATE notifications SET read_at=NOW() WHERE tenant_id=? AND recipient_staff_id=? AND read_at IS NULL', [me.tenantId, me.staffId]);
@@ -362,7 +362,7 @@ router.post('/api/lecturer/notifications/read', ...guard, async (req, res) => {
 
 // ── Profile ──────────────────────────────────────────────────────────────────
 
-router.get('/api/lecturer/profile', ...guard, async (req, res) => {
+router.get('/api/staff/lecturer/profile', ...guard, async (req, res) => {
   const me = req.lecturer;
   const t = me.therapist;
   res.json({
@@ -374,7 +374,7 @@ router.get('/api/lecturer/profile', ...guard, async (req, res) => {
   });
 });
 
-router.patch('/api/lecturer/profile', ...guard, async (req, res) => {
+router.patch('/api/staff/lecturer/profile', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     if (!me.therapist) throw bad('مفيش ملف استشارات مربوط بحسابك — اطلب من الإدارة', 'NO_CONSULTATION_PROFILE', 409);
@@ -400,7 +400,7 @@ router.patch('/api/lecturer/profile', ...guard, async (req, res) => {
 // «يشارك في المجتمع بكامل المحتوى»: the lecturer reads everything the community has (the public feed, library, videos and
 // events are the same endpoints members use) and takes part with the «محاضر» badge — their posts need no review.
 
-router.post('/api/lecturer/community/posts', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/community/posts', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const title = clean(req.body?.title, 200);
@@ -418,7 +418,7 @@ router.post('/api/lecturer/community/posts', ...guard, async (req, res) => {
   } catch (error) { fail(res, error, 'community:post'); }
 });
 
-router.post('/api/lecturer/community/posts/:id/comments', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/community/posts/:id/comments', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const body = clean(req.body?.body, 2000);
@@ -434,7 +434,7 @@ router.post('/api/lecturer/community/posts/:id/comments', ...guard, async (req, 
   } catch (error) { fail(res, error, 'community:comment'); }
 });
 
-router.post('/api/lecturer/community/posts/:id/like', ...guard, async (req, res) => {
+router.post('/api/staff/lecturer/community/posts/:id/like', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const [[post]] = await pool.query("SELECT id FROM community_posts WHERE tenant_id=? AND id=? AND status='approved'", [me.tenantId, req.params.id]);
@@ -447,7 +447,7 @@ router.post('/api/lecturer/community/posts/:id/like', ...guard, async (req, res)
   } catch (error) { fail(res, error, 'community:like'); }
 });
 
-router.delete('/api/lecturer/community/posts/:id', ...guard, async (req, res) => {
+router.delete('/api/staff/lecturer/community/posts/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const [result] = await pool.query('DELETE FROM community_posts WHERE tenant_id=? AND id=? AND staff_id=?', [me.tenantId, req.params.id, me.staffId]);
