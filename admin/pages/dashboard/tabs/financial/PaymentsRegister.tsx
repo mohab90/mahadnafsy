@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import { downloadCsv } from '../../../../../shared/csv';
+import { TransferProofLink } from '../../../../components/TransferProofLink';
 
 type RegisterRow = {
   id: string;
@@ -24,6 +25,7 @@ type RegisterRow = {
   /** The transfer as the desk typed it: who sent it, and from which number or account. */
   senderName?: string | null;
   fromAccount?: string | null;
+  proofUrl?: string | null;
   status: string;
   installment: boolean;
   note: string | null;
@@ -242,7 +244,8 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
                     {row.transactionId && <div className="font-mono font-bold text-gray-700" dir="ltr">#{row.transactionId}</div>}
                     {row.senderName && <div className="font-bold text-gray-600">{row.senderName}</div>}
                     {row.fromAccount && <div className="font-mono text-gray-500" dir="ltr">{row.fromAccount}</div>}
-                    {!row.transactionId && !row.senderName && !row.fromAccount && <span className="text-gray-300">—</span>}
+                    <TransferProofLink url={row.proofUrl} className="mt-0.5" />
+                    {!row.transactionId && !row.senderName && !row.fromAccount && !row.proofUrl && <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-2.5 text-xs text-gray-400 max-w-[180px] truncate" title={row.note || ''}>{row.note || ''}</td>
                   <td className="px-3 py-2.5">

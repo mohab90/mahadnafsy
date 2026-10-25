@@ -42,7 +42,7 @@ test('the client rates by their own link at the third lecture and when the round
   assert.equal(validRating('r-1', 's-1', link.searchParams.get('t')), true);
   assert.equal(validRating('r-1', 's-2', link.searchParams.get('t')), false, 'nobody rates in another\'s name');
   const rounds = read('api/routes/daqqi-rounds.js');
-  assert.match(rounds, /if \(attendedLectures === 3\) \{\s*await inviteToRate\(conn, \{[^}]*stage: 'third' \}\);/);
+  assert.match(read('api/lib/daqqiAttendanceMark.js'), /if \(attendedLectures === 3\) \{\s*await inviteToRate\(conn, \{[^}]*stage: 'third' \}\);/);
   assert.match(rounds, /existing\.status !== 'FINISHED' && status === 'FINISHED'\) \{[\s\S]{0,300}stage: 'final' \}\);/);
   const routes = read('api/routes/clientRatings.js');
   assert.match(routes, /router\.post\('\/api\/public\/rate\/:roundId', publicLimiter/);

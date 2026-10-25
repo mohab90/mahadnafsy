@@ -113,5 +113,6 @@ test('the reminder recipient filter does not leak into attendance history or cou
   assert.doesNotMatch(route, /s\.is_active/);
   // The attendance event itself stays keyed on the round, never on the client's
   // contactability.
-  assert.match(route, /INSERT INTO daqqi_attendance_events/);
+  assert.match(read('lib/daqqiAttendanceMark.js'), /INSERT INTO daqqi_attendance_events/);
+  assert.doesNotMatch(read('lib/daqqiAttendanceMark.js'), /is_unsubscribed|s\.is_active/);
 });

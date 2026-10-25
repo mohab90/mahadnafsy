@@ -23,6 +23,8 @@ const SUPER_ADMIN_ROLES = ['admin', 'manager'];
 const { hasPermission, normalizeDataScope, resolveDataScope, resolvePermissions, DATA_SCOPE, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
+const { consultationClock } = require('../lib/consultationRequests');
+const { onConsultationCompleted } = require('../lib/consultationCompletion');
 const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
 const { branchIdForBranch } = require('../lib/branches');
 
@@ -84,7 +86,7 @@ router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requ
     const [consultations] = await pool.query(
       `SELECT id, client_name, client_email, client_phone, therapist_id, session_type,
               session_date, slot_id, timezone, status, notes, amount, currency,
-              session_duration_minutes, meeting_link, created_at
+              session_duration_minutes, meeting_link, created_at, source
          FROM consultations
         WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL
         ORDER BY session_date DESC LIMIT 500`,
@@ -111,6 +113,9 @@ router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requ
         sessionDurationMinutes: row.session_duration_minutes || undefined,
         meetingLink: row.meeting_link || undefined,
         createdAt: row.created_at,
+        // site_express is the urgent «خلال 60 دقيقة» session; anything else has a day and an hour.
+        source: row.source || undefined,
+        sessionTime: consultationClock(row),
       })),
     });
   } catch (e) {
@@ -149,6 +154,7 @@ router.patch('/api/staff/therapist-portal/consultations/:id', requireAuth, requi
       [...params, req.params.id, req.tenantId, staffId]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Assigned consultation not found' });
+    if (String(req.body?.status || '').toUpperCase() === 'COMPLETED') await onConsultationCompleted(pool, { tenantId: req.tenantId, consultationId: req.params.id, actor: staffId });
     res.json({ ok: true });
   } catch (e) {
     routeError(res, e, 'therapist consultation update failed');

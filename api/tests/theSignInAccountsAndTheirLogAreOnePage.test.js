@@ -29,7 +29,7 @@ test('the log keeps who was tried and where from, and tells the truth about the 
   const audit = read('api/lib/loginAudit.js');
   assert.match(audit, /getClientIp\(req\)/, 'the address is the connection\'s own, not a forwarded header the client can write');
   assert.doesNotMatch(audit, /x-forwarded-for/i);
-  assert.match(audit, /\(tenant_id,user_id,email,phone,ip,user_agent,status,failure_reason\)/);
+  assert.match(audit, /\(tenant_id,user_id,email,phone,ip,device_hash,user_agent,status,failure_reason\)/);
 
   const session = read('api/routes/auth/session.js');
   assert.match(session, /const tried = identifierIsEmail \? \{ email: logIdentifier \} : \{ phone: logIdentifier \}/, 'a number tried is filed as a number, not under e-mail');

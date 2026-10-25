@@ -116,7 +116,7 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
           .then(([result]) => [result]),
         pool.query(
           `SELECT p.id, p.payment_no, p.receipt_no, p.date, p.created_at, p.amount, p.currency, p.amount_egp, p.payment_type, p.payment_method,
-                  p.transaction_id, p.from_account, p.sender_name, p.status, p.note, p.source, p.is_installment, p.branch,
+                  p.transaction_id, p.from_account, p.sender_name, p.proof_url, p.status, p.note, p.source, p.is_installment, p.branch,
                   ${SERVICE_SQL} AS service,
                   p.subscriber_id, s.name AS client_name, s.client_code, s.phone AS client_phone,
                   p.staff_id, COALESCE(st.name, NULLIF(p.staff_name, '')) AS staff_name
@@ -148,6 +148,8 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
           // The transfer as the desk typed it: who sent it and from which number/account.
           senderName: r.sender_name || null,
           fromAccount: r.from_account || null,
+          // The client's transfer screenshot on Google Drive, when they uploaded one.
+          proofUrl: r.proof_url || null,
           status: r.status,
           installment: Boolean(r.is_installment),
           note: r.note,

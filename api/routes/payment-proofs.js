@@ -36,6 +36,7 @@ const { getTenantSetting } = require('../lib/tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('../lib/consultationRequests');
 const { classifyPaymentProof, paymentProofReviewStep } = require('../lib/paymentProofReview');
 const { orderPlan, planAccess } = require('../lib/orderPlan');
+const { storeTransferScreenshot } = require('../lib/transferScreenshot');
 
 function tenantIdFor(req) {
   return req.tenantId || req.user?.tenant_id || 'tenant-default';
@@ -117,6 +118,9 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     await conn.query('UPDATE orders SET subscriber_id=? WHERE id=? AND tenant_id=?', [sub.id, order.id, tenantId]);
 
     const id = `pp-${uuidv4()}`;
+    // The screenshot goes to Google Drive and the proof keeps its link, which the accountant opens; the picture
+    // stays in the row only when no link could be made, so a receipt is never lost for want of Drive.
+    const proofUrl = proof_image ? await storeTransferScreenshot(proof_image, { who: order.customer_name, orderId: order.id }) : null;
     const intent = await getOrCreatePaymentIntent(conn, {
       tenantId, order, subscriberId: sub.id, actor: uid || ownerEmail,
       idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotency_key,
@@ -135,11 +139,11 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     await conn.query(
       `INSERT INTO payment_proofs
          (id, order_id, payment_intent_id, payment_attempt_id, subscriber_id, course_id, bundle_id, item_type, amount, currency,
-          payment_method, proof_image, note, review_due_at, risk_level, second_review_required, tenant_id, branch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          payment_method, proof_image, proof_url, note, review_due_at, risk_level, second_review_required, tenant_id, branch_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, order.id, intent.id, attemptId, sub.id, order.course_id || null, order.bundle_id || null,
        String(order.type || 'OTHER').toLowerCase(), order.amount, order.currency || 'EGP',
-       String(payment_method || 'instapay').slice(0, 50), proof_image || null, safeNote, reviewDueAt,
+       String(payment_method || 'instapay').slice(0, 50), proofUrl ? null : (proof_image || null), proofUrl, safeNote, reviewDueAt,
        review.riskLevel, review.secondReviewRequired ? 1 : 0,
        tenantId, order.branch_id || sub.branch_id || 'branch-other']
     );
@@ -359,7 +363,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     transactionStarted = true;
     const [[proof]] = await conn.query(
       `SELECT pp.id, pp.order_id, pp.subscriber_id, pp.course_id, pp.bundle_id, pp.item_type,
-              pp.amount, pp.currency, pp.payment_method, pp.proof_image, pp.note, pp.status,
+              pp.amount, pp.currency, pp.payment_method, pp.proof_image, pp.proof_url, pp.note, pp.status,
               pp.branch_id, pp.payment_intent_id, pp.payment_attempt_id, pp.second_review_required,
               pp.first_reviewer_id, pp.first_review_note, pp.first_reviewed_at, pp.review_due_at, pp.risk_level,
               o.item_id, o.item_title, o.notes AS order_notes,
@@ -438,14 +442,14 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
             transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
-            source, item_title, branch, branch_id, tenant_id, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
+            source, item_title, branch, branch_id, tenant_id, proof_url, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,?,NOW())`,
         [payId, proof.subscriber_id, proof.course_id || null, proof.bundle_id || null,
          proof.amount, proof.currency || 'EGP', paymentType, proof.payment_method || 'تحويل', proof.id,
          plan.installment ? 1 : 0, plan.expected,
          `تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
          reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
-         proof.branch || branchForId(proof.branch_id), proof.branch_id || 'branch-other', tenantId]
+         proof.branch || branchForId(proof.branch_id), proof.branch_id || 'branch-other', tenantId, proof.proof_url || null]
       );
       const journalId = await postPaymentJournal({
         paymentId: payId,
@@ -615,12 +619,12 @@ router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrSta
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
     const [[row]] = await pool.query(
-      'SELECT proof_image, branch_id FROM payment_proofs WHERE id = ? AND tenant_id=?',
+      'SELECT proof_image, proof_url, branch_id FROM payment_proofs WHERE id = ? AND tenant_id=?',
       [req.params.id, tenantIdFor(req)]
     );
-    if (!row || !row.proof_image) return res.status(404).json({ error: 'No image' });
+    if (!row || (!row.proof_image && !row.proof_url)) return res.status(404).json({ error: 'No image' });
     if (!financialRecordMatches(scope, row)) return res.status(403).json({ error: 'Payment proof is outside your financial scope' });
-    res.json({ image: row.proof_image });
+    res.json({ image: row.proof_image || null, url: row.proof_url || null });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });

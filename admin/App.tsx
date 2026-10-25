@@ -13,6 +13,7 @@ const Dashboard     = React.lazy(() => import('./pages/Dashboard'));
 const StaffProfile  = React.lazy(() => import('./pages/StaffProfile'));
 const ClientProfile = React.lazy(() => import('./pages/ClientProfile'));
 const TherapistPortal = React.lazy(() => import('./pages/TherapistPortal'));
+const LecturerPortal = React.lazy(() => import('./pages/LecturerPortal'));
 const JoinUs        = React.lazy(() => import('./pages/JoinUs'));
 const Auth          = React.lazy(() => import('./pages/Auth'));
 
@@ -191,6 +192,9 @@ const AppShell: React.FC = () => {
             } />
             <Route path="/client/:code" element={
               <StaffRoute><ClientProfile /></StaffRoute>
+            } />
+            <Route path="/lecturer-portal" element={
+              <StaffRoute><LecturerPortal /></StaffRoute>
             } />
             <Route path="/therapist-portal" element={
               <StaffRoute><TherapistPortal /></StaffRoute>

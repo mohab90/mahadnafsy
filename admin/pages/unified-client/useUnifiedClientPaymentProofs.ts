@@ -47,9 +47,8 @@ export function useUnifiedClientPaymentProofs({
     if (proofImageUrl[proofId]) return;
     mysqlAdmin.getPaymentProofImage(proofId)
       .then(response => {
-        if (response.image) {
-          setProofImageUrl(prev => ({ ...prev, [proofId]: response.image }));
-        }
+        const { image } = response;
+        if (image) setProofImageUrl(prev => ({ ...prev, [proofId]: image }));
       })
       .catch(() => {});
   };

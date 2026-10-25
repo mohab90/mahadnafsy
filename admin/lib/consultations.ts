@@ -1,3 +1,4 @@
+import { cairoDateTime } from '../../shared/cairoDate';
 import { ConsultationItem, Currency, MeetingProvider, Therapist, TherapistAvailabilitySlot, WeekDayKey } from '../types';
 
 export const weekDayLabels: Record<WeekDayKey, string> = {
@@ -44,6 +45,8 @@ export const getTherapistSessionPrice = (therapist: Therapist, currency: Currenc
 
 export const getTherapistActiveSlots = (therapist: Therapist, dateValue?: string) => {
   const slots = therapist.consultationSettings?.availableSlots?.filter((slot) => slot.isActive) || [];
+  // A day the lecturer has closed has no hours, though the weekday has.
+  if (dateValue && therapist.consultationSettings?.blockedDates?.includes(dateValue)) return [];
   const weekDay = dateValue ? getWeekDayKeyFromDate(dateValue) : null;
   if (!weekDay) return slots;
   return slots.filter((slot) => slot.day === weekDay);
@@ -62,3 +65,20 @@ export const sortConsultationsByDate = (rows: ConsultationItem[]) =>
     const rightTime = new Date(right.sessionDate.replace(' ', 'T')).getTime();
     return rightTime - leftTime;
   });
+
+/**
+ * «كل استشارة لازم تبان عاجلة خلال 60 دقيقة ولا استشارة بموعد» (25 Oct 2026): an express session
+ * (source site_express) is answered within the hour; every other booking has a day and, usually, an hour.
+ */
+export type ConsultationTiming = { urgent: boolean; label: string; when: string };
+
+export function consultationTiming(item: Pick<ConsultationItem, 'source' | 'sessionDate' | 'scheduledAt' | 'date' | 'sessionTime' | 'createdAt'>): ConsultationTiming {
+  if (item.source === 'site_express') {
+    const arrived = item.createdAt ? cairoDateTime(item.createdAt) : '';
+    return { urgent: true, label: 'عاجلة خلال 60 دقيقة', when: arrived ? `وصلت ${arrived}` : 'التواصل مع العميل خلال ساعة من الحجز' };
+  }
+  const raw = String(item.sessionDate || item.scheduledAt || item.date || '').replace('T', ' ');
+  const day = raw.slice(0, 10);
+  // The hour is the API's `sessionTime` (the Cairo wall clock the customer picked); a stored value is never cut here.
+  return { urgent: false, label: 'استشارة بموعد', when: [day, item.sessionTime].filter(Boolean).join(' · ') || 'بدون تاريخ' };
+}

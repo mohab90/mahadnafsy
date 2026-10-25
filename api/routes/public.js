@@ -10,6 +10,7 @@ const router = Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
+const { blockedDatesByTherapist } = require('../lib/therapistAvailability');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { escapeHtml } = require('../lib/html');
@@ -510,7 +511,9 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const formMode = String(req.query.mode || '') === 'form';
     // «لو العميل عمل تحميل للشهاده pdf من الموقع يظهر انه العميل عملها تحميل»:
     // the desk's own print and preview carry ?staff=1.
-    if (!formMode && String(req.query.staff || '') !== '1') {
+    // ?embed=1 is the design shown on the verification page: a look at it is no download either.
+    const embedded = String(req.query.embed || '') === '1';
+    if (!formMode && !embedded && String(req.query.staff || '') !== '1') {
       pool.query(
         'UPDATE course_completions SET downloaded_at=COALESCE(downloaded_at, NOW()), download_count=download_count+1 WHERE certificate_code=? AND tenant_id=?',
         [row.certificate_code, row.tenant_id]).catch(() => {});
@@ -563,7 +566,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     // allows no script at all, which is why «Print» did nothing on the live site.
     const nonce = require('crypto').randomBytes(16).toString('base64');
     res.setHeader('Content-Security-Policy',
-      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`);
+      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self' ${clientBase}`);
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -571,6 +574,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Certificate – ${escapeHtml(studentName)}</title>
 <style>
+  ${embedded ? '.toolbar, .verify-note { display: none !important; } body { padding: 0 !important; min-height: 0 !important; background: #fff !important; }' : ''}
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
   body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; font-family: Georgia, 'Times New Roman', serif; }
@@ -762,6 +766,8 @@ router.get('/api/therapists', publicLimiter, async (req, res) => {
         const slotMap = {};
         slots.forEach(s => { (slotMap[s.therapist_id] = slotMap[s.therapist_id] || []).push(s); });
         therapists.forEach(t => { t.slots = slotMap[t.id] || []; });
+        const blocked = await blockedDatesByTherapist(pool, { tenantId: req.tenantId, therapistIds: ids });
+        therapists.forEach(t => { t.blocked_dates = blocked[t.id] || []; });
       }
       // Called with one argument on purpose. `map` passes (element, index,
       // array), so passing mapTherapist directly handed the index to

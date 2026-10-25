@@ -16,6 +16,7 @@
 
 const { uuidv4 } = require('./id');
 const { addDaysToDateOnly, cairoClock, cairoToday, isValidDateOnly } = require('./dates');
+const { tellLecturerOfConsultation } = require('./lecturerNotices');
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -97,6 +98,17 @@ function bookingRuleError({ sessionDate, slot, settings, now = new Date() }) {
   return null;
 }
 
+/**
+ * The hour a booking was made for, 'HH:MM' on Cairo's clock, or undefined: session_date holds the hour the
+ * customer picked as a wall clock (the driver builds its Date on the process clock, so it is read back the same
+ * way); 00:00 is a booking with no hour, and an express session has none — it is answered within the hour.
+ */
+function consultationClock(row) {
+  const at = row.session_date instanceof Date ? row.session_date : null;
+  const hhmm = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
+  return hhmm && hhmm !== '00:00' && row.source !== 'site_express' ? hhmm : undefined;
+}
+
 const SESSION_TYPES = new Set(['INDIVIDUAL', 'COUPLE', 'FAMILY']);
 
 /**
@@ -162,6 +174,13 @@ async function openConsultationRequest(db, request) {
       values.session_duration_minutes, values.subscriber_id, orderId, values.source]
   );
   if (values.source === 'site_express') await tellManagementOfExpress(db, { tenantId, id, values });
+  // The lecturer hears of it in the portal and on WhatsApp (lib/lecturerNotices.js).
+  if (values.therapist_id) {
+    await tellLecturerOfConsultation(db, {
+      tenantId, consultationId: id, therapistId: values.therapist_id, clientName: values.client_name,
+      source: values.source, sessionAt, sessionType: values.session_type,
+    });
+  }
   return { id, created: true };
 }
 
@@ -241,6 +260,7 @@ async function settleConsultationForOrder(db, { tenantId, order, subscriberId = 
 }
 
 module.exports = {
+  consultationClock,
   tellManagementOfExpress,
   bookingRuleError,
   consultationSettings,

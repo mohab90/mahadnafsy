@@ -94,7 +94,7 @@ test('a long name shrinks to stay on one line', () => {
 test('the page serves the form copy, the picture, and never counts the desk as a download', () => {
   const route = read('api/routes/public.js');
   assert.match(route, /const formMode = String\(req\.query\.mode \|\| ''\) === 'form';/);
-  assert.match(route, /if \(!formMode && String\(req\.query\.staff \|\| ''\) !== '1'\) \{/);
+  assert.match(route, /if \(!formMode && !embedded && String\(req\.query\.staff \|\| ''\) !== '1'\) \{/);
   assert.match(route, /router\.get\('\/api\/certificate-template\.jpg'/);
   assert.match(route, /@page \{ size: A4 portrait; margin: 0; \}/);
 });

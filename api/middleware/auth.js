@@ -90,9 +90,9 @@ async function activeIdentity(tenantId, payload) {
 //
 // What actually stops account sharing is the pair below it — one live session
 // id per account, so a second sign-in evicts the first — plus
-// lib/accountSharingGuard.js, which locks an account that logs in from more
-// than ACCOUNT_MAX_DISTINCT_IPS networks inside a rolling window. That guard
-// exists precisely because, in its own words, phones re-IP constantly; hard
+// lib/accountSharingGuard.js, which locks an account that signs in from more
+// than ACCOUNT_MAX_DISTINCT_DEVICES devices (never networks) inside a rolling window. Phones re-IP constantly, so
+// the address is no part of that rule; hard
 // pinning contradicted it. Set SESSION_PIN_IP=true to restore the old
 // behaviour on a fixed-line-only deployment.
 const SESSION_PIN_IP = String(process.env.SESSION_PIN_IP || '').toLowerCase() === 'true';

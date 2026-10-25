@@ -1093,7 +1093,7 @@ export const mysqlAdmin = {
     return apiFetch<AR[]>(`/admin/payment-proofs${query ? `?${query}` : ''}`, {}, A);
   },
   getPaymentProofImage: (id: string, branch?: string) =>
-    apiFetch<{ image: string }>(`/admin/payment-proofs/${id}/image${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
+    apiFetch<{ image: string | null; url?: string | null }>(`/admin/payment-proofs/${id}/image${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
   reviewPaymentProof: (id: string, action: 'approve' | 'reject', reviewer_note?: string, branch?: string) =>
     apiFetch<{ ok: boolean; status: string; pendingSecondApproval?: boolean; review_due_at?: string }>(`/admin/payment-proofs/${id}`, {
       method: 'PATCH',

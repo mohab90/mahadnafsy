@@ -3,6 +3,7 @@ const logger = require('./logger');
 const { pool } = require('./db');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { getClientIp } = require('./clientContext');
+const { peekDeviceHash } = require('./customerDevices');
 const { toIdentity } = require('./phoneNumber');
 
 /**
@@ -19,9 +20,9 @@ async function logLoginAttempt({ userId = null, email = null, phone = null, req,
   try {
     await pool.query(
       `INSERT INTO login_history
-       (tenant_id,user_id,email,phone,ip,user_agent,status,failure_reason)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [tenantId || req?.tenantId || DEFAULT_TENANT, userId, email, identity || null, ip, userAgent, status, failureReason]
+       (tenant_id,user_id,email,phone,ip,device_hash,user_agent,status,failure_reason)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [tenantId || req?.tenantId || DEFAULT_TENANT, userId, email, identity || null, ip, peekDeviceHash(req), userAgent, status, failureReason]
     );
   } catch (error) {
     // Authentication must not fail because audit storage is unavailable — but a
