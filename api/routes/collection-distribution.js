@@ -105,7 +105,8 @@ router.post('/api/admin/collection-sheets/import', ...guard, async (req, res) =>
 const ONLINE_IMPORT = {
   active: { local: 'ONLINE_EGYPT', saudi: 'ONLINE_SAUDI', intl: 'ONLINE_ABROAD' },
   old_local: { local: 'ONLINE_EGYPT' },
-  old_intl: { intl: 'ONLINE_ABROAD' },
+  // «سعودي قديم»: the tab holds riyal clients, so the desk's default is the Saudi market.
+  old_intl: { saudi: 'ONLINE_SAUDI', intl: 'ONLINE_ABROAD' },
 };
 
 router.post('/api/admin/online-clients/import', ...guard, async (req, res) => {
@@ -140,7 +141,7 @@ router.post('/api/admin/online-clients/import', ...guard, async (req, res) => {
 const OLD_DATA_IMPORT = {
   daqqi: { kind: 'active', branch: 'DAQQI' },
   old_local: { kind: 'old_local', branch: 'ONLINE_EGYPT' },
-  old_intl: { kind: 'old_intl', branch: 'ONLINE_ABROAD' },
+  old_intl: { kind: 'old_intl', branch: 'ONLINE_SAUDI' },
 };
 
 router.post('/api/admin/old-data/import', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {

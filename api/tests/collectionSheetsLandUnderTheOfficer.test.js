@@ -114,7 +114,7 @@ test('every row lands under the officer, once, and nobody else\'s client moves',
     const created = Object.fromEntries(columns.map((column, index) => [column, row[index]]));
     assert.equal(created.assigned_cs_id, 'cs-1');
     assert.equal(created.assigned_cs_name, 'منة');
-    assert.equal(created.branch, 'ONLINE_ABROAD');
+    assert.equal(created.branch, 'ONLINE_SAUDI');
     assert.equal(created.client_code, 'C100');
     const crm = JSON.parse(created.crm_json);
     assert.equal(crm.clientStatus, 'old_intl');

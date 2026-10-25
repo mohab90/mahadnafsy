@@ -17,6 +17,7 @@ const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClient
 const { actorName } = require('../../lib/clientHistory');
 const { changeClientCurrency } = require('../../lib/clientCurrency');
 const { getFxSnapshot } = require('../../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../../lib/fxRefresh');
 const { uuidv4 } = require('../../lib/id');
 
 // The same row-level rule the money screens use: the managers see everyone,
@@ -260,9 +261,18 @@ router.post('/api/admin/subscribers/:id/currency', requireAuth, requireAdminOrSt
   const conn = await pool.getConnection();
   try {
     const convert = req.body?.convert !== false;
-    const snapshot = await getFxSnapshot(tenantId);
-    // A rate nobody configured is the static fallback; converting a client's money by it would be a guess.
-    const rates = convert && snapshot.source !== 'static-fallback' ? snapshot.rates : null;
+    // The rate of each foreign currency involved must be usable — configured and not older than FX_MAX_AGE_HOURS, as for
+    // a payment (lib/fxRefresh.js); one gone stale is fetched afresh first. Converting a client's money by a guess
+    // or by an old rate is refused, not done quietly.
+    const rates = convert ? async currencies => {
+      let snapshot = null;
+      for (const currency of currencies.filter(code => code !== 'EGP')) {
+        const fresh = await ensureFreshFx(tenantId, currency);
+        if (!fresh.usable) throw fxStaleError(currency, fresh.snapshot);
+        snapshot = fresh.snapshot;
+      }
+      return (snapshot || await getFxSnapshot(tenantId)).rates;
+    } : null;
     await conn.beginTransaction();
     const result = await changeClientCurrency(conn, {
       tenantId, subscriberId: req.params.id, currency: req.body?.currency, convert, dryRun: req.body?.dryRun === true, rates, actor: actorName(req),

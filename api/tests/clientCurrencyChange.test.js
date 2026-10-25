@@ -115,11 +115,49 @@ test('the route is the money desk\'s: item-money\'s permission, and never collec
   const route = source.slice(source.indexOf("router.post('/api/admin/subscribers/:id/currency'"));
   assert.match(route.slice(0, 400), /requirePermission\('manage_financial'\)/);
   assert.match(route.slice(0, 600), /refuseCollection\(req, res,/);
-  assert.match(route.slice(0, 1800), /static-fallback/, 'a rate nobody configured is not used to convert a client\'s money');
+  assert.match(route.slice(0, 2400), /ensureFreshFx\(tenantId, currency\)[\s\S]*fxStaleError\(currency, fresh\.snapshot\)/, 'a rate that is not configured or has gone stale is not used to convert a client\'s money');
+  assert.doesNotMatch(route.slice(0, 2400), /static-fallback/, 'the freshness check is the payments\' own, not a private copy');
 });
 
 test('the panel offers it only to online clients, and asks before it writes', () => {
   const panel = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'online-clients-sections', 'ClientCourseAccessPanel.tsx'), 'utf8');
   assert.match(panel, /!inBranch && role !== 'collection' \?/);
   assert.ok(panel.indexOf('dryRun: true') < panel.indexOf("await api(`${base}/currency`, 'POST', body)"), 'the preview comes first');
+});
+
+// The rate is the payments' own: configured and not stale, fetched afresh once if it is.
+test('the rate comes from a function of the two currencies, and only when there is something to convert', async () => {
+  const asked = [];
+  const rates = async currencies => { asked.push(currencies); return RATES; };
+  const db = fakeDb(client());
+  const result = await changeClientCurrency(db, args({ currency: 'EGP', rates }));
+  assert.deepEqual(asked, [['SAR', 'EGP']]);
+  assert.equal(result.rate, 14.5);
+  assert.deepEqual(JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[2]).priorPaid, { c1: 5800 });
+
+  asked.length = 0;
+  await changeClientCurrency(fakeDb(client()), args({ currency: 'EGP', rates, convert: false }));
+  assert.deepEqual(asked, [], 'figures that stay as they are need no rate');
+});
+
+test('a stale rate stops the change before anything is written', async () => {
+  const stale = Object.assign(new Error('stale'), { statusCode: 409, code: 'FX_STALE' });
+  const db = fakeDb(client());
+  await assert.rejects(changeClientCurrency(db, args({ currency: 'EGP', rates: async () => { throw stale; } })), { code: 'FX_STALE' });
+  assert.equal(writes(db).length, 0);
+});
+
+test('a function that finds no rate is the same refusal as no rate', async () => {
+  await assert.rejects(changeClientCurrency(fakeDb(client()), args({ currency: 'EGP', rates: async () => null })), { code: 'NO_RATE' });
+});
+
+// «سعودي قديم» holds riyal clients: what is imported into it lands in the Saudi market, not the dollar one.
+test('imports into «سعودي قديم» create Saudi-market clients', () => {
+  const root = path.join(__dirname, '..');
+  const routes = fs.readFileSync(path.join(root, 'routes', 'collection-distribution.js'), 'utf8');
+  assert.match(routes, /old_intl: \{ saudi: 'ONLINE_SAUDI', intl: 'ONLINE_ABROAD' \},/, 'the default is the first market listed');
+  assert.match(routes, /old_intl: \{ kind: 'old_intl', branch: 'ONLINE_SAUDI' \},/);
+  const sheets = fs.readFileSync(path.join(root, 'lib', 'collectionSheets.js'), 'utf8');
+  assert.equal((sheets.match(/kind === 'old_intl' \? 'ONLINE_SAUDI' : 'ONLINE_EGYPT'/g) || []).length, 2, 'the client\'s branch and the officer\'s market');
+  assert.doesNotMatch(sheets, /old_intl' \? 'ONLINE_ABROAD'/);
 });

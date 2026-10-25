@@ -59,7 +59,8 @@ async function itemTitles(db, tenantId, keys) {
 /**
  * Moves the client to `currency`'s market and, with `convert`, converts their figures. With `dryRun` nothing is
  * written and the same answer comes back, for the screen to show before it asks.
- * `rates`: EGP per unit ({ EGP: 1, SAR, USD }).
+ * `rates`: EGP per unit ({ EGP: 1, SAR, USD }), or an async function of the two currencies involved that returns
+ * them — the route's, which refuses a rate that is stale — called only when there is something to convert.
  */
 async function changeClientCurrency(db, { tenantId, subscriberId, currency, convert = true, dryRun = false, rates, actor }) {
   const to = String(currency || '').toUpperCase();
@@ -91,7 +92,8 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
     const said = other.map(row => `${row.n} بالـ${NAME_OF[row.currency] || row.currency}`).join(' و');
     throw fail(409, `العميل عنده دفعات مسجلة (${said}) — تغيير العملة هيخلط عملتين في المتبقي. صحّح الدفعات الأول من المدير (إلغاء الدفعة وتسجيلها بالعملة الجديدة).`, 'PAYMENTS_IN_OTHER_CURRENCY');
   }
-  if (convert && from !== to && !(rates?.[from] > 0 && rates?.[to] > 0)) throw fail(409, 'سعر الصرف مش متاح دلوقتي', 'NO_RATE');
+  const table = convert && from !== to && typeof rates === 'function' ? await rates([from, to]) : rates;
+  if (convert && from !== to && !(table?.[from] > 0 && table?.[to] > 0)) throw fail(409, 'سعر الصرف مش متاح دلوقتي', 'NO_RATE');
 
   const keys = [...new Set([...Object.keys(crm.customPrices || {}), ...Object.keys(crm.priorPaid || {})])];
   const titles = await itemTitles(db, tenantId, keys);
@@ -102,8 +104,8 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
     for (const key of keys) {
       const price = { was: Number(customPrices[key]) || 0 };
       const prior = { was: Number(priorPaid[key]) || 0 };
-      price.now = convertAmount(price.was, from, to, rates);
-      prior.now = convertAmount(prior.was, from, to, rates);
+      price.now = convertAmount(price.was, from, to, table);
+      prior.now = convertAmount(prior.was, from, to, table);
       if (price.was > 0) customPrices[key] = price.now;
       if (prior.was > 0) priorPaid[key] = prior.now;
       changes.push({ item: key, title: titles.get(key) || key, price, priorPaid: prior });
@@ -116,7 +118,7 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   if (market !== 'local' && crm.clientStatus === 'old_local') next.clientStatus = 'old_intl';
 
   const result = {
-    from, to, converted: Boolean(convert && from !== to), rate: convert && from !== to ? rates[from] / rates[to] : null,
+    from, to, converted: Boolean(convert && from !== to), rate: convert && from !== to ? table[from] / table[to] : null,
     branch: BRANCH_OF[market], changes, clientStatus: next.clientStatus || null,
   };
   if (dryRun) return result;
