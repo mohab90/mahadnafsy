@@ -119,7 +119,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     if (sharing.locked) {
       await logLoginAttempt({ userId: user.id, email: user.email, phone, req, status: 'failed', failureReason: 'sharing_limit_locked' });
       return res.status(423).json({
-        error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctIps} شبكات مختلفة. تواصل مع الدعم.`,
+        error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctDevices} أجهزة مختلفة. تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
       });
     }

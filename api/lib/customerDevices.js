@@ -40,6 +40,17 @@ function deviceIdFor(req) {
   return deviceId;
 }
 
+/**
+ * The keyed hash of the device id this request already carries, or null — never mints a cookie, so the
+ * sign-in log can ask on a failed attempt without handing a stranger a device.
+ */
+function peekDeviceHash(req) {
+  const carried = req?.mahadDeviceId
+    || String(req?.headers?.cookie || '').match(/(?:^|;s*)mahadDevice=([0-9a-f-]{36})(?:;|$)/i)?.[1];
+  if (!carried) return null;
+  try { return hashDeviceId(String(carried).toLowerCase()); } catch { return null; }
+}
+
 function deviceLimitError() {
   return Object.assign(new Error(DEVICE_LIMIT_MESSAGE), { statusCode: 403, code: 'DEVICE_LIMIT' });
 }
@@ -84,5 +95,5 @@ async function clearCustomerDevices(db, { tenantId, userId }) {
 
 module.exports = {
   DEVICE_COOKIE, DEVICE_LIMIT_MESSAGE, MAX_CUSTOMER_DEVICES,
-  clearCustomerDevices, deviceIdFor, listCustomerDevices, registerCustomerDevice,
+  clearCustomerDevices, deviceIdFor, hashDeviceId, listCustomerDevices, peekDeviceHash, registerCustomerDevice,
 };
