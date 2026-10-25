@@ -108,8 +108,10 @@ test('a send from the tab is the rep\'s, counted, and on the lead\'s timeline on
 
   const [[row]] = await pool.query("SELECT sent_by_system FROM wa_web_messages WHERE tenant_id=? AND wa_id='OUT-1'", [TENANT]);
   assert.equal(row.sent_by_system, 1);
-  const [comms] = await pool.query('SELECT lead_id, direction, notes, staff_id FROM communications WHERE tenant_id=?', [TENANT]);
-  assert.deepEqual(comms.map(c => [c.lead_id, c.direction, c.notes, c.staff_id]), [['wa-lead', 'OUT', 'السعر 2800 جنيه', 'wa-rep-1']]);
+  // The lead's timeline (the backfill of 6a70dfd6) carries what the lead wrote as well as what the rep sent: each message once.
+  const [comms] = await pool.query('SELECT lead_id, direction, notes, staff_id FROM communications WHERE tenant_id=? ORDER BY direction DESC, notes', [TENANT]);
+  assert.deepEqual(comms.filter(c => c.direction === 'OUT').map(c => [c.lead_id, c.direction, c.notes, c.staff_id]), [['wa-lead', 'OUT', 'السعر 2800 جنيه', 'wa-rep-1']]);
+  assert.deepEqual(comms.filter(c => c.direction === 'IN').map(c => c.notes).sort(), ['عايزة أعرف سعر الكورس', 'لو سمحت'].sort());
 
   // By typed number: the address is built from it.
   const byPhone = await call('post', '/api/staff/whatsapp-web/send', { staffId: 'wa-rep-1', body: { phone: '0101 234 5678', text: 'تاني' } });
