@@ -70,6 +70,10 @@ const ticketScope = (req, alias = 't') => {
     params: [...departments, req.staffRecord?.id || '', ...categories],
   };
 };
+// `ticket` is the row as the route read it, and it must carry department, assigned_to, category and
+// escalated_at: a route that selected fewer refused the tickets a colleague had escalated — which the list
+// shows — with «Not found» (the «تعليق على اتصال» error, 25 Oct 2026). tests/aTicketCommentOnACall.test.js
+// pins every call site.
 const canAccessTicket = (req, ticket) => {
   if (!ticket) return false;
   if (req.isSuperAdmin || ['manager', 'admin'].includes(String(req.staffRecord?.role || '').toLowerCase())) return true;
@@ -603,7 +607,7 @@ router.put('/api/admin/tickets/:id/route', requireAuth, requireAdminOrStaff, req
   try {
     const { category, priority } = req.body;
     conn = await pool.getConnection(); await conn.beginTransaction();
-    const [[t]] = await conn.query('SELECT category,department,priority,assigned_to FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
+    const [[t]] = await conn.query('SELECT category,department,priority,assigned_to,escalated_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
     if (!t) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, t)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     const cat = CATEGORY_META[category] ? category : t.category;
@@ -679,7 +683,7 @@ router.put('/api/admin/tickets/:id/assign', requireAuth, requireAdminOrStaff, re
   try {
     const { staff_id } = req.body;
     conn = await pool.getConnection(); await conn.beginTransaction();
-    const [[ticket]] = await conn.query('SELECT id,department FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
+    const [[ticket]] = await conn.query('SELECT id,department,assigned_to,category,escalated_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
     if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     const [[st]] = staff_id ? await conn.query('SELECT id,name,role FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [staff_id, req.tenantId]) : [[null]];
@@ -711,7 +715,7 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdminOrStaff, re
     const actor = await actorOf(req);
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[t]] = await conn.query(
-      'SELECT id,status,department,assigned_to,subject,subscriber_id,subscriber_email,subscriber_name FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT id,status,department,assigned_to,category,escalated_at,subject,subscriber_id,subscriber_email,subscriber_name FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]
     );
     if (!t) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
@@ -773,7 +777,7 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
     if (status === 'closed' && !closedReason) return res.status(400).json({ error: 'closed_reason required when closing a ticket' });
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[prev]] = await conn.query(
-      'SELECT status,department,assigned_to,subject,subscriber_id,subscriber_email,subscriber_name,csat_requested_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT status,department,assigned_to,category,escalated_at,subject,subscriber_id,subscriber_email,subscriber_name,csat_requested_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]);
     if (!prev) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, prev)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
@@ -1170,7 +1174,7 @@ router.put('/api/admin/tickets/:id/priority', requireAuth, requireAdminOrStaff, 
     if (!VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'invalid priority' });
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[ticket]] = await conn.query(
-      'SELECT id,priority,department,assigned_to,first_response_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT id,priority,department,assigned_to,category,escalated_at,first_response_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]);
     if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
@@ -1224,7 +1228,7 @@ router.post('/api/admin/tickets/:id/contact', requireAuth, requireAdminOrStaff, 
     if (next === 'follow_up' && !nextDate) return res.status(400).json({ error: 'حدّد ميعاد التواصل الجاي', code: 'CONTACT_DATE_REQUIRED' });
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[ticket]] = await conn.query(
-      'SELECT status,department,assigned_to,subject,subscriber_id,id FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT status,department,assigned_to,category,escalated_at,subject,subscriber_id,id FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]);
     if (!ticket || !canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     const actor = await actorOf(req);

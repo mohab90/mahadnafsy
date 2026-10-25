@@ -53,7 +53,8 @@ export function TicketContactButtons({ ticketId, subscriberId, personName, phone
   const number = savedPhone || phone || '';
   const dialable = toDialable(number);
   const mail = String(email || '').trim();
-  const reached = outcome === 'answered';
+  // The same as the API's: an answered call or a sent e-mail was a conversation that has a cause and a next step.
+  const reached = outcome === 'answered' || outcome === 'sent';
 
   const start = (picked: Channel) => {
     setChannel(picked); setOutcome(picked === 'email' ? 'sent' : 'answered'); setCause(''); setSaid(''); setNext(''); setNextDate(cairoDaysAhead(1));
