@@ -29,6 +29,14 @@ const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../middleware/auth');
 const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { announceLiveStream } = require('../lib/liveStreams');
+const { onConsultationCompleted } = require('../lib/consultationCompletion');
+const { saveConsultationRating, validRatingToken } = require('../lib/consultationRating');
+const { storeMediaImage } = require('../lib/mediaImages');
+const { sendRouteError } = require('../lib/helpers');
+const { markRoundAttendance, unmarkRoundAttendance } = require('../lib/daqqiAttendanceMark');
+const { lectureToday } = require('../lib/daqqiLecture');
+const { ymd } = require('../lib/helpers');
+const { publicLimiter } = require('../middleware/rateLimits');
 const { createNotification } = require('../lib/notification');
 const {
   earningsOf, myCourses, myRounds, overviewOf, requireLecturer, reviewsOf, studentsOf,
@@ -39,6 +47,7 @@ const {
 
 // use_lecturer_portal is the grant; the jobs' own permissions also open it, so an account whose list was saved before this
 // permission existed is not locked out — requireLecturer then keeps it to lecturers' accounts.
+const PAYOUT_TITLE = '💰 طلب صرف مستحقات محاضر';
 const guard = [requireAuth, requireAdminOrStaff, requireAnyPermission('use_lecturer_portal', 'manage_lectures', 'manage_consultations', 'view_consultations'), requireLecturer(pool)];
 const PLATFORMS = new Set(['ZOOM', 'YOUTUBE', 'MEET', 'OTHER']);
 const VISIBILITIES = new Set(['ALL_SUBSCRIBERS', 'COURSE_SUBSCRIBERS', 'COMMUNITY_ALL', 'COMMUNITY_AND_SUBSCRIBERS']);
@@ -317,6 +326,7 @@ router.patch('/api/staff/lecturer/consultations/:id', ...guard, async (req, res)
       `UPDATE consultations SET ${sets.join(', ')} WHERE id=? AND tenant_id=? AND therapist_id=? AND deleted_at IS NULL`,
       [...params, req.params.id, me.tenantId, me.therapist.id]);
     if (!result.affectedRows) throw bad('الاستشارة مش موجودة', 'CONSULTATION_NOT_FOUND', 404);
+    if (status === 'COMPLETED') await onConsultationCompleted(pool, { tenantId: me.tenantId, consultationId: req.params.id, actor: me.staffId });
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'consultations:update'); }
 });
@@ -324,7 +334,7 @@ router.patch('/api/staff/lecturer/consultations/:id', ...guard, async (req, res)
 // ── Ratings, students, money ─────────────────────────────────────────────────
 
 router.get('/api/staff/lecturer/reviews', ...guard, async (req, res) => {
-  try { res.json(await reviewsOf(pool, req.lecturer)); } catch (error) { fail(res, error, 'reviews'); }
+  try { res.json(await reviewsOf(pool, { ...req.lecturer, therapistId: req.lecturer.therapist?.id || null })); } catch (error) { fail(res, error, 'reviews'); }
 });
 
 router.get('/api/staff/lecturer/students', ...guard, async (req, res) => {
@@ -340,6 +350,99 @@ router.get('/api/staff/lecturer/earnings', ...guard, async (req, res) => {
     const year = Number(req.query.year) || null;
     res.json(await earningsOf(pool, { ...req.lecturer, month, year }));
   } catch (error) { fail(res, error, 'earnings'); }
+});
+
+// ── Attendance of the lecturer's own Dokki rounds ────────────────────────────────────────────────────────────────────────
+
+async function ownRound(me, roundId) {
+  const [[round]] = await pool.query(
+    `SELECT r.id, r.code, r.status, r.start_date, r.postponed_weeks_json, COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title
+       FROM daqqi_rounds r LEFT JOIN courses c ON c.id=r.course_id AND c.tenant_id=r.tenant_id
+      WHERE r.id=? AND r.tenant_id=? AND r.instructor_id=? LIMIT 1`, [roundId, me.tenantId, me.staffId]);
+  if (!round) throw bad('الروند ده مش بتاعك', 'ROUND_NOT_YOURS', 404);
+  return round;
+}
+
+router.get('/api/staff/lecturer/rounds/:roundId/attendance', ...guard, async (req, res) => {
+  try {
+    const me = req.lecturer;
+    const round = await ownRound(me, req.params.roundId);
+    let postponed = [];
+    try { postponed = JSON.parse(round.postponed_weeks_json || '[]'); } catch { postponed = []; }
+    const [attendees] = await pool.query(
+      'SELECT subscriber_id, name, attended_lectures FROM daqqi_attendees WHERE tenant_id=? AND round_id=? ORDER BY name', [me.tenantId, round.id]);
+    const [events] = await pool.query(
+      "SELECT subscriber_id, session_number FROM daqqi_attendance_events WHERE tenant_id=? AND round_id=? AND status='PRESENT'", [me.tenantId, round.id]);
+    const sessions = new Map();
+    for (const event of events) (sessions.get(event.subscriber_id) || sessions.set(event.subscriber_id, []).get(event.subscriber_id)).push(Number(event.session_number));
+    res.json({
+      round: { id: round.id, code: round.code, status: String(round.status || '').toLowerCase(), course: round.course_title || '', session: Math.max(1, lectureToday(ymd(round.start_date), postponed)) },
+      attendees: attendees.map(row => ({ subscriberId: row.subscriber_id, name: row.name || '', attended: Number(row.attended_lectures) || 0, sessions: (sessions.get(row.subscriber_id) || []).sort((a, b) => a - b) })),
+    });
+  } catch (error) { fail(res, error, 'attendance:read'); }
+});
+
+// «تسجيل الحضور» for the clients ticked: each is marked at the session the round is on (or the one named); one already marked is
+// reported, not an error.
+router.post('/api/staff/lecturer/rounds/:roundId/attendance', ...guard, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const me = req.lecturer;
+    const round = await ownRound(me, req.params.roundId);
+    const ids = [...new Set((Array.isArray(req.body?.subscriberIds) ? req.body.subscriberIds : []).map(String).filter(Boolean))].slice(0, 300);
+    if (!ids.length) throw bad('اختار طالب واحد على الأقل', 'ATTENDANCE_NONE');
+    await conn.beginTransaction();
+    const out = { marked: 0, already: 0, failed: 0 };
+    for (const subscriberId of ids) {
+      try {
+        await markRoundAttendance(conn, { tenantId: me.tenantId, roundId: round.id, subscriberId, sessionNumber: req.body?.sessionNumber, markedBy: me.staffId, req });
+        out.marked += 1;
+      } catch (error) {
+        if (error?.code === 'ATTENDANCE_ALREADY_MARKED') out.already += 1;
+        else if (error?.attendance && error.statusCode === 409 && error.code === 'ROUND_FINISHED') throw bad('الروند خلص — مينفعش تسجل حضور', 'ROUND_FINISHED', 409);
+        else if (error?.attendance) out.failed += 1;
+        else throw error;
+      }
+    }
+    await conn.commit();
+    res.json({ ok: true, ...out });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    fail(res, error, 'attendance:mark');
+  } finally { conn.release(); }
+});
+
+router.delete('/api/staff/lecturer/rounds/:roundId/attendance/:subscriberId/:sessionNumber', ...guard, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const me = req.lecturer;
+    const round = await ownRound(me, req.params.roundId);
+    await conn.beginTransaction();
+    await unmarkRoundAttendance(conn, { tenantId: me.tenantId, roundId: round.id, subscriberId: req.params.subscriberId, sessionNumber: Number(req.params.sessionNumber), req });
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    fail(res, error, 'attendance:unmark');
+  } finally { conn.release(); }
+});
+
+// ── Payout request ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// «طلب صرف»: tells the accounts team, once every three days, what is approved and not yet paid — the payroll still pays it.
+router.post('/api/staff/lecturer/payout-request', ...guard, async (req, res) => {
+  try {
+    const me = req.lecturer;
+    const { totals } = await earningsOf(pool, me);
+    if (!(totals.approved > 0)) throw bad('مفيش مبلغ معتمد ينفع يتطلب صرفه دلوقتي', 'PAYOUT_NOTHING', 409);
+    const [[recent]] = await pool.query(
+      `SELECT 1 AS ok FROM notifications WHERE tenant_id=? AND type='payroll' AND title=? AND data_json LIKE ?
+          AND created_at >= NOW() - INTERVAL 3 DAY LIMIT 1`,
+      [me.tenantId, PAYOUT_TITLE, `%"staffId":"${me.staffId}"%`]);
+    if (recent) throw bad('طلبت الصرف قريب — الحسابات شافت الطلب، استنى 3 أيام قبل ما تبعته تاني', 'PAYOUT_RECENT', 429);
+    await createNotification('payroll', PAYOUT_TITLE, `${me.name} بيطلب صرف مستحقاته المعتمدة: ${totals.approved} ج.م`, { staffId: me.staffId, amount: totals.approved }, me.tenantId);
+    res.json({ ok: true, amount: totals.approved });
+  } catch (error) { fail(res, error, 'payout-request'); }
 });
 
 // ── Notifications ────────────────────────────────────────────────────────────
@@ -360,6 +463,12 @@ router.post('/api/staff/lecturer/notifications/read', ...guard, async (req, res)
     await pool.query('UPDATE notifications SET read_at=NOW() WHERE tenant_id=? AND recipient_staff_id=? AND read_at IS NULL', [me.tenantId, me.staffId]);
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'notifications:read'); }
+});
+
+// The lecturer's photo, stored like every picture the site shows (lib/mediaImages.js) — what the profile and their community posts carry.
+router.post('/api/staff/lecturer/media/image', ...guard, async (req, res) => {
+  try { res.json(await storeMediaImage({ tenantId: req.lecturer.tenantId, dataUrl: req.body?.dataUrl, kind: 'photo' })); }
+  catch (error) { sendRouteError(res, error); }
 });
 
 // ── Profile ──────────────────────────────────────────────────────────────────
@@ -409,12 +518,11 @@ router.post('/api/staff/lecturer/community/posts', ...guard, async (req, res) =>
     const body = clean(req.body?.body, 5000);
     if (!title || !body) throw bad('اكتب العنوان والمنشور', 'POST_REQUIRED');
     const id = `post-${uuidv4()}`;
-    const image = clean(req.body?.imageUrl, 2000);
     await pool.query(
       `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, staff_id, image_url, tags, featured, pinned, likes, status, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,0,0,0,'approved',?)`,
       [id, me.tenantId, title, clean(req.body?.category, 100) || 'general', body, me.name, 'محاضر', me.staffId,
-        /^(https?:\/\/|\/uploads\/)/i.test(image) ? image : null, JSON.stringify(Array.isArray(req.body?.tags) ? req.body.tags.slice(0, 8).map(tag => clean(tag, 40)) : []), new Date().toISOString()]);
+        me.therapist?.image || null, JSON.stringify(Array.isArray(req.body?.tags) ? req.body.tags.slice(0, 8).map(tag => clean(tag, 40)) : []), new Date().toISOString()]);
     cacheInvalidate(`community:${me.tenantId}`);
     res.json({ ok: true, id });
   } catch (error) { fail(res, error, 'community:post'); }
@@ -449,6 +557,21 @@ router.post('/api/staff/lecturer/community/posts/:id/like', ...guard, async (req
   } catch (error) { fail(res, error, 'community:like'); }
 });
 
+// A comment on the lecturer's own post, or one they wrote, can be taken down; nobody else's post is theirs to moderate.
+router.delete('/api/staff/lecturer/community/comments/:id', ...guard, async (req, res) => {
+  try {
+    const me = req.lecturer;
+    const [result] = await pool.query(
+      `DELETE c FROM community_post_comments c
+         LEFT JOIN community_posts p ON p.id=c.post_id AND p.tenant_id=c.tenant_id
+        WHERE c.tenant_id=? AND c.id=? AND (c.subscriber_id=? OR p.staff_id=?)`,
+      [me.tenantId, req.params.id, `staff:${me.staffId}`, me.staffId]);
+    if (!result.affectedRows) throw bad('التعليق ده مش على منشورك ومش تعليقك', 'COMMENT_NOT_YOURS', 404);
+    cacheInvalidate(`community:${me.tenantId}`);
+    res.json({ ok: true });
+  } catch (error) { fail(res, error, 'community:comment-delete'); }
+});
+
 router.delete('/api/staff/lecturer/community/posts/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
@@ -457,6 +580,39 @@ router.delete('/api/staff/lecturer/community/posts/:id', ...guard, async (req, r
     cacheInvalidate(`community:${me.tenantId}`);
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'community:delete'); }
+});
+
+// ── The client rates a consultation (their own link, lib/consultationRating.js) ─────────────────────────────────────────
+
+async function ratableConsultation(id, token) {
+  if (!validRatingToken(id, token)) throw bad('الرابط غير صالح أو انتهت صلاحيته', 'RATING_LINK', 404);
+  const [[row]] = await pool.query(
+    `SELECT c.id, c.tenant_id, c.therapist_id, c.status, t.name AS therapist_name
+       FROM consultations c LEFT JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
+      WHERE c.id=? AND c.deleted_at IS NULL LIMIT 1`, [id]);
+  if (!row || row.status !== 'COMPLETED') throw bad('الرابط غير صالح أو انتهت صلاحيته', 'RATING_LINK', 404);
+  return row;
+}
+
+router.get('/api/public/consultation-rating/:id', publicLimiter, async (req, res) => {
+  try {
+    const row = await ratableConsultation(req.params.id, req.query.t);
+    const [[rated]] = await pool.query('SELECT 1 AS ok FROM consultation_ratings WHERE tenant_id=? AND consultation_id=? LIMIT 1', [row.tenant_id, row.id]);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ therapistName: row.therapist_name || '', rated: Boolean(rated) });
+  } catch (error) { fail(res, error, 'consultation-rating:read'); }
+});
+
+router.post('/api/public/consultation-rating/:id', publicLimiter, async (req, res) => {
+  try {
+    const row = await ratableConsultation(req.params.id, req.query.t);
+    await saveConsultationRating(pool, { tenantId: row.tenant_id, consultation: row, rating: req.body?.rating, comment: req.body?.comment });
+    // A low rating is the lecturer's and the desk's to hear of at once.
+    if (Number(req.body?.rating) <= 2 && row.therapist_id) {
+      createNotification('consultation', '⚠️ تقييم منخفض لاستشارة', `${row.therapist_name || 'المحاضر'}: ${Number(req.body.rating)} من 5`, { consultationId: row.id }, row.tenant_id).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (error) { fail(res, error, 'consultation-rating:save'); }
 });
 
 module.exports = router;

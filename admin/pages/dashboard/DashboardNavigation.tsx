@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
-import { hasPermission } from '../../constants/permissions';
+import { hasPermission, LECTURER_ROLES } from '../../constants/permissions';
 import { NotificationsBell, type NotificationsBellProps } from './NotificationsBell';
 import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
 import type { StaffMember } from '../../types';
@@ -423,7 +423,7 @@ export function DashboardNavigation(props: Props) {
 
               {/* Controls */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {currentStaff && ['instructor', 'trainer', 'consultant', 'expert'].includes(currentStaff.role) && (
+                {currentStaff && LECTURER_ROLES.includes(currentStaff.role) && (
                   <button
                     onClick={() => navigate('/lecturer-portal')}
                     className="w-8 h-8 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 grid place-items-center transition"

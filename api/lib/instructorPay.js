@@ -173,7 +173,44 @@ async function recordRetentionBonus(db, { tenantId, payment, amountEgp, actor = 
 
 const round2 = n => Math.round(Number(n) * 100) / 100;
 
+/**
+ * A consultation completed is a fee for the lecturer behind its therapist profile, by the rate on their file
+ * (instructor_rates.consultation_rate_type): a fixed amount per session, a percentage of what the client paid, or an hourly
+ * rate over the session's length. Recorded 'pending' for the accounts team, once per consultation (source_key).
+ */
+async function recordConsultationFee(db, { tenantId, consultation, actor = null }) {
+  const staffId = await instructorStaffId(db, { tenantId, instructorId: consultation.therapist_id });
+  if (!staffId) return { recorded: false, reason: 'no_staff_account' };
+  const [[rate]] = await db.query(
+    `SELECT consultation_rate_type, consultation_rate_value, currency FROM instructor_rates WHERE tenant_id=? AND staff_id=? LIMIT 1`,
+    [tenantId, staffId]);
+  const value = Number(rate?.consultation_rate_value);
+  if (!rate || !(value > 0)) return { recorded: false, reason: 'no_consultation_rate' };
+  const minutes = Number(consultation.session_duration_minutes) || 60;
+  let total; let currency = rate.currency || 'EGP'; let hours = null; let ratePerHour = null; let fixed = null;
+  if (rate.consultation_rate_type === 'percentage') {
+    if (!(Number(consultation.amount) > 0)) return { recorded: false, reason: 'no_amount' };
+    total = round2(Number(consultation.amount) * Math.min(100, value) / 100);
+    currency = consultation.currency || currency;
+  } else if (rate.consultation_rate_type === 'per_hour') {
+    hours = round2(minutes / 60); ratePerHour = round2(value); total = round2(value * hours);
+  } else {
+    fixed = round2(value); total = fixed;
+  }
+  if (!(total > 0)) return { recorded: false, reason: 'zero' };
+  const day = require('./dates').cairoToday();
+  const [result] = await db.query(
+    `INSERT IGNORE INTO instructor_fees
+       (id, tenant_id, staff_id, fee_type, hours, rate_per_hour, fixed_amount, total_amount, currency, period_month, period_year,
+        status, note, created_by, source_key, lecture_date)
+     VALUES (?,?,?,'consultation',?,?,?,?,?,?,?,'pending',?,?,?,?)`,
+    [uuidv4(), tenantId, staffId, hours, ratePerHour, fixed, total, currency, Number(day.slice(5, 7)), Number(day.slice(0, 4)),
+      `استشارة ${consultation.client_name || ''}`.trim(), actor, `consultation:${consultation.id}`, day]);
+  return { recorded: result.affectedRows > 0, amount: total };
+}
+
 module.exports = {
+  recordConsultationFee,
   DEFAULT_LECTURE_HOURS,
   instructorStaffId,
   instructorRate,

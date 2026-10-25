@@ -5737,6 +5737,23 @@ CREATE TABLE `therapist_blocked_dates` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
+-- Table structure for table `consultation_ratings` (migration 304: the client's stars for a completed consultation)
+--
+
+CREATE TABLE `consultation_ratings` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `consultation_id` varchar(36) NOT NULL,
+  `therapist_id` varchar(36) DEFAULT NULL,
+  `rating` tinyint(3) unsigned NOT NULL,
+  `comment` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_consultation_rating` (`tenant_id`,`consultation_id`),
+  KEY `idx_consultation_rating_therapist` (`tenant_id`,`therapist_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
 -- Table structure for table `therapists`
 --
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Wallet } from 'lucide-react';
+import { Banknote, Download, Printer, Wallet } from 'lucide-react';
 import { cairoDateOnly, cairoDay } from '../../../shared/cairoDate';
 import { downloadCsv } from '../../../shared/csv';
+import { escapeHtml } from '../../lib/safeHtml';
 import { errorText, lecturerApi, money, type Earnings, type Notify } from './lecturerApi';
 import { Card, Empty, field, Loading, quietButton, Stat } from './ui';
 
@@ -37,6 +38,27 @@ export function LecturerEarnings({ notify }: { notify: Notify }) {
     ]);
   };
 
+  // «كشف حساب» to print or save as PDF: what the lecturer gives the accounts team with the period's lectures.
+  const printStatement = () => {
+    if (!data) return;
+    const period = month ? `${MONTHS[month - 1]} ${year}` : 'كل الفترات';
+    const rows = data.fees.filter(fee => fee.status !== 'rejected').map(fee => {
+      const when = fee.month && fee.year ? `${MONTHS[fee.month - 1]} ${fee.year}` : cairoDay(fee.createdAt);
+      return `<tr><td>${escapeHtml(fee.label)}</td><td>${escapeHtml(fee.course || '—')}</td><td>${escapeHtml(when)}</td><td>${escapeHtml(money(fee.amount, fee.currency))}</td><td>${escapeHtml(STATUS[fee.status]?.label || fee.status)}</td></tr>`;
+    }).join('');
+    const w = window.open('', '_blank');
+    if (!w) { notify('error', 'المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة'); return; }
+    w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>كشف حساب محاضر</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{margin:0 0 4px;font-size:22px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 12px;border:1px solid #ddd;text-align:right;font-size:13px}th{background:#f5f5f5}.t{display:flex;gap:24px;margin-top:12px;font-size:14px}</style></head><body><h1>معهد الدراسات النفسية — كشف حساب محاضر</h1><p>الفترة: ${escapeHtml(period)}</p><div class="t"><span>مستني اعتماد: <b>${escapeHtml(money(data.totals.waiting))}</b></span><span>معتمد: <b>${escapeHtml(money(data.totals.approved))}</b></span><span>اتصرف: <b>${escapeHtml(money(data.totals.paid))}</b></span></div><table><thead><tr><th>البند</th><th>الكورس</th><th>الشهر</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  const requestPayout = async () => {
+    try { const result = await lecturerApi.requestPayout(); notify('success', `اتبعت طلب صرف ${money(result.amount)} للحسابات`); }
+    catch (error) { notify('error', errorText(error)); }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end gap-2">
@@ -46,6 +68,8 @@ export function LecturerEarnings({ notify }: { notify: Notify }) {
         {month > 0 && <label className="text-xs font-bold text-gray-600">السنة
           <input type="number" className={`${field} !w-24`} value={year} onChange={e => setYear(Number(e.target.value))} /></label>}
         <button type="button" className={quietButton} onClick={exportCsv} disabled={!data || data.fees.length === 0}><Download size={15} /> تصدير كشف الحساب</button>
+        <button type="button" className={quietButton} onClick={printStatement} disabled={!data || data.fees.length === 0}><Printer size={15} /> طباعة كشف الحساب</button>
+        <button type="button" className={quietButton} onClick={() => void requestPayout()} disabled={!data || data.totals.approved <= 0}><Banknote size={15} /> اطلب صرف المعتمد</button>
       </div>
       {!data ? <Loading /> : (<>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { GraduationCap, Search, Video } from 'lucide-react';
 import { cairoDateTime } from '../../../shared/cairoDate';
 import { errorText, lecturerApi, type Notify, type Students } from './lecturerApi';
+import { LecturerAttendance } from './LecturerAttendance';
 import { Card, Empty, field, Loading, Stat } from './ui';
 
 const SLOT: Record<string, string> = { morning: 'صباحاً', noon: 'ظهراً', evening: 'مساءً' };
@@ -11,6 +12,7 @@ const STATE: Record<string, string> = { new: 'جديد', active: 'شغال', fin
 export function LecturerStudents({ notify }: { notify: Notify }) {
   const [data, setData] = useState<Students | null>(null);
   const [query, setQuery] = useState('');
+  const [attendanceOf, setAttendanceOf] = useState('');
   useEffect(() => {
     lecturerApi.students().then(setData).catch(error => { notify('error', errorText(error, 'تعذر تحميل الطلاب')); });
   }, [notify]);
@@ -39,6 +41,7 @@ export function LecturerStudents({ notify }: { notify: Notify }) {
       </div>
 
       <Card title="رونداتي" icon={<GraduationCap size={18} className="text-violet-600" />}>
+        {attendanceOf && <LecturerAttendance key={attendanceOf} roundId={attendanceOf} notify={notify} onClose={() => setAttendanceOf('')} />}
         {data.roundsList.length === 0 ? <Empty>مفيش رونداتي مسجلة باسمك.</Empty> : (
           <div className="grid gap-2 md:grid-cols-2">
             {data.roundsList.map(round => (
@@ -46,6 +49,11 @@ export function LecturerStudents({ notify }: { notify: Notify }) {
                 <p className="font-bold text-gray-900">{round.courseTitle} <span className="text-xs font-normal text-gray-500">· روند {round.code}</span></p>
                 <p className="text-xs text-gray-500">{round.day} · {SLOT[round.slot] || round.slot} · بدأ {round.startDate} · {STATE[round.status] || round.status}</p>
                 <p className="mt-1 text-xs"><b>{round.attendees}</b> طالب · المحاضرة <b>{round.currentLecture}</b></p>
+                {round.status !== 'finished' && (
+                  <button type="button" onClick={() => setAttendanceOf(attendanceOf === round.id ? '' : round.id)} className="mt-2 text-xs font-bold text-primary-700 hover:underline">
+                    {attendanceOf === round.id ? 'إخفاء الحضور' : 'سجّل الحضور'}
+                  </button>
+                )}
               </div>
             ))}
           </div>

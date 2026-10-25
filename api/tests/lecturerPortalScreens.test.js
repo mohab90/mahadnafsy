@@ -14,7 +14,7 @@ const read = relative => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('the portal is a route of its own and the lecturer roles are sent to it', () => {
   assert.match(read('admin/App.tsx'), /<Route path="\/lecturer-portal" element=\{\s*<StaffRoute><LecturerPortal \/><\/StaffRoute>/);
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
-  assert.match(nav, /\['instructor', 'trainer', 'consultant', 'expert'\]\.includes\(currentStaff\.role\)/);
+  assert.match(nav, /LECTURER_ROLES\.includes\(currentStaff\.role\)/);
   assert.match(nav, /navigate\('\/lecturer-portal'\)/);
 });
 

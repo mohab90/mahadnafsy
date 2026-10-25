@@ -30,6 +30,7 @@ const InstituteGallery = React.lazy(() => import('./pages/InstituteGallery'));
 const Contact = React.lazy(() => import('./pages/Contact'));
 const Faq = React.lazy(() => import('./pages/Faq'));
 const TicketRating = React.lazy(() => import('./pages/TicketRating'));
+const ConsultationRating = React.lazy(() => import('./pages/ConsultationRating'));
 const JoinTeaching = React.lazy(() => import('./pages/JoinTeaching'));
 const JoinStaff = React.lazy(() => import('./pages/JoinStaff'));
 const Enrollment = React.lazy(() => import('./pages/Enrollment'));
@@ -560,6 +561,7 @@ const AppShell: React.FC = () => {
               <Route path="/contact" element={lazyPage(<Contact />)} />
               <Route path="/faq" element={lazyPage(<Faq />)} />
               <Route path="/ticket-rating" element={lazyPage(<TicketRating />)} />
+              <Route path="/consultation-rating" element={lazyPage(<ConsultationRating />)} />
               <Route path="/join" element={lazyPage(<JoinTeaching />)} />
               <Route path="/join-us" element={lazyPage(<JoinStaff />)} />
               <Route path="/enroll" element={lazyPage(<Enrollment />)} />

@@ -10,6 +10,7 @@ export function LecturerProfile({ notify }: { notify: Notify }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [form, setForm] = useState({ title: '', specialty: '', bio: '', image: '' });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     lecturerApi.profile().then(result => {
@@ -19,6 +20,16 @@ export function LecturerProfile({ notify }: { notify: Notify }) {
   }, [notify]);
 
   if (!profile) return <Loading />;
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await lecturerApi.uploadPhoto(file);
+      setForm(current => ({ ...current, image: url }));
+      notify('info', 'اترفعت الصورة — اضغط حفظ');
+    } catch (error) { notify('error', errorText(error, 'تعذر رفع الصورة — جرّب صورة أصغر')); } finally { setUploading(false); }
+  };
+
   const save = async () => {
     setSaving(true);
     try { await lecturerApi.saveProfile(form); notify('success', 'اتحفظ الملف — بيظهر للعملاء في صفحتك'); }
@@ -36,7 +47,15 @@ export function LecturerProfile({ notify }: { notify: Notify }) {
           <div className="grid gap-3 md:grid-cols-2">
             <label className="text-xs font-bold text-gray-600">اللقب<input className={field} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="مثلاً: استشاري العلاج المعرفي السلوكي" /></label>
             <label className="text-xs font-bold text-gray-600">التخصص<input className={field} value={form.specialty} onChange={e => setForm({ ...form, specialty: e.target.value })} /></label>
-            <label className="text-xs font-bold text-gray-600 md:col-span-2">رابط الصورة<input dir="ltr" className={field} value={form.image} onChange={e => setForm({ ...form, image: e.target.value })} placeholder="https://…" /></label>
+            <div className="flex items-center gap-3 md:col-span-2">
+              {form.image
+                ? <img src={form.image} alt={profile.name} className="h-16 w-16 rounded-2xl border border-gray-200 object-cover" />
+                : <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gray-100 text-gray-400"><UserRound size={22} /></div>}
+              <label className="cursor-pointer rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50">
+                {uploading ? 'جارٍ الرفع…' : 'ارفع صورتك'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploading} onChange={e => void upload(e.target.files?.[0])} />
+              </label>
+            </div>
             <label className="text-xs font-bold text-gray-600 md:col-span-2">نبذة عنك<textarea rows={5} className={field} value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} /></label>
           </div>
           <p className="text-xs text-gray-500">الاستشارات {profile.consultation.enabled ? 'مفعّلة' : 'مش مفعّلة'} على حسابك · مدة الجلسة {profile.consultation.sessionDurationMinutes} دقيقة (الإدارة هي اللي تغيّرها).</p>

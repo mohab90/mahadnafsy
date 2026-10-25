@@ -1,6 +1,7 @@
 'use strict';
 const logger = require('../../lib/logger');
 const { announceLiveStream } = require('../../lib/liveStreams');
+const { onConsultationCompleted } = require('../../lib/consultationCompletion');
 const crypto   = require('crypto');
 const express  = require('express');
 const router   = express.Router();
@@ -608,6 +609,8 @@ router.patch('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, r
       [...params, req.params.id, req.tenantId]
     );
     if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });
+    // Completed: the lecturer's fee is recorded and the client is asked to rate it (lib/consultationCompletion.js).
+    if (String(status || '').toUpperCase() === 'COMPLETED') await onConsultationCompleted(pool, { tenantId: req.tenantId, consultationId: req.params.id, actor: req.staffRecord?.id || null });
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

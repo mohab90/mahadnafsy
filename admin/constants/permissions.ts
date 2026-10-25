@@ -54,6 +54,9 @@ export const ROLE_LABELS: Record<RoleKey, string> = {
 };
 
 // ── 3. PERMISSIONS ────────────────────────────────────────────────────────────
+/** The jobs that get the lecturer's portal (mirrors api/lib/lecturerPortal.js LECTURER_ROLES): where they land after signing in. */
+export const LECTURER_ROLES: readonly string[] = ['instructor', 'trainer', 'consultant', 'expert'];
+
 export const PERMISSIONS = {
   VIEW_DASHBOARD:           'view_dashboard',
   VIEW_LEADS:               'view_leads',

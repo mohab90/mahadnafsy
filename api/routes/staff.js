@@ -24,6 +24,7 @@ const { hasPermission, normalizeDataScope, resolveDataScope, resolvePermissions,
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
 const { consultationClock } = require('../lib/consultationRequests');
+const { onConsultationCompleted } = require('../lib/consultationCompletion');
 const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
 const { branchIdForBranch } = require('../lib/branches');
 
@@ -153,6 +154,7 @@ router.patch('/api/staff/therapist-portal/consultations/:id', requireAuth, requi
       [...params, req.params.id, req.tenantId, staffId]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Assigned consultation not found' });
+    if (String(req.body?.status || '').toUpperCase() === 'COMPLETED') await onConsultationCompleted(pool, { tenantId: req.tenantId, consultationId: req.params.id, actor: staffId });
     res.json({ ok: true });
   } catch (e) {
     routeError(res, e, 'therapist consultation update failed');

@@ -1,3 +1,4 @@
+import { compressImage } from '../../../shared/imageCompress';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
 // «حساب محاضر»: the lecturer's own portal talks to /api/staff/lecturer/* (api/routes/lecturer-portal.js) — every answer is
@@ -38,8 +39,9 @@ export type Reviews = {
   summary: {
     instructorScore: number | null; materialScore: number | null; deliveryScore: number | null; roundRatings: number;
     courseStars: number | null; courseRatings: number; distribution: Array<{ stars: number; count: number }>;
+    consultationStars: number | null; consultationRatings: number;
   };
-  items: Array<{ id: string; kind: 'round' | 'course'; score: number; outOf: number; note: string; course: string; client: string; at: string }>;
+  items: Array<{ id: string; kind: 'round' | 'course' | 'consultation'; score: number; outOf: number; note: string; course: string; client: string; at: string }>;
 };
 
 export type Students = {
@@ -55,6 +57,11 @@ export type Earnings = {
   byType: Array<{ type: string; label: string; count: number; total: number }>;
   fees: Array<{ id: string; type: string; label: string; amount: number; currency: string; status: string; month: number | null; year: number | null; course: string; note: string; hours: number | null; createdAt: string; paidAt: string | null }>;
   payslips: Array<{ month: number; year: number; status: string; net: number; commission: number; bonus: number }>;
+};
+
+export type RoundAttendance = {
+  round: { id: string; code: string; status: string; course: string; session: number };
+  attendees: Array<{ subscriberId: string; name: string; attended: number; sessions: number[] }>;
 };
 
 export type LecturerNotification = { id: string; type: string; title: string; message: string; read: boolean; at: string };
@@ -100,6 +107,18 @@ export const lecturerApi = {
   post: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string }>('/staff/lecturer/community/posts', body),
   comment: (postId: string, body: string) => mysqlAdmin.adminPost(`/staff/lecturer/community/posts/${encodeURIComponent(postId)}/comments`, { body }),
   like: (postId: string) => mysqlAdmin.adminPost(`/staff/lecturer/community/posts/${encodeURIComponent(postId)}/like`, {}),
+  deleteComment: (commentId: string) => mysqlAdmin.adminDelete(`/staff/lecturer/community/comments/${encodeURIComponent(commentId)}`),
+  uploadPhoto: async (file: File) => {
+    const dataUrl = await compressImage(file, 'photo');
+    const { url } = await mysqlAdmin.adminPost<{ url: string }>('/staff/lecturer/media/image', { dataUrl });
+    return url;
+  },
+  roundAttendance: (roundId: string) => get<RoundAttendance>(`rounds/${encodeURIComponent(roundId)}/attendance`),
+  markAttendance: (roundId: string, subscriberIds: string[]) =>
+    mysqlAdmin.adminPost<{ marked: number; already: number; failed: number }>(`/staff/lecturer/rounds/${encodeURIComponent(roundId)}/attendance`, { subscriberIds }),
+  unmarkAttendance: (roundId: string, subscriberId: string, session: number) =>
+    mysqlAdmin.adminDelete(`/staff/lecturer/rounds/${encodeURIComponent(roundId)}/attendance/${encodeURIComponent(subscriberId)}/${session}`),
+  requestPayout: () => mysqlAdmin.adminPost<{ amount: number }>('/staff/lecturer/payout-request', {}),
   deletePost: (postId: string) => mysqlAdmin.adminDelete(`/staff/lecturer/community/posts/${encodeURIComponent(postId)}`),
 };
 

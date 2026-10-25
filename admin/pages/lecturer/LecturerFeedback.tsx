@@ -17,11 +17,12 @@ export function LecturerFeedback({ notify }: { notify: Notify }) {
   const top = Math.max(1, ...summary.distribution.map(row => row.count));
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="تقييم المحاضر (الروندات)" value={score(summary.instructorScore, 10)} tone="emerald" hint={`${summary.roundRatings} تقييم`} />
         <Stat label="تقييم المادة" value={score(summary.materialScore, 10)} tone="blue" />
         <Stat label="تقييم الشرح" value={score(summary.deliveryScore, 10)} tone="violet" />
         <Stat label="نجوم الكورسات" value={score(summary.courseStars, 5)} tone="amber" hint={`${summary.courseRatings} تقييم`} />
+        <Stat label="نجوم الاستشارات" value={score(summary.consultationStars, 5)} tone="red" hint={`${summary.consultationRatings} تقييم`} />
       </div>
       <Card title="توزيع نجوم الكورسات" icon={<Star size={18} className="text-amber-500" />}>
         {summary.courseRatings === 0 ? <p className="text-sm text-gray-500">مفيش تقييمات بالنجوم لسه.</p> : (

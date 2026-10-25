@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
+import { LECTURER_ROLES } from '../constants/permissions';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -43,7 +44,7 @@ const Auth: React.FC = () => {
         if (staffCheckDoneRef.current) return;
         staffCheckDoneRef.current = true;
         mysqlClient.checkIsStaff()
-            .then(r => navigate(r.isStaff ? '/dashboard' : '/'))
+            .then(r => navigate(r.isStaff ? (LECTURER_ROLES.includes(String(r.role || '').toLowerCase()) ? '/lecturer-portal' : '/dashboard') : '/'))
             .catch(() => navigate('/'));
     }, [authUser, isAdmin, navigate]);
 

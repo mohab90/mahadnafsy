@@ -6,7 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
-const route = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'utf8');
+// The marking moved out of the route into lib/daqqiAttendanceMark.js (25 Oct 2026), so the lecturer's own portal and the
+// desk mark in one way; the two are read together.
+const route = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'utf8')
+  + fs.readFileSync(path.join(root, 'api/lib/daqqiAttendanceMark.js'), 'utf8');
 // The Dokki schedule is two files since the table was split: the tab owns the
 // rounds and the writes, the row renders one round and its attendees.
 const scheduleTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), 'utf8');

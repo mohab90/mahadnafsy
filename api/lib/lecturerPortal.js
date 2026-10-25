@@ -72,7 +72,7 @@ async function myRounds(db, { tenantId, staffId }) {
  * What a lecturer's students and the rating of the lecturer come to. Ratings: the branch desk's 1–10 marks of a round
  * (client_ratings, by the round or by the lecturer's name) and the 1–5 stars clients give a course (course_ratings).
  */
-async function reviewsOf(db, { tenantId, staffId, name }) {
+async function reviewsOf(db, { tenantId, staffId, name, therapistId = null }) {
   const [instructor] = await db.query(
     `SELECT cr.id, cr.instructor_score, cr.material_score, cr.delivery_score, cr.note, cr.created_at,
             c.title AS course_title, s.name AS client_name
@@ -90,6 +90,11 @@ async function reviewsOf(db, { tenantId, staffId, name }) {
        LEFT JOIN subscribers s ON s.id=r.subscriber_id AND s.tenant_id=r.tenant_id
       WHERE r.tenant_id=? ORDER BY r.created_at DESC LIMIT 200`,
     [staffId, tenantId]);
+  // The client's stars for a consultation (lib/consultationRating.js).
+  const [consults] = therapistId ? await db.query(
+    `SELECT r.id, r.rating, r.comment, r.created_at, c.client_name
+       FROM consultation_ratings r LEFT JOIN consultations c ON c.id=r.consultation_id AND c.tenant_id=r.tenant_id
+      WHERE r.tenant_id=? AND r.therapist_id=? ORDER BY r.created_at DESC LIMIT 200`, [tenantId, therapistId]) : [[]];
   const mean = (rows, key) => (rows.length ? round2(rows.reduce((sum, row) => sum + Number(row[key]), 0) / rows.length) : null);
   const distribution = Array.from({ length: 5 }, (_, i) => ({ stars: 5 - i, count: stars.filter(row => Number(row.rating) === 5 - i).length }));
   return {
@@ -97,12 +102,17 @@ async function reviewsOf(db, { tenantId, staffId, name }) {
       instructorScore: mean(instructor, 'instructor_score'), materialScore: mean(instructor, 'material_score'),
       deliveryScore: mean(instructor, 'delivery_score'), roundRatings: instructor.length,
       courseStars: mean(stars, 'rating'), courseRatings: stars.length, distribution,
+      consultationStars: mean(consults, 'rating'), consultationRatings: consults.length,
     },
     // First names only: the lecturer reads what was said, not who the client is.
     items: [
       ...instructor.map(row => ({
         id: `r:${row.id}`, kind: 'round', score: Number(row.instructor_score), outOf: 10, note: row.note || '',
         course: row.course_title || '', client: firstName(row.client_name), at: row.created_at,
+      })),
+      ...consults.map(row => ({
+        id: `s:${row.id}`, kind: 'consultation', score: Number(row.rating), outOf: 5, note: row.comment || '',
+        course: 'استشارة', client: firstName(row.client_name), at: row.created_at,
       })),
       ...stars.map(row => ({
         id: `c:${row.id}`, kind: 'course', score: Number(row.rating), outOf: 5, note: row.comment || '',
@@ -227,7 +237,7 @@ async function overviewOf(db, context) {
             (SELECT COUNT(DISTINCT a.subscriber_id) FROM daqqi_attendees a
                JOIN daqqi_rounds r ON r.id=a.round_id AND r.tenant_id=a.tenant_id AND r.instructor_id=? AND r.status<>'FINISHED'
               WHERE a.tenant_id=?) AS rounds`, [staffId, tenantId, staffId, tenantId]);
-  const reviews = await reviewsOf(db, { tenantId, staffId, name: context.name });
+  const reviews = await reviewsOf(db, { tenantId, staffId, name: context.name, therapistId: therapist?.id || null });
   const earnings = await earningsOf(db, { tenantId, staffId });
   const [[unread]] = await db.query(
     'SELECT COUNT(*) AS n FROM notifications WHERE tenant_id=? AND recipient_staff_id=? AND read_at IS NULL', [tenantId, staffId]);
@@ -236,7 +246,7 @@ async function overviewOf(db, context) {
     consultations,
     consultationsEnabled: Boolean(therapist?.is_consultation_enabled),
     students: { online: Number(students?.online) || 0, rounds: Number(students?.rounds) || 0 },
-    rating: { instructor: reviews.summary.instructorScore, course: reviews.summary.courseStars, count: reviews.summary.roundRatings + reviews.summary.courseRatings },
+    rating: { instructor: reviews.summary.instructorScore, course: reviews.summary.courseStars, count: reviews.summary.roundRatings + reviews.summary.courseRatings + reviews.summary.consultationRatings },
     earnings: earnings.totals,
     unreadNotifications: Number(unread?.n) || 0,
   };

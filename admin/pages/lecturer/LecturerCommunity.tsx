@@ -40,6 +40,7 @@ export function LecturerCommunity({ notify, name }: { notify: Notify; name: stri
 
   const publish = () => run('post', async () => { await lecturerApi.post({ title: draft.title, body: draft.body }); setDraft({ title: '', body: '' }); }, 'اتنشر المنشور');
   const send = (post: CommunityPost) => run(`c:${post.id}`, async () => { await lecturerApi.comment(post.id, comment[post.id] || ''); setComment(current => ({ ...current, [post.id]: '' })); });
+  const removeComment = (commentId: string) => run(`x:${commentId}`, () => lecturerApi.deleteComment(commentId), 'اتمسح التعليق');
   const remove = async (post: CommunityPost) => { if (await confirmDialog('مسح المنشور ده؟')) await run(`d:${post.id}`, () => lecturerApi.deletePost(post.id), 'اتمسح المنشور'); };
 
   return (
@@ -72,7 +73,12 @@ export function LecturerCommunity({ notify, name }: { notify: Notify; name: stri
             {post.commentsList.length > 0 && (
               <ul className="space-y-1.5 border-t border-gray-100 pt-3">
                 {post.commentsList.map(item => (
-                  <li key={item.id} className="rounded-xl bg-gray-50 px-3 py-2 text-sm"><b className="text-gray-900">{item.author}</b> <span className="text-gray-700">{item.body}</span></li>
+                  <li key={item.id} className="flex items-start justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                    <span><b className="text-gray-900">{item.author}</b> <span className="text-gray-700">{item.body}</span></span>
+                    {((post.authorRole === 'محاضر' && post.authorName === name) || item.author === `${name} (محاضر)`) && (
+                      <button type="button" aria-label="مسح التعليق" onClick={() => void removeComment(item.id)} className="shrink-0 rounded-lg p-1 text-red-500 hover:bg-red-50"><Trash2 size={13} /></button>
+                    )}
+                  </li>
                 ))}
               </ul>
             )}
