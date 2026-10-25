@@ -448,6 +448,7 @@ export interface PaymentHistoryEntry {
   paymentMethod?: string;       // e.g. خزنة الفرع، فودافون كاش، انستا باي …
   fromAccountNumber?: string;   // Bank account / wallet number the transfer was made FROM
   senderName?: string;          // Name of whoever sent the transfer
+  proofUrl?: string;            // Google Drive link of the transfer screenshot the client uploaded
   transactionId?: string;       // Payment transaction / operation reference number
   isInstallment?: boolean;      // false/undefined = new booking, true = installment
   courseId?: string;            // Which course this payment applies to
@@ -712,6 +713,8 @@ export interface OrderItem {
   /** The transfer behind a desk payment: who sent it, and from which number or account. */
   senderName?: string;
   fromAccountNumber?: string;
+  /** The client's transfer screenshot on Google Drive. */
+  proofUrl?: string;
   status: 'paid' | 'failed' | 'refunded' | 'pending';
   createdAt: string;
   transactionId?: string;
@@ -936,6 +939,7 @@ export interface PaymentProof {
   currency: 'EGP' | 'SAR' | 'USD';
   payment_method: PaymentProofMethod | string;
   proof_image?: string | null;  // base64 data URL
+  proof_url?: string | null;    // Google Drive link of the screenshot, when Drive took it
   note?: string | null;
   status: PaymentProofStatus;
   reviewer_id?: string | null;

@@ -10,6 +10,7 @@ import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branche
 import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
 import { useClientRequests } from './ClientRequestRows';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { TransferProofLink } from '../../../../components/TransferProofLink';
 import { useCanDelete } from '../../../../hooks/useCanDelete';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { transferMatch } from '../../../../../shared/transferSheet';
@@ -380,7 +381,8 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                                   {row.transactionId && <div className="font-mono font-bold text-gray-800" dir="ltr">#{row.transactionId}</div>}
                                   {row.senderName && <div className="font-bold text-gray-700">{String(row.senderName)}</div>}
                                   {row.fromAccountNumber && <div className="font-mono text-gray-500" dir="ltr">{String(row.fromAccountNumber)}</div>}
-                                  {!row.transactionId && !row.senderName && !row.fromAccountNumber && <span className="text-gray-300">—</span>}
+                                  <TransferProofLink url={row.proofUrl} className="mt-0.5" />
+                                  {!row.transactionId && !row.senderName && !row.fromAccountNumber && !row.proofUrl && <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
                                   {typeBadge(row.type)}

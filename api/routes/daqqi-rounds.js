@@ -40,8 +40,7 @@ function roundsFilter(req, alias = '') {
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { attachAttendeeMoney } = require('../lib/daqqiAttendeeMoney');
-const { assignToRoundReception, hasRecordedPayment, seatSubscriberInRound } = require('../lib/daqqiHousing');
-const UNPAID_SEAT = 'العميل ده مالوش دفعة متسجلة للكورس — سجّل دفعته الأول وبعدين سكّنه';
+const { assignToRoundReception, seatSubscriberInRound } = require('../lib/daqqiHousing');
 const { ymd } = require('../lib/helpers');
 const { lectureToday, nextSessionDate } = require('../lib/daqqiLecture');
 const { branchIdForBranch } = require('../lib/branches');
@@ -622,13 +621,9 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
         // stays visible in the round (lib/daqqiAttendees.js), the desk posts them
         // back with everyone else — and requiring deleted_at IS NULL would fail
         // that row and take the whole save down with "Subscriber not found".
-        // Keeping an existing booking is allowed; making a new one is not.
+        // Keeping an existing booking is allowed, and so is making a new one with no payment
+        // recorded or a wrong amount: the money is reviewed after the seat.
         const alreadyBooked = persistedAttendance.has(String(subId));
-        if (!alreadyBooked && !(await hasRecordedPayment(conn, { tenantId: req.tenantId, subscriberId: subId, courseId }))) {
-          const error = new Error(`${a.name || 'عميل'}: ${UNPAID_SEAT}`);
-          error.statusCode = 409;
-          throw error;
-        }
         const attendedLectures = existing ? (persistedAttendance.get(String(subId)) || 0) : 0;
         if (!Number.isInteger(attendedLectures) || attendedLectures < 0 || attendedLectures > currentLecture) {
           const error = new Error('attendedLectures must be an integer within the round lecture count');
@@ -992,7 +987,6 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendees', requireAuth, requireAd
     }
     await conn.rollback();
     if (seat.status === 'already') return res.json({ ok: true, alreadyBooked: true, roundId: seat.roundId, code: seat.code });
-    if (seat.status === 'unpaid') return res.status(409).json({ error: UNPAID_SEAT, code: 'DAQQI_UNPAID' });
     if (seat.status === 'no_round') return res.status(404).json({ error: 'Round not found' });
     if (seat.status === 'archived') return res.status(409).json({ error: 'An archived client cannot be booked into a round' });
     return res.status(404).json({ error: 'Subscriber not found' });

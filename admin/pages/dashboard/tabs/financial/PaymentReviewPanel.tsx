@@ -3,6 +3,7 @@ import {
   CalendarDays, CheckCircle, CheckCircle2, Clock, Receipt, Search, Wallet, XCircle,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { TransferProofLink } from '../../../../components/TransferProofLink';
 import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } from '../../../../types';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
 import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
@@ -89,6 +90,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
           staffName: p.staffName ? String(p.staffName) : undefined,
           fromAccountNumber: p.fromAccountNumber ? String(p.fromAccountNumber) : undefined,
           senderName: p.senderName ? String(p.senderName) : undefined,
+          proofUrl: p.proofUrl ? String(p.proofUrl) : undefined,
           source: p.source ? String(p.source) : undefined,
           itemTitle: String(p.itemTitle || p.courseTitleAr || p.courseTitle || ''),
         } as ReviewPayment));
@@ -285,6 +287,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                     {p.senderName && <div className="text-[11px] font-bold text-gray-600">المحوّل: {p.senderName}</div>}
                     {p.fromAccountNumber && <div className="text-[11px] text-gray-500 font-mono" dir="ltr">{p.fromAccountNumber}</div>}
                     {p.transactionId && <div className="text-[11px] text-gray-500 font-mono" dir="ltr">#{p.transactionId}</div>}
+                    <TransferProofLink url={p.proofUrl} className="mt-0.5" />
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{p.staffName || '—'}</td>
                   <td className="px-4 py-3">{sourceBadgeEl(p.source, p.paymentMethod)}</td>
