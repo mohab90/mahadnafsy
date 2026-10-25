@@ -423,11 +423,11 @@ export function DashboardNavigation(props: Props) {
 
               {/* Controls */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {currentStaff && ['instructor', 'trainer'].includes(currentStaff.role) && (
+                {currentStaff && ['instructor', 'trainer', 'consultant', 'expert'].includes(currentStaff.role) && (
                   <button
-                    onClick={() => navigate('/therapist-portal')}
+                    onClick={() => navigate('/lecturer-portal')}
                     className="w-8 h-8 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 grid place-items-center transition"
-                    title="بوابة المحاضر وجلساتي"
+                    title="بوابة المحاضر — لايفاتي ومواعيدي وأرباحي"
                   >
                     <UserCheck size={15} />
                   </button>

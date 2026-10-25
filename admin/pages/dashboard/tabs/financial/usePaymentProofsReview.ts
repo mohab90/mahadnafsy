@@ -45,7 +45,8 @@ export function usePaymentProofsReview({
   const loadProofImg = (id: string) => {
     if (proofImages[id]) return;
     mysqlAdmin.getPaymentProofImage(id, branchFilter).then((result) => {
-      if (result.image) setProofImages((previous) => ({ ...previous, [id]: result.image }));
+      const { image } = result;
+      if (image) setProofImages((previous) => ({ ...previous, [id]: image }));
     }).catch(() => notify('error', 'تعذر تحميل صورة الإيصال.'));
   };
 

@@ -73,7 +73,9 @@ async function liveFields(me, body, { partial = false } = {}) {
     if (!out.title) throw bad('اكتب اسم اللايف', 'LIVE_TITLE');
   }
   if (!partial || body.scheduledAt !== undefined) {
-    const at = new Date(body.scheduledAt);
+    // The screen sends the UTC wall clock («YYYY-MM-DD HH:MM», as the administration's lives do) or an ISO instant.
+    const raw = String(body.scheduledAt || '').trim();
+    const at = new Date(/^d{4}-d{2}-d{2}[ T]d{2}:d{2}(:d{2})?$/.test(raw) ? `${raw.replace(' ', 'T')}${raw.length === 16 ? ':00' : ''}Z` : raw);
     if (Number.isNaN(at.getTime())) throw bad('حدّد تاريخ وساعة اللايف', 'LIVE_TIME');
     if (at.getTime() < Date.now() - 5 * 60 * 1000) throw bad('ميعاد اللايف لازم يكون في المستقبل', 'LIVE_PAST');
     out.scheduledAt = at;
