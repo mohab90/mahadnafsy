@@ -5754,6 +5754,57 @@ CREATE TABLE `consultation_ratings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
+-- Table structure for table `consultation_reschedules` (migration 306: a proposal to move a consultation)
+--
+
+CREATE TABLE `consultation_reschedules` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `consultation_id` varchar(36) NOT NULL,
+  `proposed_by` enum('lecturer','client') NOT NULL,
+  `old_session_at` datetime NOT NULL,
+  `new_session_at` datetime NOT NULL,
+  `new_slot_id` varchar(36) DEFAULT NULL,
+  `reason` varchar(500) DEFAULT NULL,
+  `status` enum('pending','accepted','declined','cancelled') NOT NULL DEFAULT 'pending',
+  `decision_note` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `decided_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_consultation_reschedules` (`tenant_id`,`consultation_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `box_balances` and `box_balance_events` (migration 305: the cash boxes' current balances)
+--
+
+CREATE TABLE `box_balances` (
+  `tenant_id` varchar(64) NOT NULL,
+  `method` varchar(191) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `opening_amount` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `baseline_at` datetime DEFAULT NULL,
+  `updated_by` varchar(255) DEFAULT NULL,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`method`,`currency`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `box_balance_events` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `method` varchar(191) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `kind` enum('reset','set_balance','set_total','reset_all') NOT NULL,
+  `balance_before` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `balance_after` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `note` varchar(500) DEFAULT NULL,
+  `actor` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_box_balance_events` (`tenant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
 -- Table structure for table `therapists`
 --
 

@@ -16,6 +16,9 @@ const {
   logger,
 } = require('./_shared');
 const { loadExpenseCategories, expenseCategoryLabel } = require('../../lib/expenseCategories');
+const { canonicalChannel } = require('../../lib/paymentChannels');
+const { hasPermission } = require('../../constants/permissions');
+const { GENERAL, currentBalances, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
 
 const router = Router();
 
@@ -155,31 +158,119 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
     const today = dateOnlyInTimeZone();
     const since = days => addDaysToDateOnly(today, 1 - days);
+    const yesterday = addDaysToDateOnly(today, -1);
     const [rows] = await pool.query(
       `SELECT COALESCE(NULLIF(REGEXP_REPLACE(TRIM(p.payment_method), ' {2,}', ' '), ''), 'غير محدد') AS method, p.currency,
               ${BOX_WINDOWS.map(days => `SUM(CASE WHEN p.date >= ? THEN p.amount ELSE 0 END) AS total_${days},
-              SUM(CASE WHEN p.date >= ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_${days}`).join(',\n              ')}
+              SUM(CASE WHEN p.date >= ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_${days}`).join(',\n              ')},
+              SUM(CASE WHEN p.date = ? THEN p.amount ELSE 0 END) AS total_y,
+              SUM(CASE WHEN p.date = ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_y
          FROM payments p
          LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
         WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND (p.status = 'paid' OR p.status IS NULL)
           AND p.date >= ? AND p.date <= ?${scope.branchId ? ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)' : ''}
         GROUP BY method, p.currency
         ORDER BY total_30 DESC`,
-      [...BOX_WINDOWS.flatMap(days => [since(days), since(days)]), req.tenantId, since(30), today,
+      [...BOX_WINDOWS.flatMap(days => [since(days), since(days)]), yesterday, yesterday, req.tenantId, since(30), today,
         ...(scope.branchId ? [scope.branchId] : [])]);
+    // One box per channel: «فودافون كاش 7722» typed two ways is one box (lib/paymentChannels.js).
+    const merged = new Map();
+    const emptyBox = (method, currency) => ({
+      method,
+      currency,
+      totals: Object.fromEntries(BOX_WINDOWS.map(days => [days, 0])),
+      counts: Object.fromEntries(BOX_WINDOWS.map(days => [days, 0])),
+      yesterday: { total: 0, count: 0 },
+    });
+    for (const row of rows) {
+      const method = canonicalChannel(row.method);
+      const currency = row.currency || 'EGP';
+      const box = merged.get(`${method}|${currency}`) || emptyBox(method, currency);
+      for (const days of BOX_WINDOWS) {
+        box.totals[days] = Math.round((box.totals[days] + (Number(row[`total_${days}`]) || 0)) * 100) / 100;
+        box.counts[days] += Number(row[`count_${days}`]) || 0;
+      }
+      box.yesterday.total = Math.round((box.yesterday.total + (Number(row.total_y) || 0)) * 100) / 100;
+      box.yesterday.count += Number(row.count_y) || 0;
+      merged.set(`${method}|${currency}`, box);
+    }
+    // The institute's boxes carry a balance; a branch sees only its own clients' money, which has none (lib/boxBalances.js).
+    let balances = null;
+    if (!scope.branchId) {
+      const current = await currentBalances(pool, { tenantId: req.tenantId });
+      const currencyOf = key => key.slice(key.lastIndexOf('|') + 1);
+      for (const [key, value] of current) {
+        if (key.startsWith(`${GENERAL}|`)) continue;
+        if (!merged.has(key) && value.balance !== 0) merged.set(key, emptyBox(key.slice(0, key.lastIndexOf('|')), currencyOf(key)));
+        if (merged.has(key)) merged.get(key).balance = value.balance;
+      }
+      const currencies = [...new Set([...merged.values()].map(box => box.currency).concat([...current.keys()].map(currencyOf)))];
+      balances = {
+        canManage: Boolean(req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_financial')),
+        totals: Object.fromEntries(currencies.map(currency => [currency, totalOf(current, currency)])),
+        general: Object.fromEntries(currencies.map(currency => [currency, current.get(`${GENERAL}|${currency}`)?.opening || 0])),
+      };
+    }
     res.json({
       branch: scope.branch || null,
       today,
+      yesterday,
       windows: Object.fromEntries(BOX_WINDOWS.map(days => [days, since(days)])),
-      boxes: rows.map(row => ({
-        method: row.method,
-        currency: row.currency || 'EGP',
-        totals: Object.fromEntries(BOX_WINDOWS.map(days => [days, Number(row[`total_${days}`]) || 0])),
-        counts: Object.fromEntries(BOX_WINDOWS.map(days => [days, Number(row[`count_${days}`]) || 0])),
-      })),
+      boxes: [...merged.values()].sort((a, b) => b.totals[30] - a.totals[30]),
+      balances,
     });
   } catch (e) {
     logger.error('[finance/boxes]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
+
+// ── The balances: reset a box, correct a box, correct the overall balance (lib/boxBalances.js) ─────────────────────────
+// Only the institute's books — a branch's view has no balances — and only manage_financial. Each change is one transaction
+// and one audit row, and says what the balance was and what it became.
+const mainBooks = [requireAuth, requireAdminOrStaff, requirePermission('manage_financial')];
+function boxChange(work, action) {
+  return async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+      const scope = resolveFinancialScope(req, { requestedBranch: null });
+      if (scope.branchId || scope.kind !== 'all') return res.status(403).json({ error: 'الخزائن بتتعدّل من الحسابات الرئيسية بس', code: 'BOXES_MAIN_BOOKS_ONLY' });
+      await conn.beginTransaction();
+      const actor = req.staffRecord?.name || req.user?.email || 'system';
+      const result = await work(conn, { tenantId: req.tenantId, actor, body: req.body || {} });
+      await logFinancialAudit({
+        entityType: 'cash_box',
+        entityId: String(req.body?.method || req.body?.currency || 'all'),
+        action,
+        oldData: { balance: result.before },
+        newData: { balance: result.after, note: req.body?.note || null },
+        amount: result.after - result.before,
+        actor: req.user?.email || actor,
+        tenantId: req.tenantId,
+        db: conn,
+        strict: true,
+      });
+      await conn.commit();
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      await conn.rollback().catch(() => {});
+      const status = e.statusCode || e.status || 500;
+      if (status >= 500) logger.error(`[finance/boxes ${action}]`, e.message);
+      res.status(status).json({ error: status < 500 ? e.message : 'Internal server error', code: e.code });
+    } finally { conn.release(); }
+  };
+}
+router.post('/api/admin/finance/boxes/reset', ...mainBooks, boxChange((db, { tenantId, actor, body }) => resetBox(db, { tenantId, method: body.method, currency: body.currency, note: body.note, actor }), 'box_reset'));
+router.post('/api/admin/finance/boxes/balance', ...mainBooks, boxChange((db, { tenantId, actor, body }) => setBoxBalance(db, { tenantId, method: body.method, currency: body.currency, amount: body.amount, note: body.note, actor }), 'box_set_balance'));
+router.post('/api/admin/finance/boxes/total', ...mainBooks, boxChange((db, { tenantId, actor, body }) => setTotalBalance(db, { tenantId, currency: body.currency, amount: body.amount, note: body.note, actor }), 'box_set_total'));
+router.post('/api/admin/finance/boxes/reset-all', ...mainBooks, boxChange((db, { tenantId, actor, body }) => resetAll(db, { tenantId, currency: body.currency, note: body.note, actor }), 'box_reset_all'));
+router.get('/api/admin/finance/boxes/history', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const scope = resolveFinancialScope(req, { requestedBranch: null });
+    if (scope.branchId || scope.kind !== 'all') return res.json([]);
+    res.json(await recentEvents(pool, { tenantId: req.tenantId }));
+  } catch (e) {
+    logger.error('[finance/boxes history]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   }
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, CalendarClock, Radio, Star, Users, Wallet } from 'lucide-react';
+import { Bell, CalendarClock, CheckCircle2, Circle, Radio, Rocket, Star, TrendingUp, Users, Wallet } from 'lucide-react';
 import { cairoDateTime } from '../../../shared/cairoDate';
 import { errorText, lecturerApi, money, type LecturerNotification, type Notify, type Overview } from './lecturerApi';
 import { Card, Empty, Loading, Stat } from './ui';
@@ -18,9 +18,28 @@ export function LecturerOverview({ notify, onOpen }: { notify: Notify; onOpen: (
   }, [notify]);
 
   if (!data) return <Loading />;
+  const { onboarding, performance } = data;
   const rating = data.rating.instructor ?? (data.rating.course !== null ? data.rating.course * 2 : null);
+  const rate = (value: number | null) => (value === null ? '—' : `${value}%`);
   return (
     <div className="space-y-5">
+      {onboarding.done < onboarding.total && (
+        <Card title="ابدأ من هنا" icon={<Rocket size={18} className="text-primary-600" />}
+          actions={<span className="text-xs font-bold text-gray-500">{onboarding.done} من {onboarding.total}</span>}>
+          <div className="h-2 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-primary-500" style={{ width: `${(onboarding.done / onboarding.total) * 100}%` }} /></div>
+          <ul className="grid gap-2 md:grid-cols-2">
+            {onboarding.steps.map(step => (
+              <li key={step.id}>
+                <button type="button" onClick={() => onOpen(step.tab)} disabled={step.done}
+                  className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-right text-sm ${step.done ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800' : 'border-gray-200 bg-white font-bold text-gray-800 hover:border-primary-300'}`}>
+                  {step.done ? <CheckCircle2 size={16} className="shrink-0 text-emerald-600" /> : <Circle size={16} className="shrink-0 text-gray-300" />}
+                  <span className={step.done ? 'line-through opacity-70' : ''}>{step.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <button type="button" onClick={() => onOpen('lives')} className="text-right">
           <Stat label="لايفات جاية" value={data.lives.upcoming} tone="violet" hint={data.lives.liveNow ? `${data.lives.liveNow} شغال دلوقتي` : data.lives.next ? `الجاي: ${cairoDateTime(data.lives.next.at)}` : 'مفيش لايف متحدد'} />
@@ -36,6 +55,15 @@ export function LecturerOverview({ notify, onOpen }: { notify: Notify; onOpen: (
           <Stat label="تقييمي" value={rating !== null ? `${rating.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 1 })} من 10` : '—'} tone="emerald" hint={`${data.rating.count} تقييم`} />
         </button>
       </div>
+
+      <Card title="مؤشرات أدائي" icon={<TrendingUp size={18} className="text-violet-600" />}>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat label="حضور طلاب رونداتي" value={rate(performance.attendanceRate)} tone="blue" hint="من المحاضرات اللي اتعملت" />
+          <Stat label="عملاء رجعوا لكورس تاني معاك" value={rate(performance.retentionRate)} tone="violet" hint={performance.clients ? `${performance.retainedClients} من ${performance.clients} عميل (دي اللي بتتحسب فيها مكافأة التدوير)` : 'لسه مفيش عملاء'} />
+          <Stat label="استشارات اتمّت" value={rate(performance.consultationCompletionRate)} tone="emerald" hint={`${performance.completedConsultations} تمت · ${performance.cancelledConsultations} اتلغت`} />
+          <Stat label="متوسط حضور لايفاتك" value={performance.avgLiveAttendance ?? '—'} tone="amber" hint={`${performance.liveCount} لايف خلص`} />
+        </div>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="فلوسي" icon={<Wallet size={18} className="text-emerald-600" />}

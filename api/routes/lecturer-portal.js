@@ -31,6 +31,9 @@ const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { announceLiveStream } = require('../lib/liveStreams');
 const { onConsultationCompleted } = require('../lib/consultationCompletion');
 const { saveConsultationRating, validRatingToken } = require('../lib/consultationRating');
+const { decideReschedule, humanAt, proposeReschedule, validRequestToken, validRespondToken } = require('../lib/consultationReschedule');
+const { consultationClock, consultationSettings } = require('../lib/consultationRequests');
+const { getTenantSetting } = require('../lib/tenantSettings');
 const { storeMediaImage } = require('../lib/mediaImages');
 const { sendRouteError } = require('../lib/helpers');
 const { markRoundAttendance, unmarkRoundAttendance } = require('../lib/daqqiAttendanceMark');
@@ -295,11 +298,20 @@ router.get('/api/staff/lecturer/consultations', ...guard, async (req, res) => {
               session_duration_minutes, meeting_link, created_at, source, paid_at
          FROM consultations WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL
         ORDER BY (status IN ('PENDING','CONFIRMED')) DESC, session_date DESC LIMIT 300`, [me.tenantId, me.therapist.id]);
+    // A proposal waiting for an answer, on the consultation it is about (lib/consultationReschedule.js).
+    const waiting = new Map();
+    if (rows.length) {
+      const [proposals] = await pool.query(
+        `SELECT id, consultation_id, proposed_by, DATE_FORMAT(new_session_at, '%Y-%m-%d %H:%i:00') AS new_at, reason FROM consultation_reschedules
+          WHERE tenant_id=? AND status='pending' AND consultation_id IN (${rows.map(() => '?').join(',')})`, [me.tenantId, ...rows.map(row => row.id)]);
+      for (const proposal of proposals) waiting.set(proposal.consultation_id, { id: proposal.id, by: proposal.proposed_by, at: humanAt(proposal.new_at), reason: proposal.reason || '' });
+    }
     res.json(rows.map(row => ({
       id: row.id, clientName: row.client_name, clientPhone: row.client_phone || '', sessionType: String(row.session_type || '').toLowerCase(),
-      sessionDate: row.session_date, status: String(row.status || '').toLowerCase(), notes: row.notes || '', amount: row.amount === null ? null : Number(row.amount),
+      sessionDate: row.session_date, sessionTime: consultationClock(row), status: String(row.status || '').toLowerCase(), notes: row.notes || '',
+      amount: row.amount === null ? null : Number(row.amount),
       currency: row.currency || null, minutes: row.session_duration_minutes || null, meetingLink: row.meeting_link || '', createdAt: row.created_at,
-      source: row.source || null, paid: Boolean(row.paid_at),
+      source: row.source || null, paid: Boolean(row.paid_at), pendingReschedule: waiting.get(row.id) || null,
     })));
   } catch (error) { fail(res, error, 'consultations'); }
 });
@@ -580,6 +592,121 @@ router.delete('/api/staff/lecturer/community/posts/:id', ...guard, async (req, r
     cacheInvalidate(`community:${me.tenantId}`);
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'community:delete'); }
+});
+
+// ── Moving a consultation (lib/consultationReschedule.js) ───────────────────────────────────────────────────────────────
+
+async function bookingSettings(tenantId) {
+  return consultationSettings(await getTenantSetting('content', { tenantId, fallback: {} }));
+}
+
+// The lecturer proposes another day and one of their weekly hours; the client is asked on WhatsApp.
+router.post('/api/staff/lecturer/consultations/:id/reschedule', ...guard, async (req, res) => {
+  try {
+    const me = req.lecturer;
+    if (!me.therapist) throw bad('مفيش ملف استشارات مربوط بحسابك', 'NO_CONSULTATION_PROFILE', 409);
+    const [[own]] = await pool.query('SELECT id FROM consultations WHERE id=? AND tenant_id=? AND therapist_id=? AND deleted_at IS NULL LIMIT 1', [req.params.id, me.tenantId, me.therapist.id]);
+    if (!own) throw bad('الاستشارة مش موجودة', 'CONSULTATION_NOT_FOUND', 404);
+    const result = await proposeReschedule(pool, {
+      tenantId: me.tenantId, consultationId: own.id, by: 'lecturer', date: clean(req.body?.date, 10), slotId: clean(req.body?.slotId, 36),
+      reason: req.body?.reason, settings: await bookingSettings(me.tenantId),
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) { fail(res, error, 'reschedule:propose'); }
+});
+
+// The lecturer answers a client's request.
+router.post('/api/staff/lecturer/reschedules/:id/answer', ...guard, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const me = req.lecturer;
+    if (!me.therapist) throw bad('مفيش ملف استشارات مربوط بحسابك', 'NO_CONSULTATION_PROFILE', 409);
+    const [[own]] = await conn.query(
+      `SELECT r.id FROM consultation_reschedules r JOIN consultations c ON c.id=r.consultation_id AND c.tenant_id=r.tenant_id
+        WHERE r.id=? AND r.tenant_id=? AND c.therapist_id=? LIMIT 1`, [req.params.id, me.tenantId, me.therapist.id]);
+    if (!own) throw bad('الطلب مش موجود', 'RESCHEDULE_NOT_FOUND', 404);
+    await conn.beginTransaction();
+    const result = await decideReschedule(conn, { tenantId: me.tenantId, id: own.id, by: 'lecturer', answer: String(req.body?.answer || ''), note: req.body?.note });
+    await conn.commit();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    fail(res, error, 'reschedule:answer');
+  } finally { conn.release(); }
+});
+
+// The client, from their WhatsApp link: see a proposal and answer it…
+async function respondableRequest(requestId, token) {
+  if (!validRespondToken(requestId, token)) throw bad('الرابط غير صالح أو انتهت صلاحيته', 'RESCHEDULE_LINK', 404);
+  const [[row]] = await pool.query(
+    `SELECT r.id, r.tenant_id, r.status, r.reason, r.proposed_by, DATE_FORMAT(r.old_session_at, '%Y-%m-%d %H:%i:00') AS old_at,
+            DATE_FORMAT(r.new_session_at, '%Y-%m-%d %H:%i:00') AS new_at, t.name AS therapist_name
+       FROM consultation_reschedules r
+       JOIN consultations c ON c.id=r.consultation_id AND c.tenant_id=r.tenant_id
+       LEFT JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
+      WHERE r.id=? AND r.proposed_by='lecturer' LIMIT 1`, [requestId]);
+  if (!row) throw bad('الرابط غير صالح أو انتهت صلاحيته', 'RESCHEDULE_LINK', 404);
+  return row;
+}
+
+router.get('/api/public/consultation-reschedule/respond/:id', publicLimiter, async (req, res) => {
+  try {
+    const row = await respondableRequest(req.params.id, req.query.t);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ therapistName: row.therapist_name || '', current: humanAt(row.old_at), proposed: humanAt(row.new_at), reason: row.reason || '', status: row.status });
+  } catch (error) { fail(res, error, 'reschedule:read'); }
+});
+
+router.post('/api/public/consultation-reschedule/respond/:id', publicLimiter, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const row = await respondableRequest(req.params.id, req.query.t);
+    await conn.beginTransaction();
+    const result = await decideReschedule(conn, { tenantId: row.tenant_id, id: row.id, by: 'client', answer: String(req.body?.answer || ''), note: req.body?.note });
+    await conn.commit();
+    res.json({ ok: true, status: result.status, at: humanAt(result.at) });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    fail(res, error, 'reschedule:respond');
+  } finally { conn.release(); }
+});
+
+// …or ask for another day and hour themselves, from the lecturer's open ones.
+async function movableConsultation(consultationId, token) {
+  if (!validRequestToken(consultationId, token)) throw bad('الرابط غير صالح أو انتهت صلاحيته', 'RESCHEDULE_LINK', 404);
+  const [[row]] = await pool.query(
+    `SELECT c.id, c.tenant_id, c.therapist_id, c.status, DATE_FORMAT(c.session_date, '%Y-%m-%d %H:%i:00') AS at, t.name AS therapist_name
+       FROM consultations c LEFT JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
+      WHERE c.id=? AND c.deleted_at IS NULL LIMIT 1`, [consultationId]);
+  if (!row || !['PENDING', 'CONFIRMED'].includes(row.status)) throw bad('الرابط غير صالح أو انتهت صلاحيته', 'RESCHEDULE_LINK', 404);
+  return row;
+}
+
+router.get('/api/public/consultation-reschedule/request/:id', publicLimiter, async (req, res) => {
+  try {
+    const row = await movableConsultation(req.params.id, req.query.t);
+    const [slots] = await pool.query(
+      `SELECT s.id, s.day, s.start_time, s.end_time FROM therapist_slots s JOIN therapists t ON t.id=s.therapist_id
+        WHERE s.therapist_id=? AND t.tenant_id=? AND s.is_active=1 ORDER BY s.day, s.start_time`, [row.therapist_id, row.tenant_id]);
+    const settings = await bookingSettings(row.tenant_id);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      therapistName: row.therapist_name || '', current: humanAt(row.at), bookingWindowDays: settings.bookingWindowDays,
+      slots: slots.map(slot => ({ id: slot.id, day: slot.day, startTime: slot.start_time, endTime: slot.end_time })),
+      blockedDates: (await blockedDatesOf(pool, { tenantId: row.tenant_id, therapistId: row.therapist_id })).map(day => day.date),
+    });
+  } catch (error) { fail(res, error, 'reschedule:request-read'); }
+});
+
+router.post('/api/public/consultation-reschedule/request/:id', publicLimiter, async (req, res) => {
+  try {
+    const row = await movableConsultation(req.params.id, req.query.t);
+    const result = await proposeReschedule(pool, {
+      tenantId: row.tenant_id, consultationId: row.id, by: 'client', date: clean(req.body?.date, 10), slotId: clean(req.body?.slotId, 36),
+      reason: req.body?.reason, settings: await bookingSettings(row.tenant_id),
+    });
+    res.json({ ok: true, at: humanAt(result.at) });
+  } catch (error) { fail(res, error, 'reschedule:request'); }
 });
 
 // ── The client rates a consultation (their own link, lib/consultationRating.js) ─────────────────────────────────────────

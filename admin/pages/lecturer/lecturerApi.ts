@@ -15,6 +15,14 @@ export type Overview = {
   rating: { instructor: number | null; course: number | null; count: number };
   earnings: { waiting: number; approved: number; paid: number; retention: number };
   unreadNotifications: number;
+  performance: Performance;
+  onboarding: { steps: Array<{ id: string; label: string; done: boolean; tab: string }>; done: number; total: number };
+};
+
+export type Performance = {
+  attendanceRate: number | null; retentionRate: number | null; retainedClients: number; clients: number;
+  consultationCompletionRate: number | null; completedConsultations: number; cancelledConsultations: number;
+  liveCount: number; avgLiveAttendance: number | null;
 };
 
 export type Live = {
@@ -33,6 +41,7 @@ export type Availability = {
 export type LecturerConsultation = {
   id: string; clientName: string; clientPhone: string; sessionType: string; sessionDate: string; status: string; notes: string;
   amount: number | null; currency: string | null; minutes: number | null; meetingLink: string; createdAt: string; source: string | null; paid: boolean;
+  sessionTime?: string; pendingReschedule: { id: string; by: 'lecturer' | 'client'; at: string; reason: string } | null;
 };
 
 export type Reviews = {
@@ -92,6 +101,10 @@ export const lecturerApi = {
   blockDay: (date: string, reason: string) => mysqlAdmin.adminPost<{ alreadyBooked: number }>('/staff/lecturer/availability/blocked', { date, reason }),
   unblockDay: (id: string) => mysqlAdmin.adminDelete(`/staff/lecturer/availability/blocked/${encodeURIComponent(id)}`),
   consultations: () => get<LecturerConsultation[]>('consultations'),
+  proposeReschedule: (id: string, body: { date: string; slotId: string; reason: string }) =>
+    mysqlAdmin.adminPost(`/staff/lecturer/consultations/${encodeURIComponent(id)}/reschedule`, body),
+  answerReschedule: (id: string, answer: 'accept' | 'decline', note = '') =>
+    mysqlAdmin.adminPost(`/staff/lecturer/reschedules/${encodeURIComponent(id)}/answer`, { answer, note }),
   updateConsultation: (id: string, body: Record<string, unknown>) => mysqlAdmin.adminPatch(`/staff/lecturer/consultations/${encodeURIComponent(id)}`, body),
   reviews: () => get<Reviews>('reviews'),
   students: () => get<Students>('students'),

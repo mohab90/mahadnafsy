@@ -211,6 +211,71 @@ async function earningsOf(db, { tenantId, staffId, month = null, year = null }) 
   };
 }
 
+const pct = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : null);
+
+/**
+ * «مؤشرات الأداء»: how the lecturer's work is going, in numbers they can act on — the share of the lectures held that their
+ * students attended, the share of their clients who came back for a second course of theirs (what the «تدوير» bonus pays for),
+ * how many of their consultations were completed rather than cancelled, and how many came to their lives. null when there is nothing
+ * to divide yet, never a made-up zero.
+ */
+async function performanceOf(db, { tenantId, staffId, therapistId = null }) {
+  const [[attendance]] = await db.query(
+    `SELECT COALESCE(SUM(a.attended_lectures), 0) AS attended, COALESCE(SUM(r.current_lecture), 0) AS held
+       FROM daqqi_attendees a JOIN daqqi_rounds r ON r.id=a.round_id AND r.tenant_id=a.tenant_id AND r.instructor_id=?
+      WHERE a.tenant_id=? AND r.status<>'FINISHED'`, [staffId, tenantId]);
+  const [[retention]] = await db.query(
+    `SELECT COUNT(*) AS clients, COALESCE(SUM(x.courses >= 2), 0) AS repeaters FROM (
+        SELECT p.subscriber_id, COUNT(DISTINCT p.course_id) AS courses
+          FROM payments p JOIN courses c ON c.id=p.course_id AND c.tenant_id=p.tenant_id AND c.instructor_id=?
+         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.amount > 0 GROUP BY p.subscriber_id) x`, [staffId, tenantId]);
+  let consultations = { completed: 0, cancelled: 0 };
+  if (therapistId) {
+    const [[row]] = await db.query(
+      `SELECT COALESCE(SUM(status='COMPLETED'), 0) AS completed, COALESCE(SUM(status='CANCELLED'), 0) AS cancelled
+         FROM consultations WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL`, [tenantId, therapistId]);
+    consultations = { completed: Number(row?.completed) || 0, cancelled: Number(row?.cancelled) || 0 };
+  }
+  const [[lives]] = await db.query(
+    `SELECT COUNT(*) AS lives, COALESCE(SUM(t.attended), 0) AS attended FROM (
+        SELECT (SELECT COUNT(*) FROM live_stream_attendance a WHERE a.tenant_id=l.tenant_id AND a.stream_id=l.id) AS attended
+          FROM live_streams l WHERE l.tenant_id=? AND l.instructor_id=? AND l.status='ENDED') t`, [tenantId, staffId]);
+  return {
+    attendanceRate: pct(attendance?.attended, attendance?.held),
+    retentionRate: pct(retention?.repeaters, retention?.clients),
+    retainedClients: Number(retention?.repeaters) || 0,
+    clients: Number(retention?.clients) || 0,
+    consultationCompletionRate: pct(consultations.completed, consultations.completed + consultations.cancelled),
+    completedConsultations: consultations.completed,
+    cancelledConsultations: consultations.cancelled,
+    liveCount: Number(lives?.lives) || 0,
+    avgLiveAttendance: Number(lives?.lives) > 0 ? Math.round(Number(lives.attended) / Number(lives.lives)) : null,
+  };
+}
+
+/**
+ * «أول يوم»: the steps that make an account ready, each done or not, each pointing at the tab that does it. A step that does not
+ * apply to this lecturer (no consultation profile, consultations off) is left out rather than shown as undone.
+ */
+async function onboardingOf(db, { tenantId, staffId, phone, therapist }) {
+  const steps = [{ id: 'phone', label: 'رقم الواتساب على ملفك عشان توصلك الإشعارات', done: Boolean(String(phone || '').trim()), tab: 'profile' }];
+  if (therapist) {
+    steps.push({ id: 'photo', label: 'ضيف صورتك', done: Boolean(String(therapist.image || '').trim()), tab: 'profile' });
+    steps.push({ id: 'bio', label: 'اكتب نبذة عنك', done: Boolean(String(therapist.bio || '').trim()), tab: 'profile' });
+    if (therapist.is_consultation_enabled) {
+      const [[slots]] = await db.query(
+        `SELECT COUNT(*) AS n FROM therapist_slots s JOIN therapists t ON t.id=s.therapist_id WHERE s.therapist_id=? AND t.tenant_id=? AND s.is_active=1`,
+        [therapist.id, tenantId]);
+      steps.push({ id: 'hours', label: 'حدّد مواعيدك الأسبوعية للاستشارات', done: Number(slots?.n) > 0, tab: 'hours' });
+    }
+  }
+  const [[lives]] = await db.query('SELECT COUNT(*) AS n FROM live_streams WHERE tenant_id=? AND instructor_id=?', [tenantId, staffId]);
+  steps.push({ id: 'live', label: 'حدّد أول لايف', done: Number(lives?.n) > 0, tab: 'lives' });
+  const [[posts]] = await db.query('SELECT COUNT(*) AS n FROM community_posts WHERE tenant_id=? AND staff_id=?', [tenantId, staffId]);
+  steps.push({ id: 'post', label: 'انشر أول منشور في المجتمع', done: Number(posts?.n) > 0, tab: 'community' });
+  return { steps, done: steps.filter(step => step.done).length, total: steps.length };
+}
+
 /** The numbers at the top of the portal. */
 async function overviewOf(db, context) {
   const { tenantId, staffId, therapist } = context;
@@ -249,10 +314,12 @@ async function overviewOf(db, context) {
     rating: { instructor: reviews.summary.instructorScore, course: reviews.summary.courseStars, count: reviews.summary.roundRatings + reviews.summary.courseRatings + reviews.summary.consultationRatings },
     earnings: earnings.totals,
     unreadNotifications: Number(unread?.n) || 0,
+    performance: await performanceOf(db, { tenantId, staffId, therapistId: therapist?.id || null }),
+    onboarding: await onboardingOf(db, context),
   };
 }
 
 module.exports = {
   FEE_LABEL, LECTURER_ROLES,
-  earningsOf, lecturerContext, myCourses, myRounds, overviewOf, requireLecturer, reviewsOf, studentsOf,
+  earningsOf, lecturerContext, myCourses, myRounds, onboardingOf, overviewOf, performanceOf, requireLecturer, reviewsOf, studentsOf,
 };

@@ -297,6 +297,20 @@ function scheduleAutoCertificateSweep() {
 }
 scheduleAutoCertificateSweep();
 
+// «تذكير قبل الاستشارة»: the lecturer and the client are reminded an hour before a confirmed session
+// (lib/consultationReminders.js). Every ten minutes; each message once, however many sweeps see the session.
+function scheduleConsultationReminders() {
+  const { sendDueConsultationReminders } = require('../../lib/consultationReminders');
+  const tick = tenantId => sendDueConsultationReminders(pool, { tenantId })
+    .catch(error => logger.warn('[consultation-reminders]', error.message));
+  setTimeout(() => {
+    forEachActiveTenant(tick);
+    setInterval(() => forEachActiveTenant(tick), 10 * 60 * 1000);
+  }, 3 * 60 * 1000);
+  logger.info('[consultation-reminders] scheduled — every 10m, first run in 3m');
+}
+scheduleConsultationReminders();
+
 // The Dokki manager's Saturday report, the morning brief of the day's rounds and,
 // once switched on, the absence follow-up (lib/dokkiWeeklyReport.js,
 // lib/dokkiDailyBrief.js, lib/dokkiAbsenceFollowUp.js). Hourly; each message once.

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Link2, Pencil } from 'lucide-react';
+import { CalendarClock, ExternalLink, Link2, Pencil } from 'lucide-react';
 import { ConsultationTimingBadge } from '../../components/ConsultationTimingBadge';
 import { promptDialog } from '../../../shared/ui/promptDialog';
 import { errorText, lecturerApi, type LecturerConsultation, type Notify } from './lecturerApi';
+import { PendingReschedule, RescheduleForm } from './LecturerReschedule';
 import { Card, Empty, Loading } from './ui';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -15,6 +16,7 @@ const KIND: Record<string, string> = { individual: 'فردية', couple: 'زوج
 export function LecturerConsultations({ notify }: { notify: Notify }) {
   const [rows, setRows] = useState<LecturerConsultation[] | null>(null);
   const [busy, setBusy] = useState('');
+  const [moving, setMoving] = useState('');
   const load = useCallback(() => {
     lecturerApi.consultations().then(setRows).catch(error => { notify('error', errorText(error, 'تعذر تحميل الاستشارات')); setRows([]); });
   }, [notify]);
@@ -47,7 +49,7 @@ export function LecturerConsultations({ notify }: { notify: Notify }) {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1.5">
                     <p className="font-bold text-gray-900">{item.clientName} <span className="text-xs font-normal text-gray-500">· {KIND[item.sessionType] || item.sessionType}</span></p>
-                    <ConsultationTimingBadge item={{ source: item.source || undefined, sessionDate: item.sessionDate, createdAt: item.createdAt }} />
+                    <ConsultationTimingBadge item={{ source: item.source || undefined, sessionDate: item.sessionDate, sessionTime: item.sessionTime, createdAt: item.createdAt }} />
                     <p className="text-xs text-gray-500">
                       {item.clientPhone && <span dir="ltr" className="ml-2">{item.clientPhone}</span>}
                       {item.clientPhone && item.amount ? ' · ' : ''}
@@ -59,11 +61,14 @@ export function LecturerConsultations({ notify }: { notify: Notify }) {
                     {item.status === 'pending' && <button type="button" disabled={busy === item.id} onClick={() => void update(item, { status: 'CONFIRMED' }, 'اتأكدت')} className="rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 disabled:opacity-50">تأكيد</button>}
                     {open && <button type="button" disabled={busy === item.id} onClick={() => void update(item, { status: 'COMPLETED' }, 'اتسجلت إنها تمت')} className="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 disabled:opacity-50">تمت</button>}
                     {open && <button type="button" disabled={busy === item.id} onClick={() => void update(item, { status: 'CANCELLED' }, 'اتلغت')} className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50">إلغاء</button>}
+                    {open && item.source !== 'site_express' && <button type="button" aria-label="تأجيل" title="اقترح تأجيل" onClick={() => setMoving(moving === item.id ? '' : item.id)} className="rounded-xl border border-indigo-200 bg-white p-2 text-indigo-700"><CalendarClock size={14} /></button>}
                     <button type="button" aria-label="رابط الجلسة" title="رابط الجلسة" onClick={() => void link(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Link2 size={14} /></button>
                     <button type="button" aria-label="ملاحظات" title="ملاحظات" onClick={() => void note(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Pencil size={14} /></button>
                     {item.meetingLink && <a href={item.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white"><ExternalLink size={12} /> فتح الجلسة</a>}
                   </div>
                 </div>
+                <PendingReschedule item={item} notify={notify} onDone={load} />
+                {moving === item.id && <RescheduleForm item={item} notify={notify} onDone={() => { setMoving(''); load(); }} />}
                 {item.notes && <p className="mt-3 rounded-xl border border-gray-100 bg-white p-3 text-sm text-gray-600">{item.notes}</p>}
               </div>
             );
