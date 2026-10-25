@@ -4,6 +4,7 @@ import { mysqlClient } from '../lib/mysqlapi';
 import { sortConsultationsByDate, meetingProviderLabels } from '../lib/consultations';
 import type { ConsultationItem, Therapist } from '../types';
 import { InstructorLivePanel } from './InstructorLivePanel';
+import { ConsultationTimingBadge } from '../components/ConsultationTimingBadge';
 
 const TherapistPortal: React.FC = () => {
   const [therapist, setTherapist] = useState<Therapist | null>(null);
@@ -125,7 +126,8 @@ const TherapistPortal: React.FC = () => {
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="space-y-2">
                   <p className="font-bold text-gray-900">{item.clientName}</p>
-                  <p className="text-sm text-gray-500">{item.sessionDate} • {item.slotLabel || 'موعد يدوي'} • {item.sessionType}</p>
+                  <ConsultationTimingBadge item={item} />
+                  <p className="text-sm text-gray-500">{item.slotLabel || 'موعد يدوي'} • {item.sessionType}</p>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-gray-700">{item.clientPhone || 'بدون هاتف'}</span>
                     <span className="px-2 py-1 rounded-full bg-white border border-gray-200 text-gray-700">{item.clientEmail || 'بدون بريد'}</span>

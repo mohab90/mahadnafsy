@@ -62,3 +62,20 @@ export const sortConsultationsByDate = (rows: ConsultationItem[]) =>
     const rightTime = new Date(right.sessionDate.replace(' ', 'T')).getTime();
     return rightTime - leftTime;
   });
+
+/**
+ * «كل استشارة لازم تبان عاجلة خلال 60 دقيقة ولا استشارة بموعد» (25 Oct 2026): an express session
+ * (source site_express) is answered within the hour; every other booking has a day and, usually, an hour.
+ */
+export type ConsultationTiming = { urgent: boolean; label: string; when: string };
+
+export function consultationTiming(item: Pick<ConsultationItem, 'source' | 'sessionDate' | 'scheduledAt' | 'date' | 'sessionTime' | 'createdAt'>): ConsultationTiming {
+  if (item.source === 'site_express') {
+    const arrived = String(item.createdAt || '').replace('T', ' ').slice(0, 16);
+    return { urgent: true, label: 'عاجلة خلال 60 دقيقة', when: arrived ? `وصلت ${arrived}` : 'التواصل مع العميل خلال ساعة من الحجز' };
+  }
+  const raw = String(item.sessionDate || item.scheduledAt || item.date || '').replace('T', ' ');
+  const day = raw.slice(0, 10);
+  const clock = item.sessionTime || (/^\d{4}-\d{2}-\d{2} (\d{2}:\d{2})/.exec(raw)?.[1] && raw.slice(11, 16) !== '00:00' ? raw.slice(11, 16) : '');
+  return { urgent: false, label: 'استشارة بموعد', when: [day, clock].filter(Boolean).join(' · ') || 'بدون تاريخ' };
+}

@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { consultationClock } = require('../../lib/consultationRequests');
 const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
@@ -115,11 +116,7 @@ router.get('/api/admin/consultations', requireAuth, requireAdminOrStaff, require
       // session_date holds the hour the customer picked, Cairo's wall clock,
       // not an instant; the driver builds its Date on the process clock, so the
       // hour is read back the same way. 00:00 is a booking with no hour.
-      sessionTime: (() => {
-        const at = row.session_date instanceof Date ? row.session_date : null;
-        const hhmm = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
-        return hhmm && hhmm !== '00:00' && row.source !== 'site_express' ? hhmm : undefined;
-      })(),
+      sessionTime: consultationClock(row),
       orderId: row.order_id || undefined,
       paidAt: row.paid_at || undefined,
       source: row.source || undefined,
