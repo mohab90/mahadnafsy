@@ -33,7 +33,7 @@ export function LecturerOverview({ notify, onOpen }: { notify: Notify; onOpen: (
           <Stat label="طلابي" value={data.students.online + data.students.rounds} tone="blue" hint={`${data.students.online} أونلاين · ${data.students.rounds} في الروندات`} />
         </button>
         <button type="button" onClick={() => onOpen('feedback')} className="text-right">
-          <Stat label="تقييمي" value={rating !== null ? `${rating.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 1 })} / 10` : '—'} tone="emerald" hint={`${data.rating.count} تقييم`} />
+          <Stat label="تقييمي" value={rating !== null ? `${rating.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 1 })} من 10` : '—'} tone="emerald" hint={`${data.rating.count} تقييم`} />
         </button>
       </div>
 

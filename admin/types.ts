@@ -334,6 +334,7 @@ export type StaffPermission =
   // Consultations
   | 'view_consultations'
   | 'manage_consultations'
+  | 'use_lecturer_portal'
   // Community
   | 'view_community'
   | 'manage_community'

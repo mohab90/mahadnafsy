@@ -50,6 +50,7 @@ export function LecturerConsultations({ notify }: { notify: Notify }) {
                     <ConsultationTimingBadge item={{ source: item.source || undefined, sessionDate: item.sessionDate, createdAt: item.createdAt }} />
                     <p className="text-xs text-gray-500">
                       {item.clientPhone && <span dir="ltr" className="ml-2">{item.clientPhone}</span>}
+                      {item.clientPhone && item.amount ? ' · ' : ''}
                       {item.amount ? `${item.amount} ${item.currency || 'EGP'}` : ''}{item.paid ? ' · مدفوعة' : item.amount ? ' · لسه ما اتدفعتش' : ''}
                     </p>
                   </div>

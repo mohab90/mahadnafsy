@@ -196,7 +196,7 @@ test('every query of the portal names the tenant and keys on the lecturer\'s own
   const unscoped = queries.filter(q => /FROM (live_streams|consultations|notifications|community_posts|courses|enrollments|instructor_fees|daqqi_rounds|client_ratings|payroll_items)\b|UPDATE (live_streams|consultations|notifications|community_posts|therapists)\b|DELETE FROM (live_streams|community_posts)\b/.test(q) && !/tenant_id/.test(q));
   assert.deepEqual(unscoped, []);
   assert.doesNotMatch(route, /req\.(query|body|params)\.(staffId|instructorId|therapistId)/, 'the lecturer is never named by the caller');
-  assert.match(route, /const guard = \[requireAuth, requireAdminOrStaff, requirePermission\('use_lecturer_portal'\), requireLecturer\(pool\)\];/);
+  assert.match(route, /const guard = \[requireAuth, requireAdminOrStaff, requireAnyPermission\('use_lecturer_portal', 'manage_lectures', 'manage_consultations', 'view_consultations'\), requireLecturer\(pool\)\];/);
   assert.match(read('api/lib/registerRoutes.js'), /'\.\.\/routes\/lecturer-portal'/);
 });
 

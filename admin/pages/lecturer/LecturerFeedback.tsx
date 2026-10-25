@@ -4,7 +4,7 @@ import { cairoDay } from '../../../shared/cairoDate';
 import { errorText, lecturerApi, type Notify, type Reviews } from './lecturerApi';
 import { Card, Empty, Loading, Stat } from './ui';
 
-const score = (value: number | null, outOf: number) => (value === null ? '—' : `${value.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 1 })} / ${outOf}`);
+const score = (value: number | null, outOf: number) => (value === null ? '—' : `${value.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 1 })} من ${outOf}`);
 
 /** «يشوف تقييماته»: the branch desk's marks of their rounds and the stars clients gave their courses, with what was written. */
 export function LecturerFeedback({ notify }: { notify: Notify }) {
@@ -43,7 +43,7 @@ export function LecturerFeedback({ notify }: { notify: Notify }) {
               <li key={item.id} className="rounded-2xl border border-gray-200 bg-gray-50/60 p-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-bold text-gray-900">{item.client} <span className="text-xs font-normal text-gray-500">· {item.course || (item.kind === 'round' ? 'روند' : 'كورس')}</span></span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${item.score / item.outOf >= 0.8 ? 'bg-emerald-100 text-emerald-700' : item.score / item.outOf >= 0.6 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{item.score} / {item.outOf}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${item.score / item.outOf >= 0.8 ? 'bg-emerald-100 text-emerald-700' : item.score / item.outOf >= 0.6 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{item.score} من {item.outOf}</span>
                 </div>
                 {item.note && <p className="mt-1.5 text-gray-700">{item.note}</p>}
                 <p className="mt-1 text-[10px] text-gray-400">{cairoDay(item.at)}</p>

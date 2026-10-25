@@ -26,7 +26,7 @@ const router = express.Router();
 const logger = require('../lib/logger');
 const { pool, cacheInvalidate } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../middleware/auth');
 const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { announceLiveStream } = require('../lib/liveStreams');
 const { createNotification } = require('../lib/notification');
@@ -37,7 +37,9 @@ const {
   blockDay, blockedDatesOf, normalizeSlots, replaceWeeklySlots, unblockDay,
 } = require('../lib/therapistAvailability');
 
-const guard = [requireAuth, requireAdminOrStaff, requirePermission('use_lecturer_portal'), requireLecturer(pool)];
+// use_lecturer_portal is the grant; the jobs' own permissions also open it, so an account whose list was saved before this
+// permission existed is not locked out — requireLecturer then keeps it to lecturers' accounts.
+const guard = [requireAuth, requireAdminOrStaff, requireAnyPermission('use_lecturer_portal', 'manage_lectures', 'manage_consultations', 'view_consultations'), requireLecturer(pool)];
 const PLATFORMS = new Set(['ZOOM', 'YOUTUBE', 'MEET', 'OTHER']);
 const VISIBILITIES = new Set(['ALL_SUBSCRIBERS', 'COURSE_SUBSCRIBERS', 'COMMUNITY_ALL', 'COMMUNITY_AND_SUBSCRIBERS']);
 
