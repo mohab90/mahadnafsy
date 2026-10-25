@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, CheckCircle } from 'lucide-react';
+import { cairoDateOnly } from '../../shared/cairoDate';
 import { setCanonical } from '../lib/useSeo';
 
 // «تأجيل الاستشارة»: the page the client's own WhatsApp link opens (api/lib/consultationReschedule.js).
@@ -53,7 +54,7 @@ const ConsultationReschedule: React.FC = () => {
       .finally(() => setLoading(false));
   }, [requestId, consultationId, token, endpoint, mode]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
   const weekday = date ? WEEKDAYS[new Date(`${date}T12:00:00`).getDay()] : '';
   const slots = useMemo(() => (open?.slots || []).filter(slot => slot.day === weekday), [open, weekday]);
   const closed = Boolean(date && open?.blockedDates.includes(date));
