@@ -1,6 +1,7 @@
 'use strict';
 const logger = require('../lib/logger');
 const { hasPaidForCourse } = require('../lib/coursePaid');
+const { recordIssuedInstituteCertificate } = require('../lib/instituteCertificates');
 const express = require('express');
 const router  = express.Router();
 
@@ -624,6 +625,11 @@ router.patch('/api/admin/certificate-requests/:id',
       }
     }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, params);
+    // An institute certificate that is issued by hand has a completion under its own code, so the design opens,
+    // the QR resolves and it is in the history (lib/instituteCertificates.js recordIssuedInstituteCertificate).
+    if (['ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED'].includes(normalizedStatus)) {
+      await recordIssuedInstituteCertificate(conn, { ...request, status: normalizedStatus, issued_at: issued_at || request.issued_at });
+    }
     if (currentStatus !== normalizedStatus && request.subscriber_id) {
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_status', actor: actorName(req),

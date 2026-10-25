@@ -100,4 +100,32 @@ async function sweepInstituteCertificates(tenantId = 'tenant-default', db = pool
   return issued;
 }
 
-module.exports = { DELIVERY_STAGES, candidatePairs, sweepInstituteCertificates };
+const DELIVERY_OF_REQUEST = Object.freeze({ SHIPPED: 'SHIPPED', AT_BRANCH: 'AT_BRANCH', DELIVERED: 'DELIVERED' });
+
+/**
+ * «العملاء القدام … شهادة المعهد صدرت بس بتفشل لما نفتحها ومش في السجل» (25 Oct 2026): an institute certificate
+ * issued as a REQUEST (by hand, or by the old system and imported) is also a course completion under the same code, so
+ * the printable design opens, its QR resolves to the design and it is listed in the history. A client who already
+ * holds a completion for the course keeps it; a code already used by a completion is left alone.
+ *
+ * @param {object} db       a connection (inside the caller's transaction)
+ * @param {object} request  the certificate_requests row, with the status it is moving to
+ * @returns {Promise<boolean>} whether a completion was written
+ */
+async function recordIssuedInstituteCertificate(db, request) {
+  if (String(request.type || '').toUpperCase() !== 'INSTITUTE') return false;
+  if (!request.subscriber_id || !request.course_id || !request.certificate_code || !request.tenant_id) return false;
+  const [result] = await db.query(
+    `INSERT IGNORE INTO course_completions
+       (id, subscriber_id, course_id, certificate_code, completed_at, delivery_status, cert_name_en, status, version, tenant_id)
+     SELECT ?,?,?,?,COALESCE(?, NOW()),?,?, 'active', 1, ?
+      FROM DUAL
+      WHERE NOT EXISTS (SELECT 1 FROM course_completions WHERE tenant_id=? AND subscriber_id=? AND course_id=?)
+        AND NOT EXISTS (SELECT 1 FROM course_completions WHERE certificate_code=?)`,
+    [require('./id').uuidv4(), request.subscriber_id, request.course_id, request.certificate_code, request.issued_at || null,
+      DELIVERY_OF_REQUEST[String(request.status || '').toUpperCase()] || 'READY', String(request.name_en || '').trim() || null,
+      request.tenant_id, request.tenant_id, request.subscriber_id, request.course_id, request.certificate_code]);
+  return Boolean(result?.affectedRows);
+}
+
+module.exports = { DELIVERY_STAGES, candidatePairs, recordIssuedInstituteCertificate, sweepInstituteCertificates };
