@@ -9,10 +9,13 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../lib/logger');
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
+const { recordDeliveredLecture } = require('../lib/instructorPay');
+const { PROVIDERS, integrationStatus, saveIntegration, createMeeting, deleteMeeting } = require('../lib/meetingProvider');
+const { dateOnlyInTimeZone } = require('../lib/dates');
 const { announceLiveStream, audienceOf, recordAttendance, validJoin } = require('../lib/liveStreams');
 
 const fail = (res, error, where) => {
@@ -74,7 +77,7 @@ router.post('/api/me/live-streams/:id/join', requireAuth, async (req, res) => {
 });
 
 // «لايفاتي»: the lecturer's own lives.
-router.get('/api/staff/me/live-streams', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+router.get('/api/staff/me/live-streams', requireAuth, requireAdminOrStaff, requireAnyPermission('view_courses', 'use_lecturer_portal'), async (req, res) => {
   try {
     if (!req.staffRecord?.id) return res.json([]);
     const [rows] = await pool.query(
@@ -87,7 +90,7 @@ router.get('/api/staff/me/live-streams', requireAuth, requireAdminOrStaff, requi
 });
 
 // «ابدأ اللايف» / «إنهاء»: the lecturer's own live (or the administration).
-router.patch('/api/staff/me/live-streams/:id/status', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+router.patch('/api/staff/me/live-streams/:id/status', requireAuth, requireAdminOrStaff, requireAnyPermission('view_courses', 'use_lecturer_portal'), async (req, res) => {
   try {
     const status = String(req.body?.status || '').toUpperCase();
     if (!['LIVE', 'ENDED'].includes(status)) return res.status(400).json({ error: 'حالة غير معروفة' });
@@ -101,8 +104,49 @@ router.patch('/api/staff/me/live-streams/:id/status', requireAuth, requireAdminO
       `UPDATE live_streams SET status=?, ${status === 'LIVE' ? 'started_at=COALESCE(started_at, NOW())' : 'ended_at=NOW()'}${recording ? ', recording_url=?' : ''}
         WHERE id=? AND tenant_id=?`,
       recording ? [status, recording, stream.id, req.tenantId] : [status, stream.id, req.tenantId]);
+    // A live that ended is a lecture delivered: the lecturer's hour of live, at the price on their file (lib/instructorPay.js), for the
+    // time it was set for. Recorded once per live (source_key) and left pending for the accounts team.
+    if (status === 'ENDED' && stream.instructor_id) {
+      const [[done]] = await pool.query('SELECT title, scheduled_at, duration_minutes, started_at, ended_at FROM live_streams WHERE id=? AND tenant_id=? LIMIT 1', [stream.id, req.tenantId]);
+      const elapsed = done?.started_at && done?.ended_at ? (new Date(done.ended_at) - new Date(done.started_at)) / 3600000 : null;
+      const hours = Number(done?.duration_minutes) > 0 ? Number(done.duration_minutes) / 60 : (elapsed > 0.1 ? elapsed : null);
+      await recordDeliveredLecture(pool, {
+        tenantId: req.tenantId, instructorId: stream.instructor_id, sourceKey: `livestream:${stream.id}`,
+        date: dateOnlyInTimeZone(new Date(done?.scheduled_at || Date.now())), hours,
+        note: `لايف — ${done?.title || ''}`.trim(), actor: req.staffRecord?.id || null,
+      }).catch(error => logger.error('[live-streams/fee]', error.message));
+    }
     res.json({ ok: true, status: status.toLowerCase() });
   } catch (error) { fail(res, error, 'status'); }
+});
+
+// «السيستم يربط API بزوم أو جوجل ميت»: the one video-meeting account of the institute (lib/meetingProvider.js). Only the owner's settings
+// permission reads or changes it; the secret is sealed on save and never comes back.
+router.get('/api/admin/meeting-integration', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
+  try { res.json(await integrationStatus(req.tenantId)); } catch (error) { fail(res, error, 'meeting-integration'); }
+});
+
+router.put('/api/admin/meeting-integration', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
+  try {
+    const provider = String(req.body?.provider || '');
+    if (!PROVIDERS.includes(provider)) return res.status(400).json({ error: 'اختار Zoom أو Google Meet' });
+    res.json(await saveIntegration(req.tenantId, req.body, { actorId: req.staffRecord?.id || null }));
+  } catch (error) { fail(res, error, 'meeting-integration:save'); }
+});
+
+// «جرّب الربط»: makes a ten-minute meeting an hour from now, to see the keys work.
+router.post('/api/admin/meeting-integration/test', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
+  try {
+    const status = await integrationStatus(req.tenantId);
+    if (!status.configured) return res.status(409).json({ error: 'الربط لسه مش مكتمل — كمّل البيانات واحفظ الأول' });
+    const meeting = await createMeeting(req.tenantId, {
+      topic: 'تجربة الربط', startLocal: new Date(Date.now() + 3600000).toISOString().slice(0, 19), timeZone: 'UTC', durationMinutes: 10,
+    });
+    deleteMeeting(req.tenantId, { provider: meeting.provider, meetingId: meeting.meetingId }).catch(() => false);
+    res.json({ ok: true, provider: meeting.provider, joinUrl: meeting.joinUrl });
+  } catch (error) {
+    res.status(502).json({ error: `المزوّد رفض الطلب: ${String(error.message).slice(0, 200)}` });
+  }
 });
 
 module.exports = router;

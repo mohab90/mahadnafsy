@@ -7,6 +7,7 @@ import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { mysqlClient } from './lib/mysqlapi';
+import { LECTURER_ROLES } from './constants/permissions';
 
 // ── Lazily-loaded admin pages ────────────────────────────────────────────────
 const Dashboard     = React.lazy(() => import('./pages/Dashboard'));
@@ -22,6 +23,16 @@ const PageSpinner: React.FC = () => (
     <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
   </div>
 );
+
+/**
+ * «المحاضر مينفعش يدخل أبداً على صفحة الكورسات والمحتوى»: a lecturer, trainer, consultant or expert has the portal and nothing else —
+ * wherever they open the dashboard they land there (the server refuses them the course and content routes as well).
+ */
+const NotForLecturers: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAdmin, currentStaff } = useSiteData();
+  if (!isAdmin && currentStaff && LECTURER_ROLES.includes(String(currentStaff.role || '').toLowerCase())) return <Navigate to="/lecturer-portal" replace />;
+  return <>{children}</>;
+};
 
 /** Requires the user to be logged-in staff or admin. Otherwise shows Auth. */
 const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -169,29 +180,29 @@ const AppShell: React.FC = () => {
 
             {/* Admin / Staff only */}
             <Route path="/dashboard" element={
-              <StaffRoute><Dashboard /></StaffRoute>
+              <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             <Route path="/dashboard/:tab" element={
-              <StaffRoute><Dashboard /></StaffRoute>
+              <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             <Route path="/dashboard/:tab/:param" element={
-              <StaffRoute><Dashboard /></StaffRoute>
+              <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             {/* Backward-compatible URLs used by earlier admin deployments. */}
             <Route path="/mahad/admin" element={
-              <StaffRoute><Dashboard /></StaffRoute>
+              <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             <Route path="/mahad/admin/:tab" element={
-              <StaffRoute><Dashboard /></StaffRoute>
+              <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             <Route path="/mahad/admin/:tab/:param" element={
-              <StaffRoute><Dashboard /></StaffRoute>
+              <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             <Route path="/staff/:id" element={
               <StaffRoute><StaffProfile /></StaffRoute>
             } />
             <Route path="/client/:code" element={
-              <StaffRoute><ClientProfile /></StaffRoute>
+              <StaffRoute><NotForLecturers><ClientProfile /></NotForLecturers></StaffRoute>
             } />
             <Route path="/lecturer-portal" element={
               <StaffRoute><LecturerPortal /></StaffRoute>

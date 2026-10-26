@@ -188,7 +188,9 @@ test('employee requests: hours on a permission, the HR inbox, and payroll excusi
 test('booking is on every account, and every account may record it', () => {
   assert.match(read('admin/pages/Dashboard.tsx'), /\n      <Suspense fallback=\{null\}>\s*<DashboardQuickBooking/);
   const { ROLE_PERMS } = require('../constants/permissions');
-  for (const [role, perms] of Object.entries(ROLE_PERMS)) {
+  // Not the lecturer's jobs: their account is the portal (they land there, never on this page).
+  const portalOnly = ['instructor', 'trainer', 'consultant', 'expert'];
+  for (const [role, perms] of Object.entries(ROLE_PERMS).filter(([name]) => !portalOnly.includes(name))) {
     assert.ok(perms === '*' || perms.includes('manage_payments'), `${role} cannot record the booking it is offered`);
   }
 });

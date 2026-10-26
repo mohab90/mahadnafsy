@@ -386,7 +386,6 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   consultant: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
     'view_leads',
@@ -395,15 +394,11 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   trainer: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
-    'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   expert: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
-    'view_courses',
     'view_consultations',
     // No view_subscribers — mirrors api/constants/permissions.js. The role's
     // data scope is 'none', so it returned nothing and only put an empty
@@ -413,8 +408,6 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   instructor: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
-    'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 

@@ -39,7 +39,7 @@ async function instructorStaffId(db, { tenantId, instructorId }) {
 async function instructorRate(db, { tenantId, staffId }) {
   if (!staffId) return null;
   const [[rate]] = await db.query(
-    `SELECT staff_id, pay_basis, lecture_rate, lecture_rate_per_hour, lecture_hours, revenue_share_pct,
+    `SELECT staff_id, pay_basis, lecture_rate, lecture_rate_per_hour, training_rate_per_hour, lecture_hours, revenue_share_pct,
             retention_bonus_type, retention_bonus_value, currency
        FROM instructor_rates WHERE tenant_id=? AND staff_id=? LIMIT 1`,
     [tenantId, staffId]);
@@ -51,8 +51,16 @@ async function instructorRate(db, { tenantId, staffId }) {
  * by the lecture (revenue share, or no rate set).
  * `hours` is the session's own length when it has one.
  */
-function lectureFee(rate, hours = null) {
+function lectureFee(rate, hours = null, kind = 'live') {
   if (!rate) return null;
+  // «لو المحاضر بيشتغل في الدقي سعر ساعة الحضور كام»: a lecture held in a branch (a Dokki / Tagamoa round) is paid by the hour
+  // at its own price (training_rate_per_hour) when one is set, whatever the basis of the online lives.
+  if (kind === 'branch' && Number(rate.training_rate_per_hour) > 0) {
+    const perHour = Number(rate.training_rate_per_hour);
+    const lectureHours = Number(hours) > 0 ? Number(hours)
+      : Number(rate.lecture_hours) > 0 ? Number(rate.lecture_hours) : DEFAULT_LECTURE_HOURS;
+    return { total: round2(perHour * lectureHours), fixed: null, hours: round2(lectureHours), ratePerHour: round2(perHour) };
+  }
   if (rate.pay_basis === 'per_lecture') {
     const amount = Number(rate.lecture_rate);
     return amount > 0 ? { total: round2(amount), fixed: round2(amount), hours: null, ratePerHour: null } : null;
@@ -73,12 +81,12 @@ function lectureFee(rate, hours = null) {
  * @returns {Promise<{recorded: boolean, reason?: string}>}
  */
 async function recordDeliveredLecture(db, {
-  tenantId, instructorId, courseId = null, roundId = null, sourceKey, date, hours = null, note = null, actor = null,
+  tenantId, instructorId, courseId = null, roundId = null, sourceKey, date, hours = null, note = null, actor = null, kind = 'live',
 }) {
   const staffId = await instructorStaffId(db, { tenantId, instructorId });
   if (!staffId) return { recorded: false, reason: 'no_staff_account' };
   const rate = await instructorRate(db, { tenantId, staffId });
-  const fee = lectureFee(rate, hours);
+  const fee = lectureFee(rate, hours, kind);
   if (!fee) return { recorded: false, reason: 'not_paid_by_lecture' };
   const day = String(date || '').slice(0, 10);
   const [result] = await db.query(
@@ -116,7 +124,7 @@ async function syncRoundLectures(db, { tenantId, round, previousHeld, actor = nu
     if (before.has(week)) continue;
     const result = await recordDeliveredLecture(db, {
       tenantId, instructorId: round.instructor_id, courseId: round.course_id || null, roundId: round.id,
-      sourceKey: `daqqi:${round.id}:${week}`, date: week, actor,
+      sourceKey: `daqqi:${round.id}:${week}`, date: week, actor, kind: 'branch',
       note: `محاضرة روند ${round.code || ''} — أسبوع ${week}`.trim(),
     });
     if (result.recorded) out.recorded += 1;

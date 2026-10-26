@@ -11,6 +11,7 @@ import {
   MapPin,
   Rocket,
   Settings,
+  Video,
   Shield,
   Tag,
   Users,
@@ -36,6 +37,7 @@ export const SECTIONS = [
   { key: 'currencies',         label: 'العملات',             icon: DollarSign,      color: 'yellow',  source: 'syscfg'  },
   { key: 'security',           label: 'الأمان (2FA)',        icon: Shield,          color: 'rose',    source: 'security'},
   { key: 'growth',             label: 'النمو والأتمتة',       icon: Rocket,          color: 'indigo',  source: 'growth'  },
+  { key: 'meetings',           label: 'الربط بـ Zoom / Meet', icon: Video,         color: 'violet',  source: 'meetings' },
   { key: 'backups',            label: 'النسخ الاحتياطية',  icon: Database,        color: 'slate',   source: 'backups' },
 ] as const;
 
@@ -45,7 +47,7 @@ export type SectionKey = typeof SECTIONS[number]['key'];
 export const SECTION_GROUPS: { title: string; keys: SectionKey[] }[] = [
   { title: 'المعهد', keys: ['general', 'branches', 'countries', 'nationalities', 'currencies', 'exchange_rates'] },
   { title: 'الحسابات', keys: ['financial', 'payment_methods', 'expense_categories'] },
-  { title: 'التشغيل', keys: ['session_types', 'lead_sources', 'staff_roles', 'growth'] },
+  { title: 'التشغيل', keys: ['session_types', 'lead_sources', 'staff_roles', 'growth', 'meetings'] },
   { title: 'الأمان', keys: ['security', 'backups'] },
 ];
 

@@ -12,8 +12,8 @@ const read = relative => fs.readFileSync(path.join(__dirname, '..', '..', relati
 
 test('the lecturers screen makes the login and sets the pay in one place', () => {
   const section = read('admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx');
-  assert.match(section, /createStaffAccount\(\{ name: draft\.name\.trim\(\), email: email\.trim\(\), phone: phone\.trim\(\), password, role \}\)/);
-  assert.match(section, /setDraft\(\{ \.\.\.draft, staffId: result\.staffId \}\)/, 'the new account is linked to the profile');
+  assert.match(section, /createStaffAccount\(\{ name: draft\.name\.trim\(\), email: email\.trim\(\), phone: phone\.trim\(\), password, role: realRole\(role\) \}\)/);
+  assert.match(section, /setDraft\(\{ \.\.\.draft, staffId: result\.staffId,/, 'the new account is linked to the profile');
   assert.match(section, /password\.length < 8/, 'the same eight-character floor the API holds');
   for (const text of ['حساب دخول المحاضر', 'مستحقات المحاضر', 'بالساعة', 'أجره على الاستشارة', 'تغيير كلمة المرور']) assert.ok(section.includes(text), text);
   // Pay goes through the HR request, which a second person approves; only the owner's own is approved on the spot.

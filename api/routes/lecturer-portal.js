@@ -29,6 +29,8 @@ const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../middleware/auth');
 const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { announceLiveStream } = require('../lib/liveStreams');
+const { integrationStatus, createMeeting, deleteMeeting } = require('../lib/meetingProvider');
+const { ensureConsultationMeeting } = require('../lib/consultationMeetings');
 const { onConsultationCompleted } = require('../lib/consultationCompletion');
 const { saveConsultationRating, validRatingToken } = require('../lib/consultationRating');
 const { decideReschedule, humanAt, proposeReschedule, validRequestToken, validRespondToken } = require('../lib/consultationReschedule');
@@ -72,6 +74,13 @@ router.get('/api/staff/lecturer/overview', ...guard, async (req, res) => {
         staffId: me.staffId, name: me.name, role: me.role, phone: me.phone,
         consultation: me.therapist ? { id: me.therapist.id, enabled: Boolean(me.therapist.is_consultation_enabled) } : null,
       },
+      // What this account can do: a lecturer's lives and courses, a consultant's sessions, a branch round's attendance — both jobs on one login.
+      capabilities: {
+        lecturer: ['instructor', 'trainer', 'expert'].includes(me.role) || (await myCourses(pool, me)).length > 0,
+        consultant: Boolean(me.therapist?.is_consultation_enabled),
+        branchRounds: (await myRounds(pool, me)).length > 0,
+        systemMeetings: (await integrationStatus(me.tenantId)).configured,
+      },
       ...(await overviewOf(pool, me)),
     });
   } catch (error) { fail(res, error, 'overview'); }
@@ -79,8 +88,22 @@ router.get('/api/staff/lecturer/overview', ...guard, async (req, res) => {
 
 // ── Lives ────────────────────────────────────────────────────────────────────
 
+/** The room the system makes for a live (lib/meetingProvider.js); the screens keep a live's hour in UTC. */
+async function makeRoom(me, live) {
+  try {
+    const meeting = await createMeeting(me.tenantId, {
+      topic: live.title, startLocal: new Date(live.scheduledAt).toISOString().slice(0, 19), timeZone: 'UTC', durationMinutes: live.durationMinutes,
+    });
+    if (!meeting?.joinUrl) throw new Error('no room');
+    return { ...meeting, platform: meeting.provider === 'zoom' ? 'ZOOM' : 'MEET' };
+  } catch (error) {
+    logger.error('[lecturer/lives] meeting provider', error.message);
+    throw bad('السيستم معرفش يعمل غرفة اللايف دلوقتي — جرب تاني بعد شوية أو بلّغ الإدارة', 'LIVE_ROOM', 502);
+  }
+}
+
 /** The live the lecturer sent, checked against the courses that are theirs. */
-async function liveFields(me, body, { partial = false } = {}) {
+async function liveFields(me, body, { partial = false, integrated = false } = {}) {
   const out = {};
   if (!partial || body.title !== undefined) {
     out.title = clean(body.title, 500);
@@ -89,12 +112,13 @@ async function liveFields(me, body, { partial = false } = {}) {
   if (!partial || body.scheduledAt !== undefined) {
     // The screen sends the UTC wall clock («YYYY-MM-DD HH:MM», as the administration's lives do) or an ISO instant.
     const raw = String(body.scheduledAt || '').trim();
-    const at = new Date(/^d{4}-d{2}-d{2}[ T]d{2}:d{2}(:d{2})?$/.test(raw) ? `${raw.replace(' ', 'T')}${raw.length === 16 ? ':00' : ''}Z` : raw);
+    const at = new Date(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(raw) ? `${raw.replace(' ', 'T')}${raw.length === 16 ? ':00' : ''}Z` : raw);
     if (Number.isNaN(at.getTime())) throw bad('حدّد تاريخ وساعة اللايف', 'LIVE_TIME');
     if (at.getTime() < Date.now() - 5 * 60 * 1000) throw bad('ميعاد اللايف لازم يكون في المستقبل', 'LIVE_PAST');
     out.scheduledAt = at;
   }
-  if (!partial || body.streamUrl !== undefined) {
+  // With the institute's Zoom / Meet account set up the system makes the room: the lecturer types no link and picks no platform.
+  if (!integrated && (!partial || body.streamUrl !== undefined)) {
     out.streamUrl = clean(body.streamUrl, 2000);
     if (!httpUrl(out.streamUrl)) throw bad('حط رابط البث (Zoom أو Meet أو يوتيوب) وبيبدأ بـ https://', 'LIVE_URL');
   }
@@ -103,7 +127,7 @@ async function liveFields(me, body, { partial = false } = {}) {
     if (!(minutes >= 10 && minutes <= 480)) throw bad('مدة اللايف من 10 دقايق لـ 8 ساعات', 'LIVE_DURATION');
     out.durationMinutes = minutes;
   }
-  if (body.platform !== undefined || !partial) {
+  if (!integrated && (body.platform !== undefined || !partial)) {
     const platform = String(body.platform || 'ZOOM').toUpperCase();
     out.platform = PLATFORMS.has(platform) ? platform : 'OTHER';
   }
@@ -125,13 +149,14 @@ router.get('/api/staff/lecturer/lives', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const [rows] = await pool.query(
-      `SELECT ${LIVE_STREAM_COLS}, started_at, ended_at, announced_at,
+      `SELECT ${LIVE_STREAM_COLS}, started_at, ended_at, announced_at, host_url,
               (SELECT COUNT(*) FROM live_stream_attendance a WHERE a.tenant_id=live_streams.tenant_id AND a.stream_id=live_streams.id) AS attendees
          FROM live_streams WHERE tenant_id=? AND instructor_id=? ORDER BY scheduled_at DESC LIMIT 100`,
       [me.tenantId, me.staffId]);
     res.json({
-      lives: rows.map(row => ({ ...mapLiveStream(row), startedAt: row.started_at, endedAt: row.ended_at, announcedAt: row.announced_at, attendees: Number(row.attendees) || 0 })),
+      lives: rows.map(row => ({ ...mapLiveStream(row), startedAt: row.started_at, endedAt: row.ended_at, announcedAt: row.announced_at, hostUrl: row.host_url || '', attendees: Number(row.attendees) || 0 })),
       courses: await myCourses(pool, me),
+      meeting: { systemMade: (await integrationStatus(me.tenantId)).configured },
     });
   } catch (error) { fail(res, error, 'lives'); }
 });
@@ -139,14 +164,16 @@ router.get('/api/staff/lecturer/lives', ...guard, async (req, res) => {
 router.post('/api/staff/lecturer/lives', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
-    const live = await liveFields(me, req.body || {});
+    const integrated = (await integrationStatus(me.tenantId)).configured;
+    const live = await liveFields(me, req.body || {}, { integrated });
+    const room = integrated ? await makeRoom(me, live) : null;
     const id = uuidv4();
     await pool.query(
       `INSERT INTO live_streams (id, tenant_id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
-         stream_url, platform, visibility, target_course_ids_json, status, description, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'UPCOMING', ?, NOW())`,
-      [id, me.tenantId, live.title, me.staffId, me.name, live.scheduledAt, live.durationMinutes, live.streamUrl, live.platform,
-        live.visibility, JSON.stringify(live.targetCourseIds), live.description || null]);
+         stream_url, platform, visibility, target_course_ids_json, status, description, created_at, host_url, meeting_id, meeting_provider)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'UPCOMING', ?, NOW(), ?,?,?)`,
+      [id, me.tenantId, live.title, me.staffId, me.name, live.scheduledAt, live.durationMinutes, room ? room.joinUrl : live.streamUrl, room ? room.platform : live.platform,
+        live.visibility, JSON.stringify(live.targetCourseIds), live.description || null, room?.hostUrl || null, room?.meetingId || null, room?.provider || null]);
     const announced = await announceLiveStream(pool, { tenantId: me.tenantId, streamId: id })
       .catch(error => { logger.warn('[lecturer/lives] announce failed', { id, error: error.message }); return null; });
     res.json({ ok: true, id, announced });
@@ -155,7 +182,7 @@ router.post('/api/staff/lecturer/lives', ...guard, async (req, res) => {
 
 async function ownUpcomingLive(me, id) {
   const [[live]] = await pool.query(
-    'SELECT id, status, scheduled_at FROM live_streams WHERE id=? AND tenant_id=? AND instructor_id=? LIMIT 1', [id, me.tenantId, me.staffId]);
+    'SELECT id, title, status, scheduled_at, duration_minutes, meeting_id, meeting_provider FROM live_streams WHERE id=? AND tenant_id=? AND instructor_id=? LIMIT 1', [id, me.tenantId, me.staffId]);
   if (!live) throw bad('اللايف مش موجود', 'LIVE_NOT_FOUND', 404);
   if (live.status !== 'UPCOMING') throw bad('اللايف ده بدأ أو خلص — مينفعش يتغير', 'LIVE_STARTED', 409);
   return live;
@@ -165,7 +192,8 @@ router.patch('/api/staff/lecturer/lives/:id', ...guard, async (req, res) => {
   try {
     const me = req.lecturer;
     const before = await ownUpcomingLive(me, req.params.id);
-    const live = await liveFields(me, req.body || {}, { partial: true });
+    const integrated = Boolean(before.meeting_id) && (await integrationStatus(me.tenantId)).configured;
+    const live = await liveFields(me, req.body || {}, { partial: true, integrated });
     const sets = [];
     const params = [];
     const set = (column, value) => { sets.push(`${column}=?`); params.push(value); };
@@ -176,6 +204,14 @@ router.patch('/api/staff/lecturer/lives/:id', ...guard, async (req, res) => {
     if (live.platform !== undefined) set('platform', live.platform);
     if (live.description !== undefined) set('description', live.description);
     if (live.visibility !== undefined) { set('visibility', live.visibility); set('target_course_ids_json', JSON.stringify(live.targetCourseIds)); }
+    // A moved or lengthened live needs its room moved: the old one goes, and a new one is made for the new hour.
+    if (integrated && (live.scheduledAt !== undefined || live.durationMinutes !== undefined || live.title !== undefined)) {
+      const room = await makeRoom(me, {
+        title: live.title ?? before.title, scheduledAt: live.scheduledAt ?? new Date(before.scheduled_at), durationMinutes: live.durationMinutes ?? before.duration_minutes ?? 60,
+      });
+      deleteMeeting(me.tenantId, { provider: before.meeting_provider, meetingId: before.meeting_id }).catch(() => false);
+      set('stream_url', room.joinUrl); set('platform', room.platform); set('host_url', room.hostUrl); set('meeting_id', room.meetingId); set('meeting_provider', room.provider);
+    }
     if (!sets.length) return res.json({ ok: true });
     await pool.query(`UPDATE live_streams SET ${sets.join(', ')} WHERE id=? AND tenant_id=? AND instructor_id=?`, [...params, before.id, me.tenantId, me.staffId]);
     // A new time is announced again to whoever was not told that time.
@@ -190,6 +226,7 @@ router.delete('/api/staff/lecturer/lives/:id', ...guard, async (req, res) => {
     const me = req.lecturer;
     const live = await ownUpcomingLive(me, req.params.id);
     await pool.query('DELETE FROM live_streams WHERE id=? AND tenant_id=? AND instructor_id=? AND status=\'UPCOMING\'', [live.id, me.tenantId, me.staffId]);
+    if (live.meeting_id) deleteMeeting(me.tenantId, { provider: live.meeting_provider, meetingId: live.meeting_id }).catch(() => false);
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'lives:delete'); }
 });
@@ -199,18 +236,20 @@ router.post('/api/staff/lecturer/community-live', ...guard, async (req, res) => 
   try {
     const me = req.lecturer;
     const title = clean(req.body?.title, 300);
-    const streamUrl = clean(req.body?.streamUrl, 2000);
+    const integrated = (await integrationStatus(me.tenantId)).configured;
+    const room = integrated ? await makeRoom(me, { title, scheduledAt: new Date(), durationMinutes: Math.round(Number(req.body?.durationMinutes) || 60) }) : null;
+    const streamUrl = room ? room.joinUrl : clean(req.body?.streamUrl, 2000);
     if (!title) throw bad('اكتب اسم اللايف', 'LIVE_TITLE');
     if (!httpUrl(streamUrl)) throw bad('حط رابط البث وبيبدأ بـ https://', 'LIVE_URL');
-    const platform = PLATFORMS.has(String(req.body?.platform || '').toUpperCase()) ? String(req.body.platform).toUpperCase() : 'OTHER';
+    const platform = room ? room.platform : PLATFORMS.has(String(req.body?.platform || '').toUpperCase()) ? String(req.body.platform).toUpperCase() : 'OTHER';
     const liveId = uuidv4();
     const postId = `post-${uuidv4()}`;
     await pool.query(
       `INSERT INTO live_streams (id, tenant_id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
-         stream_url, platform, visibility, target_course_ids_json, status, description, created_at, started_at)
-       VALUES (?,?,?,?,?,NOW(),?,?,?,'COMMUNITY_ALL','[]','LIVE',?,NOW(),NOW())`,
+         stream_url, platform, visibility, target_course_ids_json, status, description, created_at, started_at, host_url, meeting_id, meeting_provider)
+       VALUES (?,?,?,?,?,NOW(),?,?,?,'COMMUNITY_ALL','[]','LIVE',?,NOW(),NOW(),?,?,?)`,
       [liveId, me.tenantId, title, me.staffId, me.name, Math.round(Number(req.body?.durationMinutes) || 60), streamUrl, platform,
-        clean(req.body?.description, 4000) || null]);
+        clean(req.body?.description, 4000) || null, room?.hostUrl || null, room?.meetingId || null, room?.provider || null]);
     await pool.query(
       `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, staff_id, tags, featured, pinned, likes, status, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,0,1,0,'approved',?)`,
@@ -219,7 +258,7 @@ router.post('/api/staff/lecturer/community-live', ...guard, async (req, res) => 
         JSON.stringify(['لايف']), new Date().toISOString()]);
     cacheInvalidate(`community:${me.tenantId}`);
     createNotification('community', '🔴 لايف مجاني في المجتمع', `${me.name}: ${title}`, { streamId: liveId, postId }, me.tenantId).catch(() => {});
-    res.json({ ok: true, id: liveId, postId });
+    res.json({ ok: true, id: liveId, postId, hostUrl: room?.hostUrl || null });
   } catch (error) { fail(res, error, 'community-live'); }
 });
 
@@ -295,7 +334,7 @@ router.get('/api/staff/lecturer/consultations', ...guard, async (req, res) => {
     if (!me.therapist) return res.json([]);
     const [rows] = await pool.query(
       `SELECT id, client_name, client_phone, session_type, session_date, status, notes, amount, currency,
-              session_duration_minutes, meeting_link, created_at, source, paid_at
+              session_duration_minutes, meeting_link, host_link, meeting_id, created_at, source, paid_at
          FROM consultations WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL
         ORDER BY (status IN ('PENDING','CONFIRMED')) DESC, session_date DESC LIMIT 300`, [me.tenantId, me.therapist.id]);
     // A proposal waiting for an answer, on the consultation it is about (lib/consultationReschedule.js).
@@ -310,7 +349,7 @@ router.get('/api/staff/lecturer/consultations', ...guard, async (req, res) => {
       id: row.id, clientName: row.client_name, clientPhone: row.client_phone || '', sessionType: String(row.session_type || '').toLowerCase(),
       sessionDate: row.session_date, sessionTime: consultationClock(row), status: String(row.status || '').toLowerCase(), notes: row.notes || '',
       amount: row.amount === null ? null : Number(row.amount),
-      currency: row.currency || null, minutes: row.session_duration_minutes || null, meetingLink: row.meeting_link || '', createdAt: row.created_at,
+      currency: row.currency || null, minutes: row.session_duration_minutes || null, meetingLink: row.meeting_link || '', hostLink: row.host_link || '', systemMade: Boolean(row.meeting_id), createdAt: row.created_at,
       source: row.source || null, paid: Boolean(row.paid_at), pendingReschedule: waiting.get(row.id) || null,
     })));
   } catch (error) { fail(res, error, 'consultations'); }
@@ -329,6 +368,7 @@ router.patch('/api/staff/lecturer/consultations/:id', ...guard, async (req, res)
     }
     if (req.body?.notes !== undefined) { sets.push('notes=?'); params.push(clean(req.body.notes, 4000)); }
     if (req.body?.meetingLink !== undefined) {
+      if ((await integrationStatus(me.tenantId)).configured) throw bad('الروابط بيعملها السيستم لوحده — اضغط «ابدأ الجلسة» وهتفتحلك', 'CONSULTATION_LINK_SYSTEM', 409);
       const link = clean(req.body.meetingLink, 2000);
       if (link && !httpUrl(link)) throw bad('رابط الجلسة لازم يبدأ بـ https://', 'CONSULTATION_LINK');
       sets.push('meeting_link=?'); params.push(link || null);
@@ -341,6 +381,25 @@ router.patch('/api/staff/lecturer/consultations/:id', ...guard, async (req, res)
     if (status === 'COMPLETED') await onConsultationCompleted(pool, { tenantId: me.tenantId, consultationId: req.params.id, actor: me.staffId });
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'consultations:update'); }
+});
+
+// «ابدأ الجلسة»: the lecturer's host link — the system makes the meeting now if it has not yet.
+router.post('/api/staff/lecturer/consultations/:id/start', ...guard, async (req, res) => {
+  try {
+    const me = req.lecturer;
+    if (!me.therapist) throw bad('مفيش ملف استشارات مربوط بحسابك', 'NO_CONSULTATION_PROFILE', 409);
+    const [[row]] = await pool.query(
+      'SELECT id, meeting_link, host_link FROM consultations WHERE id=? AND tenant_id=? AND therapist_id=? AND deleted_at IS NULL LIMIT 1', [req.params.id, me.tenantId, me.therapist.id]);
+    if (!row) throw bad('الاستشارة مش موجودة', 'CONSULTATION_NOT_FOUND', 404);
+    let hostLink = row.host_link || '';
+    if (!hostLink && (await integrationStatus(me.tenantId)).configured) {
+      const made = await ensureConsultationMeeting(pool, { tenantId: me.tenantId, consultationId: row.id });
+      hostLink = made?.hostLink || '';
+    }
+    hostLink = hostLink || row.meeting_link || '';
+    if (!hostLink) throw bad('لسه مفيش رابط للجلسة دي — الجلسة لازم تكون مؤكدة وليها ميعاد', 'CONSULTATION_NO_LINK', 409);
+    res.json({ ok: true, hostLink });
+  } catch (error) { fail(res, error, 'consultations:start'); }
 });
 
 // ── Ratings, students, money ─────────────────────────────────────────────────

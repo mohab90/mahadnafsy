@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarClock, ExternalLink, Link2, Pencil } from 'lucide-react';
+import { CalendarClock, ExternalLink, Link2, Pencil, Video } from 'lucide-react';
 import { ConsultationTimingBadge } from '../../components/ConsultationTimingBadge';
 import { promptDialog } from '../../../shared/ui/promptDialog';
 import { errorText, lecturerApi, type LecturerConsultation, type Notify } from './lecturerApi';
@@ -13,7 +13,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 const KIND: Record<string, string> = { individual: 'فردية', couple: 'زوجية', family: 'أسرية' };
 
 /** The lecturer's consultations — each says whether it is urgent within 60 minutes or has a day and an hour. */
-export function LecturerConsultations({ notify }: { notify: Notify }) {
+export function LecturerConsultations({ notify, systemMeetings = false }: { notify: Notify; systemMeetings?: boolean }) {
   const [rows, setRows] = useState<LecturerConsultation[] | null>(null);
   const [busy, setBusy] = useState('');
   const [moving, setMoving] = useState('');
@@ -30,6 +30,12 @@ export function LecturerConsultations({ notify }: { notify: Notify }) {
   const note = async (item: LecturerConsultation) => {
     const text = await promptDialog({ title: 'ملاحظات الجلسة', message: item.clientName, defaultValue: item.notes, confirmLabel: 'حفظ' });
     if (text !== null) await update(item, { notes: text }, 'اتحفظت الملاحظة');
+  };
+  // «ابدأ الجلسة»: the system's own room — made now if it has not been, opened as the host.
+  const start = async (item: LecturerConsultation) => {
+    setBusy(item.id);
+    try { const { hostLink } = await lecturerApi.startConsultation(item.id); window.open(hostLink, '_blank', 'noopener'); load(); }
+    catch (error) { notify('error', errorText(error)); } finally { setBusy(''); }
   };
   const link = async (item: LecturerConsultation) => {
     const text = await promptDialog({ title: 'رابط الجلسة', message: 'رابط Zoom أو Meet اللي هتقابل عليه العميل', defaultValue: item.meetingLink, placeholder: 'https://…', confirmLabel: 'حفظ' });
@@ -62,9 +68,10 @@ export function LecturerConsultations({ notify }: { notify: Notify }) {
                     {open && <button type="button" disabled={busy === item.id} onClick={() => void update(item, { status: 'COMPLETED' }, 'اتسجلت إنها تمت')} className="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 disabled:opacity-50">تمت</button>}
                     {open && <button type="button" disabled={busy === item.id} onClick={() => void update(item, { status: 'CANCELLED' }, 'اتلغت')} className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50">إلغاء</button>}
                     {open && item.source !== 'site_express' && <button type="button" aria-label="تأجيل" title="اقترح تأجيل" onClick={() => setMoving(moving === item.id ? '' : item.id)} className="rounded-xl border border-indigo-200 bg-white p-2 text-indigo-700"><CalendarClock size={14} /></button>}
-                    <button type="button" aria-label="رابط الجلسة" title="رابط الجلسة" onClick={() => void link(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Link2 size={14} /></button>
+                    {!systemMeetings && !item.systemMade && <button type="button" aria-label="رابط الجلسة" title="رابط الجلسة" onClick={() => void link(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Link2 size={14} /></button>}
                     <button type="button" aria-label="ملاحظات" title="ملاحظات" onClick={() => void note(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Pencil size={14} /></button>
-                    {item.meetingLink && <a href={item.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white"><ExternalLink size={12} /> فتح الجلسة</a>}
+                    {(systemMeetings || item.systemMade) && item.status === 'confirmed' && <button type="button" disabled={busy === item.id} onClick={() => void start(item)} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Video size={12} /> ابدأ الجلسة</button>}
+                    {!systemMeetings && !item.systemMade && item.meetingLink && <a href={item.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white"><ExternalLink size={12} /> فتح الجلسة</a>}
                   </div>
                 </div>
                 <PendingReschedule item={item} notify={notify} onDone={load} />
