@@ -226,3 +226,27 @@ test('a lecturer\'s consultations list holds their own clients only — it carri
   assert.match(list, /const \[waiting\] = lecturerJob \? \[\[\]\]/, 'and no awaiting-payment orders (customer names and e-mails)');
   assert.ok(require('../constants/permissions').LECTURER_JOB_ROLES.has('consultant'));
 });
+
+// Read from the production API log on 26 Oct 2026 (4.38 million requests since 20 Aug, grouped by action): the 500s still happening after the
+// first weeks, each answered with the status and the message it deserves.
+test('a unique-key collision is a 409 that says what collided, never «Internal server error»', () => {
+  const { sendRouteError, duplicateEntryMessage } = require('../lib/helpers');
+  const answers = [];
+  const res = { headersSent: false, status(code) { answers.push(code); return this; }, json(body) { answers.push(body); return this; } };
+  sendRouteError(res, Object.assign(new Error("Duplicate entry 'tenant-default-0101' for key 'uq_leads_tenant_phone'"), { code: 'ER_DUP_ENTRY' }));
+  assert.equal(answers[0], 409);
+  assert.match(answers[1].error, /رقم الهاتف/);
+  assert.equal(answers[1].code, 'DUPLICATE_ENTRY');
+  assert.match(duplicateEntryMessage({ message: "Duplicate entry 'x' for key 'uq_users_tenant_email'" }), /البريد/);
+  // A real failure is still a 500.
+  const failure = [];
+  sendRouteError({ headersSent: false, status(code) { failure.push(code); return this; }, json() { return this; } }, new Error('boom'));
+  assert.deepEqual(failure, [500]);
+  assert.match(read('api/routes/admin/subscribers.js'), /ER_DUP_ENTRY[\s\S]{0,200}duplicateEntryMessage/);
+});
+
+test('a consultation status outside the enum is refused with 400, a zero date no longer breaks the forecast, a long «education» is cut to its column', () => {
+  assert.match(read('api/routes/core/catalog.js'), /\['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'\]\.includes\(next\)\) return res\.status\(400\)/);
+  assert.match(read('api/lib/crmForecast.js'), /value instanceof Date && Number\.isNaN\(value\.getTime\(\)\)\) return null/);
+  assert.match(read('api/routes/hr/talent.js'), /j\.education \? String\(j\.education\)\.slice\(0, 255\) : null/);
+});

@@ -13,6 +13,8 @@ const CATEGORIES = new Set(Object.keys(CATEGORY_PROBABILITY));
 
 function monthKey(value) {
   if (!value) return null;
+  // A zero or broken date arrives as an Invalid Date, whose toISOString() throws «Invalid time value» (the forecast answered 500 on 22 Oct).
+  if (value instanceof Date && Number.isNaN(value.getTime())) return null;
   const text = value instanceof Date ? value.toISOString() : String(value);
   const match = text.match(/^(\d{4})-(\d{2})/);
   return match ? `${match[1]}-${match[2]}` : null;

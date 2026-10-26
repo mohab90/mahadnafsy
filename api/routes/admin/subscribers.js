@@ -39,6 +39,10 @@ const { listCustomerTimeline } = require('../../lib/customerTimeline');
 const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../lib/staffEmailGuard');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
+  if (err?.code === 'ER_DUP_ENTRY') {
+    res.status(409).json({ error: require('../../lib/helpers').duplicateEntryMessage(err), code: 'DUPLICATE_ENTRY' });
+    return;
+  }
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
   const status = err && dbCodes.has(err.code) ? 503 : 500;
   res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
