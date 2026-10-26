@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../lib/logger');
+const { isEnglish } = require('../lib/certificateEnglish');
 const { hasPaidForCourse } = require('../lib/coursePaid');
 const { recordIssuedInstituteCertificate } = require('../lib/instituteCertificates');
 const express = require('express');
@@ -405,6 +406,12 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
     }
     if (!sets.length) { await conn.rollback(); return res.json({ ok: true, changed: [] }); }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, request.id, req.tenantId]);
+    // «الاسم بالإنجليزي أنا مدخله قبل كده من صفحة الشهادات»: an English name typed on a request is the client's name, so it fills the blank on
+    // their file too — the institute's certificate and every other one read it from there.
+    const typedNameEn = b.nameEn === undefined ? '' : sanitize(String(b.nameEn ?? ''), 255).trim();
+    if (request.subscriber_id && typedNameEn && isEnglish(typedNameEn)) {
+      await conn.query("UPDATE subscribers SET name_en=? WHERE id=? AND tenant_id=? AND (name_en IS NULL OR TRIM(name_en)='')", [typedNameEn, request.subscriber_id, req.tenantId]);
+    }
     if (request.subscriber_id) {
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_edited', actor: actorName(req),

@@ -113,6 +113,8 @@ export interface Bundle {
   id: string;
   title: string;
   titleEn?: string;
+  /** Training hours the track's certificate prints. */
+  hours?: number;
   slug?: string;
   videoUrl?: string;
   thumbnail?: string;
@@ -219,6 +221,16 @@ export interface SubscriberCertificate {
   revokedAt?: string;
   revokeReason?: string;
   note?: string;
+  /** The course's (or track's) title, and whether this is a track's certificate. */
+  title?: string;
+  isTrack?: boolean;
+  /** Printed at the institute: when, by whom, how many times. */
+  printedAt?: string;
+  printedBy?: string;
+  printCount?: number;
+  /** The client opened / downloaded it from their own account. */
+  downloadedAt?: string;
+  downloadCount?: number;
 }
 
 // A code from «تسعير الشهادات» (content extra_cert_pricing): the eight it

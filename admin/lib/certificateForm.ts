@@ -1,37 +1,46 @@
 /**
  * Printing the institute certificate onto the institute's pre-printed paper:
- * only the client's name and the course with its duration are written, at set
- * distances from the top of the A4 sheet — «اسم العميل على بعد حوالي 17 سم واسم
- * الكورس على بعد 22 سم». The paper in the printer may sit a little differently,
- * so the two distances can be nudged and are remembered on this computer.
+ * only the client's name, the course with its training hours under it and the
+ * code are written, at set distances from the top of the A4 sheet — «مكان
+ * الطباعة على النموذج الجاهز … تثبيت بمقاسات معينة تبقى الصح وتطبع على كله».
+ * The measurements are saved once for the institute on the server
+ * (certificate_form_layout) and every print on every computer reads them there.
  */
-export const FORM_DEFAULTS = { nameTop: 16, courseTop: 22.6 };
-// v2: the name rose 1 cm and the course sank a little (15 Oct 2026) — distances nudged on the old ones are dropped.
-const KEY = 'psy.certificateForm.offsets.v2';
+import { mysqlAdmin } from './mysqlapi';
 
-export type FormOffsets = { nameTop: number; courseTop: number };
+export type FormLayout = { nameTop: number; courseTop: number; hoursTop: number; codeTop: number };
+export const LAYOUT_RANGE = { min: 3, max: 28 };
 
-const inRange = (value: unknown, fallback: number) => {
-  const cm = Number(value);
-  return Number.isFinite(cm) && cm >= 3 && cm <= 28 ? cm : fallback;
-};
+export const LAYOUT_FIELDS: { key: keyof FormLayout; label: string }[] = [
+  { key: 'nameTop', label: 'اسم العميل' },
+  { key: 'courseTop', label: 'اسم الكورس' },
+  { key: 'hoursTop', label: 'الساعات التدريبية' },
+  { key: 'codeTop', label: 'رقم الشهادة' },
+];
 
-export function loadFormOffsets(): FormOffsets {
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<FormOffsets>;
-    return { nameTop: inRange(saved.nameTop, FORM_DEFAULTS.nameTop), courseTop: inRange(saved.courseTop, FORM_DEFAULTS.courseTop) };
-  } catch { return { ...FORM_DEFAULTS }; }
+// The site serves the printable certificate; the desk's own opens are marked so
+// they are not read as the client downloading it.
+export const SITE = 'https://mahadnafsy.com';
+
+export const certificateUrl = (code: string, staff = false) =>
+  `${SITE}/api/completions/${encodeURIComponent(code)}/certificate${staff ? '?staff=1' : ''}`;
+
+export async function loadFormLayout(): Promise<{ layout: FormLayout; defaults: FormLayout; saved: boolean }> {
+  return mysqlAdmin.adminGet<{ layout: FormLayout; defaults: FormLayout; saved: boolean }>('/admin/institute-certificates/layout');
 }
 
-export function saveFormOffsets(offsets: FormOffsets): FormOffsets {
-  const clean = { nameTop: inRange(offsets.nameTop, FORM_DEFAULTS.nameTop), courseTop: inRange(offsets.courseTop, FORM_DEFAULTS.courseTop) };
-  try { localStorage.setItem(KEY, JSON.stringify(clean)); } catch { /* private window: this print only */ }
-  return clean;
+export async function saveFormLayout(layout: FormLayout): Promise<FormLayout> {
+  const result = await mysqlAdmin.adminPut<{ layout: FormLayout }>('/admin/institute-certificates/layout', layout);
+  return result.layout;
 }
 
-/** The page that prints a certificate onto the form (the server draws it). */
-export function formPrintUrl(site: string, code: string, offsets: FormOffsets, print = false): string {
-  const query = new URLSearchParams({ mode: 'form', staff: '1', nameTop: String(offsets.nameTop), courseTop: String(offsets.courseTop) });
+/**
+ * The page that prints a certificate onto the form (the server draws it, at the
+ * saved measurements; `trial` tries other ones without saving them).
+ */
+export function formPrintUrl(site: string, code: string, print = false, trial?: Partial<FormLayout>): string {
+  const query = new URLSearchParams({ mode: 'form', staff: '1' });
+  for (const { key } of LAYOUT_FIELDS) if (trial?.[key] != null) query.set(key, String(trial[key]));
   if (print) query.set('print', '1');
   return `${site}/api/completions/${encodeURIComponent(code)}/certificate?${query.toString()}`;
 }

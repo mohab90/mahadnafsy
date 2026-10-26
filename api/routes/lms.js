@@ -1002,6 +1002,25 @@ router.post('/api/admin/completions/:id/revoke', requireAuth, requireAdmin, requ
   }
 });
 
+// «في شهادات غلط محتاج يبقى جنبها زر حذف»: a revoked certificate comes off the client's page. The row stays, marked deleted, so the hourly sweep
+// — which skips a client who already has a certificate row for the course — does not issue it again; a valid certificate is revoked first.
+router.delete('/api/admin/completions/:id', requireAuth, requireAdmin, requirePermission('manage_courses'), async (req, res) => {
+  try {
+    const [[row]] = await pool.query('SELECT id, status, subscriber_id, certificate_code FROM course_completions WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [req.params.id, req.tenantId]);
+    if (!row) return res.status(404).json({ error: 'الشهادة مش موجودة' });
+    if (row.status === 'active') return res.status(409).json({ error: 'الشهادة السارية بتتلغي الأول وبعدين تتحذف', code: 'CERT_STILL_ACTIVE' });
+    const by = req.staffRecord?.name || req.user?.email || 'admin';
+    await pool.query('UPDATE course_completions SET deleted_at=NOW(), deleted_by=? WHERE id=? AND tenant_id=?', [by, row.id, req.tenantId]);
+    await require('../lib/clientHistory').logClientEvent(pool, {
+      tenantId: req.tenantId, subscriberId: row.subscriber_id, action: 'institute_certificate', actor: by, label: `اتحذفت شهادة غلط (${row.certificate_code})`,
+    }).catch(() => {});
+    res.json({ ok: true });
+  } catch (error) {
+    require('../lib/logger').error('[completions/delete]', error.message);
+    res.status(500).json({ error: 'Unable to delete certificate' });
+  }
+});
+
 router.post('/api/admin/completions/:id/reissue', requireAuth, requireAdmin, requirePermission('manage_courses'), async (req, res) => {
   try {
     res.json(await reissueCertificate({

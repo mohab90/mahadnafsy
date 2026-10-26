@@ -303,6 +303,9 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
     const seoTitle     = seoText(b.seo_title, 255);
     const seoDesc      = seoText(b.seo_description, 500);
     const seoKeywords  = seoText(b.seo_keywords, 500);
+    // «كل كورس ومسار أحدد أنا هو كام ساعة تدريبية بتطلع في الشهادة»: the training hours the track's certificate prints.
+    const hoursNumber  = Number(b.hours);
+    const hours        = Number.isFinite(hoursNumber) && hoursNumber > 0 && hoursNumber <= 10000 ? hoursNumber : null;
     if (b.id) {
       const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM bundles WHERE id=? LIMIT 1', [req.tenantId, b.id]);
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Bundle not found' });
@@ -316,8 +319,8 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
     await pool.query(
       `INSERT INTO bundles (id, tenant_id, title, title_en, slug, short_description, description, thumbnail, video_url,
          price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
-         details_content_json, is_published, sort_order, seo_title, seo_description, seo_keywords)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         details_content_json, is_published, sort_order, seo_title, seo_description, seo_keywords, hours)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), title_en=VALUES(title_en), slug=VALUES(slug), short_description=VALUES(short_description),
          seo_title=VALUES(seo_title), seo_description=VALUES(seo_description), seo_keywords=VALUES(seo_keywords),
@@ -325,11 +328,11 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
          price_egp=VALUES(price_egp), price_sar=VALUES(price_sar), price_usd=VALUES(price_usd),
          orig_price_egp=VALUES(orig_price_egp), orig_price_sar=VALUES(orig_price_sar), orig_price_usd=VALUES(orig_price_usd),
          details_content_json=VALUES(details_content_json), is_published=VALUES(is_published),
-         sort_order=VALUES(sort_order), updated_at=CURRENT_TIMESTAMP`,
+         sort_order=VALUES(sort_order), hours=VALUES(hours), updated_at=CURRENT_TIMESTAMP`,
       [id, req.tenantId, b.title||'', titleEn, b.slug||null, shortDesc, b.description||'',
        b.thumbnail||'', videoUrl,
        priceEGP, priceSAR, priceUSD, origEGP, origSAR, origUSD,
-       detailsJson, isPublished, sortOrder, seoTitle, seoDesc, seoKeywords]
+       detailsJson, isPublished, sortOrder, seoTitle, seoDesc, seoKeywords, hours]
     );
     await syncOnlineTiersFromColumns(pool, { tenantId: req.tenantId, type: 'bundle', itemId: id });
     // Sync courses into bundle_courses join table

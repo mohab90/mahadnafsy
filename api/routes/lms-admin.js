@@ -195,7 +195,7 @@ router.post('/api/admin/therapists', requireAuth, requireAdminOrStaff, requirePe
     if (staffId) {
       const [[staff]] = await conn.query(
         `SELECT id FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL
-          AND LOWER(role) IN ('instructor','trainer') LIMIT 1`,
+          AND LOWER(role) IN ('instructor','trainer','consultant','expert') LIMIT 1`,
         [req.tenantId, staffId]
       );
       if (!staff) return res.status(400).json({ error: 'Linked staff instructor is not active in this tenant' });
