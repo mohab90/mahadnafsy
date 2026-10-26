@@ -555,6 +555,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   onViewCertificate={setViewCertId}
                   onRevokeCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'revoke')}
                   onReissueCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'reissue')}
+                  onDeleteCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'delete')}
                   notify={notify} onCertificateDataSaved={reloadSubscribers} />
               )}
 
@@ -608,6 +609,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   bundles={bundles}
                   onSaveSubscriber={handleSaveSubEdit}
                   onSaveLead={handleSaveLeadEdit}
+                  onCertificateData={openCertificateData}
                   currentPassword={currentPassword}
                   currentPasswordLoading={currentPasswordLoading}
                   showCurrentPassword={showCurrentPassword}
@@ -678,7 +680,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             } : undefined}
             certificateView={viewCertId ? {
               certificateId: viewCertId, certificates: activeSubCerts, subscriber,
-              clientName, courses, onClose: () => setViewCertId(null),
+              clientName, courses, onClose: () => setViewCertId(null), onPrinted: reloadSubscribers,
             } : undefined}
             paymentDetail={showPayDetailModal && isSub ? {
               open: true, subscriber, clientName, courses, bundles, settlementCurrency, paidTotals: subPaidTotals,

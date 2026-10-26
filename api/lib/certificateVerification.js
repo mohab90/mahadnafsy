@@ -38,16 +38,18 @@ async function verifyCertificate(db, rawCode) {
 
   const [[course]] = await db.query(
     `SELECT cc.certificate_code, cc.completed_at, cc.status, s.name AS name_ar, s.name_en,
-            c.title AS course_ar, c.title_en AS course_en, c.hours AS hours_count
+            COALESCE(c.title, b.title) AS course_ar, COALESCE(c.title_en, b.title_en) AS course_en, COALESCE(c.hours, b.hours) AS hours_count,
+            (b.id IS NOT NULL AND c.id IS NULL) AS is_track
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id = cc.tenant_id
-       JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
-      WHERE cc.certificate_code = ? LIMIT 1`, [code]);
+       LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
+       LEFT JOIN bundles b ON b.id = cc.course_id AND b.tenant_id = cc.tenant_id
+      WHERE cc.certificate_code = ? AND cc.deleted_at IS NULL AND (c.id IS NOT NULL OR b.id IS NOT NULL) LIMIT 1`, [code]);
   if (course) {
     return {
       kind: 'course', code: course.certificate_code, state: course.status === 'active' ? 'valid' : 'revoked',
       holderAr: course.name_ar || '', holderEn: course.name_en || '',
-      title: 'شهادة إتمام كورس', titleEn: 'Certificate of Achievement',
+      title: Number(course.is_track) ? 'شهادة إتمام مسار' : 'شهادة إتمام كورس', titleEn: 'Certificate of Achievement',
       subjectAr: course.course_ar || '', subjectEn: course.course_en || '',
       hours: Number(course.hours_count) > 0 ? +Number(course.hours_count).toFixed(2) : null,
       issuedAt: course.completed_at, issuer: ISSUER,

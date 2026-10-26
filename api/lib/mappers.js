@@ -228,6 +228,8 @@ function mapBundle(r, allCourses = []) {
     seo_title: r.seo_title || undefined,
     seo_description: r.seo_description || undefined,
     seo_keywords: r.seo_keywords || undefined,
+    // The training hours the track's certificate prints (bundles.hours), as a course's do.
+    hours: r.hours != null && Number(r.hours) > 0 ? Number(r.hours) : undefined,
     courses,
   };
 }

@@ -501,6 +501,10 @@ const saveCourse = async () => {
               <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.duration} onChange={(e) => setCourseDraft({ ...courseDraft, duration: e.target.value })} />
             </div>
             <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">ساعات التدريب اللي بتطلع في الشهادة (مثال: 60)</label>
+              <input type="number" min={0} step="0.5" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.hours ?? ''} onChange={(e) => setCourseDraft({ ...courseDraft, hours: Number(e.target.value) > 0 ? Number(e.target.value) : undefined })} />
+            </div>
+            <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">تصنيف الكورس</label>
               <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.category} onChange={(e) => setCourseDraft({ ...courseDraft, category: e.target.value as Course['category'] })}>
                 <option value="General">عام</option><option value="Therapy">علاج</option><option value="Diagnosis">تشخيص</option><option value="Child">أطفال</option>

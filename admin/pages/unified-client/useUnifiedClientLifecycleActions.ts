@@ -5,6 +5,7 @@ import type { LeadItem, SubscriberCertificate, SubscriberItem } from '../../type
 import { generatePromoCode } from './constants';
 import { useUnifiedClientCertificateState } from './useUnifiedClientCertificateState';
 import { alertDialog, promptDialog } from '../../../shared/ui/promptDialog';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 interface Params {
   lead?: LeadItem;
@@ -78,8 +79,20 @@ export function useUnifiedClientLifecycleActions(params: Params) {
 
   const handleCertificateLifecycle = async (
     certificateId: string,
-    action: 'revoke' | 'reissue',
+    action: 'revoke' | 'reissue' | 'delete',
   ) => {
+    if (action === 'delete') {
+      // «في شهادات غلط محتاج يبقى جنبها زر حذف»: a revoked certificate comes off the client's page for good.
+      if (!await confirmDialog('تحذف الشهادة الغلط دي من صفحة العميل؟')) return;
+      try {
+        await mysqlAdmin.adminDelete(`/admin/completions/${encodeURIComponent(certificateId)}`);
+        setSubCerts(current => current.filter(certificate => certificate.id !== certificateId));
+        await reloadSubscribers();
+      } catch (error) {
+        await alertDialog(error instanceof Error ? error.message : 'تعذر حذف الشهادة');
+      }
+      return;
+    }
     const reason = await promptDialog(
       action === 'revoke' ? 'سبب إلغاء الشهادة:' : 'سبب إعادة إصدار الشهادة:',
     );

@@ -28,7 +28,7 @@ const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
 const joinApplication = require('../lib/joinApplication');
-const { effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
+const { REQUEST_NAME_EN_SQL, effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
 const { verifyCertificate } = require('../lib/certificateVerification');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
@@ -414,10 +414,11 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
     const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.json([]);
     const [rows] = await pool.query(
-      `SELECT cc.*, c.title AS course_title, c.thumbnail AS course_thumbnail
+      `SELECT cc.*, COALESCE(c.title, b.title) AS course_title, COALESCE(c.thumbnail, b.thumbnail) AS course_thumbnail
        FROM course_completions cc
        LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
-       WHERE cc.subscriber_id = ? AND cc.tenant_id=? AND cc.status='active'
+       LEFT JOIN bundles b ON b.id = cc.course_id AND b.tenant_id=cc.tenant_id
+       WHERE cc.subscriber_id = ? AND cc.tenant_id=? AND cc.status='active' AND cc.deleted_at IS NULL
        ORDER BY cc.completed_at DESC`,
       [sub.id, req.tenantId]
     );
@@ -462,11 +463,12 @@ router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.status,cc.version,
-              s.name AS subscriber_name,c.title AS course_title
+              s.name AS subscriber_name,COALESCE(c.title, b.title) AS course_title
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id = cc.tenant_id
-       JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
-       WHERE cc.certificate_code = ?`,
+       LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
+       LEFT JOIN bundles b ON b.id = cc.course_id AND b.tenant_id = cc.tenant_id
+       WHERE cc.certificate_code = ? AND cc.deleted_at IS NULL AND (c.id IS NOT NULL OR b.id IS NOT NULL)`,
       [req.params.code]
     );
     if (!row) return res.status(404).json({ error: 'الشهادة غير موجودة' });
@@ -495,14 +497,16 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
               cc.cert_name_en, cc.cert_course_en, cc.cert_duration, cc.cert_trainer,
-              s.name_en AS subscriber_name_en, s.client_code,
-              c.title AS course_title, c.title_en AS course_title_en, c.hours AS hours_count,
+              s.name_en AS subscriber_name_en, ${REQUEST_NAME_EN_SQL} AS request_name_en, s.client_code,
+              COALESCE(c.title, b.title) AS course_title, COALESCE(c.title_en, b.title_en) AS course_title_en,
+              COALESCE(c.hours, b.hours) AS hours_count,
               u.name AS instructor_name
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id=cc.tenant_id
-       JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
+       LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
+       LEFT JOIN bundles b ON b.id = cc.course_id AND b.tenant_id=cc.tenant_id
        LEFT JOIN users u ON u.id = c.instructor_id AND u.tenant_id=cc.tenant_id
-       WHERE cc.certificate_code = ? AND cc.status='active'`,
+       WHERE cc.certificate_code = ? AND cc.status='active' AND cc.deleted_at IS NULL AND (c.id IS NOT NULL OR b.id IS NOT NULL)`,
       [req.params.code]
     );
     if (!row) return res.status(404).send('<h3>الشهادة غير موجودة</h3>');
@@ -523,7 +527,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     // English only («اسم العميل واسم الكورس بالانجليزي فقط»): never the Arabic name or title,
     // whether it comes from the client's file or from the desk's change on this certificate.
     const certificate = effectiveCertificate({
-      cert_name_en: row.cert_name_en, name_en: row.subscriber_name_en,
+      cert_name_en: row.cert_name_en, name_en: row.subscriber_name_en, request_name_en: row.request_name_en,
       cert_course_en: row.cert_course_en, course_title_en: row.course_title_en, course_title: row.course_title,
       cert_duration: row.cert_duration, hours: row.hours_count,
       cert_trainer: row.cert_trainer, instructor_name: row.instructor_name,
@@ -531,7 +535,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const studentName = certificate.name;
     const courseName  = certificate.course;
     if (!studentName || !courseName) {
-      const missing = missingForCertificate({ nameEn: row.cert_name_en || row.subscriber_name_en, courseTitleEn: row.cert_course_en || row.course_title_en, courseTitle: row.course_title });
+      const missing = missingForCertificate({ nameEn: row.cert_name_en || row.subscriber_name_en || row.request_name_en, courseTitleEn: row.cert_course_en || row.course_title_en, courseTitle: row.course_title });
       return res.status(409).type('html').send(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>الشهادة غير جاهزة</title></head>
 <body style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;text-align:center;color:#333">
 <h2 style="color:#B45309">الشهادة غير جاهزة للطباعة</h2>
@@ -559,8 +563,15 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 
     // The institute's own picture with the lines written on it (lib/certificateHtml.js);
     // this page adds the toolbar and the print rules around it.
+    // The desk's print onto the pre-printed paper uses the measurements the institute fixed (tenant setting certificate_form_layout, set from
+    // «مقاسات الطباعة»); a test print may name its own in the query.
+    const layout = formMode ? await getTenantSetting('certificate_form_layout', { tenantId: row.tenant_id, fallback: {} }) : {};
     const cert = formMode
-      ? certificateFormHtml({ studentName, courseName, duration: certificate.duration, nameTop: req.query.nameTop, courseTop: req.query.courseTop, certCode, year: issuedYear })
+      ? certificateFormHtml({
+        studentName, courseName, duration: certificate.duration, certCode, year: issuedYear,
+        nameTop: req.query.nameTop ?? layout.nameTop, courseTop: req.query.courseTop ?? layout.courseTop,
+        hoursTop: req.query.hoursTop ?? layout.hoursTop, codeTop: req.query.codeTop ?? layout.codeTop,
+      })
       : certificateHtml({ studentName, courseName, duration: certificate.duration, trainer: certificate.trainer, serialNo, issuedAt, qrUrl, verifyUrl, certCode, year: issuedYear });
     // This page prints itself, so it carries the one script it needs, by nonce. The API's own policy
     // allows no script at all, which is why «Print» did nothing on the live site.

@@ -19,7 +19,7 @@
 const logger = require('./logger');
 const { pool } = require('./db');
 const { completeCourse } = require('./courseCompletion');
-const { hasPaidForCourse } = require('./coursePaid');
+const { hasPaidForBundle, hasPaidForCourse } = require('./coursePaid');
 
 const DELIVERY_STAGES = Object.freeze(['READY', 'PRINTED', 'AT_BRANCH', 'SHIPPED', 'DELIVERED', 'RETURNED']);
 
@@ -28,41 +28,40 @@ function parseCrm(value) {
   try { return JSON.parse(value || '{}') || {}; } catch { return {}; }
 }
 
-/** Every (client, course) with course money and no certificate yet. */
+/**
+ * Every (client, course) and (client, track) with money in and no certificate yet.
+ *
+ * «أي عميل حجز مسار بيطلعله شهادة المسار كامل فقط مش الكورسات الداخلية» (26 Oct 2026): a client who booked a TRACK is certified for the track —
+ * one certificate, whose id is the track's — and not for each course inside it; a course counts on its own only when its own money is in.
+ * An item is { subscriberId, courseId } or { subscriberId, bundleId }.
+ */
 async function candidatePairs(db, tenantId) {
   const pairs = new Map();
-  const add = (subscriberId, courseId) => {
+  const addCourse = (subscriberId, courseId) => {
     if (subscriberId && courseId) pairs.set(`${subscriberId}|${courseId}`, { subscriberId: String(subscriberId), courseId: String(courseId) });
+  };
+  const addTrack = (subscriberId, bundleId) => {
+    if (subscriberId && bundleId) pairs.set(`${subscriberId}|${bundleId}`, { subscriberId: String(subscriberId), bundleId: String(bundleId) });
   };
   const [direct] = await db.query(
     `SELECT DISTINCT p.subscriber_id, p.course_id FROM payments p
-      WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.course_id IS NOT NULL
+      WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.course_id IS NOT NULL AND p.bundle_id IS NULL
         AND COALESCE(p.payment_type, '') IN ('', 'COURSE', 'OTHER')`, [tenantId]);
-  direct.forEach(row => add(row.subscriber_id, row.course_id));
+  direct.forEach(row => addCourse(row.subscriber_id, row.course_id));
   const [viaTrack] = await db.query(
-    `SELECT DISTINCT p.subscriber_id, bc.course_id FROM payments p
-       JOIN bundle_courses bc ON bc.bundle_id=p.bundle_id AND bc.tenant_id=p.tenant_id
+    `SELECT DISTINCT p.subscriber_id, p.bundle_id FROM payments p
+       JOIN bundles b ON b.id=p.bundle_id AND b.tenant_id=p.tenant_id AND b.deleted_at IS NULL
       WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.bundle_id IS NOT NULL
         AND COALESCE(p.payment_type, '') IN ('', 'BUNDLE', 'COURSE', 'OTHER')`, [tenantId]);
-  viaTrack.forEach(row => add(row.subscriber_id, row.course_id));
+  viaTrack.forEach(row => addTrack(row.subscriber_id, row.bundle_id));
   // «مدفوع قبل السيستم»: most of Dokki's clients paid before the system existed.
   const [prior] = await db.query(
     `SELECT id, crm_json FROM subscribers
       WHERE tenant_id=? AND deleted_at IS NULL AND crm_json LIKE '%priorPaid%'`, [tenantId]);
-  const trackIds = new Set();
-  const priorTracks = [];
   for (const row of prior) {
     for (const [key, amount] of Object.entries(parseCrm(row.crm_json).priorPaid || {})) {
       if (!(Number(amount) > 0)) continue;
-      if (key.startsWith('bundle:')) { trackIds.add(key.slice(7)); priorTracks.push([row.id, key.slice(7)]); } else add(row.id, key);
-    }
-  }
-  if (trackIds.size) {
-    const [courses] = await db.query(
-      `SELECT bundle_id, course_id FROM bundle_courses WHERE tenant_id=? AND bundle_id IN (${[...trackIds].map(() => '?').join(',')})`,
-      [tenantId, ...trackIds]);
-    for (const [subscriberId, bundleId] of priorTracks) {
-      courses.filter(row => String(row.bundle_id) === String(bundleId)).forEach(row => add(subscriberId, row.course_id));
+      if (key.startsWith('bundle:')) addTrack(row.id, key.slice(7)); else addCourse(row.id, key);
     }
   }
   const [certified] = await db.query('SELECT subscriber_id, course_id FROM course_completions WHERE tenant_id=?', [tenantId]);
@@ -78,12 +77,15 @@ async function sweepInstituteCertificates(tenantId = 'tenant-default', db = pool
   running.add(tenantId);
   let issued = 0;
   try {
-    for (const { subscriberId, courseId } of await candidatePairs(db, tenantId)) {
+    for (const { subscriberId, courseId, bundleId } of await candidatePairs(db, tenantId)) {
       try {
-        if (!(await hasPaidForCourse(db, { tenantId, subscriberId, courseId }))) continue;
+        const paid = bundleId
+          ? await hasPaidForBundle(db, { tenantId, subscriberId, bundleId })
+          : await hasPaidForCourse(db, { tenantId, subscriberId, courseId });
+        if (!paid) continue;
         const result = await completeCourse({
-          tenantId, subscriberId, courseId, actor: 'شهادات المعهد', requireFullProgress: false,
-          requireEnrollment: false, sendEmail: false, reason: 'شهادة المعهد — دفع 90% أو أكتر من الكورس',
+          tenantId, subscriberId, courseId, bundleId, actor: 'شهادات المعهد', requireFullProgress: false,
+          requireEnrollment: false, sendEmail: false, reason: `شهادة المعهد — دفع 90% أو أكتر من ${bundleId ? 'المسار' : 'الكورس'}`,
         });
         if (!result.alreadyCompleted) issued += 1;
       } catch (error) {

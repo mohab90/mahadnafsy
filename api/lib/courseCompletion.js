@@ -4,7 +4,7 @@ const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { certificateCode, writeCertificateEvent, reissueCertificate } = require('./certificateLifecycle');
 const outbox = require('./outbox');
-const { hasPaidForCourse } = require('./coursePaid');
+const { hasPaidForBundle, hasPaidForCourse } = require('./coursePaid');
 
 const { escapeHtml } = require('./html');
 
@@ -21,7 +21,11 @@ async function completeCourse({
   // client with no online enrolment qualifies, and the desk shares it on WhatsApp
   // rather than an email going to every client the day it starts.
   requireEnrollment = true, sendEmail = true,
+  // A TRACK's certificate (course_completions.course_id holds the track's id): earned by paying for the track, with no lectures to watch.
+  // `requirePayment: false` is the desk adding a certificate by hand for a client who has not paid the share yet.
+  bundleId = null, requirePayment = true,
 }, db = null) {
+  if (bundleId) courseId = bundleId;
   if (!tenantId || !subscriberId || !courseId) {
     const error = new Error('tenantId, subscriberId and courseId are required'); error.statusCode = 400; throw error;
   }
@@ -29,25 +33,32 @@ async function completeCourse({
   const conn = db || await pool.getConnection();
   try {
     if (ownsConnection) await conn.beginTransaction();
-    const [[eligibility]] = await conn.query(
-      `SELECT s.id AS subscriber_id,s.name,s.email,c.id AS course_id,c.title,c.price_egp,e.id AS enrollment_id
-         FROM subscribers s
-         ${requireEnrollment ? 'JOIN' : 'LEFT JOIN'} enrollments e ON e.subscriber_id=s.id AND e.tenant_id=s.tenant_id AND e.course_id=?
-          AND e.status='active' AND e.access_type='full'
-         JOIN courses c ON c.id=? AND c.tenant_id=s.tenant_id AND c.deleted_at IS NULL
-        WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
-      [courseId, courseId, subscriberId, tenantId]
-    );
+    const [[eligibility]] = bundleId
+      ? await conn.query(
+        `SELECT s.id AS subscriber_id,s.name,s.email,b.id AS course_id,b.title,b.price_egp,NULL AS enrollment_id
+           FROM subscribers s JOIN bundles b ON b.id=? AND b.tenant_id=s.tenant_id AND b.deleted_at IS NULL
+          WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+        [bundleId, subscriberId, tenantId])
+      : await conn.query(
+        `SELECT s.id AS subscriber_id,s.name,s.email,c.id AS course_id,c.title,c.price_egp,e.id AS enrollment_id
+           FROM subscribers s
+           ${requireEnrollment ? 'JOIN' : 'LEFT JOIN'} enrollments e ON e.subscriber_id=s.id AND e.tenant_id=s.tenant_id AND e.course_id=?
+            AND e.status='active' AND e.access_type='full'
+           JOIN courses c ON c.id=? AND c.tenant_id=s.tenant_id AND c.deleted_at IS NULL
+          WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+        [courseId, courseId, subscriberId, tenantId]);
     // A free course needs no payment; any other one is paid for by a payment
     // row or by «مدفوع قبل السيستم» (lib/coursePaid.js).
-    if (eligibility && Number(eligibility.price_egp || 0) > 0
-        && !(await hasPaidForCourse(conn, { tenantId, subscriberId, courseId }))) {
+    if (requirePayment && eligibility && Number(eligibility.price_egp || 0) > 0
+        && !(bundleId
+          ? await hasPaidForBundle(conn, { tenantId, subscriberId, bundleId })
+          : await hasPaidForCourse(conn, { tenantId, subscriberId, courseId }))) {
       const error = new Error('Paid tenant enrollment is required'); error.statusCode = 409; throw error;
     }
     if (!eligibility) {
       const error = new Error('Paid tenant enrollment is required'); error.statusCode = 409; throw error;
     }
-    if (requireFullProgress) {
+    if (requireFullProgress && !bundleId) {
       const [[progress]] = await conn.query(
         `SELECT COUNT(cl.id) AS total,SUM(CASE WHEN COALESCE(lc.progress_pct,0)>=100 THEN 1 ELSE 0 END) AS completed
            FROM course_lectures cl
