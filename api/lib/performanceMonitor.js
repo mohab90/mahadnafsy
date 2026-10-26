@@ -97,6 +97,8 @@ function recordRequest({ method, route, status, ms, bytes, store: given }) {
     entry.bytes += bytes || 0; entry.queries += store.queries; entry.dbMs += store.dbMs;
     entry.maxMs = Math.max(entry.maxMs, ms); entry.maxQueries = Math.max(entry.maxQueries, store.queries);
     entry.last = Date.now();
+    // The watchdog reads the last hour of this traffic (lib/opsWatchdog.js).
+    require('./opsWatchdog').noteRequest({ route: key, status, ms });
     if ((ms >= SLOW_REQUEST_MS || store.queries >= MANY_QUERIES) && Date.now() - entry.logged >= LOG_EVERY_MS) {
       entry.logged = Date.now();
       require('./logger').warn('slow request', {

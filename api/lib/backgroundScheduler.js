@@ -176,6 +176,15 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(check, 6 * 60 * 60 * 1000);
   }, 12 * 60 * 1000);
 
+  // «مراقبة وتنبيهات»: every five minutes — errors, request storms, slowness, the nightly backup and its off-site copy, the stuck outbox. Each
+  // finding is one WhatsApp to the owner-report numbers per quiet window (lib/opsWatchdog.js); OPS_HEARTBEAT_URL adds the outside dead-man's switch.
+  later(() => {
+    const watch = lockedJob('ops_watchdog', () => require('./opsWatchdog').runOpsWatchdog({ pool, logger })
+      .catch(error => logger.warn('[jobs] ops watchdog failed:', error.message)));
+    watch();
+    repeat(watch, 5 * 60 * 1000);
+  }, 2 * 60 * 1000);
+
   later(() => {
     const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
       .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));
