@@ -550,6 +550,7 @@ module.exports = {
   resolvePermissions,
   hasPermission,
   canUseChannel,
+  LECTURER_JOB_ROLES,
   setRoleOverrides,
   getRoleOverrides,
   getEffectiveRoleDefaults,

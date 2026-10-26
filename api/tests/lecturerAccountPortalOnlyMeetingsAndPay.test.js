@@ -197,3 +197,32 @@ test('a consultation\'s meeting is made once, only when confirmed and timed, and
   assert.deepEqual(await consultations.ensureConsultationMeeting(db, { tenantId: 't4', consultationId: 'c1' }, { fetchImpl }), { meetingLink: 'https://zoom.us/j/55', hostLink: 'https://zoom.us/s/55' });
   assert.equal(sent.length, before);
 });
+
+// Found by walking every staff role on the private lab (26 Oct 2026, synthetic data): three things only a real run shows.
+test('the students tab asks only for columns that exist (course_lectures has no tenant_id) — it answered 500 for every lecturer', () => {
+  const source = read('api/lib/lecturerPortal.js');
+  assert.doesNotMatch(source, /lc\.tenant_id=cl\.tenant_id/);
+  assert.match(source, /lc\.lecture_id=cl\.id AND lc\.subscriber_id=s\.id AND lc\.tenant_id=c\.tenant_id/);
+});
+
+test('a lecturer can cancel their own live, reopen a day, undo a tap and remove their own post — the owner\'s delete rule let none of it through', () => {
+  const rights = require('../lib/deleteRights');
+  const open = rights.EXEMPT_DELETE_ROUTES.map(entry => entry.route);
+  for (const route of [
+    'DELETE /api/staff/lecturer/lives/:id', 'DELETE /api/staff/lecturer/availability/blocked/:id',
+    'DELETE /api/staff/lecturer/rounds/:roundId/attendance/:subscriberId/:sessionNumber',
+    'DELETE /api/staff/lecturer/community/posts/:id', 'DELETE /api/staff/lecturer/community/comments/:id',
+  ]) assert.ok(open.includes(route), route);
+  const portal = read('api/routes/lecturer-portal.js');
+  assert.match(portal, /DELETE FROM live_streams WHERE id=\? AND tenant_id=\? AND instructor_id=\? AND status=/, 'the live is the caller\'s own');
+  assert.match(portal, /DELETE FROM community_posts WHERE tenant_id=\? AND id=\? AND staff_id=\?/, 'the post is the caller\'s own');
+});
+
+test('a lecturer\'s consultations list holds their own clients only — it carried every therapist\'s clients, phones and notes', () => {
+  const route = read('api/routes/core/staffacct.js');
+  const list = route.slice(route.indexOf("router.get('/api/admin/consultations'"));
+  assert.match(list, /const lecturerJob = LECTURER_JOB_ROLES\.has\(String\(req\.staffRecord\?\.role/);
+  assert.match(list, /AND c\.therapist_id IN \(SELECT id FROM therapists WHERE tenant_id=c\.tenant_id AND staff_id=\?\)/);
+  assert.match(list, /const \[waiting\] = lecturerJob \? \[\[\]\]/, 'and no awaiting-payment orders (customer names and e-mails)');
+  assert.ok(require('../constants/permissions').LECTURER_JOB_ROLES.has('consultant'));
+});

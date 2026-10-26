@@ -7,6 +7,7 @@ const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { tryJson, parseLimit } = require('../../lib/helpers');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { LECTURER_JOB_ROLES } = require('../../constants/permissions');
 
 router.get('/api/staff/me/preferences', requireAuth, async (req, res) => {
   try {
@@ -62,19 +63,23 @@ router.put('/api/staff/me/preferences', requireAuth, async (req, res) => {
 router.get('/api/admin/consultations', requireAuth, requireAdminOrStaff, requirePermission('view_consultations'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 500, 2000);
+    // A lecturer, trainer, consultant or expert reads their OWN consultations here, never everyone's: this list carries every client's name, phone,
+    // e-mail and the notes of the session, and it went to their account in full (500 rows of other lecturers' clients on every page load).
+    const lecturerJob = LECTURER_JOB_ROLES.has(String(req.staffRecord?.role || '').toLowerCase()) && !req.isSuperAdmin;
+    const ownOnly = lecturerJob ? 'AND c.therapist_id IN (SELECT id FROM therapists WHERE tenant_id=c.tenant_id AND staff_id=?)' : '';
     const [rows] = await pool.query(
       `SELECT c.*, t.name AS t_name, t.specialty AS t_specialty, o.status AS order_status
          FROM consultations c
          LEFT JOIN therapists t ON t.id=c.therapist_id
          LEFT JOIN orders o ON o.id=c.order_id AND o.tenant_id=c.tenant_id
-        WHERE c.tenant_id=? AND c.deleted_at IS NULL
+        WHERE c.tenant_id=? AND c.deleted_at IS NULL ${ownOnly}
         ORDER BY c.created_at DESC LIMIT ?`,
-      [req.tenantId, limit]
+      lecturerJob ? [req.tenantId, req.staffRecord.id, limit] : [req.tenantId, limit]
     );
     // Requests booked before checkout opened a consultation: the order is all
     // there is, so it is listed as a request waiting for payment rather than
     // left where the desk never looks.
-    const [waiting] = await pool.query(
+    const [waiting] = lecturerJob ? [[]] : await pool.query(
       `SELECT o.id, o.customer_name, o.customer_email, o.customer_phone, o.amount, o.currency,
               o.notes, o.item_title, o.branch_id, o.subscriber_id, o.created_at
          FROM orders o
