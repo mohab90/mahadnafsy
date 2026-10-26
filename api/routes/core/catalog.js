@@ -603,7 +603,12 @@ router.patch('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, r
     // wrote NULL over the notes (a NOT NULL column) and the meeting link.
     const sets = [];
     const params = [];
-    if (status !== undefined) { sets.push('status=?'); params.push(String(status || 'pending').toUpperCase()); }
+    if (status !== undefined) {
+      // An unknown status (the column is an enum) was a 500 «Data truncated for column 'status'», four times on 20 Oct.
+      const next = String(status || 'pending').toUpperCase();
+      if (!['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(next)) return res.status(400).json({ error: 'حالة الاستشارة غير معروفة', code: 'CONSULTATION_STATUS' });
+      sets.push('status=?'); params.push(next);
+    }
     if (notes !== undefined) { sets.push('notes=?'); params.push(String(notes || '')); }
     if (meeting_link !== undefined) { sets.push('meeting_link=?'); params.push(meeting_link || null); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });

@@ -128,7 +128,7 @@ async function studentsOf(db, { tenantId, staffId }) {
     `SELECT s.id, s.name, c.id AS course_id, c.title AS course_title, DATE_FORMAT(e.enrolled_at, '%Y-%m-%d') AS since,
             (SELECT ROUND(AVG(COALESCE(lc.progress_pct, 0)))
                FROM course_lectures cl LEFT JOIN lecture_completions lc
-                 ON lc.lecture_id=cl.id AND lc.subscriber_id=s.id AND lc.tenant_id=cl.tenant_id
+                 ON lc.lecture_id=cl.id AND lc.subscriber_id=s.id AND lc.tenant_id=c.tenant_id
               WHERE cl.course_id=c.id AND cl.is_published=1) AS progress
        FROM enrollments e
        JOIN courses c ON c.id=e.course_id AND c.tenant_id=e.tenant_id AND c.instructor_id=?

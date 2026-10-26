@@ -71,6 +71,27 @@ const EXEMPT_DELETE_ROUTES = Object.freeze([
     route: 'DELETE /api/admin/daqqi-rounds/:roundId/attendance/:subscriberId/:sessionNumber',
     reason: 'Takes back an attendance tap made by mistake at the Dokki desk — the undo of a mark, not the removal of a client from a round (that one is guarded).',
   },
+  // The lecturer's portal (routes/lecturer-portal.js): each handler narrows the caller to their own rows, so these open nothing of anyone else's.
+  {
+    route: 'DELETE /api/staff/lecturer/lives/:id',
+    reason: 'A lecturer cancelling their own live that has not started — the handler deletes only an UPCOMING live whose instructor is the caller.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/availability/blocked/:id',
+    reason: 'A lecturer reopening a day they had closed on their own consultation hours — the handler is keyed on the caller’s own profile.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/rounds/:roundId/attendance/:subscriberId/:sessionNumber',
+    reason: 'A lecturer taking back an attendance tap they made by mistake in their own round — the undo of a mark, not the removal of a client from a round.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/community/posts/:id',
+    reason: 'A lecturer removing their own community post — the handler deletes only a post whose staff_id is the caller’s.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/community/comments/:id',
+    reason: 'A lecturer removing their own comment, or a comment on their own post — nothing of a client’s record or money is removed.',
+  },
 ]);
 
 const routePattern = path => new RegExp(`^${String(path).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z_]+/g, '[^/]+')}/?$`);

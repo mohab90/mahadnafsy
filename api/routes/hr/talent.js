@@ -126,7 +126,7 @@ async function convertJoinUs(j, { jobId, actorId, db, review = true } = {}) {
        VALUES (?,?,?,?,?,?,?, 'website', ?,?,?,?,?,?,?,?,?)`,
       [appId, tenantId, targetJob, j.name, j.email || null, j.phone || null, notes,
         j.id, j.specialty || null, j.type || null, j.linkedin || null, actorId || null,
-        cleanBranch(j.branch), j.education || null, j.experiencePlaces || null, j.experienceYears || null]
+        cleanBranch(j.branch), j.education ? String(j.education).slice(0, 255) : null, j.experiencePlaces || null, j.experienceYears || null]
     );
     await conn.query(
       review
