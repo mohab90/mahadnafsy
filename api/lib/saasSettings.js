@@ -62,15 +62,6 @@ const DEFAULT_BRANCH_WORKSPACES = [
   { key: 'daqqi', slug: 'daqqi', label: 'Daqqi Branch', type: 'physical', is_active: true, timezone: 'Africa/Cairo', currency: 'EGP', modules: ['clients', 'schedule', 'payments'], tabs: ['daqqi_schedule', 'online_clients', 'orders'] },
 ];
 
-function tryParseJson(value, fallback) {
-  try {
-    if (!value) return fallback;
-    return typeof value === 'string' ? JSON.parse(value) : value;
-  } catch (_) {
-    return fallback;
-  }
-}
-
 function mergeObject(defaults, value) {
   if (Array.isArray(defaults)) return Array.isArray(value) ? value : defaults;
   if (!defaults || typeof defaults !== 'object') return value ?? defaults;
@@ -134,39 +125,11 @@ async function getOtpProviderSettings(tenantId) {
   return normalizeOtpProvider(await getSysConfig('otp_provider', DEFAULT_OTP_PROVIDER, tenantId));
 }
 
-async function getBranchWorkspaces(tenantId) {
-  try {
-    const [rows] = await pool.query(`
-      SELECT branch_key, slug, label, branch_type, timezone, currency, modules_json, tabs_json, is_active
-      FROM branches
-      WHERE tenant_id = ? AND is_active = 1
-      ORDER BY FIELD(branch_key, 'online_egypt', 'daqqi'), label
-    `, [tenantId || 'tenant-default']);
-    if (rows.length) {
-      return rows.map(row => ({
-        key: row.branch_key,
-        slug: row.slug,
-        label: row.label,
-        type: row.branch_type || 'other',
-        is_active: !!row.is_active,
-        timezone: row.timezone || 'Africa/Cairo',
-        currency: row.currency || 'EGP',
-        modules: tryParseJson(row.modules_json, []),
-        tabs: tryParseJson(row.tabs_json, []),
-      }));
-    }
-  } catch (_) {
-    // Older databases may not have the normalized branches table yet.
-  }
-  return getSysConfig('branch_workspaces', DEFAULT_BRANCH_WORKSPACES, tenantId);
-}
-
 module.exports = {
   DEFAULT_BRANCH_WORKSPACES,
   DEFAULT_LEAD_SOURCE_CONNECTORS,
   DEFAULT_OTP_PROVIDER,
   DEFAULT_PAYMENT_GATEWAY,
-  getBranchWorkspaces,
   getLeadSourceConnectorSettings,
   getOtpProviderSettings,
   getPaymentGatewaySettings,

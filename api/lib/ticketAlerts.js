@@ -30,4 +30,4 @@ function notifyClientMessage({ tenantId, ticketId, subject, who, text, isNew, as
   );
 }
 
-module.exports = { notifyClientMessage, CLIENT_MESSAGE_TYPE: TYPE };
+module.exports = { notifyClientMessage };

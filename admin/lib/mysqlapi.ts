@@ -726,6 +726,7 @@ export const mysqlAdmin = {
    * applications showed 427 staff ones among them; the screens count what they are given.
    */
   listAllJoinUs:           () => allPages('/admin/join-us', 1000),
+  joinUsFingerprint:       () => apiFetch<{ fingerprint: string }>('/admin/join-us/fingerprint', {}, A),
   /** How many applications there are — counted in the database over the whole scope, by form and status. */
   joinUsCounts:            () => apiFetch<{ total: number; byForm: { staff: number; teaching: number }; byStatus: Record<string, number>; byFormStatus: Record<'staff' | 'teaching', Record<string, number>> }>('/admin/join-us/counts', {}, A),
   /**

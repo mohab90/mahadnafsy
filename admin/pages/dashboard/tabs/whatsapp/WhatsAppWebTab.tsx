@@ -8,6 +8,8 @@ import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { useBranches } from '../../../../hooks/useBranches';
+import { useSiteData } from '../../../../context/SiteDataContext';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../../constants/permissions';
 import { WhatsAppContextCard, type WaContext } from '../../../../components/WhatsAppContextCard';
 import { toDialable } from '../../../../lib/whatsappLink';
 import {
@@ -196,6 +198,10 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [me, setMe] = useState('');
   const [registering, setRegistering] = useState<{ name: string; branch: string } | null>(null);
+  // The chat is open to anyone with the inbox; turning a number into a lead needs manage_leads, so the button is offered only to who holds it
+  // (customer support and the accountant saw it and got «Permission denied» when they pressed it).
+  const { isAdmin, currentStaff } = useSiteData();
+  const canRegisterLead = isAdmin || (currentStaff ? hasPermission(currentStaff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'manage_leads') : false);
   const branches = useBranches();
   // What the system knows about the number on screen: who, which course, what they paid.
   const [context, setContext] = useState<WaContext | null>(null);
@@ -439,7 +445,7 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                   className="flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100">
                   <UserCheck size={13} /> حوّل لزميل
                 </button>
-                {!active.leadId && !active.subscriberId && !registering && (
+                {canRegisterLead && !active.leadId && !active.subscriberId && !registering && (
                   <button type="button" onClick={() => setRegistering({ name: active.crmName || active.name || '', branch: '' })}
                     className="flex items-center gap-1 rounded-xl border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-bold text-primary-700 hover:bg-primary-100">
                     <UserPlus size={13} /> سجّله عميل محتمل
