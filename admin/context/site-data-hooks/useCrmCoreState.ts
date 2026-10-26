@@ -436,11 +436,24 @@ export function useCrmCoreState(
   // session had already bootstrapped just never showed up short of a full
   // page reload, which is what the owner's report of freshly-submitted
   // applications "not appearing" traced back to.
-  const reloadJoinUsApplications = useCallback(async (): Promise<void> => {
+  // The two-minute poll asks the server's one-query fingerprint first and downloads the list only when it changed (it was 13% of the API's
+  // traffic). Every tenth quiet poll downloads anyway, in case a change the fingerprint does not look at slipped past; `force` is the explicit reload.
+  const joinUsFingerprintRef = useRef<{ value: string; quiet: number } | null>(null);
+  const reloadJoinUsApplications = useCallback(async (options?: { force?: boolean }): Promise<void> => {
     try {
+      let value: string | null = null;
+      if (!options?.force) {
+        value = await mysqlAdmin.joinUsFingerprint().then(result => result.fingerprint).catch(() => null);
+        const known = joinUsFingerprintRef.current;
+        if (value !== null && known && known.value === value && known.quiet < 9) {
+          known.quiet += 1;
+          return;
+        }
+      }
       const fresh = await mysqlAdmin.listAllJoinUs();
       const normalized = normalizeApplicants(fresh);
       setJoinUsApplications(normalized);
+      joinUsFingerprintRef.current = value === null ? null : { value, quiet: 0 };
     } catch {
       // Best-effort — the last successfully loaded state stays visible.
     }

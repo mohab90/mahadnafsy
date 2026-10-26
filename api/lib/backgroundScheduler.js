@@ -176,6 +176,24 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(check, 6 * 60 * 60 * 1000);
   }, 12 * 60 * 1000);
 
+  // The delete right that followed a spelling of a name becomes a saved list of those accounts, once per tenant (lib/deleteRights.js).
+  later(() => lockedJob('delete_rights_freeze', async () => {
+    const [tenants] = await pool.query('SELECT DISTINCT tenant_id FROM staff WHERE is_active=1 AND deleted_at IS NULL');
+    for (const { tenant_id: tenantId } of tenants) {
+      const result = await require('./deleteRights').freezeDefaultDeleteRights(tenantId);
+      if (result.frozen) logger.info(`[delete-rights] the name rule became a saved list for ${tenantId}: ${result.names.join('، ')}`);
+    }
+  })().catch(error => logger.warn('[jobs] delete rights freeze failed:', error.message)), 4 * 60 * 1000);
+
+  // «مراقبة وتنبيهات»: every five minutes — errors, request storms, slowness, the nightly backup and its off-site copy, the stuck outbox. Each
+  // finding is one WhatsApp to the owner-report numbers per quiet window (lib/opsWatchdog.js); OPS_HEARTBEAT_URL adds the outside dead-man's switch.
+  later(() => {
+    const watch = lockedJob('ops_watchdog', () => require('./opsWatchdog').runOpsWatchdog({ pool, logger })
+      .catch(error => logger.warn('[jobs] ops watchdog failed:', error.message)));
+    watch();
+    repeat(watch, 5 * 60 * 1000);
+  }, 2 * 60 * 1000);
+
   later(() => {
     const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
       .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));

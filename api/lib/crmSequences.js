@@ -1,7 +1,6 @@
 'use strict';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TERMINAL_STATUSES = new Set(['completed', 'unenrolled', 'failed', 'unsubscribed']);
 
 function normalizeSequenceSteps(input) {
   if (!Array.isArray(input) || input.length > 30) {
@@ -64,7 +63,6 @@ async function stopSequencesOnReply({ tenantId, leadId = null, subscriberId = nu
 }
 
 module.exports = {
-  TERMINAL_STATUSES,
   normalizeSequenceSteps,
   assertTimezone,
   assertEmail,

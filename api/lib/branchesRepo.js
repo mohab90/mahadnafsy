@@ -38,8 +38,4 @@ async function listBranches(tenantId = DEFAULT_TENANT) {
   }
 }
 
-async function branchKeys(tenantId = DEFAULT_TENANT) {
-  return (await listBranches(tenantId)).map((b) => b.branch_key);
-}
-
-module.exports = { listBranches, branchKeys };
+module.exports = { listBranches };

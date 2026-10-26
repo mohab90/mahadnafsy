@@ -154,6 +154,20 @@ async function saveDeleteRights(tenantId, staffIds, { actorId = null, db = pool 
   return resolveDeleteRights(tenantId, { db, fresh: true });
 }
 
+/**
+ * Until the owner saves the list, who may delete is whoever's NAME matches «وليد|حازم|مهاب» — a rule that follows a spelling, not a person: a
+ * new employee called Mohab would hold the right the day they were hired, and a rename would take it away. This writes the people the rule
+ * names today into the saved list once (nothing changes for anyone), so from then on it is those accounts, editable from «صلاحية الحذف».
+ */
+async function freezeDefaultDeleteRights(tenantId, { db = pool } = {}) {
+  const stored = storedIds(await getTenantSetting(SETTING_KEY, { tenantId, fallback: null, db }));
+  if (stored) return { frozen: false, reason: 'already saved' };
+  const rights = await resolveDeleteRights(tenantId, { db, fresh: true });
+  if (!rights.staffIds.length) return { frozen: false, reason: 'nobody matches yet' };
+  await saveDeleteRights(tenantId, [...rights.staffIds], { actorId: null, db });
+  return { frozen: true, names: [...rights.names] };
+}
+
 /** The caller's staff row, looked up once per request. */
 async function callerStaff(req, db = pool) {
   if (req.staffRecord?.id) return req.staffRecord;
@@ -273,5 +287,6 @@ module.exports = {
   requireDeleteRight,
   requireDeleteRightWhen,
   resolveDeleteRights,
+  freezeDefaultDeleteRights,
   saveDeleteRights,
 };

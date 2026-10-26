@@ -94,6 +94,9 @@ find "$DIR" -name "${DB}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
 #                                  file holding a gpg symmetric passphrase (chmod 400).
 #   MAHAD_BACKUP_GPG_PASSPHRASE    the same passphrase from the environment instead.
 #                                  One of the three key settings is required.
+#   MAHAD_BACKUP_REMOTE_KEEP_DAYS  how long encrypted copies stay at the destination (default 30). Older ones are deleted ONLY after
+#                                  today's copy is confirmed there, so a run of failed uploads never empties the destination — and a
+#                                  Google Drive (15 GB free) does not fill up.
 #   MAHAD_BACKUP_ALLOW_LOCAL_ONLY  =1 for a developer machine or a throwaway VM:
 #                                  no off-site copy, a WARNING instead of a failure.
 #                                  Never set it on the production server.
@@ -179,6 +182,15 @@ if [ "${REMOTE_SIZE:-0}" -ne "$ENC_SIZE" ]; then
   offsite_fail "destination reports ${REMOTE_SIZE:-0} bytes, the encrypted copy is ${ENC_SIZE}"
 fi
 log "off-site ok: $REMOTE/$(basename "$ENCRYPTED") (${REMOTE_SIZE} bytes, encrypted)"
+# Retention at the destination, after — never before — the new copy is proven there. Only this job's own encrypted files are touched.
+REMOTE_KEEP_DAYS="${MAHAD_BACKUP_REMOTE_KEEP_DAYS:-30}"
+if [ "${REMOTE_KEEP_DAYS:-0}" -ge 7 ] 2>/dev/null; then
+  if rclone delete "$REMOTE" --drive-use-trash=false --min-age "${REMOTE_KEEP_DAYS}d" --include "${DB}_*.sql.gz.age" --include "${DB}_*.sql.gz.gpg" >>"$LOG" 2>&1; then
+    log "off-site retention: copies older than ${REMOTE_KEEP_DAYS} days removed from $REMOTE"
+  else
+    log "WARNING off-site retention failed (the new copy is safe): the destination may fill up"
+  fi
+fi
 # The local plaintext dump stays for fast restores; the encrypted twin was
 # only ever the vehicle.
 rm -f "$ENCRYPTED"
