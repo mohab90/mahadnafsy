@@ -250,3 +250,12 @@ test('a consultation status outside the enum is refused with 400, a zero date no
   assert.match(read('api/lib/crmForecast.js'), /value instanceof Date && Number\.isNaN\(value\.getTime\(\)\)\) return null/);
   assert.match(read('api/routes/hr/talent.js'), /j\.education \? String\(j\.education\)\.slice\(0, 255\) : null/);
 });
+
+test('the panel stops asking for what it was refused: /admin/content once, registrations without view_leads', () => {
+  const api = read('admin/lib/mysqlapi.ts');
+  assert.match(api, /if \(!admin \|\| adminContentRefused\) return apiFetch<AR>\('\/content'\)/);
+  assert.match(api, /adminContentRefused = true/);
+  const clientDb = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');
+  assert.match(clientDb, /const canSeeRegistrations = isAdmin \|\| \(currentStaff \? hasPermission\(.*'view_leads'\)/);
+  assert.match(clientDb, /useEffect\(\(\) => \{ if \(canSeeRegistrations\) void loadRegistrations\(\); \}, \[canSeeRegistrations\]\)/);
+});

@@ -83,6 +83,8 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
  * says so itself; and the login screen, which is already where this leads.
  */
 let endingSession = false;
+// Set when /admin/content has answered 403 for this signed-in account (see mysqlAdmin.getContent).
+let adminContentRefused = false;
 function sessionIsOver(path: string): void {
   if (endingSession) return;
   // A wrong current password is a 401 about the request, not a dead session.
@@ -782,10 +784,12 @@ export const mysqlAdmin = {
   // and a caller that already knows it is not an admin goes there directly
   // rather than collecting the 403 first.
   getContent:              async (admin = true) => {
-    if (!admin) return apiFetch<AR>('/content');
+    // Once the admin route has refused this account (a 403 on 75% of its calls in the production log), the public one is asked directly.
+    if (!admin || adminContentRefused) return apiFetch<AR>('/content');
     try {
       return await apiFetch<AR>('/admin/content', {}, A);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && /permission|403/i.test(error.message)) adminContentRefused = true;
       return await apiFetch<AR>('/content');
     }
   },
