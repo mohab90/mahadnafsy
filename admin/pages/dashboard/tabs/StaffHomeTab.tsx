@@ -207,7 +207,6 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
       { label: 'جدول الدقي', icon: Calendar, tab: 'daqqi_schedule', color: 'bg-rose-50 text-rose-600 border-rose-200', when: can('manage_daqqi') },
       { label: 'الوارد', icon: MessageCircle, tab: 'customer_inbox', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', when: can('manage_inbox') && ['support', 'reception_daqqi', 'reception_tagamoa'].includes(role) },
       { label: 'الحسابات', icon: BarChart3, tab: 'financial', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', when: can('view_financial') && ['accountant', 'collection'].includes(role) },
-      { label: 'الكورسات', icon: Award, tab: 'courses', color: 'bg-blue-50 text-blue-600 border-blue-200', when: ['instructor', 'trainer'].includes(role) },
     ];
     for (const entry of byWork.filter(e => e.when).reverse()) {
       base.unshift({ label: entry.label, icon: entry.icon, tab: entry.tab, color: entry.color });

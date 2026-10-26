@@ -8,6 +8,7 @@
 // the lecturer works, not a day they closed, nobody else in that hour — and checked again at the moment it is accepted.
 
 const { createHash, createHmac } = require('crypto');
+const { resetConsultationMeeting } = require('./consultationMeetings');
 const outbox = require('./outbox');
 const { insertNotification } = require('./notification');
 const { toDialable } = require('./phoneNumber');
@@ -100,6 +101,8 @@ async function decideReschedule(db, { tenantId, id, by, answer, note = '' }) {
   if (answer === 'accept') {
     await assertOpen(db, { tenantId, consultation, date: at.slice(0, 10), at });
     await db.query('UPDATE consultations SET session_date=?, slot_id=? WHERE id=? AND tenant_id=?', [at, request.new_slot_id, consultation.id, tenantId]);
+    // The meeting was made for the old hour: it goes, and a new one is made for the new hour.
+    await resetConsultationMeeting(db, { tenantId, consultationId: consultation.id }).catch(() => false);
   } else if (answer !== 'decline') {
     throw fail('الرد لازم يكون موافقة أو اعتذار', 'RESCHEDULE_ANSWER');
   }

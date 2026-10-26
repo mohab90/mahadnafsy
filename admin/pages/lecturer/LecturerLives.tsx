@@ -16,13 +16,15 @@ const blank = () => ({ title: '', scheduledAt: cairoDateTimeInput(), durationMin
 export function LecturerLives({ notify }: { notify: Notify }) {
   const [lives, setLives] = useState<Live[] | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  // «السيستم كله مربوط بنظام»: with the institute's Zoom / Meet account set up the room is made by the system; no link, no platform.
+  const [systemMade, setSystemMade] = useState(false);
   const [draft, setDraft] = useState(blank());
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [community, setCommunity] = useState({ title: '', streamUrl: '', platform: 'ZOOM', description: '' });
 
   const load = useCallback(() => {
-    lecturerApi.lives().then(result => { setLives(result.lives); setCourses(result.courses); })
+    lecturerApi.lives().then(result => { setLives(result.lives); setCourses(result.courses); setSystemMade(Boolean(result.meeting?.systemMade)); })
       .catch(error => { notify('error', errorText(error, 'تعذر تحميل اللايفات')); setLives([]); });
   }, [notify]);
   useEffect(() => { load(); }, [load]);
@@ -67,7 +69,7 @@ export function LecturerLives({ notify }: { notify: Notify }) {
     setBusy(live.id);
     try {
       await lecturerApi.setLiveStatus(live.id, status, recordingUrl);
-      if (status === 'LIVE') window.open(live.streamUrl, '_blank', 'noopener');
+      if (status === 'LIVE') window.open(live.hostUrl || live.streamUrl, '_blank', 'noopener');
       load();
     } catch (error) { notify('error', errorText(error)); } finally { setBusy(''); }
   };
@@ -75,8 +77,9 @@ export function LecturerLives({ notify }: { notify: Notify }) {
   const startCommunityLive = async () => {
     setBusy('community');
     try {
-      await lecturerApi.communityLive(community);
-      window.open(community.streamUrl, '_blank', 'noopener');
+      const started = await lecturerApi.communityLive(community);
+      const target = started.hostUrl || community.streamUrl;
+      if (target) window.open(target, '_blank', 'noopener');
       notify('success', 'اللايف المجاني بدأ واتنشر في المجتمع');
       setCommunity({ title: '', streamUrl: '', platform: 'ZOOM', description: '' }); load();
     } catch (error) { notify('error', errorText(error)); } finally { setBusy(''); }
@@ -95,11 +98,15 @@ export function LecturerLives({ notify }: { notify: Notify }) {
             <input type="datetime-local" className={field} value={draft.scheduledAt} onChange={e => setDraft({ ...draft, scheduledAt: e.target.value })} /></label>
           <label className="text-xs font-bold text-gray-600">المدة بالدقايق
             <input type="number" min={10} max={480} className={field} value={draft.durationMinutes} onChange={e => setDraft({ ...draft, durationMinutes: Number(e.target.value) })} /></label>
-          <label className="text-xs font-bold text-gray-600">المنصة
-            <select className={field} value={draft.platform} onChange={e => setDraft({ ...draft, platform: e.target.value })}>
-              {PLATFORMS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-          <label className="text-xs font-bold text-gray-600">رابط البث
-            <input dir="ltr" className={field} value={draft.streamUrl} onChange={e => setDraft({ ...draft, streamUrl: e.target.value })} placeholder="https://zoom.us/j/…" /></label>
+          {systemMade ? (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800 md:col-span-2">غرفة اللايف بيعملها السيستم لوحده (Zoom / Google Meet) — مش محتاج رابط ولا منصة. اضغط «ابدأ» وقت اللايف وهتفتحلك.</p>
+          ) : (<>
+            <label className="text-xs font-bold text-gray-600">المنصة
+              <select className={field} value={draft.platform} onChange={e => setDraft({ ...draft, platform: e.target.value })}>
+                {PLATFORMS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+            <label className="text-xs font-bold text-gray-600">رابط البث
+              <input dir="ltr" className={field} value={draft.streamUrl} onChange={e => setDraft({ ...draft, streamUrl: e.target.value })} placeholder="https://zoom.us/j/…" /></label>
+          </>)}
           <label className="text-xs font-bold text-gray-600 md:col-span-2">وصف (اختياري)
             <textarea rows={2} className={field} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></label>
         </div>
@@ -116,7 +123,7 @@ export function LecturerLives({ notify }: { notify: Notify }) {
             </div>
           )}
         </div>
-        <button type="button" className={primaryButton} disabled={busy === 'save' || !draft.title.trim() || !draft.streamUrl.trim()} onClick={() => void save()}>
+        <button type="button" className={primaryButton} disabled={busy === 'save' || !draft.title.trim() || (!systemMade && !draft.streamUrl.trim())} onClick={() => void save()}>
           <Plus size={15} /> {editing ? 'حفظ التعديل' : 'حدّد اللايف وابعت الإشعار'}
         </button>
       </Card>
@@ -125,12 +132,12 @@ export function LecturerLives({ notify }: { notify: Notify }) {
         <p className="text-xs text-gray-500">بيبدأ فوراً ومفتوح لكل أعضاء المجتمع من غير دفع، وبينزل منشور مثبّت في المجتمع بالرابط.</p>
         <div className="grid gap-3 md:grid-cols-2">
           <input className={field} placeholder="اسم اللايف" value={community.title} onChange={e => setCommunity({ ...community, title: e.target.value })} />
-          <input dir="ltr" className={field} placeholder="رابط البث https://…" value={community.streamUrl} onChange={e => setCommunity({ ...community, streamUrl: e.target.value })} />
-          <select className={field} value={community.platform} onChange={e => setCommunity({ ...community, platform: e.target.value })}>
-            {PLATFORMS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
+          {!systemMade && <input dir="ltr" className={field} placeholder="رابط البث https://…" value={community.streamUrl} onChange={e => setCommunity({ ...community, streamUrl: e.target.value })} />}
+          {!systemMade && <select className={field} value={community.platform} onChange={e => setCommunity({ ...community, platform: e.target.value })}>
+            {PLATFORMS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
           <input className={field} placeholder="وصف قصير (اختياري)" value={community.description} onChange={e => setCommunity({ ...community, description: e.target.value })} />
         </div>
-        <button type="button" disabled={busy === 'community' || !community.title.trim() || !community.streamUrl.trim()} onClick={() => void startCommunityLive()}
+        <button type="button" disabled={busy === 'community' || !community.title.trim() || (!systemMade && !community.streamUrl.trim())} onClick={() => void startCommunityLive()}
           className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50">
           <Radio size={15} /> ابدأ الآن
         </button>
@@ -154,7 +161,7 @@ export function LecturerLives({ notify }: { notify: Notify }) {
                   <button type="button" disabled={busy === live.id} className="rounded-xl border border-red-200 p-2 text-red-600 hover:bg-red-50" aria-label="إلغاء اللايف" onClick={() => void remove(live)}><Trash2 size={14} /></button>
                 </>)}
                 {live.status === 'live' && (<>
-                  <a href={live.streamUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700">ادخل البث</a>
+                  <a href={live.hostUrl || live.streamUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700">ادخل البث</a>
                   <button type="button" disabled={busy === live.id} className="inline-flex items-center gap-1 rounded-xl bg-gray-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" onClick={() => void setStatus(live, 'ENDED')}><Square size={12} /> إنهاء</button>
                 </>)}
                 {live.status === 'ended' && <span className="rounded-full bg-gray-200 px-3 py-1 text-xs font-bold text-gray-600">انتهى</span>}

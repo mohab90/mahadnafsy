@@ -11,14 +11,18 @@ import type { Therapist } from '../../../../types';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Rates = {
-  id?: string; consultation_rate_type?: string; consultation_rate_value?: number; lecture_rate_per_hour?: number | null; pay_basis?: string | null;
+  id?: string; consultation_rate_type?: string; consultation_rate_value?: number; lecture_rate_per_hour?: number | null; training_rate_per_hour?: number | null; pay_basis?: string | null;
   lecture_rate?: number | null; lecture_hours?: number | null; revenue_share_pct?: number | null; currency?: string;
   retention_bonus_type?: string | null; retention_bonus_value?: number | null;
 } | null;
 
-const ROLES: Array<[string, string]> = [['INSTRUCTOR', 'محاضر'], ['TRAINER', 'مدرّب'], ['CONSULTANT', 'مستشار'], ['EXPERT', 'خبير']];
+// «ليه مفيش محاضر واستشاري الاتنين؟»: BOTH is one login that gives lives and courses AND consultations — the job is the lecturer's, and the
+// profile's consultation service is switched on with it.
+const ROLES: Array<[string, string]> = [['BOTH', 'محاضر + استشاري (الاتنين)'], ['INSTRUCTOR', 'محاضر'], ['TRAINER', 'مدرّب'], ['CONSULTANT', 'مستشار'], ['EXPERT', 'خبير']];
+const realRole = (job: string) => (job === 'BOTH' ? 'INSTRUCTOR' : job);
 const box = 'w-full rounded-xl border border-gray-300 px-3 py-2 text-sm';
 const label = 'mb-1 block text-xs font-bold text-gray-600';
+const withConsultations = (job: string) => job === 'BOTH' || job === 'CONSULTANT';
 const errorText = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
 
 function randomPassword() {
@@ -37,10 +41,17 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
   const [busy, setBusy] = useState('');
   const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
   const [rates, setRates] = useState({
-    pay_basis: 'per_hour', lecture_rate_per_hour: '', lecture_rate: '', lecture_hours: '2', revenue_share_pct: '',
+    pay_basis: 'per_hour', lecture_rate_per_hour: '', training_rate_per_hour: '', lecture_rate: '', lecture_hours: '2', revenue_share_pct: '',
     consultation_rate_type: 'per_session', consultation_rate_value: '', currency: 'EGP', retention_bonus_type: '', retention_bonus_value: '',
   });
   const [ratesLoaded, setRatesLoaded] = useState('');
+
+  // The job already on the account (an instructor whose consultation service is on is both).
+  useEffect(() => {
+    if (!linked) return;
+    const current = String(linked.role || '').toUpperCase();
+    setRole(current === 'INSTRUCTOR' && draft.consultationSettings?.enabled ? 'BOTH' : current);
+  }, [linked?.id, linked?.role, draft.consultationSettings?.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // What is already on file for this lecturer.
   useEffect(() => {
@@ -51,7 +62,7 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
       setRatesLoaded(draft.staffId || '');
       if (!current) return;
       setRates({
-        pay_basis: current.pay_basis || 'revenue_share', lecture_rate_per_hour: String(current.lecture_rate_per_hour ?? ''), lecture_rate: String(current.lecture_rate ?? ''),
+        pay_basis: current.pay_basis || 'revenue_share', lecture_rate_per_hour: String(current.lecture_rate_per_hour ?? ''), training_rate_per_hour: String(current.training_rate_per_hour ?? ''), lecture_rate: String(current.lecture_rate ?? ''),
         lecture_hours: String(current.lecture_hours ?? '2'), revenue_share_pct: String(current.revenue_share_pct ?? ''),
         consultation_rate_type: current.consultation_rate_type || 'per_session', consultation_rate_value: String(current.consultation_rate_value ?? ''),
         currency: current.currency || 'EGP', retention_bonus_type: current.retention_bonus_type || '', retention_bonus_value: String(current.retention_bonus_value ?? ''),
@@ -64,10 +75,10 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
     if (!draft.name.trim()) { notify('error', 'اكتب اسم المحاضر الأول.'); return; }
     setBusy('account');
     try {
-      const result = await mysqlAdmin.createStaffAccount({ name: draft.name.trim(), email: email.trim(), phone: phone.trim(), password, role }) as { staffId?: string };
+      const result = await mysqlAdmin.createStaffAccount({ name: draft.name.trim(), email: email.trim(), phone: phone.trim(), password, role: realRole(role) }) as { staffId?: string };
       if (!result.staffId) throw new Error('الحساب اتعمل بس مرجعش رقمه — حدّث الصفحة');
       await reloadStaffMembers();
-      setDraft({ ...draft, staffId: result.staffId });
+      setDraft({ ...draft, staffId: result.staffId, ...(withConsultations(role) && draft.consultationSettings ? { consultationSettings: { ...draft.consultationSettings, enabled: true } } : {}) });
       setCreated({ email: email.trim().toLowerCase(), password });
       setPassword('');
       notify('success', 'اتعمل حساب الدخول — اضغط «حفظ المحاضر» عشان يتربط بملفه.');
@@ -85,6 +96,20 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
     } catch (error) { notify('error', errorText(error, 'تعذر تغيير كلمة المرور')); } finally { setBusy(''); }
   };
 
+  // The job of an account that already exists: what the login opens is decided by it (and by the consultation service on the profile).
+  const changeRole = async () => {
+    if (!linked) return;
+    setBusy('role');
+    try {
+      await mysqlAdmin.createStaffAccount({ staffId: linked.id, name: linked.name, email: linked.email, phone: linked.phone || '', role: realRole(role) });
+      await reloadStaffMembers();
+      if (withConsultations(role) && draft.consultationSettings && !draft.consultationSettings.enabled) {
+        setDraft({ ...draft, consultationSettings: { ...draft.consultationSettings, enabled: true } });
+        notify('success', 'اتغيرت الوظيفة — اضغط «حفظ المحاضر» عشان تتفعل الاستشارات على ملفه.');
+      } else notify('success', 'اتغيرت الوظيفة.');
+    } catch (error) { notify('error', errorText(error, 'تعذر تغيير الوظيفة')); } finally { setBusy(''); }
+  };
+
   const copyLogin = async () => {
     if (!created) return;
     const text = `بيانات الدخول لبوابة المحاضر\nالرابط: ${window.location.origin}\nالإيميل: ${created.email}\nكلمة المرور: ${created.password}`;
@@ -98,6 +123,7 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
       const body = {
         ...rates,
         lecture_rate_per_hour: rates.pay_basis === 'per_hour' ? rates.lecture_rate_per_hour : 0,
+        training_rate_per_hour: rates.training_rate_per_hour || 0,
         lecture_rate: rates.pay_basis === 'per_lecture' ? rates.lecture_rate : null,
         lecture_hours: rates.pay_basis === 'per_hour' ? rates.lecture_hours : null,
         revenue_share_pct: rates.pay_basis === 'revenue_share' ? rates.revenue_share_pct : null,
@@ -148,6 +174,13 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
         </>
       ) : (
         <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[200px]">
+            <label className={label}>الوظيفة (بتحدد اللي يقدر يعمله)</label>
+            <div className="flex gap-1.5">
+              <select className={box} value={role} onChange={e => setRole(e.target.value)}>{ROLES.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select>
+              <button type="button" disabled={busy === 'role'} onClick={() => void changeRole()} className="rounded-xl border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">حفظ</button>
+            </div>
+          </div>
           <div className="min-w-[220px] flex-1">
             <label className={label}>تغيير كلمة المرور</label>
             <div className="flex gap-1.5">
@@ -160,6 +193,19 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
         </div>
       )}
 
+      {/* What the one login opens — so it is clear whether this person can run lives and take consultations. */}
+      <ul className="grid gap-1.5 text-xs md:grid-cols-2">
+        {[
+          [realRole(role) !== 'CONSULTANT', 'يحدد لايفات محاضرات ويبدأها (الغرفة بيعملها السيستم)'],
+          [withConsultations(role) || Boolean(draft.consultationSettings?.enabled), 'يستقبل استشارات ويبدأ الجلسة بزرار من البوابة'],
+          [realRole(role) !== 'CONSULTANT', 'يسجل حضور روندات الدقي والتجمع بتاعته'],
+          [true, 'يطلب إذن أو إجازة أو سلفة من بوابته'],
+          [false, 'يفتح صفحة الكورسات أو المحتوى — مقفولة عليه دايماً'],
+        ].map(([yes, text]) => (
+          <li key={String(text)} className={`rounded-lg px-2.5 py-1.5 font-bold ${yes ? 'bg-emerald-100 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{yes ? '✓' : '✕'} {text}</li>
+        ))}
+      </ul>
+
       {created && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
           <span className="text-amber-900">الإيميل <b dir="ltr">{created.email}</b> · كلمة المرور <b dir="ltr">{created.password}</b> — خدها دلوقتي، مش هتظهر تاني.</span>
@@ -171,6 +217,27 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
         <div className="mb-2 flex items-center gap-2"><Wallet size={16} className="text-emerald-700" /><h4 className="font-bold text-gray-900">مستحقات المحاضر</h4></div>
         {!draft.staffId ? <p className="text-xs text-gray-500">اعمل حساب الدخول الأول عشان تحدد مستحقاته.</p> : (
           <>
+            {/* «نحسب حسابه صح»: three prices, one for each kind of work. */}
+            <div className="mb-3 grid gap-3 rounded-xl border border-emerald-200 bg-white p-3 md:grid-cols-3">
+              <div>
+                <label className={label}>🎥 سعر ساعة اللايف (أونلاين)</label>
+                <input type="number" min={0} className={box} value={rates.lecture_rate_per_hour} onChange={e => setRate({ lecture_rate_per_hour: e.target.value, pay_basis: Number(e.target.value) > 0 ? 'per_hour' : rates.pay_basis })} placeholder="مثلاً 300" />
+                <p className="mt-0.5 text-[10px] text-gray-500">كل لايف بيخلص: الساعات × السعر ده.</p>
+              </div>
+              <div>
+                <label className={label}>🏢 سعر ساعة الحضور في الدقي / التجمع</label>
+                <input type="number" min={0} className={box} value={rates.training_rate_per_hour} onChange={e => setRate({ training_rate_per_hour: e.target.value })} placeholder="مثلاً 250" />
+                <p className="mt-0.5 text-[10px] text-gray-500">كل محاضرة بتتسجل «اتعقدت» في الروند: الساعات × السعر ده.</p>
+              </div>
+              <div>
+                <label className={label}>💬 سعر الجلسة الاستشارية</label>
+                <input type="number" min={0} className={box} value={rates.consultation_rate_value} onChange={e => setRate({ consultation_rate_value: e.target.value, consultation_rate_type: rates.consultation_rate_type })} placeholder="مثلاً 200" />
+                <p className="mt-0.5 text-[10px] text-gray-500">كل جلسة بتتسجل «تمت».</p>
+              </div>
+            </div>
+            <details className="mb-2 rounded-xl border border-gray-200 bg-white p-3">
+              <summary className="cursor-pointer text-xs font-bold text-gray-600">طرق حساب تانية (مبلغ ثابت للمحاضرة، نسبة من الدفعات، نسبة من الاستشارة، مكافأة التدوير)</summary>
+              <div className="mt-3">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className={label}>بيتحاسب على المحاضرات إزاي</label>
@@ -200,6 +267,8 @@ export function LecturerAccountSection({ draft, setDraft, notify }: { draft: The
               </div>
               {rates.retention_bonus_type && <div><label className={label}>قيمة المكافأة</label><input type="number" min={0} className={box} value={rates.retention_bonus_value} onChange={e => setRate({ retention_bonus_value: e.target.value })} /></div>}
             </div>
+              </div>
+            </details>
             <p className="mt-2 text-[11px] text-gray-500">سعر الاستشارة اللي العميل بيدفعه بيتحدد تحت في «تفعيل خدمة الجلسات». ده أجر المحاضر نفسه.</p>
             <button type="button" disabled={busy === 'rates'} onClick={() => void saveRates()} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">حفظ المستحقات</button>
           </>

@@ -56,7 +56,9 @@ test('the route is registered for staff, behind the permission every role holds'
   assert.ok(layer, 'GET /api/admin/client-lookup exists');
   assert.equal(layer.route.methods.get, true);
   const { hasPermission, ROLES } = require('../constants/permissions');
-  for (const role of Object.values(ROLES)) assert.ok(hasPermission({ role }, 'manage_payments'), `${role} holds manage_payments, so the button works for it`);
+  // The lecturer's jobs are the portal and nothing else (constants/permissions.js LECTURER_BLOCKED): they never reach this button.
+  const portalOnly = ['instructor', 'trainer', 'consultant', 'expert'];
+  for (const role of Object.values(ROLES).filter(name => !portalOnly.includes(name))) assert.ok(hasPermission({ role }, 'manage_payments'), `${role} holds manage_payments, so the button works for it`);
 });
 
 test("a rep finds somebody else's client, told whose it is, and may not open the file", async () => {

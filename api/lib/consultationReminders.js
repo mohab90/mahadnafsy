@@ -8,6 +8,7 @@
 // session_date holds the hour the customer picked as Cairo's wall clock (not an instant), so the window is built on Cairo's clock.
 
 const outbox = require('./outbox');
+const { ensureUpcomingMeetings } = require('./consultationMeetings');
 const { insertNotification } = require('./notification');
 const { toDialable } = require('./phoneNumber');
 const { cairoClock } = require('./dates');
@@ -39,6 +40,8 @@ function reminderMessages({ clientName, therapistName, at, meetingLink, changeLi
 
 /** Remind every confirmed session starting in the next hour or so. Returns how many sessions were reminded. */
 async function sendDueConsultationReminders(db, { tenantId, now = new Date() }) {
+  // The meeting of each confirmed session of the next days is made first, so the reminder carries its link (lib/meetingProvider.js).
+  await ensureUpcomingMeetings(db, { tenantId }).catch(() => 0);
   const [rows] = await db.query(
     `SELECT c.id, c.client_name, c.client_phone, c.meeting_link, DATE_FORMAT(c.session_date, '%Y-%m-%d %H:%i:00') AS at,
             t.name AS therapist_name, s.id AS staff_id, s.phone AS staff_phone

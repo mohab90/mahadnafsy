@@ -8,6 +8,8 @@ export type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export type Overview = {
   profile: { staffId: string; name: string; role: string; phone: string; consultation: { id: string; enabled: boolean } | null };
+  /** What this one login can do: lives and courses, consultations, a branch round's attendance — and whether the system makes the video rooms. */
+  capabilities: { lecturer: boolean; consultant: boolean; branchRounds: boolean; systemMeetings: boolean };
   lives: { upcoming: number; liveNow: number; next: { id: string; title: string; at: string } | null };
   consultations: { pending: number; upcoming: number; urgent: number };
   consultationsEnabled: boolean;
@@ -29,6 +31,8 @@ export type Live = {
   id: string; title: string; scheduledAt: string; durationMinutes?: number; streamUrl: string; platform?: string;
   visibility: string; targetCourseIds: string[]; status: 'upcoming' | 'live' | 'ended'; description?: string;
   attendees: number; recordingUrl?: string; announcedAt?: string | null;
+  /** The lecturer's own start link, when the system made the room. */
+  hostUrl?: string;
 };
 export type Course = { id: string; title: string };
 
@@ -40,7 +44,7 @@ export type Availability = {
 
 export type LecturerConsultation = {
   id: string; clientName: string; clientPhone: string; sessionType: string; sessionDate: string; status: string; notes: string;
-  amount: number | null; currency: string | null; minutes: number | null; meetingLink: string; createdAt: string; source: string | null; paid: boolean;
+  amount: number | null; currency: string | null; minutes: number | null; meetingLink: string; hostLink?: string; systemMade?: boolean; createdAt: string; source: string | null; paid: boolean;
   sessionTime?: string; pendingReschedule: { id: string; by: 'lecturer' | 'client'; at: string; reason: string } | null;
 };
 
@@ -89,13 +93,14 @@ const get = <T>(path: string) => mysqlAdmin.adminGet<T>(`/staff/lecturer/${path}
 
 export const lecturerApi = {
   overview: () => get<Overview>('overview'),
-  lives: () => get<{ lives: Live[]; courses: Course[] }>('lives'),
+  lives: () => get<{ lives: Live[]; courses: Course[]; meeting: { systemMade: boolean } }>('lives'),
+  startConsultation: (id: string) => mysqlAdmin.adminPost<{ hostLink: string }>(`/staff/lecturer/consultations/${encodeURIComponent(id)}/start`, {}),
   createLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string }>('/staff/lecturer/lives', body),
   updateLive: (id: string, body: Record<string, unknown>) => mysqlAdmin.adminPatch(`/staff/lecturer/lives/${encodeURIComponent(id)}`, body),
   deleteLive: (id: string) => mysqlAdmin.adminDelete(`/staff/lecturer/lives/${encodeURIComponent(id)}`),
   setLiveStatus: (id: string, status: 'LIVE' | 'ENDED', recordingUrl = '') =>
     mysqlAdmin.adminPatch(`/staff/me/live-streams/${encodeURIComponent(id)}/status`, { status, recordingUrl }),
-  communityLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string; postId: string }>('/staff/lecturer/community-live', body),
+  communityLive: (body: Record<string, unknown>) => mysqlAdmin.adminPost<{ id: string; postId: string; hostUrl?: string | null }>('/staff/lecturer/community-live', body),
   availability: () => get<Availability>('availability'),
   saveSlots: (slots: Slot[]) => mysqlAdmin.adminPut('/staff/lecturer/availability/slots', { slots }),
   blockDay: (date: string, reason: string) => mysqlAdmin.adminPost<{ alreadyBooked: number }>('/staff/lecturer/availability/blocked', { date, reason }),

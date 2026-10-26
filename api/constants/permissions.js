@@ -296,7 +296,6 @@ const ROLE_PERMS_BASE = {
 
   [ROLES.CONSULTANT]: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
     'view_leads',
@@ -305,15 +304,11 @@ const ROLE_PERMS_BASE = {
 
   [ROLES.TRAINER]: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
-    'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   [ROLES.EXPERT]: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
-    'view_courses',
     'view_consultations',
     // No view_subscribers. DATA_SCOPE for this role is 'none', so it returned
     // nothing at all — the grant did not open the customer list, it put an
@@ -324,8 +319,6 @@ const ROLE_PERMS_BASE = {
 
   [ROLES.INSTRUCTOR]: [
     'view_dashboard', 'use_lecturer_portal',
-    'manage_payments',
-    'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
@@ -461,7 +454,24 @@ function getEffectiveRoleDefaults(role, tenantId = DEFAULT_TENANT) {
   return ROLE_PERMS[r];
 }
 
+// «المحاضر مينفعش يدخل أبداً على صفحة الكورسات والمحتوى»: a lecturer's, trainer's, consultant's or expert's account is the portal and
+// nothing else. These boxes stay off for them whatever their saved grid says (a grid saved before this carried view_courses and
+// manage_lectures), and the portal's own box is always on. A person who needs more is given another job, not a ticked box.
+const LECTURER_JOB_ROLES = new Set(['instructor', 'trainer', 'consultant', 'expert']);
+const LECTURER_BLOCKED = new Set([
+  'view_courses', 'manage_courses', 'manage_lectures', 'manage_instructors', 'manage_bundles', 'manage_discounts',
+  'manage_content', 'manage_payments',
+]);
+
 function resolvePermissions(staffRecord) {
+  const perms = resolveGrantedPermissions(staffRecord);
+  const role = String(staffRecord?.role || '').toLowerCase();
+  if (!LECTURER_JOB_ROLES.has(role) || !Array.isArray(perms)) return perms;
+  const kept = perms.filter(permission => !LECTURER_BLOCKED.has(permission));
+  return kept.includes('use_lecturer_portal') ? kept : [...kept, 'use_lecturer_portal'];
+}
+
+function resolveGrantedPermissions(staffRecord) {
   if (!staffRecord) return [];
   const role = (staffRecord.role || '').toLowerCase();
 
