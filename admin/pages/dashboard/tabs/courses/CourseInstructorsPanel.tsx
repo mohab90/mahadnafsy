@@ -5,6 +5,7 @@ import type { ConsultationItem, StaffMember, Therapist, TherapistAvailabilitySlo
 import { useRef, useState } from 'react';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { uploadImage } from '../../../../lib/uploadImage';
+import { LecturerAccountSection } from './LecturerAccountSection';
 
 const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
 const blankTherapistSlot = (): TherapistAvailabilitySlot => ({ id: `slot-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, day: 'sunday', startTime: '17:00', endTime: '17:50', timezone: 'Africa/Cairo', label: '', meetingLink: '', isActive: true });
@@ -217,6 +218,8 @@ export function CourseInstructorsPanel({ activeTab, notify }: Props) {
             </div>
           </div>
 
+          <LecturerAccountSection draft={therapistDraft} setDraft={setTherapistDraft} notify={notify} />
+
           <div className="border border-gray-200 rounded-2xl bg-white p-4 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -263,7 +266,7 @@ export function CourseInstructorsPanel({ activeTab, notify }: Props) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="md:col-span-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                    دخول بوابة المحاضر يتم بحساب الموظف المرتبط أعلاه، بدون اسم مستخدم أو كلمة مرور منفصلة.
+                    دخول بوابة المحاضر يتم بحساب الدخول اللي في «حساب دخول المحاضر» فوق (الإيميل وكلمة المرور)، بدون اسم مستخدم أو كلمة مرور منفصلة.
                   </div>
                   <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-2" placeholder="رابط نموذج intake أو استبيان ما قبل الجلسة" value={therapistDraft.consultationSettings.intakeFormUrl || ''} onChange={(e) => setTherapistDraft({ ...therapistDraft, consultationSettings: { ...therapistDraft.consultationSettings!, intakeFormUrl: e.target.value } })} />
                   <textarea className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-2" rows={3} placeholder="تعليمات الحجز أو تجهيزات ما قبل الجلسة" value={therapistDraft.consultationSettings.bookingNotes || ''} onChange={(e) => setTherapistDraft({ ...therapistDraft, consultationSettings: { ...therapistDraft.consultationSettings!, bookingNotes: e.target.value } })} />
