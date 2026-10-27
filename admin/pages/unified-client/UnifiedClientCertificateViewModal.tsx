@@ -6,6 +6,7 @@ import { Modal } from '../../../shared/ui/Modal';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { SITE, certificateUrl, formPrintUrl } from '../../lib/certificateForm';
 import type { Course, SubscriberCertificate, SubscriberItem } from '../../types';
+import { cairoStamp } from '../../../shared/cairoDate';
 
 interface UnifiedClientCertificateViewModalProps {
   certificateId: string | null;
@@ -63,7 +64,7 @@ export const UnifiedClientCertificateViewModal: React.FC<UnifiedClientCertificat
           />
         </div>
         <p className="text-center text-xs text-gray-500">
-          رقم الشهادة <span className="font-mono font-bold text-gray-800">{cert.certificateNumber}</span> — صدرت في {cert.issuedAt}
+          رقم الشهادة <span className="font-mono font-bold text-gray-800">{cert.certificateNumber}</span> — صدرت في {cairoStamp(cert.issuedAt) || cert.issuedAt}
           {cert.printedAt ? ` — اتطبعت في المعهد ${cert.printedAt.slice(0, 10)}` : ' — لسه ما اتطبعتش'}
         </p>
         <div className="grid gap-2 sm:grid-cols-2">

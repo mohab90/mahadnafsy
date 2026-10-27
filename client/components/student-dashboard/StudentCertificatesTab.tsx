@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoStamp } from '../../../shared/cairoDate';
 import { Award, Star, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { mysqlClient } from '../../lib/mysqlapi';
 import type { ExtraCertificateType, ExtraCertificateRequest } from '../../types';
 import { useSiteData } from '../../context/SiteDataContext';
 import { CERT_STATUS_META, type CertRequestStatus } from '../../lib/certificateStatus';
+import { certificateRequestMessage } from '../../lib/certificateRequestMessage';
 
 interface CourseCompletionRow {
   course_id: string;
@@ -67,6 +68,8 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
   ];
 
   const extraRequests = subscriber?.extraCertificateRequests || [];
+  // The server issues an extra certificate only for a course the student finished (and paid for), so only those are offered.
+  const certifiableCourses = enrolledCourses.filter(course => completions.some(completion => completion.course_id === String(course.id)));
 
   type CertPricing = { label?: string; egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number };
   const certPricingMap: Record<string, CertPricing> = (() => {
@@ -153,7 +156,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
       setExtraCertNationality('egyptian');
       setExtraCertIdNumber('');
     } catch (error) {
-      setExtraCertError(error instanceof Error ? error.message : 'تعذر إرسال طلب الشهادة');
+      setExtraCertError(certificateRequestMessage(error));
     } finally {
       setExtraCertSubmitting(false);
     }
@@ -259,7 +262,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
                     <span className="text-2xl">{typeInfo?.icon || '📋'}</span>
                     <div>
                       <p className="font-bold text-sm text-gray-800">{req.customName || typeInfo?.label}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">طُلبت في {req.requestedAt}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">طُلبت في {cairoStamp(req.requestedAt) || req.requestedAt}</p>
                       {req.price && <p className="text-xs text-amber-600 font-bold mt-0.5">التكلفة: {req.price} {req.currency || 'EGP'}</p>}
                       {req.status === 'priced' && (
                         <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -307,12 +310,15 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400" dir="ltr" />
               </div>
               <div className="sm:col-span-2">
-                <label className="text-xs font-bold text-gray-600 mb-1 block">الكورس المرتبط (اختياري)</label>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">الكورس المرتبط *</label>
                 <select value={extraCertCourseId} onChange={e => setExtraCertCourseId(e.target.value)}
                   className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400">
                   <option value="">— اختر الكورس —</option>
-                  {enrolledCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  {certifiableCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
+                {certifiableCourses.length === 0 && (
+                  <p className="mt-1.5 text-[11px] font-bold text-amber-700">الشهادة الإضافية بتتطلب كورس خلصته — هتظهر هنا أول ما تكمل كورس.</p>
+                )}
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">الاسم بالعربية *</label>

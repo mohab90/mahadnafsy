@@ -3,6 +3,7 @@ import { Award, Ban, Download, Eye, PencilLine, Printer, RotateCcw, Trash2 } fro
 import { CertDataModal, type CertDataRow } from '../dashboard/tabs/CertDataModal';
 import type { Course, ExtraCertificateRequest, SubscriberCertificate, SubscriberItem } from '../../types';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
+import { cairoStamp } from '../../../shared/cairoDate';
 
 interface UnifiedClientCertificatesPanelProps {
   subscriber: SubscriberItem;
@@ -94,7 +95,7 @@ export function UnifiedClientCertificatesPanel({
               <div>
                 <p className="font-bold text-emerald-800 text-sm">{cert.isTrack ? '🧭 مسار: ' : ''}{certCourse?.title || cert.title || cert.courseId}</p>
                 <p className="text-xs font-mono bg-emerald-100 inline-block px-2 py-0.5 rounded mt-0.5">{cert.certificateNumber}</p>
-                <p className="text-xs text-gray-500 mt-0.5">صدرت في {cert.issuedAt}</p>
+                <p className="text-xs text-gray-500 mt-0.5">صدرت في {cairoStamp(cert.issuedAt) || cert.issuedAt}</p>
                 <p className={`text-[11px] font-bold mt-1 ${isRevoked ? 'text-red-700' : 'text-emerald-700'}`}>
                   {isRevoked ? `ملغاة${cert.revokeReason ? ` — ${cert.revokeReason}` : ''}` : `سارية — إصدار ${cert.version || 1}`}
                 </p>

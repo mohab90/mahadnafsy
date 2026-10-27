@@ -18,7 +18,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Tajawal', 'sans-serif'],
+        sans: ['Twemoji Country Flags', 'Tajawal', 'sans-serif'],
       },
       colors: {
         // Dynamic brand palette — driven by CSS vars set at runtime by lib/brandTheme.ts

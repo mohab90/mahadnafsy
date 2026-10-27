@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Country flags. Windows draws the two letters of a flag emoji («EG», «SA») instead of the flag, so the market chips
+   and certificate lists read «EG محلي». This font — Twemoji's country flags as built by country-flag-emoji-polyfill
+   (MIT; artwork © Twitter, Inc., CC-BY 4.0) — carries only those characters, so it never touches other text. */
+@font-face {
+  font-family: 'Twemoji Country Flags';
+  font-display: swap;
+  src: url('./assets/fonts/TwemojiCountryFlags.woff2') format('woff2');
+  unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E007F;
+}
+
 /* Tajawal, served from the panel itself: the Google stylesheet it replaces held back the first paint of
    every sign-in behind a trip to another company's servers. Same files as the public site; Arabic and Latin
    subsets, the weights the panel uses (a 300 or a 900 falls to the nearest). */
@@ -82,7 +92,7 @@
 }
 
 body {
-  font-family: 'Tajawal', sans-serif;
+  font-family: 'Twemoji Country Flags', 'Tajawal', sans-serif;
 }
 
 input, select, textarea, button {
