@@ -190,3 +190,26 @@ test('the Google Drive instructions ask only for the drive.file scope and never 
   assert.match(readme, /gdrive:mahad-backups/);
   assert.match(readme, /حساب الخدمة \(service account\) بتاع رفع الصور \*\*مش مناسب\*\*/);
 });
+
+// 27 Oct 2026: «واتساب: 13 رسالة فشلت نهائياً» (then 42) with the channel connected and sending. 299 of the 300 dead rows
+// were category_disabled — the message types the owner keeps closed — and no code had failed. The count read them as a
+// failing channel, and the alert said codes pass through the outbox, which they do not (lib/whatsappOtp.js sends direct).
+test('messages refused on purpose are not counted as a channel failing', async () => {
+  const seen = [];
+  const db = { query: async sql => { seen.push(sql); return [[{ channel: 'whatsapp', stuck: '0', dead: '0' }]]; } };
+  assert.deepEqual(await watchdog.outboxFindings(db, 't1', at), []);
+  const sql = seen[0];
+  assert.match(sql, /status IN \('failed','dead'\) AND created_at >= \? AND COALESCE\(last_error, ''\) NOT REGEXP '[^']*category_disabled[^']*'/);
+  // every refusal the outbox itself kills on the first attempt is left out of the count
+  const outbox = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'outbox.js'), 'utf8');
+  const permanent = outbox.match(/const PERMANENT_REFUSAL = \/([^/]+)\//)[1].split('|');
+  for (const token of permanent) assert.ok(sql.includes(token), token);
+  for (const token of ['invalid_number', 'undialable_phone']) assert.ok(sql.includes(token), token);
+});
+
+test('the alert does not say codes go through the outbox', async () => {
+  const [finding] = await watchdog.outboxFindings({ query: async () => [[{ channel: 'whatsapp', stuck: '0', dead: '12' }]] }, 't1', at);
+  assert.match(finding.body, /واتساب: 12 رسالة فشلت نهائياً/);
+  assert.match(finding.body, /بتتبعت مباشرة ومش بتعدي من الطابور ده/);
+  assert.doesNotMatch(finding.body, /بتعدي من هنا/);
+});

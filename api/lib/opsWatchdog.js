@@ -223,13 +223,19 @@ function backupFindings({ local, offsite, now = Date.now() }) {
 
 // ── The outbox ───────────────────────────────────────────────────────────────
 
+// Dead on purpose, not a channel failing: a message type the owner keeps closed («أنواع الرسائل» — after the number bans only
+// codes go out), a number that opted out, a number that does not exist. The outbox kills these on the first attempt
+// (lib/outbox.js PERMANENT_REFUSAL), and counting them said «13 رسالة فشلت» with the channel connected and sending: 299 of
+// the 300 «dead» rows of 27 Oct were category_disabled, and no code had failed at all.
+const REFUSED_BY_DESIGN = 'category_disabled|opted_out|invalid_number|undialable_phone|إرسال هذا النوع من الرسائل موقوف';
+
 async function outboxFindings(db, tenantId, now = Date.now()) {
   const stuckBefore = new Date(now - 30 * 60 * 1000);
   const deadSince = new Date(now - 60 * 60 * 1000);
   const [rows] = await db.query(
     `SELECT channel,
             SUM(status IN ('pending','processing') AND created_at < ?) AS stuck,
-            SUM(status IN ('failed','dead') AND created_at >= ?) AS dead
+            SUM(status IN ('failed','dead') AND created_at >= ? AND COALESCE(last_error, '') NOT REGEXP '${REFUSED_BY_DESIGN}') AS dead
        FROM message_outbox
       WHERE tenant_id=? AND created_at >= ?
       GROUP BY channel`,
@@ -245,7 +251,7 @@ async function outboxFindings(db, tenantId, now = Date.now()) {
   if (!lines.length) return [];
   return [{
     key: 'outbox', severity: 'medium', title: 'رسايل مش بتتبعت',
-    body: `${lines.join('\n')}\nأكواد الدخول وإعادة تعيين كلمة المرور بتعدي من هنا.`,
+    body: `${lines.join('\n')}\nأكواد الدخول وإعادة تعيين كلمة المرور بتتبعت مباشرة ومش بتعدي من الطابور ده.`,
     hint: 'راجع قناة الواتساب أو إعدادات البريد في «التكاملات».',
   }];
 }
