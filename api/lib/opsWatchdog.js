@@ -13,7 +13,10 @@
 //   slow       the 95th percentile of the last ten minutes
 //   backup     the newest credible database backup is older than 30 hours
 //   offsite    the nightly job has not copied it off the machine (deploy/mahad-db-backup.sh logs «off-site ok»)
-//   outbox     WhatsApp / e-mail messages stuck or dead: login codes and password resets are among them
+//   outbox     WhatsApp / e-mail messages stuck or dead for a real reason (a message type kept closed on purpose is not one)
+//   otp        sign-in codes sent by WhatsApp that the provider refused in the last hour (otp_codes.delivery_status) — people cannot log in
+//   email      the mail relay (Brevo) refusing sends, one after another — receipts, password resets and codes go straight out, not through
+//              the outbox, so only this and the lib/email.js delivery record can tell
 //
 // A finding is queued as one staff_alert WhatsApp to the owner-report numbers, once per window per kind (the outbox dedupe key), and written
 // to the log as an error. WhatsApp is itself one of the things that fails, so when OPS_HEARTBEAT_URL is set the watchdog also pings it every
@@ -36,9 +39,12 @@ const T = {
   backupMaxHours: num('OPS_BACKUP_MAX_HOURS', 30),
   outboxStuck: num('OPS_OUTBOX_STUCK', 25),
   outboxDead: num('OPS_OUTBOX_DEAD', 10),
+  otpFailed: num('OPS_OTP_FAILED', 3),
+  otpShare: num('OPS_OTP_SHARE', 0.3),
+  emailFailures: num('OPS_EMAIL_FAILURES', 3),
 };
 // How long one kind of finding stays quiet after it was sent (hours).
-const QUIET_HOURS = { errors: 2, storm: 3, slow: 3, backup: 24, offsite: 24, outbox: 3 };
+const QUIET_HOURS = { errors: 2, storm: 3, slow: 3, backup: 24, offsite: 24, outbox: 3, otp: 2, email: 3 };
 
 const KEEP_MINUTES = 70;
 const SAMPLES_PER_MINUTE = 300;
@@ -256,6 +262,61 @@ async function outboxFindings(db, tenantId, now = Date.now()) {
   }];
 }
 
+// ── Sign-in codes and e-mail ─────────────────────────────────────────────────
+
+// Not worth a number, an address or a long id in a message that goes to a phone.
+const plain = text => String(text || '').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>').replace(/\d{6,}/g, '#').replace(/\s+/g, ' ').trim().slice(0, 140);
+
+/**
+ * Sign-in codes by WhatsApp that were refused (otp_codes, written by lib/whatsappOtp.js). A number that is not a WhatsApp number
+ * (invalid_number) is one customer's to fix, not the channel failing, so it is left out; what is left must be several, and a real share
+ * of the codes sent, before the owner is told — one provider hiccup in a quiet hour is not an outage.
+ */
+async function otpFindings(db, tenantId, now = Date.now()) {
+  const [[row]] = await db.query(
+    `SELECT SUM(delivery_status='failed' AND COALESCE(delivery_error_code, '') <> 'invalid_number') AS failed,
+            SUM(delivery_status='accepted') AS accepted
+       FROM otp_codes
+      WHERE tenant_id=? AND type='login' AND phone IS NOT NULL AND created_at >= ?`,
+    [tenantId, new Date(now - 60 * 60 * 1000)]);
+  const failed = Number(row?.failed) || 0;
+  const accepted = Number(row?.accepted) || 0;
+  if (failed < T.otpFailed || failed / (failed + accepted) < T.otpShare) return [];
+  const [reasons] = await db.query(
+    `SELECT delivery_error_code AS reason, COUNT(*) AS n FROM otp_codes
+      WHERE tenant_id=? AND type='login' AND phone IS NOT NULL AND delivery_status='failed' AND created_at >= ?
+        AND COALESCE(delivery_error_code, '') <> 'invalid_number'
+      GROUP BY delivery_error_code ORDER BY n DESC LIMIT 1`,
+    [tenantId, new Date(now - 60 * 60 * 1000)]).catch(() => [[]]);
+  const top = reasons?.[0]?.reason ? `\nأكتر سبب: ${plain(reasons[0].reason)}` : '';
+  return [{
+    key: 'otp', severity: 'high', title: 'أكواد الدخول بالواتساب مش بتوصل',
+    body: `${failed} كود من ${failed + accepted} فشل إرساله في آخر ساعة — العملاء مش قادرين يسجلوا دخول.${top}`,
+    hint: 'راجع حالة قناة الواتساب وحدّها اليومي في «قنوات الرسائل».',
+  }];
+}
+
+const RECIPIENT_FAULT = /no recipients defined|recipient|mailbox|user unknown|invalid (address|email)/i;
+
+/**
+ * The mail relay refusing sends. Receipts, password resets and codes by e-mail are sent directly (lib/email.js sendEmail), not queued, so
+ * the only record is the delivery state it keeps: how many sends failed in a row, and when one last worked.
+ */
+function emailFindings({ tenantId = process.env.DEFAULT_TENANT_ID || 'tenant-default', now = Date.now(), health } = {}) {
+  const state = health || require('./email').getDeliveryHealth(tenantId);
+  const failures = Number(state?.failuresSinceSuccess) || 0;
+  const lastFailure = Date.parse(state?.lastFailureAt || '');
+  if (failures < T.emailFailures || !Number.isFinite(lastFailure) || now - lastFailure > 3 * 3600 * 1000) return [];
+  // One customer's empty or refused address (the two of 23 Oct: «No recipients defined») is theirs to fix, not the relay failing.
+  if (RECIPIENT_FAULT.test(String(state?.lastError || ''))) return [];
+  const lastOk = Date.parse(state?.lastSuccessAt || '');
+  return [{
+    key: 'email', severity: 'high', title: 'الإيميل مش بيتبعت',
+    body: `${failures} محاولة إرسال فشلت ورا بعض${Number.isFinite(lastOk) ? ` — آخر مرة اشتغل فيها من ${Math.max(1, Math.round((now - lastOk) / 60000))} دقيقة` : ''}.\nآخر خطأ: ${plain(state.lastError) || 'غير معروف'}`,
+    hint: 'راجع مفتاح SMTP وحساب Brevo (الإعدادات ← البريد ← «إرسال رسالة اختبار»). الإيصالات وإعادة تعيين كلمة المرور بتعدي من هنا.',
+  }];
+}
+
 // ── Telling the owner ────────────────────────────────────────────────────────
 
 function compose(finding) {
@@ -314,6 +375,8 @@ async function runOpsWatchdog({ pool, logger, tenantId = process.env.DEFAULT_TEN
     ...trafficFindings(now),
     ...backupFindings({ local: newestBackup(), offsite: offsiteState(), now }),
     ...await outboxFindings(pool, tenantId, now).catch(error => { logger?.warn?.('[ops-watchdog] outbox check failed', error.message); return []; }),
+    ...await otpFindings(pool, tenantId, now).catch(error => { logger?.warn?.('[ops-watchdog] otp check failed', error.message); return []; }),
+    ...(() => { try { return emailFindings({ tenantId, now }); } catch (error) { logger?.warn?.('[ops-watchdog] email check failed', error.message); return []; } })(),
   ];
   const queued = await queueAlerts({ findings, tenantId, db: pool, logger, now });
   await heartbeat({ logger });
@@ -324,6 +387,6 @@ async function runOpsWatchdog({ pool, logger, tenantId = process.env.DEFAULT_TEN
 const status = () => ({ ...lastRun, thresholds: T, quietHours: QUIET_HOURS, heartbeatConfigured: /^https:\/\//i.test(String(process.env.OPS_HEARTBEAT_URL || '')) });
 
 module.exports = {
-  T, QUIET_HOURS, noteRequest, trafficFindings, backupFindings, newestBackup, offsiteState, outboxFindings, compose, queueAlerts, heartbeat,
+  T, QUIET_HOURS, noteRequest, trafficFindings, backupFindings, newestBackup, offsiteState, outboxFindings, otpFindings, emailFindings, compose, queueAlerts, heartbeat,
   runOpsWatchdog, status, _buckets: buckets,
 };

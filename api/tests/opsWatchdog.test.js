@@ -213,3 +213,62 @@ test('the alert does not say codes go through the outbox', async () => {
   assert.match(finding.body, /بتتبعت مباشرة ومش بتعدي من الطابور ده/);
   assert.doesNotMatch(finding.body, /بتعدي من هنا/);
 });
+
+// 27 Oct 2026: «اعملي تنبيه لو الإيميل وقف ويبعتلي على واتساب زي رسايل الـOTP» — the owner is told on WhatsApp when sign-in codes stop
+// arriving or the mail relay refuses sends; both go out directly, so neither shows in the outbox count.
+test('sign-in codes that were refused are found, from the codes of this tenant in the last hour', async () => {
+  const seen = [];
+  const answers = [[[{ failed: '6', accepted: '9' }]], [[{ reason: 'channel_disconnected', n: 6 }]]];
+  const db = { query: async (sql, params) => { seen.push({ sql, params }); return answers.shift(); } };
+  const [finding] = await watchdog.otpFindings(db, 't1', at);
+  assert.equal(finding.key, 'otp');
+  assert.equal(finding.severity, 'high');
+  assert.match(finding.body, /6 كود من 15 فشل إرساله في آخر ساعة/);
+  assert.match(finding.body, /أكتر سبب: channel_disconnected/);
+  assert.equal(seen[0].params[0], 't1');
+  assert.equal(seen[0].params[1].getTime(), at - 60 * MINUTE);
+  // a number that is not on WhatsApp is the customer's to fix, and is not counted
+  assert.match(seen[0].sql, /delivery_status='failed' AND COALESCE\(delivery_error_code, ''\) <> 'invalid_number'/);
+  assert.match(seen[0].sql, /type='login' AND phone IS NOT NULL/);
+  assert.match(finding.hint, /قنوات الرسائل/);
+});
+
+test('a few refused codes among many sent, or a lone one, tell nobody', async () => {
+  const once = row => ({ query: async () => [[row]] });
+  assert.deepEqual(await watchdog.otpFindings(once({ failed: '2', accepted: '0' }), 't1', at), [], 'two is under the floor');
+  assert.deepEqual(await watchdog.otpFindings(once({ failed: '4', accepted: '40' }), 't1', at), [], 'a share of 9% is a hiccup');
+  assert.deepEqual(await watchdog.otpFindings(once({ failed: null, accepted: null }), 't1', at), [], 'no codes at all');
+});
+
+test('the mail relay refusing sends one after another is found; a customer\'s own bad address is not', () => {
+  const state = (overrides = {}) => ({ failuresSinceSuccess: 4, lastFailureAt: new Date(at - 10 * MINUTE).toISOString(), lastSuccessAt: new Date(at - 50 * MINUTE).toISOString(), lastError: 'Invalid login: 535 Authentication failed', ...overrides });
+  const [finding] = watchdog.emailFindings({ tenantId: 't1', now: at, health: state() });
+  assert.equal(finding.key, 'email');
+  assert.equal(finding.severity, 'high');
+  assert.match(finding.body, /4 محاولة إرسال فشلت ورا بعض — آخر مرة اشتغل فيها من 50 دقيقة/);
+  assert.match(finding.body, /Invalid login: # Authentication failed|Invalid login: 535 Authentication failed/);
+  assert.match(finding.hint, /Brevo/);
+  assert.deepEqual(watchdog.emailFindings({ now: at, health: state({ failuresSinceSuccess: 2 }) }), [], 'two in a row is not yet');
+  assert.deepEqual(watchdog.emailFindings({ now: at, health: state({ failuresSinceSuccess: 0, lastFailureAt: null }) }), [], 'healthy');
+  assert.deepEqual(watchdog.emailFindings({ now: at, health: state({ lastFailureAt: new Date(at - 4 * 3600 * 1000).toISOString() }) }), [], 'an old failure is not news');
+  for (const lastError of ['No recipients defined', 'Recipient address rejected: Access denied', 'Mailbox unavailable']) {
+    assert.deepEqual(watchdog.emailFindings({ now: at, health: state({ lastError }) }), [], lastError);
+  }
+});
+
+test('addresses and long numbers never go into an alert that is sent to a phone', () => {
+  const [finding] = watchdog.emailFindings({ now: at, health: { failuresSinceSuccess: 5, lastFailureAt: new Date(at - MINUTE).toISOString(), lastSuccessAt: null, lastError: 'connect ETIMEDOUT 18.134.12.201:587 for ahmed.ali@gmail.com id 123456789' } });
+  assert.doesNotMatch(finding.body, /ahmed|gmail|123456789/);
+  assert.match(finding.body, /<email>/);
+});
+
+test('the watchdog asks both questions, and tells the owner in the same way as the others', () => {
+  const source = read('api/lib/opsWatchdog.js');
+  assert.match(source, /\.\.\.await otpFindings\(pool, tenantId, now\)/);
+  assert.match(source, /emailFindings\(\{ tenantId, now \}\)/);
+  assert.equal(watchdog.QUIET_HOURS.otp, 2);
+  assert.equal(watchdog.QUIET_HOURS.email, 3);
+  assert.ok(watchdog.T.otpFailed >= 3 && watchdog.T.emailFailures >= 3);
+  // the explanation at the top no longer says codes pass through the outbox
+  assert.doesNotMatch(source, /login codes and password resets are among them/);
+});
