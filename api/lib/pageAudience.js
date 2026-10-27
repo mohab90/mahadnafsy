@@ -186,7 +186,7 @@ async function audienceRows(tenantId, db = pool) {
   return rows;
 }
 
-const GRAPH = 'https://graph.facebook.com/v19.0';
+const { GRAPH } = require('./metaGraph');
 
 /**
  * The page's past conversations, into the CRM: each person a lead (by their

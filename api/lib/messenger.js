@@ -44,7 +44,7 @@ const PLATFORM = {
   },
 };
 
-const GRAPH = 'https://graph.facebook.com/v19.0';
+const { GRAPH } = require('./metaGraph');
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**

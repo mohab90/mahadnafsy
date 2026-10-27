@@ -114,6 +114,35 @@ router.get('/api/admin/whatsapp-campaigns/templates', ...view, async (req, res) 
   } catch (error) { fail(res, error, 'template list failed'); }
 });
 
+/**
+ * A new template, sent to Meta for approval from here. It is checked first (lib/metaTemplates.js) so what reaches Meta can be approved;
+ * the answer is PENDING and the template shows in the list above as soon as Meta has decided.
+ */
+router.post('/api/admin/whatsapp-campaigns/templates', ...manage, bulkOperationLimiter, async (req, res) => {
+  try {
+    const result = await require('../lib/metaTemplates').createTemplate(req.tenantId, req.body || {});
+    if (!result.ok) {
+      const REASONS = {
+        templates_need_meta: 'القوالب محتاجة رقم الشركة على واتساب الرسمي (Meta Cloud API)',
+        waba_missing: 'ضيف «WhatsApp Business Account ID» في بيانات قناة رقم الشركة',
+      };
+      return res.status(409).json({ error: REASONS[result.reason] || `ميتا رفضت القالب: ${result.reason}`, code: result.code || result.reason });
+    }
+    logger.info('[wa-template] submitted', { name: result.name, language: result.language, actor: req.user?.email || null });
+    res.json({ ok: true, name: result.name, language: result.language, status: result.status });
+  } catch (error) { fail(res, error, 'template create failed'); }
+});
+
+/** Remove a template from the company number's account. */
+router.delete('/api/admin/whatsapp-campaigns/templates/:name', ...manage, bulkOperationLimiter, async (req, res) => {
+  try {
+    const result = await require('../lib/metaTemplates').deleteTemplate(req.tenantId, req.params.name);
+    if (!result.ok) return res.status(409).json({ error: `ميتا رفضت الحذف: ${result.reason}` });
+    logger.info('[wa-template] deleted', { name: req.params.name, actor: req.user?.email || null });
+    res.json({ ok: true });
+  } catch (error) { fail(res, error, 'template delete failed'); }
+});
+
 /** How many numbers asked to stop promotional messages. */
 router.get('/api/admin/whatsapp-campaigns/opt-outs', ...view, async (req, res) => {
   try {

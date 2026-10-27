@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { GRAPH } = require('./metaGraph');
 const nodemailer = require('nodemailer');
 const { sendGreenApiWhatsApp, sendSmsOtp } = require('./otpProvider');
 
@@ -74,7 +75,7 @@ async function diagnoseFacebook(config, fetchImpl = global.fetch) {
   }
   const fetchTimed = withTimeout(fetchImpl);
   try {
-    const url = new URL(`https://graph.facebook.com/v19.0/${encodeURIComponent(fb.page_id)}`);
+    const url = new URL(`${GRAPH}/${encodeURIComponent(fb.page_id)}`);
     url.searchParams.set('fields', 'id,name');
     url.searchParams.set('access_token', fb.page_access_token);
     const response = await fetchTimed(url, { headers: { Accept: 'application/json' } });

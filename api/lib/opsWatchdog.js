@@ -320,7 +320,13 @@ function emailFindings({ tenantId = process.env.DEFAULT_TENANT_ID || 'tenant-def
 // ── Telling the owner ────────────────────────────────────────────────────────
 
 function compose(finding) {
-  return [`${finding.severity === 'high' ? '🚨' : '⚠️'} *${finding.title}*`, finding.body, finding.hint ? `\n${finding.hint}` : ''].filter(Boolean).join('\n');
+  return [
+    `${finding.severity === 'high' ? '🚨' : '⚠️'} *${finding.title}*`, finding.body,
+    // What lib/opsAssistant.js did about it by itself, and what the model makes of it — a hint beside the facts above.
+    finding.fixed ? `\n✅ ${finding.fixed}` : '',
+    finding.diagnosis ? `\n🧠 رأي المساعد: ${finding.diagnosis}` : '',
+    finding.hint ? `\n${finding.hint}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 const windowKey = (key, now) => Math.floor(now / (QUIET_HOURS[key] * 3600 * 1000));
@@ -378,6 +384,9 @@ async function runOpsWatchdog({ pool, logger, tenantId = process.env.DEFAULT_TEN
     ...await otpFindings(pool, tenantId, now).catch(error => { logger?.warn?.('[ops-watchdog] otp check failed', error.message); return []; }),
     ...(() => { try { return emailFindings({ tenantId, now }); } catch (error) { logger?.warn?.('[ops-watchdog] email check failed', error.message); return []; } })(),
   ];
+  await require('./opsAssistant').assist({
+    findings, tenantId, db: pool, logger, now, quietHours: QUIET_HOURS, isCategoryOpen: require('./whatsapp').isCategoryOpen,
+  }).catch(error => logger?.warn?.('[ops-watchdog] assistant failed', error.message));
   const queued = await queueAlerts({ findings, tenantId, db: pool, logger, now });
   await heartbeat({ logger });
   lastRun = { at: new Date(now).toISOString(), findings: findings.map(({ key, title, body }) => ({ key, title, body })), queued };
