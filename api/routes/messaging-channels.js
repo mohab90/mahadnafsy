@@ -18,7 +18,7 @@ const logger = require('../lib/logger').child({ module: 'messaging-channels' });
 const { pool } = require('../lib/db');
 const channels = require('../lib/messagingChannels');
 const {
-  cleanTemplateMap, invalidateOutbound, isCategoryOpen, outboundState, sendWhatsApp, TEMPLATE_SETTING,
+  cleanTemplateMap, invalidateOutbound, isCategoryOpen, outboundState, sendWhatsApp, TEMPLATE_SETTING, verifyMetaCredentials,
 } = require('../lib/whatsapp');
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { verifyMessengerCredentials } = require('../lib/messenger');
@@ -47,6 +47,26 @@ function selfStaffId(req) {
 }
 
 // ── Admin: every channel ─────────────────────────────────────────────────────
+
+/**
+ * Prove the credentials just saved against the provider and record the answer on the row. Nothing is sent to anyone: Wapilot is asked
+ * for its session, Messenger and the official API for who the token belongs to. A failure here never fails the save.
+ */
+async function verifySaved(tenantId, channel) {
+  try {
+    const resolved = await channels.getSendableChannel({ tenantId, channelId: channel.id, kind: channel.kind });
+    if (!resolved) return;
+    let check;
+    if (channel.kind === 'messenger') {
+      check = await verifyMessengerCredentials(resolved.credentials);
+      if (check.ok && !check.subscribed) check = { ok: false, reason: `الصفحة متربطتش بالتطبيق: ${check.subscribeError || 'رفض من فيسبوك'}` };
+    } else if (channel.provider === 'wapilot') check = await verifyWapilot(resolved.credentials);
+    else if (channel.provider === 'meta') check = await verifyMetaCredentials(resolved.credentials);
+    else return;
+    if (check.ok) await channels.markChannelConnected(tenantId, channel.id, pool, check.number);
+    else await channels.markChannelError(tenantId, channel.id, typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من بيانات الاتصال');
+  } catch (error) { logger.warn('[channels] verify after save failed', error.message); }
+}
 
 router.get('/api/admin/messaging/channels', ...view, async (req, res) => {
   try {
@@ -100,6 +120,7 @@ router.post('/api/admin/messaging/channels', ...manage, async (req, res) => {
           typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من الجلسة عند الحفظ');
       }
     }
+    if (credentials && (kind === 'messenger' || provider === 'meta')) await verifySaved(req.tenantId, channel);
     const fresh = await channels.getChannelById(req.tenantId, channel.id);
     res.status(201).json(fresh || channel);
   } catch (error) { fail(res, error, 'channel create failed'); }
@@ -110,7 +131,9 @@ router.patch('/api/admin/messaging/channels/:id', ...manage, async (req, res) =>
     const existing = await channels.getChannelById(req.tenantId, req.params.id);
     if (!existing) return res.status(404).json({ error: 'القناة غير موجودة' });
     const updated = await channels.updateChannel(req.tenantId, req.params.id, req.body || {});
-    res.json(updated);
+    // New credentials are proved at once, so the row says «متصلة» or why not instead of «لم تُختبر».
+    if (req.body?.credentials) await verifySaved(req.tenantId, existing);
+    res.json(await channels.getChannelById(req.tenantId, req.params.id) || updated);
   } catch (error) { fail(res, error, 'channel update failed'); }
 });
 
@@ -182,7 +205,7 @@ router.put('/api/staff/me/whatsapp-channel', ...selfChannel, async (req, res) =>
   try {
     const staffId = selfStaffId(req);
     if (!staffId) return res.status(403).json({ error: 'حساب موظف مطلوب' });
-    const { provider, label, displayNumber, credentials } = req.body || {};
+    const { provider, label, displayNumber, credentials, mergeCredentials } = req.body || {};
     if (!credentials || typeof credentials !== 'object') {
       return res.status(400).json({ error: 'بيانات الاتصال مطلوبة' });
     }
@@ -192,7 +215,7 @@ router.put('/api/staff/me/whatsapp-channel', ...selfChannel, async (req, res) =>
     });
     const saved = existing
       ? await channels.updateChannel(req.tenantId, existing.id, {
-        label: label || existing.label, displayNumber, credentials,
+        label: label || existing.label, displayNumber, credentials, mergeCredentials: Boolean(mergeCredentials), provider,
       })
       : await channels.createChannel({
         tenantId: req.tenantId, kind: 'whatsapp',
@@ -202,7 +225,9 @@ router.put('/api/staff/me/whatsapp-channel', ...selfChannel, async (req, res) =>
         displayNumber, credentials,
         createdBy: req.user?.email || null,
       });
-    res.json(saved);
+    // Proved against the provider at once (Wapilot's session, the official API's token), so the row says why it is not connected.
+    if (Object.keys(credentials).length) await verifySaved(req.tenantId, saved);
+    res.json(await channels.getChannelById(req.tenantId, saved.id) || saved);
   } catch (error) { fail(res, error, 'my channel save failed'); }
 });
 
@@ -298,6 +323,20 @@ router.post('/api/messaging/channels/:id/test', ...selfChannel, bulkOperationLim
       }
       await channels.markChannelConnected(req.tenantId, channel.id, pool, check.number);
       return res.json({ ok: true, sessionStatus: check.status, number: check.number, name: check.name });
+    }
+
+    // The official API is proved the same way: Meta says who the Phone Number ID and the token belong to. A test send to the channel's
+    // own number went out under channel_test, a category that is closed by default, so it could never succeed.
+    if (channel.provider === 'meta') {
+      const resolved = await channels.getSendableChannel({ tenantId: req.tenantId, channelId: channel.id, kind: 'whatsapp' });
+      if (!resolved) return res.status(409).json({ error: 'بيانات الاتصال غير محفوظة' });
+      const check = await verifyMetaCredentials(resolved.credentials);
+      if (!check.ok) {
+        await channels.markChannelError(req.tenantId, channel.id, typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من التوكن');
+        return res.status(502).json({ error: 'التوكن أو الـ Phone Number ID مرفوض من ميتا — راجع بيانات الاتصال', reason: typeof check.reason === 'string' ? check.reason : undefined });
+      }
+      await channels.markChannelConnected(req.tenantId, channel.id, pool, check.number);
+      return res.json({ ok: true, number: check.number || null, name: check.name || null, quality: check.quality || null, nameStatus: check.nameStatus || null });
     }
 
     const to = toDialable(req.body?.to || channel.display_number);

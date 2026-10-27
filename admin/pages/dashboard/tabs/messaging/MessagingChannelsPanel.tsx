@@ -23,7 +23,8 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
   const [showAdd, setShowAdd] = useState(false);
   const [wapilotInstances, setWapilotInstances] = useState<WapilotInstance[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ label: '', displayNumber: '', instance: '', apiKey: '' });
+  const blankEdit = { label: '', displayNumber: '', instance: '', apiKey: '', metaPhoneId: '', metaWabaId: '', metaToken: '', pageId: '', pageAccessToken: '' };
+  const [edit, setEdit] = useState(blankEdit);
 
   const [draft, setDraft] = useState({
     kind: 'whatsapp' as 'whatsapp' | 'messenger',
@@ -127,17 +128,29 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
       if (!toDialable(edit.displayNumber)) { notify('error', 'الرقم ده مش صالح للإرسال'); return; }
       patch.displayNumber = edit.displayNumber.trim();
     }
-    if (channel.provider === 'wapilot' && (edit.apiKey.trim() || edit.instance.trim())) {
-      if (!edit.apiKey.trim() || !edit.instance.trim()) {
-        notify('error', 'اكتب المفتاح واسم النسخة مع بعض');
-        return;
-      }
-      patch.credentials = { apiKey: edit.apiKey.trim(), instance: edit.instance.trim() };
+    // The saved identifiers come back filled in, so only what differs from them (and any token typed) is sent, merged into what is saved
+    // on the server: a new token needs no Phone Number ID typed again, and a channel is never deleted just to change one field.
+    const hints = channel.credentialHints || {};
+    const changed = (typed: string, saved?: string) => (typed.trim() && typed.trim() !== (saved || '') ? typed.trim() : '');
+    const credentials: Record<string, string> = {};
+    if (channel.provider === 'wapilot') {
+      Object.assign(credentials, edit.instance.trim() && changed(edit.instance, hints.instance) ? { instance: edit.instance.trim() } : {}, edit.apiKey.trim() ? { apiKey: edit.apiKey.trim() } : {});
+    } else if (channel.provider === 'meta') {
+      const phoneId = changed(edit.metaPhoneId, hints.metaPhoneId);
+      const wabaId = changed(edit.metaWabaId, hints.metaWabaId);
+      if (phoneId) credentials.metaPhoneId = phoneId;
+      if (wabaId) credentials.metaWabaId = wabaId;
+      if (edit.metaToken.trim()) credentials.metaToken = edit.metaToken.trim();
+    } else if (channel.kind === 'messenger') {
+      const pageId = changed(edit.pageId, hints.pageId);
+      if (pageId) credentials.pageId = pageId;
+      if (edit.pageAccessToken.trim()) credentials.pageAccessToken = edit.pageAccessToken.trim();
     }
+    if (Object.keys(credentials).length) { patch.credentials = credentials; patch.mergeCredentials = true; }
     if (!Object.keys(patch).length) { notify('info', 'مفيش تغيير'); return; }
-    await act(channel.id, () => mysqlAdmin.updateMessagingChannel(channel.id, patch), 'تم حفظ التعديلات');
+    await act(channel.id, () => mysqlAdmin.updateMessagingChannel(channel.id, patch), patch.credentials ? 'اتحفظ واتفحص مع المزوّد — شوف حالة القناة' : 'تم حفظ التعديلات');
     setEditId(null);
-    setEdit({ label: '', displayNumber: '', instance: '', apiKey: '' });
+    setEdit(blankEdit);
   };
 
   // A function, not a component: React compares element types by identity, and
@@ -167,6 +180,15 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               {channel.display_number && <span className="font-mono">+{channel.display_number}</span>}
               {channel.ownerName && <span>· {channel.ownerName}</span>}
             </div>
+            {channel.credentialHints && (
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500" dir="ltr">
+                {channel.credentialHints.metaPhoneId && <span>Phone Number ID: <span className="font-mono">{channel.credentialHints.metaPhoneId}</span></span>}
+                {channel.credentialHints.metaWabaId && <span>WABA: <span className="font-mono">{channel.credentialHints.metaWabaId}</span></span>}
+                {channel.credentialHints.pageId && <span>Page ID: <span className="font-mono">{channel.credentialHints.pageId}</span></span>}
+                {channel.credentialHints.instance && <span>Instance: <span className="font-mono">{channel.credentialHints.instance}</span></span>}
+                {channel.credentialHints.secretTail && <span>Token: <span className="font-mono">••••{channel.credentialHints.secretTail}</span></span>}
+              </div>
+            )}
             {channel.last_error && <p className="text-xs text-red-600 mt-1">{channel.last_error}</p>}
           </div>
           <div className="flex items-center gap-1.5">
@@ -199,19 +221,17 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
             onClick={() => act(
               channel.id,
               () => mysqlAdmin.testMessagingChannel(channel.id),
-              channel.kind === 'messenger' ? 'التوكن سليم — الصفحة متصلة' : 'وصلت الرسالة — القناة شغالة',
+              channel.kind === 'messenger' ? 'التوكن سليم — الصفحة متصلة' : channel.provider === 'meta' ? 'ميتا أكدت التوكن والرقم — القناة متصلة' : 'وصلت الرسالة — القناة شغالة',
             )}
             // Only a test *send* needs a number. Messenger and Wapilot both
             // verify against the provider instead, so requiring one would block
             // the check that actually works for them.
-            disabled={busy || (channel.provider === 'green-api' || channel.provider === 'meta'
-              ? !channel.display_number : false)}
-            title={(channel.provider === 'green-api' || channel.provider === 'meta') && !channel.display_number
-              ? 'أضف رقماً للقناة أولاً' : ''}
+            disabled={busy || (channel.provider === 'green-api' ? !channel.display_number : false)}
+            title={channel.provider === 'green-api' && !channel.display_number ? 'أضف رقماً للقناة أولاً' : ''}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold hover:bg-green-100 transition disabled:opacity-40"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-            {channel.kind === 'messenger' ? 'تحقّق' : 'اختبار'}
+            {channel.kind === 'messenger' || channel.provider === 'meta' ? 'تحقّق' : 'اختبار'}
           </button>
           {!channel.owner_staff_id && channel.is_default === 0 && (
             <button
@@ -234,7 +254,11 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               default flag with it. The API has always accepted a partial
               update; only the panel had no way to send one. */}
           <button
-            onClick={() => setEditId(editId === channel.id ? null : channel.id)}
+            onClick={() => {
+              const hints = channel.credentialHints || {};
+              setEdit({ ...blankEdit, instance: hints.instance || '', metaPhoneId: hints.metaPhoneId || '', metaWabaId: hints.metaWabaId || '', pageId: hints.pageId || '' });
+              setEditId(editId === channel.id ? null : channel.id);
+            }}
             disabled={busy}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 rounded-lg text-xs font-bold hover:bg-sky-100 transition disabled:opacity-40"
           >
@@ -290,6 +314,41 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                 </div>
               </>
             )}
+            {channel.provider === 'meta' && (
+              <>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Phone Number ID</label>
+                  <input value={edit.metaPhoneId} onChange={e => setEdit(v => ({ ...v, metaPhoneId: e.target.value }))}
+                    dir="ltr" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">WhatsApp Business Account ID (للقوالب)</label>
+                  <input value={edit.metaWabaId} onChange={e => setEdit(v => ({ ...v, metaWabaId: e.target.value }))}
+                    dir="ltr" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Access Token</label>
+                  <input type="password" value={edit.metaToken} onChange={e => setEdit(v => ({ ...v, metaToken: e.target.value }))}
+                    placeholder={channel.credentialHints?.secretTail ? `محفوظ (••••${channel.credentialHints.secretTail}) — سيبه فاضي لو مش هتغيّره` : 'الصق التوكن الجديد'}
+                    dir="ltr" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
+                </div>
+              </>
+            )}
+            {channel.kind === 'messenger' && (
+              <>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Page ID</label>
+                  <input value={edit.pageId} onChange={e => setEdit(v => ({ ...v, pageId: e.target.value }))}
+                    dir="ltr" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Page Access Token</label>
+                  <input type="password" value={edit.pageAccessToken} onChange={e => setEdit(v => ({ ...v, pageAccessToken: e.target.value }))}
+                    placeholder={channel.credentialHints?.secretTail ? `محفوظ (••••${channel.credentialHints.secretTail}) — سيبه فاضي لو مش هتغيّره` : 'الصق التوكن الجديد'}
+                    dir="ltr" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
+                </div>
+              </>
+            )}
             <div className="sm:col-span-2 flex items-center gap-2">
               <button
                 onClick={() => saveEdit(channel)}
@@ -298,11 +357,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               >
                 {busy ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}حفظ التعديلات
               </button>
-              {/* The key and instance are one credential: sending only half
-                  would seal a set the provider rejects. */}
-              {channel.provider === 'wapilot' && Boolean(edit.apiKey) !== Boolean(edit.instance) && (
-                <span className="text-[11px] text-amber-700">لتغيير بيانات الاتصال اكتب المفتاح واسم النسخة مع بعض</span>
-              )}
+              <span className="text-[11px] text-gray-500">التوكنات مخبّية ومش بتظهر تاني بعد الحفظ، وبتتفحص مع المزوّد أول ما تتحفظ.</span>
             </div>
           </div>
         )}

@@ -318,6 +318,8 @@ export interface MessagingChannel {
   isConnected: boolean;
   /** Whether credentials are stored — never what they are. */
   hasCredentials: boolean;
+  /** The identifiers saved with them (not secrets), and the last four characters of the token, so an edit form is not blank. */
+  credentialHints?: { metaPhoneId?: string; metaWabaId?: string; pageId?: string; instanceId?: string; instance?: string; secretTail?: string } | null;
 }
 
 export interface WapilotInstance {
@@ -645,7 +647,7 @@ export const mysqlAdmin = {
     apiFetch<MessagingChannel[]>(`/admin/messaging/channels${kind ? `?kind=${kind}` : ''}`, {}, A),
   createMessagingChannel:  (data: MessagingChannelInput) =>
     apiFetch<MessagingChannel>('/admin/messaging/channels', { method: 'POST', body: JSON.stringify(data) }, A),
-  updateMessagingChannel:  (id: string, data: Partial<MessagingChannelInput> & { isActive?: boolean }) =>
+  updateMessagingChannel:  (id: string, data: Partial<MessagingChannelInput> & { isActive?: boolean; mergeCredentials?: boolean }) =>
     apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }, A),
   setDefaultMessagingChannel: (id: string) =>
     apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}/default`, { method: 'POST' }, A),
@@ -657,7 +659,7 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; messageId?: string }>(`/messaging/channels/${encodeURIComponent(id)}/test`, { method: 'POST', body: JSON.stringify({ to, message }) }, A),
 
   getMyWhatsappChannel:    ()             => apiFetch<MessagingChannel | null>('/staff/me/whatsapp-channel', {}, A),
-  saveMyWhatsappChannel:   (data: { provider?: string; label?: string; displayNumber?: string; credentials: Record<string, string> }) =>
+  saveMyWhatsappChannel:   (data: { provider?: string; label?: string; displayNumber?: string; credentials: Record<string, string>; mergeCredentials?: boolean }) =>
     apiFetch<MessagingChannel>('/staff/me/whatsapp-channel', { method: 'PUT', body: JSON.stringify(data) }, A),
   deleteMyWhatsappChannel: ()             => apiFetch<AR>('/staff/me/whatsapp-channel', { method: 'DELETE' }, A),
 

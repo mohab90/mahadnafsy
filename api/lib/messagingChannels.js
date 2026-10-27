@@ -44,15 +44,34 @@ const PUBLIC_COLUMNS = `id, tenant_id, kind, provider, owner_staff_id, label, di
   status, last_verified_at, last_error, is_default, is_active,
   daily_send_limit, sent_today, sent_today_date, created_by, created_at, updated_at`;
 
+// What the edit form may be shown of a saved channel. The credentials are sealed as one blob, so a form that was given only «saved» could
+// show nothing — the Phone Number ID, the Business Account ID and the Page ID looked lost the moment they were saved. These are identifiers,
+// not secrets (they appear in Meta's own URLs); the token itself is never returned, only its last four characters so «which one is this?»
+// has an answer.
+const HINT_KEYS = ['metaPhoneId', 'metaWabaId', 'pageId', 'instanceId', 'instance'];
+const SECRET_KEYS = ['metaToken', 'pageAccessToken', 'accessToken', 'apiToken', 'apiKey'];
+
+function credentialHints(credentials) {
+  if (!credentials || typeof credentials !== 'object') return null;
+  const hints = {};
+  for (const key of HINT_KEYS) if (credentials[key]) hints[key] = String(credentials[key]).trim().slice(0, 64);
+  const secret = SECRET_KEYS.map(key => credentials[key]).find(Boolean);
+  if (secret) hints.secretTail = String(secret).trim().slice(-4);
+  return Object.keys(hints).length ? hints : null;
+}
+
 /** Strips the sealed credential — this is what any API response may contain. */
 function toPublic(row) {
   if (!row) return null;
   const { credentials_sealed, ...safe } = row;
+  let hints = null;
+  try { hints = credentials_sealed ? credentialHints(open(credentials_sealed)) : null; } catch { hints = null; }
   return {
     ...safe,
     isConnected: row.status === 'connected',
-    // Whether creds exist, never what they are.
+    // Whether creds exist, and the identifiers beside them — never the secret.
     hasCredentials: Boolean(credentials_sealed),
+    credentialHints: hints,
   };
 }
 
@@ -76,7 +95,7 @@ async function listChannels({ tenantId, kind = null, ownerStaffId = undefined },
   if (ownerStaffId === null) where.push('owner_staff_id IS NULL');
   else if (ownerStaffId !== undefined) { where.push('owner_staff_id = ?'); params.push(ownerStaffId); }
   const [rows] = await db.query(
-    `SELECT ${PUBLIC_COLUMNS} FROM messaging_channels
+    `SELECT ${PUBLIC_COLUMNS}, credentials_sealed FROM messaging_channels
       WHERE ${where.join(' AND ')}
       ORDER BY owner_staff_id IS NOT NULL, is_default DESC, label ASC
       LIMIT 500`,
@@ -87,7 +106,7 @@ async function listChannels({ tenantId, kind = null, ownerStaffId = undefined },
 
 async function getChannelById(tenantId, id, db = pool) {
   const [[row]] = await db.query(
-    `SELECT ${PUBLIC_COLUMNS} FROM messaging_channels WHERE tenant_id=? AND id=? LIMIT 1`,
+    `SELECT ${PUBLIC_COLUMNS}, credentials_sealed FROM messaging_channels WHERE tenant_id=? AND id=? LIMIT 1`,
     [tenantId, id]
   );
   return toPublic(row);
@@ -220,16 +239,42 @@ async function updateChannel(tenantId, id, patch, db = pool) {
     sets.push('display_number = ?');
     params.push(patch.displayNumber ? (toDialable(patch.displayNumber) || null) : null);
   }
+  if (patch.provider !== undefined) {
+    const [[current]] = await db.query('SELECT kind, provider FROM messaging_channels WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, id]);
+    if (current && current.provider !== patch.provider) {
+      assertProvider(current.kind, patch.provider);
+      sets.push('provider = ?');
+      params.push(patch.provider);
+    }
+  }
   if (patch.isActive !== undefined) { sets.push('is_active = ?'); params.push(patch.isActive ? 1 : 0); }
   if (patch.dailySendLimit !== undefined) {
     sets.push('daily_send_limit = ?');
     params.push(Math.max(1, Math.min(Number(patch.dailySendLimit) || 1000, 100000)));
   }
   if (patch.credentials !== undefined) {
+    let next = patch.credentials;
+    // «mergeCredentials»: only what was typed replaces what was saved. A new token for a channel whose Phone Number ID is already saved
+    // should not need the ID typed again, and an expired token must be replaceable without deleting the channel (it lost the daily
+    // counter and the default flag).
+    if (patch.mergeCredentials && patch.credentials) {
+      const [[saved]] = await db.query('SELECT credentials_sealed FROM messaging_channels WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, id]);
+      let current = {};
+      try { current = (saved?.credentials_sealed && open(saved.credentials_sealed)) || {}; } catch { current = {}; }
+      const typed = {};
+      for (const key of [...HINT_KEYS, ...SECRET_KEYS]) {
+        const value = String(patch.credentials[key] ?? '').trim();
+        if (value) typed[key] = value;
+      }
+      next = { ...current, ...typed };
+      if (!Object.keys(typed).length) next = undefined;
+    }
     // Re-sealing resets the connection state: new credentials are unverified
     // until a send or a test proves them.
-    sets.push('credentials_sealed = ?', 'external_id = ?', "status = 'pending'", 'last_error = NULL');
-    params.push(patch.credentials ? seal(patch.credentials) : null, externalIdFor(patch.credentials));
+    if (next !== undefined) {
+      sets.push('credentials_sealed = ?', 'external_id = ?', "status = 'pending'", 'last_error = NULL');
+      params.push(next ? seal(next) : null, externalIdFor(next));
+    }
   }
   if (!sets.length) return getChannelById(tenantId, id, db);
   params.push(tenantId, id);
@@ -312,6 +357,7 @@ module.exports = {
   PROVIDERS,
   STATUSES,
   toPublic,
+  credentialHints,
   listChannels,
   getChannelById,
   getSendableChannel,
