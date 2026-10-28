@@ -10,7 +10,7 @@ crash-history.log
 nohup.out
 
 # ── Node modules ──────────────────────────────────────────────────────────────
-node_modules/
+node_modules
 
 # ── Uploads / user files ──────────────────────────────────────────────────────
 uploads/

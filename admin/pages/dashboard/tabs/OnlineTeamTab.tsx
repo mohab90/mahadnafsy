@@ -7,8 +7,7 @@ import {
   Award, Headphones,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
-import type { PermissionKey, RoleKey } from '../../../constants/permissions';
+import { useAccess } from '../../../hooks/useAccess';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -108,7 +107,7 @@ const MiniBarChart: React.FC<{
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, authUser, isAdmin, currentStaff } = useSiteData();
+  const { staffMembers } = useSiteData();
   // POST /api/admin/sales-targets is behind manage_sales_team; this tab's gate
   // is manage_subscribers. support, collection and reception_daqqi all hold the
   // second without the first — and a collection officer is this tab's core
@@ -116,13 +115,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   // guaranteed to have every save rejected.
   // From the context: staffMembers is empty for the ten roles that cannot read
   // the staff list, and this used to search it alone.
-  const canManageTargets = isAdmin || hasStaffPermission(
-    currentStaff ? {
-      role: currentStaff.role as RoleKey,
-      permissions: currentStaff.permissions as PermissionKey[] | undefined,
-    } : null,
-    'manage_sales_team',
-  );
+  const canManageTargets = useAccess().can('manage_sales_team');
   // What the teams collected, what is overdue and who holds how many clients, added up by the server for the period
   // (GET /api/admin/online-team-summary) instead of out of every online client and every payment of the period.
   const [summary, setSummary] = useState<OnlineTeamSummary | null>(null);

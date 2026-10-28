@@ -1,0 +1,73 @@
+# One extra web instance of the API (deploy/MULTI_INSTANCE.md): the instance
+# name is its port — mahad-api-staging@3012 listens on 3012. NOT installed or enabled
+# by any script: until one is, mahad-api-staging runs alone exactly as before.
+#
+# It serves HTTP only (MAHAD_ROLE=web): the jobs stay in mahad-api-staging (or its
+# worker), and the reps' WhatsApp stays in mahad-api-staging too (MAHAD_WA_WEB=0 here,
+# nginx pins /api/staff/whatsapp-web/ to :3002). Rate-limit counts and who
+# is online live in the database (MAHAD_MULTI_INSTANCE=1), and a cache dropped
+# in one process is dropped in all (lib/cacheBus.js).
+#
+# Make WorkingDirectory, User and the secret lines match what
+# `systemctl cat mahad-api-staging` shows — same folder, same secrets, same database.
+# deploy-release.sh finds every enabled mahad-api-staging@<port> and restarts them one by
+# one after mahad-api-staging, each once the one before answers.
+[Unit]
+Description=Mahad API (staging) web instance on port %i
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/mahad-staging/api
+ExecStart=/usr/bin/node server.js
+Environment=TZ=UTC
+Environment=NODE_ENV=production
+Environment=PROCESS_MANAGER=systemd
+# These win over the same names in .env (dotenv never overrides).
+Environment=PORT=%i
+Environment=MAHAD_INSTANCE=%i
+Environment=MAHAD_ROLE=web
+Environment=MAHAD_MULTI_INSTANCE=1
+Environment=MAHAD_WA_WEB=0
+# The release job migrates; an instance never does.
+Environment=RUN_MIGRATIONS_ON_STARTUP=false
+
+LoadCredential=jwt:/etc/mahad-staging/secrets/jwt
+LoadCredential=session:/etc/mahad-staging/secrets/session
+LoadCredential=otp:/etc/mahad-staging/secrets/otp
+LoadCredential=audit:/etc/mahad-staging/secrets/audit
+Environment=JWT_SECRET_FILE=%d/jwt
+Environment=SESSION_BINDING_SECRET_FILE=%d/session
+Environment=OTP_HMAC_SECRET_FILE=%d/otp
+Environment=AUDIT_HMAC_SECRET_FILE=%d/audit
+Environment=AUTH_SECRET_SOURCE=platform-secret
+Environment=AUTH_SECRET_PROVIDER=systemd-credentials
+Environment=AUTH_SECRET_ROTATED_AT=2026-08-03
+Environment=JWT_SECRET_REFERENCE=systemd-cred:mahad-staging/jwt@2026-08-03
+Environment=SESSION_BINDING_SECRET_REFERENCE=systemd-cred:mahad-staging/session@2026-08-03
+Environment=OTP_HMAC_SECRET_REFERENCE=systemd-cred:mahad-staging/otp@2026-08-03
+Environment=AUDIT_SECRET_SOURCE=platform-secret
+Environment=AUDIT_SECRET_PROVIDER=systemd-credentials
+Environment=AUDIT_SECRET_REFERENCE=systemd-cred:mahad-staging/audit@2026-08-03
+Environment=AUDIT_SECRET_ROTATED_AT=2026-08-03
+
+Restart=always
+RestartSec=3s
+TimeoutStartSec=60s
+# SIGTERM drains (lib/processLifecycle.js, SHUTDOWN_DRAIN_MS, 10s by default):
+# the listener closes, nginx moves to the other instance, in-flight requests
+# finish. Well inside this limit.
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+SuccessExitStatus=0 143
+LimitNOFILE=65535
+Environment=MEMORY_HEAL_LIMIT_MB=500
+MemoryHigh=600M
+MemoryMax=700M
+
+StandardOutput=append:/var/log/mahad-api-staging-%i.log
+StandardError=append:/var/log/mahad-api-staging-%i.log
+
+[Install]
+WantedBy=multi-user.target

@@ -7,6 +7,17 @@ import { adminDashboardUrl } from '../lib/adminDashboard';
 import { useSeo } from '../lib/useSeo';
 import { trackCompleteRegistration } from '../lib/tracking';
 
+// The referral code a visitor arrived with (/auth?ref=CODE). Kept for the visit,
+// so wandering off to read a course page and coming back to sign up through
+// the header's «تسجيل الدخول» (which carries no ?ref) still credits it.
+const REFERRAL_KEY = 'mahad-referral';
+function rememberedReferral(fromUrl: string): string {
+  try {
+    if (fromUrl) { window.sessionStorage.setItem(REFERRAL_KEY, fromUrl); return fromUrl; }
+    return window.sessionStorage.getItem(REFERRAL_KEY) || '';
+  } catch { return fromUrl; /* storage blocked: the URL is all there is */ }
+}
+
 const Auth: React.FC = () => {
   useSeo({ title: 'تسجيل الدخول | معهد الدراسات النفسية', path: '/auth' });
   // Someone arriving on a referral link is by definition a new visitor, so open
@@ -71,13 +82,17 @@ const Auth: React.FC = () => {
     const queryParams = new URLSearchParams(window.location.search);
     const redirectParam = queryParams.get('redirect') || '';
     const safeRedirect = /^\/[^/\\]/.test(redirectParam) ? redirectParam : '';
-    const referralCode = (queryParams.get('ref') || '').trim().toUpperCase().slice(0, 32);
+    const referralCode = rememberedReferral((queryParams.get('ref') || '').trim().toUpperCase().slice(0, 32));
+    // Without a page to go back to, a signed-in customer lands on their own
+    // courses, not the home page they would then have to find them from.
+    // The header sends "/" from the home page; that is no preference either.
+    const landing = safeRedirect && safeRedirect !== '/' ? safeRedirect : '/my-account';
 
     // Redirect if already authenticated
     useEffect(() => {
         if (authUser === undefined) return; // still loading
         if (!authUser) return;
-        if (safeRedirect) { navigate(safeRedirect, { replace: true }); return; }
+        if (safeRedirect && safeRedirect !== '/') { navigate(safeRedirect, { replace: true }); return; }
         // The dashboard is a separate app on a separate host, so it is a page
         // load, not a route change. navigate('/dashboard') stayed inside this
         // router — which registers /dashboard as `<Navigate to="/" replace />`
@@ -89,9 +104,9 @@ const Auth: React.FC = () => {
         if (staffCheckDoneRef.current) return;
         staffCheckDoneRef.current = true;
         mysqlClient.checkIsStaff()
-            .then(r => { if (r.isStaff) window.location.assign(adminDashboardUrl()); else navigate('/'); })
-            .catch(() => navigate('/'));
-    }, [authUser, isAdmin, navigate, safeRedirect]);
+            .then(r => { if (r.isStaff) window.location.assign(adminDashboardUrl()); else navigate(landing, { replace: true }); })
+            .catch(() => navigate(landing, { replace: true }));
+    }, [authUser, isAdmin, navigate, safeRedirect, landing]);
 
     const handleWaRequest = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -136,7 +151,7 @@ const Auth: React.FC = () => {
             // The session itself lives in the httpOnly cookie the API just set —
             // nothing to stash here. `created` is still read from the body to
             // greet a brand-new customer differently from a returning one.
-            const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined);
+            const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined, referralCode || undefined);
             setNotice({
                 type: 'success',
                 text: result.created ? 'أهلاً بك! تم إنشاء حسابك.' : 'تم تسجيل الدخول.',
@@ -293,7 +308,10 @@ const Auth: React.FC = () => {
                 // 211 failed sign-ins in a week were addresses with no account,
                 // about seven tries each — mostly clients who joined by phone.
                 // One wording for both failures, so it says nothing of which.
-                'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة. لو اشتركت برقم موبايلك، ادخل من «💬 الدخول برقم الواتساب» تحت.',
+                // The server gives this one answer for an unknown account, a wrong
+                // password and an account with no password yet, so it names every
+                // way in.
+                'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة. لو اشتركت برقم موبايلك، ادخل من «💬 الدخول برقم الواتساب» تحت، ولو لسه معندكش كلمة مرور اضغط «نسيت كلمة المرور».',
                 'Email and password required': 'يرجى إدخال البريد الإلكتروني وكلمة المرور.',
                 'Password must be at least 8 characters': 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.',
                 'Login failed': 'حدث خطأ في الخادم، حاول مرة أخرى.',
@@ -679,6 +697,8 @@ const Auth: React.FC = () => {
                    type={showPassword ? 'text' : 'password'}
                    value={password}
                    onChange={(e) => setPassword(e.target.value)}
+                   placeholder={isLogin ? undefined : '8 أحرف على الأقل'}
+                   minLength={isLogin ? undefined : 8}
                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 pl-12"
                  />
                  <button
@@ -690,6 +710,12 @@ const Auth: React.FC = () => {
                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                  </button>
                </div>
+               {/* The 8-character rule, said before the form is sent rather than after. */}
+               {!isLogin && (
+                 <p className={`mt-1 text-xs font-bold ${password.length >= 8 ? 'text-green-700' : 'text-muted'}`}>
+                   {password.length >= 8 ? 'كلمة المرور تمام ✓' : `كلمة المرور لازم تكون 8 حروف أو أرقام على الأقل${password ? ` — فاضل ${8 - password.length}` : ''}`}
+                 </p>
+               )}
            </div>
            {isLogin && (
              <div className="text-left">

@@ -73,6 +73,12 @@ async function setTenantSetting(key, value, { tenantId, actorId: _actorId = null
       [scopedKey, serialized]
     );
   }
+  // The public price list (routes/public-pricing.js) is built from the offers
+  // and the exchange rates in these two; a saved change shows at once, in every
+  // API process (lib/cacheBus.js), not after the list's 30 seconds.
+  if (scopedKey === 'discounts' || scopedKey === 'content') {
+    require('./db').cacheInvalidate?.(`public-prices:${scopedTenant}`);
+  }
 }
 
 module.exports = {

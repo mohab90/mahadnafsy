@@ -5,34 +5,26 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, Search, SlidersHorizontal } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
+import { useAccess } from '../../../hooks/useAccess';
 import { useBranches } from '../../../hooks/useBranches';
-import { TAB_PERMISSION_MAP } from '../dashboardShared';
 import { SETTINGS_GROUPS, searchSettings, type SettingsEntry } from './settingsHubConfig';
 
 export default function SettingsHubTab() {
-  const { isAdmin, currentStaff } = useSiteData();
+  const { isAdmin } = useSiteData();
+  const access = useAccess();
   const branches = useBranches();
   const [query, setQuery] = useState('');
   const [area, setArea] = useState<string>('all');
 
-  // An entry is listed to whoever can open what it links to, by the same rule
-  // DashboardTabContainer applies when the screen is opened.
-  const canOpen = useMemo(() => {
-    const subject = currentStaff
-      ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined }
-      : null;
-    const has = (permission: string) => hasPermission(subject, permission as PermissionKey);
-    return (entry: SettingsEntry) => {
-      if (isAdmin) return true;
-      if (entry.adminOnly) return false;
-      if (entry.permission) return has(entry.permission);
-      const required = TAB_PERMISSION_MAP[entry.tab];
-      if (required === null) return true;
-      if (required === undefined) return false;
-      return Array.isArray(required) ? required.some(has) : has(required);
-    };
-  }, [isAdmin, currentStaff]);
+  // An entry is listed to whoever can open what it links to, by the rule DashboardTabContainer applies when the
+  // screen is opened (lib/access.ts).
+  const { can, canOpenTab } = access;
+  const canOpen = useMemo(() => (entry: SettingsEntry) => {
+    if (isAdmin) return true;
+    if (entry.adminOnly) return false;
+    if (entry.permission) return can(entry.permission);
+    return canOpenTab(entry.tab);
+  }, [isAdmin, can, canOpenTab]);
 
   const visible = useMemo(
     () => SETTINGS_GROUPS.map(g => ({ ...g, entries: g.entries.filter(canOpen) })).filter(g => g.entries.length),

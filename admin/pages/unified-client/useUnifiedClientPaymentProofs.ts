@@ -37,11 +37,23 @@ export function useUnifiedClientPaymentProofs({
       .catch(() => setClientProofsLoaded(true));
   };
 
+  // Once per client opened. Keyed on isSubscriber alone it never asked again when the page moved to another client
+  // (the route keeps this page mounted), so client B showed client A's transfer proofs.
+  const subscriberId = subscriber?.id;
   useEffect(() => {
-    if (isSubscriber && !clientProofsLoaded) loadClientProofs();
-    // Keep the previous single-page auto-load behavior without refetching on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSubscriber]);
+    setClientProofs([]);
+    setClientProofsLoaded(false);
+    if (!isSubscriber || !subscriberId) return undefined;
+    let alive = true;
+    mysqlAdmin.listPaymentProofs()
+      .then(rows => {
+        if (!alive) return;
+        setClientProofs((rows as unknown as PaymentProof[]).filter(proof => proof.subscriber_id === subscriberId));
+        setClientProofsLoaded(true);
+      })
+      .catch(() => { if (alive) setClientProofsLoaded(true); });
+    return () => { alive = false; };
+  }, [isSubscriber, subscriberId]);
 
   const loadProofImage = (proofId: string) => {
     if (proofImageUrl[proofId]) return;

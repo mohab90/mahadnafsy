@@ -20,6 +20,12 @@ const {
   mapLeadRow,
 } = require('./_shared');
 
+const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueOn } = require('../../../lib/leadFollowUps');
+const { addDaysToDateOnly, cairoToday, monthRange } = require('../../../lib/dates');
+const { toEgp } = require('../../../lib/staffClientsView');
+const { resolveDataScope } = require('../../../constants/permissions');
+const { branchesFromScope } = require('../../../lib/leadAccess');
+
 const router = Router();
 
 // GET /api/admin/leads/staff-performance?from=YYYY-MM-DD
@@ -66,7 +72,7 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       // slices of the same grouping — one needs lost and active, the other only
       // converted — and adding a column each time they differ is how a response
       // grows fields nobody reads.
-      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0, byStatus: {} };
+      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0, followUpsToday: 0, byStatus: {} };
       return byStaff[key];
     };
 
@@ -104,8 +110,70 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       if (entry) entry.contacted = Number(r.cnt);
     }
 
+    // Each rep's follow-ups due today — not bounded by the range: today is today.
+    // The sales hub counted them in the browser out of the page of leads it had.
+    const due = dueOn(cairoToday());
+    const [dueRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ?${scopeClause}${due.sql}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+        GROUP BY l.assigned_sales_id`,
+      [...base, ...due.params],
+    );
+    for (const r of dueRows) {
+      const entry = entryFor(r.staff_id);
+      if (entry) entry.followUpsToday = Number(r.cnt);
+    }
+
     res.json({ from, byStaff });
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/rep-revenue?month=YYYY-MM — what each rep's clients paid in a month, in EGP.
+//
+// «أداء المبيعات» showed each rep's month revenue summed in the browser from the clients' payments, so the leads
+// screen asked for the 500 newest clients with their payment history (700 KB on the lab) and still counted only
+// those 500. The same rule over every client: a payment that is collected (status paid, or none — admin/lib/money.ts
+// isCollected) dated in the month, on a client whose assigned_sales_id is the rep, converted at the browser's own
+// fallback rates (lib/staffClientsView.js toEgp), so the figure is the one the screen used to show over the whole table.
+//
+// Scoped like the clients themselves: everyone for an «all» scope, a branch's clients for a branch scope, and a rep or
+// a collection officer is told their own figure only.
+router.get('/api/admin/leads/rep-revenue', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const range = monthRange(String(req.query.month || '') || cairoToday().slice(0, 7));
+    if (!range) return res.status(400).json({ error: 'month must be YYYY-MM' });
+    const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: Boolean(req.isSuperAdmin), fallback: 'assigned_sales' });
+    if (scope === 'none') return res.json({ month: range.startDate.slice(0, 7), byStaff: {} });
+    let scopeSql = '';
+    const scopeParams = [];
+    if (scope.startsWith('branch:')) {
+      const branches = branchesFromScope(scope);
+      scopeSql = branches.length ? ` AND s.branch IN (${branches.map(() => '?').join(',')})` : ' AND 1=0';
+      scopeParams.push(...branches);
+    } else if (scope !== 'all') {
+      scopeSql = ' AND s.assigned_sales_id = ?';
+      scopeParams.push(String(req.staffRecord?.id || ''));
+    }
+    const [rows] = await pool.query(
+      `SELECT s.assigned_sales_id AS staff_id, p.currency, SUM(p.amount) AS amount
+         FROM payments p
+         JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND s.deleted_at IS NULL
+          AND s.assigned_sales_id IS NOT NULL AND s.assigned_sales_id <> ''
+          AND (p.status IS NULL OR p.status = 'paid')
+          AND p.\`date\` >= ? AND p.\`date\` < ?${scopeSql}
+        GROUP BY s.assigned_sales_id, p.currency`,
+      [req.tenantId, range.startDate, range.endDate, ...scopeParams],
+    );
+    const byStaff = {};
+    for (const row of rows) {
+      const id = String(row.staff_id);
+      byStaff[id] = (byStaff[id] || 0) + toEgp(row.amount, row.currency);
+    }
+    res.json({ month: range.startDate.slice(0, 7), byStaff });
+  } catch (e) { logger.error('[leads-rep-revenue]', e.message); sendRouteError(res, e); }
 });
 
 // GET /api/admin/leads/scored?minScore=&status=&source=&q=&sortBy=&limit=
@@ -157,7 +225,7 @@ router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requireP
     // took over a minute at 500k leads: it had to score every lead to find the
     // top fifty.
     const [rows] = await pool.query(
-      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -271,12 +339,14 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     const redistSql = REDIST_EXCLUDED.map(() => '?').join(',');
 
     // ── 1. Reminders ────────────────────────────────────────────────────────
+    // Open and dated as every screen counts them (lib/leadFollowUps.js): the
+    // column alone missed a date kept only in crm_json, which the bell counted.
     // Whole rows, because the panel lists them by name and acts on them. Bounded
     // by the same window the browser applied: anything overdue, plus the next
     // seven days. LIMIT is a backstop, not a filter — a database holding more
     // than 500 open follow-ups was never going to render them all anyway.
     const [reminderRows] = await pool.query(
-      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -287,13 +357,11 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          FROM leads l
          LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
          LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.next_follow_up_date IS NOT NULL
-          AND l.status NOT IN (${closedSql})
-          AND l.next_follow_up_date <= ${sqlCairoToday()} + INTERVAL 7 DAY
-        ORDER BY l.next_follow_up_date ASC, l.id ASC
+        WHERE l.tenant_id = ?${scopeClause} AND ${FOLLOW_UP_OPEN}
+          AND ${FOLLOW_UP_DATE} <= ?
+        ORDER BY ${FOLLOW_UP_DATE} ASC, l.id ASC
         LIMIT 500`,
-      [req.tenantId, ...scopeParams, ...CLOSED],
+      [req.tenantId, ...scopeParams, addDaysToDateOnly(cairoToday(), 7)],
     );
 
     // ── 1b. The two undated queues beside them ──────────────────────────────
@@ -305,7 +373,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     const followUpSql = `COALESCE(DATE_FORMAT(l.next_follow_up_date, '%Y-%m-%d'),
       NULLIF(LEFT(IF(JSON_VALID(l.crm_json) AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')) = 'STRING',
         JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')), ''), 10), ''))`;
-    const queueColumns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+    const queueColumns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -526,7 +594,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     let idleRows = [];
     if (quietest.length) {
       [idleRows] = await pool.query(
-        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
                 l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
                 l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
                 l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,

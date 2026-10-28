@@ -17,6 +17,7 @@
 const { authRouteSource, leadsRouteSource, ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ROLE_PERMS } = require('../constants/permissions');
@@ -144,7 +145,8 @@ test('there is one payment screen, and every booking button opens it', () => {
   // "create the customer and take their first payment" forms — one at the desk
   // and one in عملاء الأونلاين — which were copies of each other. The three
   // copies are gone; creating a customer is PaymentModal's `new` mode.
-  assert.deepEqual(declaring, ['admin/components/PaymentModal.tsx'],
+  // The dialog's draft lives beside it since it was split into modules (components/payment-modal/).
+  assert.deepEqual(declaring, ['admin/components/payment-modal/paymentDraft.ts'],
     'another payment form exists, so the same booking looks different depending on where it was started');
 
   // The Daqqi desk's own copy is gone, along with its second receipt.
@@ -158,7 +160,7 @@ test('there is one payment screen, and every booking button opens it', () => {
   // PaymentModal closes itself, after the receipt. A parent that closed on
   // submit unmounted it before the receipt could render, so the Daqqi desk
   // would have lost the printed slip it takes for every cash payment.
-  const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  const modal = codeOnly(paymentModalSource());
   // Every save ends in finishWith: the receipt (with the branch's number), else the dialog closes.
   assert.ok(modal.includes('if (payload) setPrintData(receiptNo ? { ...payload, receiptNo } : payload);'));
   assert.ok(modal.includes('else onClose();'));
@@ -245,7 +247,7 @@ test('no second screen records a customer payment', () => {
   assert.match(clientPayments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(\{ note:/);
 
   // Nothing is valid until the screen knows whose payment it is.
-  const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  const modal = codeOnly(paymentModalSource());
   assert.ok(modal.includes('const subjectChosen = (!subjectOptions && !subjectSearch) || !!subject.id;'));
   assert.match(modal, /const isValid = !subjectChosen \|\| !certificatesTyped \|\| photoMissing \|\| photoBusy !== null \? false/);
 });
@@ -272,7 +274,7 @@ test('every booking and payment button opens that one screen', () => {
   }
 
   // The three modes it answers to, so a caller cannot invent a fourth.
-  const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  const modal = codeOnly(paymentModalSource());
   assert.ok(modal.includes("mode: 'lead' | 'subscriber' | 'new';"));
 
   // Creating a customer and taking their first payment goes through the one
@@ -289,7 +291,7 @@ test('every booking and payment button opens that one screen', () => {
   // it, for filtering and for recognising an old row. Merging history into
   // the choosing list is what made «خزنة الدقي || انستا باي» in the settings
   // show up as eighteen options in the record-payment dialog.
-  for (const rel of ['admin/components/PaymentModal.tsx', 'admin/pages/dashboard/tabs/FinancialTab.tsx',
+  for (const rel of ['admin/components/payment-modal/usePaymentModalModel.tsx', 'admin/pages/dashboard/tabs/FinancialTab.tsx',
     'admin/pages/dashboard/tabs/orders/useOrderActions.ts', 'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx']) {
     const source = codeOnly(read(rel));
     assert.ok(source.includes('usePaymentBoxes(') || source.includes('usePaymentBoxesWithHistory('),

@@ -1,0 +1,13 @@
+# Hourly database backup — installed to /etc/cron.d/ by deploy-release.sh.
+#
+# The dump used to be scheduled by hand on the server (nightly at best, weekly
+# before that), so a server lost at 02:00 took a day of payments with it and
+# nothing in the repository said when backups ran at all. Every hour, at :17,
+# /usr/local/bin/mahad-db-backup.sh takes a verified dump, keeps it locally and
+# ships an encrypted copy off-site (it fails loudly when it cannot). Its own
+# retention keeps 48 hours of hourly copies and one a day after that.
+#
+# No "%" anywhere below: cron treats it as a newline.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+17 * * * * root /usr/local/bin/mahad-db-backup.sh || logger -p user.err -t mahad-db-backup "ALERT hourly backup run exited non-zero - see /var/log/mahad-db-backup.log"

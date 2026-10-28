@@ -279,6 +279,8 @@ export type NewLeadDraft = Partial<LeadItem> & { name: string };
 
 export interface LeadItem {
   id: string;
+  /** The ad visit that brought them: «facebook · cpc · campaign» (api/lib/visitAttribution.js). */
+  adSource?: string;
   clientCode?: string;   // Stable unified client URL code, e.g. "CLT-A1B2C3"
   name: string;
   email: string;
@@ -1354,6 +1356,8 @@ export interface LeadStats {
   createdToday: number;
   /** Collection officers holding leads, for the rep filter («بعد السيلز … اسماء التحصيل»). */
   collectionHolders?: Array<{ id: string; name: string; count: number }>;
+  /** Open leads by score band (≥70, 40–69, <40), for the performance page's «توزيع السكور». */
+  scoreBands?: { high: number; mid: number; low: number };
 }
 /** GET /admin/leads/staff-performance — per-rep lead counts inside a date
  *  range, keyed by staff id. */
@@ -1365,6 +1369,8 @@ export interface StaffLeadPerformance {
     leads: number;
     converted: number;
     contacted: number;
+    /** Open leads of this rep due today, as every screen counts them (api/lib/leadFollowUps.js). */
+    followUpsToday?: number;
     /** Lead count per lowercased status, so a caller can derive lost, active or
      *  anything else without the response growing a field for each. */
     byStatus: Record<string, number>;

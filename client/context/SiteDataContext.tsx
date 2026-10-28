@@ -56,6 +56,9 @@ interface SiteDataShape {
   authUser: AuthUser | null | undefined;
   isAdmin: boolean;
   remoteReady: boolean;
+  /** The courses/bundles request failed: show a retry, not «غير موجود». */
+  catalogFailed: boolean;
+  retryCatalog: () => void;
   mySubscriberLoaded: boolean;
   /** Subscriber the server resolved for this account; null when signed out or
    *  when the account has no subscriber record. Screens must use this instead
@@ -418,7 +421,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const {
     courses, setCourses, bundles, therapists, testimonials,
-    remoteReady, loadCommunity,
+    remoteReady, catalogFailed, retryCatalog, loadCommunity,
   } = useCatalogData({
     initialCourses: initial.courses, initialBundles: initial.bundles,
     initialTherapists: initial.therapists, initialTestimonials: initial.testimonials,
@@ -549,6 +552,8 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     authUser,
     isAdmin,
     remoteReady,
+    catalogFailed,
+    retryCatalog,
     mySubscriberLoaded,
     mySubscriberId,
     refreshMySubscriber,
@@ -558,13 +563,16 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Keyed on the data, not on the action functions this value also carries.
     // Those are rebuilt on each provider render, so listing them — which is what
     // the rule asks for — would mint a new context value every render and
-    // re-render every consumer on the public site.
+    // re-render every consumer on the public site. The two curriculum getters
+    // are the exception: they are memoized on lectures/chapters, which arrive
+    // last, so they must be listed or «كورساتي», the player and the progress bar
+    // keep reading the empty lists from before the load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [courses, bundles, therapists, testimonials, subscribers, isStaff, consultations,
     communityPosts, communityLibraryItems, communityVideos,
     communityEvents, content, discounts, notifications, notificationReadIds, courseQuizzes, quizAttempts,
-    liveStreams, currency, authUser, isAdmin, isStaff, remoteReady,
-    mySubscriberId, mySubscriberLoaded]);
+    liveStreams, currency, authUser, isAdmin, isStaff, remoteReady, catalogFailed, retryCatalog,
+    mySubscriberId, mySubscriberLoaded, getCourseChapters, getCourseLectures]);
 
   return <SiteDataContext.Provider value={value}>{children}</SiteDataContext.Provider>;
 };

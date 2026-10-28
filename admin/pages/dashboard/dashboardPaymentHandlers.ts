@@ -390,7 +390,7 @@ interface HandleLeadPaymentDeps {
     subscriberId: string,
     payment: Record<string, unknown>,
   ) => Promise<{ status: string; approvalRequired?: boolean; housed?: string }>;
-  reloadLeads: () => Promise<void>;
+  reloadLeads: (opts?: { only?: string[] }) => Promise<void>;
   reloadSubscribers: () => Promise<void>;
   notify: Notify;
   currentStaff: StaffMember | null;
@@ -552,9 +552,12 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
       notify('info', 'الحجز اتبعت للمسئول يراجعه — سجّل باقي البنود على العميل بعد ما يتضاف');
     }
     for (const entry of clientId ? rest : []) results.push(await recordSubscriberPayment(clientId as string, entry));
-    await Promise.all([reloadSubscribers(), reloadLeads()]);
+    // The payment converts this one lead, so only it is fetched again — this
+    // downloaded all 27k leads after every payment. recordSubscriberPayment
+    // reloads the clients itself; a booking that made a new client needs it here.
+    await Promise.all([existingSub ? Promise.resolve() : reloadSubscribers(), reloadLeads({ only: [freshLead.id] })]);
   } catch (error) {
-    await Promise.allSettled([reloadSubscribers(), reloadLeads()]);
+    await Promise.allSettled([reloadSubscribers(), reloadLeads({ only: [freshLead.id] })]);
     notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
     throw error;
   }

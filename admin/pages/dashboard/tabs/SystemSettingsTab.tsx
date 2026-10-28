@@ -31,6 +31,7 @@ import { MeetingIntegrationSection } from './MeetingIntegrationSection';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import SecretRotationCard from '../../../components/SecretRotationCard';
+import ActiveSessionsSection from './ActiveSessionsSection';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -274,6 +275,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         {active === 'currencies'         && <CurrenciesSection   data={data.currencies as ListItem[]}    mutate={v => mutate('currencies', v)} c={c}/>}
         {active === 'countries'          && <CountriesSection    data={data.countries as ListItem[]}     mutate={v => mutate('countries', v)} c={c}/>}
         {active === 'security'           && <Security2FASection  notify={notify} />}
+        {active === 'security'           && <ActiveSessionsSection notify={notify} />}
         {active === 'growth'             && <GrowthOpsSection    notify={notify} />}
         {active === 'meetings'            && <MeetingIntegrationSection notify={notify} />}
         {active === 'backups'             && <BackupSection       notify={notify} />}

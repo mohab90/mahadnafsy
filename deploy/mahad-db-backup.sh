@@ -10,7 +10,10 @@
 # an empty one.
 #
 # It also ran weekly (Sunday 03:00), which on a business taking payments every
-# day means losing up to seven days of orders, payments and enrolments.
+# day means losing up to seven days of orders, payments and enrolments. Then
+# nightly — still up to a day of payments lost if the server died before 03:00.
+# It now runs every hour (deploy/cron/mahad-db-backup, installed by
+# deploy-release.sh), each run shipped off-site, so at most an hour is at risk.
 set -u
 set -o pipefail
 
@@ -41,7 +44,14 @@ mkdir -p "$DIR"
 log()  { echo "$(date -Iseconds) $*" >> "$LOG"; }
 fail() { log "BACKUP FAILED: $*"; rm -f "$OUT"; exit 1; }
 
-if ! mysqldump -u root --single-transaction --routines --triggers --events "$DB" 2>>"$LOG" | gzip > "$OUT"; then
+# With binary logging on (deploy/mariadb/60-mahad-binlog.cnf) the dump records
+# the binlog position it was taken at, as a comment — the point a
+# point-in-time restore replays from (mahad-offsite fetch-pitr). MariaDB takes
+# it from the same snapshot, without a global read lock. With it off the flag
+# would make mysqldump fail, so it is only added when the server says so.
+POSITION=()
+[ "$(mysql -u root -N -B -e 'SELECT @@log_bin' 2>/dev/null)" = "1" ] && POSITION=(--master-data=2)
+if ! mysqldump -u root --single-transaction --routines --triggers --events "${POSITION[@]+"${POSITION[@]}"}" "$DB" 2>>"$LOG" | gzip > "$OUT"; then
   fail "mysqldump/gzip returned non-zero"
 fi
 
@@ -60,6 +70,12 @@ log "backup ok: $OUT ($(du -h "$OUT" | cut -f1), ${TABLES} tables)"
 # off-site step because that step can now end the run, and a month of failed
 # uploads must not also fill the disk with dumps nobody prunes.
 find "$DIR" -name "${DB}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
+# The hourly runs (deploy/cron/mahad-db-backup) are kept for the last
+# HOURLY_KEEP_HOURS; after that only the 03:xx dump of each day stays, so the
+# disk holds 48 hourly copies plus one a day rather than 24 a day for 21 days.
+HOURLY_KEEP_HOURS="${MAHAD_BACKUP_HOURLY_KEEP_HOURS:-48}"
+find "$DIR" -name "${DB}_*.sql.gz" ! -name "${DB}_????????_03????.sql.gz" \
+  -mmin "+$((HOURLY_KEEP_HOURS * 60))" -delete
 
 # ── Off-site copy ────────────────────────────────────────────────────────────
 #
@@ -86,7 +102,9 @@ find "$DIR" -name "${DB}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
 # Settings — in the environment, or in $MAHAD_BACKUP_ENV_FILE
 # (/etc/mahad/backup.env by default, root-owned, not group/world-writable):
 #
-#   MAHAD_BACKUP_REMOTE            rclone destination, "remote:bucket/path". Required.
+#   MAHAD_BACKUP_REMOTE            rclone destination, "remote:bucket/path" (a remote
+#                                  made with `rclone config`). This or the
+#                                  offsite.env below is required.
 #   MAHAD_BACKUP_AGE_RECIPIENTS    file of age public keys (age1…). Preferred: the
 #                                  server can encrypt but never decrypt, so a
 #                                  compromised box cannot read the off-site copies.
@@ -97,6 +115,11 @@ find "$DIR" -name "${DB}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
 #   MAHAD_BACKUP_REMOTE_KEEP_DAYS  how long encrypted copies stay at the destination (default 30). Older ones are deleted ONLY after
 #                                  today's copy is confirmed there, so a run of failed uploads never empties the destination — and a
 #                                  Google Drive (15 GB free) does not fill up.
+#   MAHAD_OFFSITE_ENV_FILE         /etc/mahad/offsite.env by default. When it
+#                                  exists and MAHAD_BACKUP_REMOTE is not set, the
+#                                  copy goes through mahad-offsite (any
+#                                  S3-compatible bucket described in that file,
+#                                  no `rclone config`; deploy/OFFSITE_BACKUPS.md).
 #   MAHAD_BACKUP_ALLOW_LOCAL_ONLY  =1 for a developer machine or a throwaway VM:
 #                                  no off-site copy, a WARNING instead of a failure.
 #                                  Never set it on the production server.
@@ -156,8 +179,25 @@ encrypt_dump() {
   [ -s "$ENCRYPTED" ] || return 12
 }
 
+# The bucket described in /etc/mahad/offsite.env: mahad-offsite encrypts,
+# uploads and asks the bucket for the size, and alerts with its own reason; a
+# failure here is the same exit 3 as below. An rclone remote named in
+# MAHAD_BACKUP_REMOTE keeps working exactly as before and wins when both exist.
+OFFSITE_ENV="${MAHAD_OFFSITE_ENV_FILE:-/etc/mahad/offsite.env}"
+OFFSITE_BIN="${MAHAD_OFFSITE_BIN:-/usr/local/bin/mahad-offsite}"
+if [ -z "$REMOTE" ] && [ -f "$OFFSITE_ENV" ]; then
+  if [ ! -f "$OFFSITE_BIN" ]; then
+    offsite_fail "$OFFSITE_ENV exists but $OFFSITE_BIN is not installed (deploy-release.sh installs it)"
+  elif MAHAD_OFFSITE_ENV_FILE="$OFFSITE_ENV" bash "$OFFSITE_BIN" push-dump "$OUT" >>"$LOG" 2>&1; then
+    log "off-site ok via mahad-offsite: $(basename "$OUT").gpg"
+    exit 0
+  else
+    offsite_fail "mahad-offsite push-dump failed (see /var/log/mahad-offsite.log)"
+  fi
+fi
+
 if [ -z "$REMOTE" ]; then
-  offsite_fail "MAHAD_BACKUP_REMOTE is not set"
+  offsite_fail "no off-site destination: neither $OFFSITE_ENV nor MAHAD_BACKUP_REMOTE is set"
 elif ! command -v rclone >/dev/null 2>&1; then
   offsite_fail "rclone is not installed"
 fi

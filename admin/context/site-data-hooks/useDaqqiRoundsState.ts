@@ -160,7 +160,6 @@ export function useDaqqiRoundsState(
     const onChanged = () => { if (hasRounds.current) void refreshDaqqiRounds(); };
     window.addEventListener(ROUNDS_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(ROUNDS_CHANGED_EVENT, onChanged);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Bulk-load daqqi rounds without triggering DB saves (for non-admin staff initial load)

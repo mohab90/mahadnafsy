@@ -6,6 +6,7 @@ import CourseCertificate from '../components/CourseCertificate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { discountPercent, formatAmount } from '../../shared/priceFormat';
 import { useSeo, seoSummary } from '../lib/useSeo';
+import { effectivePrice, usePriceList, wasPrice } from '../lib/usePrices';
 import { CourseBookingCard, scrollToLeadForm } from './course-details-sections/CourseHeroSection';
 import { AboutSection } from './course-details-sections/PainPointsAndAboutSection';
 import { CertificateShowcase, FinalCtaSection, ProofSection, SectionNav } from './course-details-sections/CourseSalesSections';
@@ -40,7 +41,8 @@ const asHtml = (text: string) => (/<[a-z][\s\S]*>/i.test(text) ? text : text
   .split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`).join(''));
 
 const BundleDetails: React.FC = () => {
-  const { bundles, courses, addPublicLead, content: globalContent, currency, testimonials, remoteReady } = useSiteData();
+  const { bundles, courses, addPublicLead, content: globalContent, currency, testimonials, remoteReady, catalogFailed, retryCatalog } = useSiteData();
+  const priceList = usePriceList();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -81,12 +83,23 @@ const BundleDetails: React.FC = () => {
         </div>
       );
     }
+    // Nor is a list that never arrived.
+    if (catalogFailed) {
+      return (
+        <div className="flex flex-col items-center gap-4 bg-paper px-4 py-24 text-center">
+          <p className="text-lg font-bold text-ink">تعذر تحميل المسار. تحقق من اتصالك وحاول مرة أخرى.</p>
+          <button type="button" onClick={retryCatalog} className="rounded-xl bg-primary-700 px-6 py-2.5 font-bold text-white hover:bg-primary-800">إعادة المحاولة</button>
+        </div>
+      );
+    }
     return <div className="bg-paper px-4 py-24 text-center text-lg font-bold text-muted">{globalContent['bundleDetails.notFound'] || 'المسار غير موجود'}</div>;
   }
 
   const content = { ...globalContent, ...(bundle.detailsContent || {}) };
-  const currentPrice = bundle.price?.[currency] ?? 0;
-  const oldPrice = bundle.originalPrice?.[currency] ?? 0;
+  // The price checkout charges for the path, discount included (lib/usePrices).
+  const effective = effectivePrice(priceList, 'bundle', bundle.id, currency, bundle.price?.[currency] ?? 0);
+  const currentPrice = effective.price;
+  const oldPrice = wasPrice(effective, bundle.originalPrice?.[currency] ?? 0);
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
   const savePct = discountPercent(oldPrice, currentPrice);
   const students = stations.reduce((sum, s) => sum + (Number(s.full?.students) || 0), 0);

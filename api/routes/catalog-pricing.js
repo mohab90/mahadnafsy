@@ -45,7 +45,7 @@ router.put('/api/admin/catalog-pricing/:type/:id', requireAuth, requireAdminOrSt
     });
     await conn.commit();
     // The public catalogue is cached; the online tiers just rewrote its prices.
-    cacheInvalidate('courses', 'bundles');
+    cacheInvalidate('courses', 'bundles', 'public-prices');
     const pricing = await getItemPricing(pool, { tenantId: req.tenantId, type: req.params.type, itemId: req.params.id });
     res.json({ ok: true, tiers: PRICE_TIERS, ...pricing });
   } catch (e) {

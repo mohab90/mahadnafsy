@@ -12,6 +12,7 @@ const { clientPhoneIdentities, resolveSubscriberRow } = require('../lib/subscrib
 const { communityPostLimiter, eventRegistrationLimiter, publicLimiter } = require('../middleware/rateLimits');
 const { createNotification } = require('../lib/notification');
 const { toIdentity } = require('../lib/phoneNumber');
+const { scalarFields } = require('../lib/inputFields');
 
 // The id this returns is the ownership key for editing and deleting posts, so
 // resolving the wrong subscriber hands one member another member's posts.
@@ -684,7 +685,7 @@ router.get('/api/community/events/:slug', publicLimiter, async (req, res) => {
 });
 
 // «زر اهتمام وتسجيل اسم ورقم فقط». The same number twice is one registration.
-router.post('/api/community/events/:id/register', eventRegistrationLimiter, async (req, res) => {
+router.post('/api/community/events/:id/register', eventRegistrationLimiter, scalarFields('name', 'phone', 'studiedBefore'), async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim().slice(0, 200);
     const phone = String(req.body?.phone || '').trim().slice(0, 40);

@@ -19,13 +19,14 @@ const path = require('node:path');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', 'admin', ...rel.split('/')), 'utf8');
 const derived = read('pages/dashboard/useDashboardDerived.ts');
-const dashboard = read('pages/Dashboard.tsx');
+// Dashboard.tsx with its state hook (pages/dashboard/shell/), where the branch list is read.
+const dashboard = require('./_adminSplitSource').dashboardSource();
 const hook = read('hooks/useBranches.ts');
 
 test('the dashboard feeds its branch list from the branches table', () => {
   // The hook that reads the table has to be the source, and it has to reach
   // the derived-state hook that the payment dialog's branchOptions comes from.
-  assert.match(dashboard, /import \{ useBranches \} from '\.\.\/hooks\/useBranches'/);
+  assert.match(dashboard, /import \{ useBranches \} from '(\.\.\/)+hooks\/useBranches'/);
   assert.match(dashboard, /const branchesFromTable = useBranches\(\)/);
   assert.match(dashboard, /useDashboardDerived\(content, notifications, branchesFromTable\)/);
 });

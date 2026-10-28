@@ -75,14 +75,25 @@ const UserDashboard: React.FC = () => {
   const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();
 
+  // This customer's own record: by the id the server resolved, else by email.
+  // `s.email.toLowerCase()` threw for a client who signed up by WhatsApp and
+  // has no email — the whole page went to the error screen when their record
+  // loaded.
+  const findMine = () => {
+    if (mySubscriberId) {
+      const byId = subscribers.find(s => s.id === mySubscriberId);
+      if (byId) return byId;
+    }
+    const email = (authUser?.email || '').toLowerCase().trim();
+    return email ? subscribers.find(s => (s.email || '').toLowerCase().trim() === email) : undefined;
+  };
+
   // ── Direct staff check (for non-admin staff whose staffMembers won't be loaded) ──
   const [isStaffMember, setIsStaffMember] = useState<boolean | null>(null);
   const staffCheckDoneRef = useRef(false);
   useEffect(() => {
     if (!remoteReady || staffCheckDoneRef.current) return;
-    const subscriber = subscribers.find(
-      s => s.email.toLowerCase().trim() === (authUser?.email || '').toLowerCase().trim()
-    );
+    const subscriber = findMine();
     if (subscriber) { setIsStaffMember(false); staffCheckDoneRef.current = true; return; }
     if (!authUser?.uid) { setIsStaffMember(false); staffCheckDoneRef.current = true; return; }
     staffCheckDoneRef.current = true;
@@ -133,6 +144,31 @@ const UserDashboard: React.FC = () => {
 
   /* video player */
   const [playerCourseId, setPlayerCourseId] = useState<string | null>(null);
+  // ?play=<courseId>: straight into the course's player. /success sends a card
+  // buyer here once the order reads paid — they used to land on the payments
+  // list and had to find the course themselves. The grant can reach this page a
+  // moment after the order, so the record is fetched once more when the course
+  // is not in it yet.
+  const playRequested = useRef(dashSearchParams.get('play'));
+  const playRefreshed = useRef(false);
+  useEffect(() => {
+    const courseId = playRequested.current;
+    if (!courseId) return;
+    const mine = findMine();
+    if (!mine) return;
+    setActiveTab('learning');
+    setLearningSection('courses');
+    if (mine.enrolledCourseIds.includes(courseId)) {
+      setPlayerCourseId(courseId);
+      playRequested.current = null;
+    } else if (!playRefreshed.current) {
+      playRefreshed.current = true;
+      refreshMySubscriber();
+    }
+    // findMine and refreshMySubscriber are rebuilt every render; the record
+    // arriving (subscribers, mySubscriberId) is what this waits on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscribers, mySubscriberId]);
 
   /* referral */
   const [referralCode, setReferralCode] = useState<string | null>(null);
@@ -141,17 +177,19 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     if (!authUser?.uid) return;
     // only for non-admin subscribers
-    const sub = subscribers.find(s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim());
+    const sub = findMine();
     if (!sub) return;
     mysqlClient.getMyReferralCode().then(r => {
       setReferralCode(r.code);
       setReferralStats({ uses: r.uses, earnings: r.earnings });
     }).catch(() => {});
-    // One referral-code fetch per signed-in user. subscribers is read only to
-    // confirm this account is a subscriber rather than staff; depending on it
-    // would re-request the code on every subscriber-list refresh.
+    // One referral-code fetch per signed-in customer, once their record is
+    // known. Keyed on the uid alone it ran before the record had loaded on a
+    // direct visit to /my-account, found nothing, and never ran again — the
+    // referral tab stayed empty. subscribers itself is not a dependency: every
+    // list refresh would re-request the code.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid]);
+  }, [authUser?.uid, mySubscriberId]);
 
   /* certificate modal — certCode/completedAt come from the real course_completions
      row (LMS-03), never a client-side "all lectures watched" guess */
@@ -227,9 +265,7 @@ const UserDashboard: React.FC = () => {
 
   // Keep nameEn in sync when subscriber loads
   useEffect(() => {
-    const sub = subscribers.find(s =>
-      s.email.toLowerCase().trim() === (authUser?.email || '').toLowerCase().trim()
-    );
+    const sub = findMine();
     if (sub?.nameEn) setNewNameEn(sub.nameEn);
   // Deliberately keyed on subscribers alone: this seeds the English-name field
   // when the subscriber record arrives. authUser is only read to find the row,

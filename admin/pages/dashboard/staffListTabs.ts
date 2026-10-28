@@ -15,12 +15,14 @@ import type { SiteList } from '../../context/site-data-hooks/siteLists';
 const SERVER_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads', 'orders', 'daqqi_schedule', 'daqqi_clients']);
 
 /**
- * «عملائي» pages from the server for every employee (OnlineClientsTab, useStaffClientsPage), the online manager
- * included, so for them the context's full client list is not loaded when it opens. «عملاء الدقي» pages from the
- * server for everyone, the administration too (GET /api/admin/dokki/clients).
+ * «عملائي» / «العملاء الأونلاين» and «عملاء الدقي» page from the server for everyone, the administration included
+ * (OnlineClientsTab, useStaffClientsPage; GET /api/staff/subscribers?paged=1 and GET /api/admin/dokki/clients), so no
+ * session downloads the client table with its payments when one of them opens. The administration's online screen
+ * held the whole table (6.3 MB at 5,400 clients on the lab) and filtered it in the browser; the server applies the same
+ * rules (api/lib/staffClientsView.js) to every client of the account's scope.
  */
-export const staffClientsArePaged = (tab: string, isNonAdminStaff: boolean, isOnlineManager: boolean): boolean =>
-  tab === 'daqqi_clients' || (tab === 'online_clients' && (isNonAdminStaff || isOnlineManager));
+export const staffClientsArePaged = (tab: string): boolean =>
+  tab === 'daqqi_clients' || tab === 'online_clients';
 
 /**
  * The screens that read nothing from the context's lists either: a write there has no list to reload, so the
@@ -34,4 +36,4 @@ export const staffScreenPagesFromServer = (tab: string): boolean => SERVER_PAGES
  * server: the administration's version of the screen reads them, theirs does not.
  */
 export const staffSkipsSiteLists = (tab: string): readonly SiteList[] =>
-  tab === 'online_clients' ? ['subscribers'] : tab === 'orders' ? ['orders', 'subscribers'] : [];
+  tab === 'orders' ? ['orders', 'subscribers'] : [];

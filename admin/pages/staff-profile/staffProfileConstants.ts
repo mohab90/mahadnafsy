@@ -147,18 +147,3 @@ export const PERM_CATEGORIES = [
   { key:'system',      label:'الإعدادات والتطوير والذكاء الاصطناعي',  icon:'⚙️', bg:'bg-gray-50',    border:'border-gray-200',    text:'text-gray-700',    perms:['manage_content','manage_automation','ask_ai','ai_dev','manage_ai_settings','view_security','manage_security','view_settings','manage_settings'] as StaffPermission[] },
 ];
 
-export const ACCESS_PREVIEW_TABS = [
-  { label:'اللوحة الرئيسية',    icon:'📊', perms:['view_dashboard'] as StaffPermission[] },
-  { label:'العملاء المحتملين',  icon:'👥', perms:['view_leads','manage_leads'] as StaffPermission[] },
-  { label:'عملاء الأونلاين',    icon:'🎓', perms:['view_subscribers','manage_subscribers'] as StaffPermission[] },
-  { label:'الكورسات',           icon:'📚', perms:['view_courses','manage_courses','manage_lectures'] as StaffPermission[] },
-  { label:'الطلبات',            icon:'🛒', perms:['view_orders','manage_orders'] as StaffPermission[] },
-  { label:'التقارير',           icon:'📈', perms:['view_reports'] as StaffPermission[] },
-  { label:'المالية',            icon:'💰', perms:['view_financial','manage_financial'] as StaffPermission[] },
-  { label:'الاستشارات',         icon:'🤝', perms:['view_consultations','manage_consultations','use_lecturer_portal'] as StaffPermission[] },
-  { label:'المجتمع والرسائل',   icon:'💬', perms:['view_community','manage_community','manage_inbox'] as StaffPermission[] },
-  { label:'الموظفين',           icon:'👔', perms:['view_staff','manage_staff'] as StaffPermission[] },
-  { label:'الجدول (دقي)',       icon:'🏢', perms:['manage_daqqi'] as StaffPermission[] },
-  { label:'الإعدادات',          icon:'⚙️', perms:['manage_content','manage_automation','manage_ai_settings'] as StaffPermission[] },
-  { label:'الذكاء الاصطناعي',   icon:'🤖', perms:['ask_ai'] as StaffPermission[] },
-];

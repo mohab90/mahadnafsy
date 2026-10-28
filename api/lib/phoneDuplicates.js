@@ -6,13 +6,13 @@
 // its identity — the ten digits of an Egyptian mobile (lib/phoneNumber.js), however it was typed —
 // against the client's first AND second number. This is the one question every save asks.
 
-const { identitySpellings, toIdentity } = require('./phoneNumber');
+const { matchingSpellings, toIdentity } = require('./phoneNumber');
 
 /** Every stored spelling of the numbers given, for an IN (?) — empty when none is a real number. */
 function spellingsOf(...phones) {
   return [...new Set(phones.flatMap(phone => {
     const identity = toIdentity(phone);
-    return identity ? [identity, ...identitySpellings(identity)] : [];
+    return identity ? [identity, ...matchingSpellings(identity)] : [];
   }))];
 }
 

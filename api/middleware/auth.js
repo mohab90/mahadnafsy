@@ -29,7 +29,7 @@ const {
   resolvePermissions,
   hasPermission: _hasPermission,
 } = require('../constants/permissions');
-const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
+const { getMfaPolicy, policyRequiresStaff, enrolmentGraceEndsAt } = require('../lib/mfaPolicy');
 const { getClientIp, hashClientIp } = require('../lib/clientContext');
 
 // Lower-cased on both sides, like PLATFORM_ADMIN_EMAILS: an owner written
@@ -56,7 +56,7 @@ async function activeIdentity(tenantId, payload) {
   // authenticated request scanned the tenant's users, and when two accounts
   // matched one each way LIMIT 1 picked either. The address is only the fallback
   // for a token whose id no longer resolves.
-  const columns = 'is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name';
+  const columns = 'is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name,mfa_grace_started_at,email_unverified';
   let user = null;
   if (payload.uid) {
     [[user]] = await pool.query(`SELECT ${columns} FROM users WHERE tenant_id=? AND id=? LIMIT 1`, [tenantId, payload.uid]);
@@ -74,6 +74,8 @@ async function activeIdentity(tenantId, payload) {
       sessionId: user.active_session_id || null,
       sessionIpHash: user.active_session_ip_hash || null,
       name: user.name || null,
+      mfaGraceStartedAt: user.mfa_grace_started_at || null,
+      emailUnverified: Number(user.email_unverified) === 1,
     }
     : null;
   return identity;
@@ -125,6 +127,15 @@ function hasCurrentSession(payload, identity, req) {
   return Boolean(requestIp && hashClientIp(requestIp) === identity.sessionIpHash);
 }
 
+// The email every route matches the caller by — their client record, their
+// orders, their tickets, their staff row. An address given at sign-up and not
+// yet proven (lib/emailVerification.js) is no identity: it is left out here, so
+// none of those matches can hand somebody else's records to whoever typed
+// their address. The account itself still has it (users.email).
+function identityEmail(payload, identity) {
+  return identity?.emailUnverified ? null : payload.email;
+}
+
 // Kept as a compatibility hook for callers. Session truth is intentionally
 // read from MySQL on every authenticated request so another instance/login
 // cannot remain valid behind a process-local cache.
@@ -169,6 +180,27 @@ async function findActiveStaff(req, email, includePermissions = false) {
   });
 }
 
+/**
+ * True when the request carries a token this server signed and has not revoked.
+ * Signature only — no tenant or session lookup — so it is cheap enough to run
+ * before the body is read (lib/httpApp.js picks the body limit with it). The
+ * mere presence of an authToken cookie used to be enough for the larger limit.
+ */
+function hasSignedToken(req) {
+  const cookieMatch = (req.headers.cookie || '').match(/(?:^|;\s*)authToken=([^;]+)/);
+  const header = req.headers.authorization || '';
+  let token = null;
+  try { token = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null; } catch { token = null; }
+  if (!token && header.startsWith('Bearer ')) token = header.slice(7);
+  if (!token) return false;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS);
+    return Boolean(payload?.uid) && !(payload.jti && tokenBlacklist.has(payload.jti));
+  } catch {
+    return false;
+  }
+}
+
 // Optional auth — populates req.user if a valid token is present, but never rejects
 async function optionalAuth(req, res, next) {
   let token = null;
@@ -189,12 +221,14 @@ async function optionalAuth(req, res, next) {
         if (!hasCurrentSession(payload, identity, req)) return next();
         req.user = {
           uid: payload.uid,
-          email: payload.email,
+          email: identityEmail(payload, identity),
           jti: payload.jti,
           session_version: identity.sessionVersion,
           session_id: identity.sessionId,
           mfa_enrolled: identity.mfaEnrolled,
           mfa_verified: payload.mfa === true,
+          mfa_grace_started_at: identity.mfaGraceStartedAt,
+          email_unverified: identity.emailUnverified,
           name: identity.name,
           tenant_id: tenantId,
         };
@@ -236,13 +270,15 @@ async function requireAuth(req, res, next) {
     }
     req.user = {
       uid: payload.uid,
-      email: payload.email,
+      email: identityEmail(payload, identity),
       jti: payload.jti,
       exp: payload.exp,
       session_version: identity.sessionVersion,
       session_id: identity.sessionId,
       mfa_enrolled: identity.mfaEnrolled,
       mfa_verified: payload.mfa === true,
+      mfa_grace_started_at: identity.mfaGraceStartedAt,
+      email_unverified: identity.emailUnverified,
       // Carried through so a route that re-issues a token (refresh, 2FA) can
       // preserve the claim instead of silently dropping it back to false — that
       // put an operator back under the one-device rule on the next refresh.
@@ -428,11 +464,26 @@ async function enforceMfa(req, res, staff = req.staffRecord, requestedPermission
     if (!policy.enabled || (!force && !policyRequiresStaff(policy, staff, requestedPermissions))) return true;
     if (req.user?.mfa_verified) return true;
     const enrolled = Boolean(req.user?.mfa_enrolled);
+    let graceEndedAt = null;
+    if (!enrolled) {
+      // Not enrolled yet: let in while the account's grace period runs, and
+      // say until when, so the panel can count down. After it, only the routes
+      // behind requireAuth alone answer — /api/auth/2fa/setup and /enable among
+      // them — which is the enrolment and nothing else.
+      const ends = await enrolmentGraceEndsAt(policy, req.user, req.tenantId);
+      if (ends > Date.now()) {
+        // A handler called directly (jobs, tests) may pass a bare response.
+        if (typeof res.setHeader === 'function') res.setHeader('X-MFA-Enrolment-Due', new Date(ends).toISOString());
+        return true;
+      }
+      graceEndedAt = new Date(ends).toISOString();
+    }
     res.status(403).json({
       error: enrolled
         ? 'Multi-factor authentication is required for this action'
         : 'Multi-factor authentication enrollment is required for this account',
       code: enrolled ? 'MFA_REQUIRED' : 'MFA_ENROLLMENT_REQUIRED',
+      ...(graceEndedAt ? { graceEndedAt } : {}),
     });
     return false;
   } catch (error) {
@@ -505,7 +556,7 @@ function requireAnyPermission(...permissions) {
 module.exports = {
   ADMIN_EMAILS, ADMIN_UIDS, PLATFORM_ADMIN_EMAILS, PLATFORM_ADMIN_UIDS,
   ROLE_DEFAULT_PERMISSIONS_BE, isInstituteOwner, isPlatformAdminIdentity,
-  optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
+  hasSignedToken, optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
   requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows, requireChannel,
   requireAnyPermission, enforceMfa, invalidateIdentity,

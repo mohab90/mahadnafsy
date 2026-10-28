@@ -5,7 +5,8 @@
 // the order's branch and type spellings are lib/orderFields.js.
 const express = require('express');
 const router = express.Router();
-const { resolveCatalogPrice, priceMatches } = require('../lib/catalogPrice');
+const { priceMatches } = require('../lib/catalogPrice');
+const { resolveEffectivePrice, cleanCode } = require('../lib/effectivePrice');
 const logger = require('../lib/logger').child({ module: 'public-orders-route' });
 const { pool } = require('../lib/db');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
@@ -17,12 +18,15 @@ const {
   buildPaymobHmacPayload,
   verifyPaymobHmac,
   paymobMerchantOrderId,
+  paymobSignedOrderId,
   paymobTransactionId,
 } = require('../lib/paymobHmac');
 const { normalizeOrderTypeForDb, normalizedOrderType } = require('../lib/orderFields');
 const { paymobReady, postPaymobJson, buildBillingData, paymobIntention, paymobCharge, paymobIntentionReady, paymobCapture, paymobSuccess } = require('../lib/paymobGateway');
-const { finalisePaymobOrder, syncLeadDealValue } = require('../lib/paymobFinalise');
+const { finalisePaymobOrder, linkPaymobOrder, resolvePaymobMerchantOrder, syncLeadDealValue } = require('../lib/paymobFinalise');
 const { adContextFromRequest } = require('../lib/metaCapi');
+const { scalarFields } = require('../lib/inputFields');
+const { attributionFromRequest, attributionValues } = require('../lib/visitAttribution');
 
 function gatewayUnavailable(res, reason = 'gateway_disabled') {
   return res.status(503).json({
@@ -101,7 +105,7 @@ router.get('/api/public/payment-availability', publicLimiter, async (req, res) =
 });
 
 
-router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
+router.post('/api/payments/paymob-init', paymobLimiter, scalarFields('orderId', 'currency', 'itemTitle', 'customerName', 'customerEmail', 'customerPhone'), async (req, res) => {
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
     if (!paymobReady(config)) return gatewayUnavailable(res, 'paymob_not_configured');
@@ -114,7 +118,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     // a second call here could ask Paymob for a different figure — and the
     // webhook would still credit the order in full.
     const [[reserved]] = await pool.query(
-      'SELECT amount, currency, charge_amount, charge_currency FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
+      'SELECT amount, currency, charge_amount, charge_currency, charge_fx_rate FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
       [orderId, req.tenantId || DEFAULT_TENANT_ID]);
     if (!reserved) return res.status(404).json({ error: 'الطلب مش موجود — احجز الأول' });
     const orderAmount = Number(reserved.amount);
@@ -147,6 +151,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
         paymob, amountCents, currency, orderId,
         itemTitle, billing: buildBillingData(req.body || {}),
       });
+      await linkPaymobOrder({ tenantId: req.tenantId, orderId, paymobOrderId: intention.paymobOrderId });
 
       // Unified Checkout is Paymob's own hosted page: it offers every method the
       // intention was created with, rather than the single one an iframe is
@@ -184,6 +189,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
       items: itemTitle ? [{ name: String(itemTitle).slice(0, 80), amount_cents: amountCents, quantity: 1 }] : [],
     });
     if (!order.id) throw new Error('Paymob order id missing');
+    await linkPaymobOrder({ tenantId: req.tenantId, orderId, paymobOrderId: order.id });
 
     const paymentKey = await postPaymobJson('https://accept.paymob.com/api/acceptance/payment_keys', {
       auth_token: auth.token,
@@ -222,7 +228,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
 // about to be created for. StandalonePayment.tsx calls this immediately before
 // /api/payments/paymob-init, so the gateway check below is deliberate: without
 // it, a disabled gateway would leave behind a pending order nobody can ever pay.
-router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
+router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type', 'itemId', 'itemTitle', 'amount', 'currency', 'paymentMethod', 'customerEmail', 'customerName', 'customerPhone', 'subscriberEmail', 'isInstallment', 'installmentLimit', 'branch', 'promoCode'), async (req, res) => {
   let conn;
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
@@ -230,7 +236,7 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     const {
       orderId, type, itemId, itemTitle, amount, currency, paymentMethod,
       customerEmail, customerName, customerPhone, bundleCourseIds,
-      subscriberEmail, isInstallment, installmentLimit,
+      subscriberEmail, isInstallment, installmentLimit, promoCode,
     } = req.body || {};
     if (!orderId || !type || !amount) return res.status(400).json({ error: 'Missing orderId, type, or amount' });
     // What the catalogue prices, and the standalone page, where the customer
@@ -242,6 +248,17 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     if (!['course', 'bundle', 'standalone_payment', 'standalone'].includes(kind)) {
       return res.status(400).json({ error: 'نوع الطلب ده بيتحجز من صفحته', code: 'ORDER_TYPE_NOT_RESERVABLE' });
     }
+    // An amount is a positive figure in a currency the site prices in. A
+    // standalone order of -500 was stored as it came, and an unknown currency
+    // reached the INSERT and failed there with a 500.
+    const figure = Number(amount);
+    if (!Number.isFinite(figure) || figure <= 0 || figure > 1000000) {
+      return res.status(400).json({ error: 'المبلغ غير صحيح', code: 'INVALID_AMOUNT' });
+    }
+    const orderCurrency = String(currency || 'EGP').trim().toUpperCase();
+    if (!['EGP', 'SAR', 'USD'].includes(orderCurrency)) {
+      return res.status(400).json({ error: 'العملة غير مدعومة', code: 'INVALID_CURRENCY' });
+    }
 
     // The price comes from the catalogue, not from the caller. This endpoint is
     // public — guests check out — and the amount used to be written straight
@@ -252,13 +269,34 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     // Refused rather than silently corrected: a mismatch means the page is
     // showing a price the catalogue no longer has, and quietly charging a
     // different one is its own kind of wrong.
+    //
+    // The figure is what the site shows and checkout-intent charges for paying
+    // in full (lib/effectivePrice.js): the marketing discount running on the
+    // item, the customer's code, then the cash rate. Compared with the bare
+    // catalogue price, a discounted page could never be paid through here.
     const orderTypeForPrice = normalizedOrderType(type);
-    const catalogPrice = await resolveCatalogPrice(pool, {
+    const wantedCode = cleanCode(promoCode).slice(0, 50);
+    const quote = await resolveEffectivePrice(pool, {
       type: orderTypeForPrice,
       itemId,
-      currency: currency || 'EGP',
+      currency: orderCurrency,
       tenantId: req.tenantId || DEFAULT_TENANT_ID,
+      payMode: 'cash',
+      promoCode: wantedCode,
     });
+    if (quote?.promoError && quote.promoError.code !== 'PROMO_NOT_BETTER') {
+      return res.status(400).json({ error: quote.promoError.message, code: quote.promoError.code });
+    }
+    const catalogPrice = quote ? quote.dueNow : null;
+    // A course or path with no price in this currency is not for sale in it.
+    // Taking that as «no check» let a course with no SAR or USD price be
+    // ordered for 1 SAR — and a paid order grants the course.
+    if (catalogPrice === null && (kind === 'course' || kind === 'bundle')) {
+      return res.status(409).json({
+        error: 'السعر غير متاح بالعملة دي — حدّث الصفحة أو تواصل معنا',
+        code: 'PRICE_UNAVAILABLE',
+      });
+    }
     if (catalogPrice !== null && !priceMatches(amount, catalogPrice)) {
       logger.warn('[orders/reserve] price mismatch', {
         orderId, itemId, submitted: Number(amount), expected: catalogPrice,
@@ -295,14 +333,16 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
 
     await conn.query(
       `INSERT INTO orders (id, item_id, item_title, type, status, amount, currency,
-         payment_method, customer_name, customer_email, customer_phone, notes, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,NOW())
+         payment_method, customer_name, customer_email, customer_phone, notes, coupon_code, tenant_id, branch_id,
+         utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, created_at)
+       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE
          notes      = IF(status='paid', notes,      VALUES(notes)),
          branch_id  = IF(status='paid', branch_id,  VALUES(branch_id)),
          status     = IF(status='paid', status,     'pending')`,
-      [orderId, itemId||'', itemTitle||'', orderType, amount, currency||'EGP',
-       paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
+      [orderId, itemId||'', itemTitle||'', orderType, figure, orderCurrency,
+       paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, quote?.discount?.code || null,
+       req.tenantId || DEFAULT_TENANT_ID, orderBranchId, ...attributionValues(attributionFromRequest(req))]
     );
     await conn.commit();
     res.json({ ok: true });
@@ -327,8 +367,11 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
     if (!verified) return res.status(400).json({ ok: false, verified: false, paid: false, error: 'Invalid Paymob signature' });
     if (!paymobSuccess(params)) return res.json({ ok: true, verified: true, paid: false });
 
-    const merchantOrderId = paymobMerchantOrderId(params);
-    if (!merchantOrderId) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
+    if (!paymobMerchantOrderId(params)) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
+    const merchantOrderId = await resolvePaymobMerchantOrder({
+      merchantOrderId: paymobMerchantOrderId(params), signedOrderId: paymobSignedOrderId(params), tenantId: req.tenantId,
+    });
+    if (!merchantOrderId) return res.json({ ok: true, verified: true, paid: false, refused: 'order_mismatch' });
     const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params), req.tenantId);
     // `found` only means the order exists. An order whose capture did not match
     // was deliberately NOT credited, and reporting it as paid would tell the
@@ -355,7 +398,9 @@ router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
     const params = req.body?.obj ? { ...req.body.obj, hmac: req.query.hmac || req.body.hmac } : (req.body || {});
     if (!verifyPaymobHmac(params, hmacSecret)) return res.status(200).json({ ok: false, reason: 'invalid_signature' });
     if (paymobSuccess(params)) {
-      const merchantOrderId = paymobMerchantOrderId(params);
+      const merchantOrderId = await resolvePaymobMerchantOrder({
+        merchantOrderId: paymobMerchantOrderId(params), signedOrderId: paymobSignedOrderId(params), tenantId: req.tenantId,
+      });
       if (merchantOrderId) await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params), req.tenantId);
     }
     res.status(200).json({ ok: true });

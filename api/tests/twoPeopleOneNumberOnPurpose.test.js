@@ -4,6 +4,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -29,7 +30,7 @@ test('a number is shared only by a new account, with the holder named and a reas
 });
 
 test('the booking form says whose number it is, offers the file, and the linked account is told in search', () => {
-  assert.match(read('admin/components/PaymentModal.tsx'), /<SharedPhonePanel /);
+  assert.match(paymentModalSource(), /<SharedPhonePanel /);
   assert.match(read('admin/components/SharedPhonePanel.tsx'), /ده شخص تاني بيستخدم نفس الرقم/);
   assert.match(read('admin/lib/createClientWithPayment.ts'), /sharedPhone: draft\.sharedPhone/);
   assert.match(read('api/routes/misc/clientDbSearch.js'), /sharedPhone: Number\(s\.phone_slot\) > 0/);

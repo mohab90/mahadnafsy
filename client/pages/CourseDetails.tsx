@@ -16,11 +16,13 @@ import { CertificateShowcase, FinalCtaSection, InstructorSection, ProofSection, 
 import { CourseUpsellModal } from './course-details-sections/CourseUpsellModal';
 import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
 import CourseCertificate from '../components/CourseCertificate';
-import { isExpiryActive } from '../../shared/cairoDate';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { LECTURE_ACCESS_CHECK_FAILED, lectureAccessRefusal } from '../lib/lectureVideo';
 
 const CourseDetails: React.FC = () => {
-                const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, therapists, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
+                const { courses, subscribers, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, therapists, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
+  const priceList = usePriceList();
   const { id, slug } = useParams<{ id: string; slug: string }>();
   const navigate = useNavigate();
     // Support both /course/:id and /c/:slug routes
@@ -67,8 +69,10 @@ const CourseDetails: React.FC = () => {
     // Stored with its lecture, so the render that switches lectures never hands
     // the new player the previous lecture's ticket (UserDashboardVideoPlayer has
     // the whole story).
-    const [resolvedLecture, setResolvedLecture] = useState({ lectureId: '', url: '' });
+    // A refusal is kept with it, so the player says why instead of spinning.
+    const [resolvedLecture, setResolvedLecture] = useState({ lectureId: '', url: '', error: '' });
     const resolvedLectureUrl = resolvedLecture.lectureId === selectedLectureId ? resolvedLecture.url : '';
+    const lectureAccessError = resolvedLecture.lectureId === selectedLectureId ? resolvedLecture.error : '';
     const [lectureGateNotice, setLectureGateNotice] = useState('');
     const [leadName, setLeadName] = useState('');
     const [leadPhone, setLeadPhone] = useState('');
@@ -87,15 +91,18 @@ const CourseDetails: React.FC = () => {
   const oldPrice = course?.originalPrice[currency] ?? 0;
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
-  // Find applicable discount rule (course-specific takes priority over all_courses)
-  // Expiry is a date, judged in Cairo: `new Date('2026-09-15')` is midnight UTC,
-  // so an offer set to run through the 15th used to vanish from this page at
-  // 02:00 Cairo that morning while the admin's own list still called it active.
-  const applicableDiscount = course
-    ? (discounts.find(d => d.active && d.type === 'course' && d.targetId === course.id && isExpiryActive(d.expiresAt)) ??
-    discounts.find(d => d.active && d.type === 'all_courses' && isExpiryActive(d.expiresAt)))
+  // The discount checkout charges, from the server (lib/usePrices) — this page
+  // used to work out its own from the rules while checkout charged the full
+  // price: 2,800 here, 3,600 asked for. Its expiry is judged in Cairo there.
+  const effective = effectivePrice(priceList, 'course', course?.id, currency, currentPrice);
+  const discountedPrice = effective.price < currentPrice ? effective.price : null;
+  const applicableDiscount = discountedPrice !== null && effective.discount
+    ? {
+        discountPercent: effective.discount.percent ?? Math.round((1 - discountedPrice / currentPrice) * 100),
+        label: effective.discount.label || undefined,
+        expiresAt: effective.discount.expiresAt || undefined,
+      }
     : undefined;
-  const discountedPrice = applicableDiscount ? Math.round(currentPrice * (1 - applicableDiscount.discountPercent / 100)) : null;
   // Cash discount (applied on checkout for direct online payment)
         // Prefer the globally-loaded lists (logged-in students), else the
         // on-demand fetch (anonymous visitors, whose bulk list is login-gated).
@@ -172,10 +179,14 @@ const CourseDetails: React.FC = () => {
         let cancelled = false;
         if (!selectedLecture || selectedLecture.locked) return;
         const lectureId = selectedLecture.id;
-        if (selectedLecture.videoUrl) { setResolvedLecture({ lectureId, url: selectedLecture.videoUrl }); return; }
+        if (selectedLecture.videoUrl) { setResolvedLecture({ lectureId, url: selectedLecture.videoUrl, error: '' }); return; }
         mysqlClient.getLectureAccess(lectureId)
-            .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedLecture({ lectureId, url: r.video_url }); })
-            .catch(() => {});
+            .then(r => {
+                if (cancelled) return;
+                if (r.accessible && r.video_url) setResolvedLecture({ lectureId, url: r.video_url, error: '' });
+                else setResolvedLecture({ lectureId, url: '', error: lectureAccessRefusal(r) });
+            })
+            .catch(() => { if (!cancelled) setResolvedLecture({ lectureId, url: '', error: LECTURE_ACCESS_CHECK_FAILED }); });
         return () => { cancelled = true; };
         // Keyed on the fields that decide the answer rather than the
         // selectedLecture object, which is re-derived on every render — listing
@@ -429,6 +440,7 @@ const CourseDetails: React.FC = () => {
                     selectedLectureId={selectedLectureId}
                     setSelectedLectureId={setSelectedLectureId}
                     resolvedLectureUrl={resolvedLectureUrl}
+                    lectureAccessError={lectureAccessError}
                     lectureGateNotice={lectureGateNotice}
                     setLectureGateNotice={setLectureGateNotice}
                     authUserEmail={authUser?.email}

@@ -6,18 +6,26 @@ const express = require('express');
 const path = require('path');
 const router = express.Router();
 const { publicLimiter } = require('../middleware/rateLimits');
+const { requireAuth, requireAdminOrStaff } = require('../middleware/auth');
 
 const SPEC_PATH = path.join(__dirname, '..', 'docs', 'openapi.json');
 
+// In production the map of every endpoint is for staff, not for whoever finds
+// the URL. Read per request so a test can flip NODE_ENV.
+function docsAccess(req, res, next) {
+  if (process.env.NODE_ENV !== 'production') return next();
+  return requireAuth(req, res, () => requireAdminOrStaff(req, res, next));
+}
+
 // Raw spec (machine-readable — import into Postman/Insomnia/codegen).
-router.get('/api/openapi.json', publicLimiter, (_req, res) => {
+router.get('/api/openapi.json', publicLimiter, docsAccess, (_req, res) => {
   res.sendFile(SPEC_PATH, (err) => {
     if (err) res.status(500).json({ error: 'spec not found' });
   });
 });
 
 // Human-readable Swagger UI.
-router.get('/api/docs', publicLimiter, (_req, res) => {
+router.get('/api/docs', publicLimiter, docsAccess, (_req, res) => {
   // The global CSP sets script-src 'none'; relax it for THIS page only so the
   // Swagger UI bundle (jsdelivr CDN) can load. Scoped to the docs response.
   res.setHeader('Content-Security-Policy',

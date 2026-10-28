@@ -88,6 +88,7 @@ test('neither endpoint takes the charged amount from the request body', () => {
   // reserve must check the catalogue.
   const reserve = route.slice(route.indexOf("'/api/orders/reserve'"));
   const reserveBody = reserve.slice(0, reserve.indexOf('router.post', 10));
-  assert.match(reserveBody, /resolveCatalogPrice/, 'reserve should consult the catalogue');
+  // Through lib/effectivePrice.js, which starts from the catalogue and applies the running discount.
+  assert.match(reserveBody, /resolveEffectivePrice/, 'reserve should consult the catalogue');
   assert.match(reserveBody, /PRICE_MISMATCH/, 'and refuse a price that does not match');
 });

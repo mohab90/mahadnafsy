@@ -459,7 +459,7 @@ router.post(
         'SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, loginEmail]);
       if (existingUser) {
         await conn.query(
-          `UPDATE users SET password_hash=?, name=?, is_active=1,
+          `UPDATE users SET password_hash=?, name=?, is_active=1, email_unverified=0,
              session_version=session_version+1, active_session_id=NULL, active_session_ip_hash=NULL
             WHERE id=? AND tenant_id=?`,
           [passwordHash, a.name || '', existingUser.id, req.tenantId]);

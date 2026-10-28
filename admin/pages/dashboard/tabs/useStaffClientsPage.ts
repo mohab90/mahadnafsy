@@ -69,6 +69,7 @@ export function useStaffClientsPage({ enabled, filters, page, pageSize, source =
   const settledQ = useSettled(typed, 300);
   const query = useMemo(
     () => staffClientsQuery({ ...filters, q: settledQ }, page, pageSize, source),
+    // Keyed on the filter fields, not the object, which the screen rebuilds every render; q is the settled one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settledQ, filters.view, filters.from, filters.to, filters.course, filters.collector, filters.status, filters.cert, filters.remaining, filters.follow, filters.branch, filters.housing, filters.round, filters.reception, page, pageSize, source],
   );

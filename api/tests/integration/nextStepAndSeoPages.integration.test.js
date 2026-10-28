@@ -29,6 +29,7 @@ const fakeRes = () => ({
   status(code) { this.statusCode = code; return this; },
   json(payload) { this.body = payload; return this; },
   set(name, value) { this.headers[name] = value; return this; },
+  removeHeader(name) { delete this.headers[name]; },
   type() { return this; },
   send(payload) { this.body = String(payload); return this; },
 });

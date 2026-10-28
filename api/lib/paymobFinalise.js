@@ -23,7 +23,8 @@ const { getTenantSetting } = require('./tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('./consultationRequests');
 const { normalizePaymentBranch, normalizedOrderType, appendTenantScope } = require('./orderFields');
 const { orderPlan, planAccess } = require('./orderPlan');
-const { paymobCharge } = require('./paymobGateway');
+const { planEntryOf, settlePlanEntry, grantPlanEntryAccess, planEntryNote } = require('./planEntryPayment');
+const { paymobCharge, chargeStillMatches } = require('./paymobGateway');
 const { trackPurchase } = require('./metaCapi');
 
 // ── Paymob: shared helper — finalises an order after verified payment ─────────
@@ -41,6 +42,17 @@ const { trackPurchase } = require('./metaCapi');
 // by the session that took it and the work below opens its own. Paymob webhook
 // volume is low; correctness here is worth one connection.
 const _paymobProcessingOrders = new Set();
+
+// What the payment row and its journal entry say was bought — the same
+// vocabulary as a transfer the desk approves (routes/payment-proofs.js). Every
+// card payment used to be booked as COURSE: a consultation paid online was
+// course revenue (4100, not 4200), counted towards course balances, booking
+// bonuses and commissions, and missing from the consultations' figures.
+const PAYMOB_PAYMENT_TYPES = new Set(['COURSE', 'BUNDLE', 'CONSULTATION', 'CERTIFICATE']);
+function paymobPaymentType(orderType) {
+  const key = String(orderType || '').trim().toUpperCase();
+  return PAYMOB_PAYMENT_TYPES.has(key) ? key : 'OTHER';
+}
 
 /**
  * @param {string} tenantId  the institute whose Paymob secret verified the
@@ -82,7 +94,7 @@ async function finalisePaymobOrder(merchantOrderId, transactionId, capture = nul
 
 async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture = null, verifiedTenantId = DEFAULT_TENANT_ID) {
   const [[order]] = await pool.query(
-    `SELECT id, type, item_id, item_title, amount, currency, charge_amount, charge_currency, payment_method, customer_name,
+    `SELECT id, type, item_id, item_title, amount, currency, charge_amount, charge_currency, charge_fx_rate, payment_method, customer_name,
      customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
      course_id, bundle_id, notes, staff_id, staff_name, tenant_id, branch_id, created_at, paid_at
      FROM orders WHERE id = ? AND COALESCE(tenant_id, ?) = ? LIMIT 1`,
@@ -110,6 +122,18 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   // capture, and about a partial capture being booked as a full one.
   // A foreign-currency order was charged in EGP (paymobCharge); that is what
   // Paymob captured, so that is what the capture is checked against.
+  // A fixed EGP charge that no longer matches the order (its amount changed
+  // after the charge was fixed) is not proof of payment for the order as it
+  // stands: what was captured paid the old figure.
+  if (Number(order.charge_amount) > 0 && order.charge_currency
+      && String(order.currency || 'EGP').toUpperCase() !== String(order.charge_currency).toUpperCase()
+      && !chargeStillMatches(order)) {
+    logger.error('[paymob] the order changed after its EGP charge was fixed — not crediting', {
+      merchantOrderId, transactionId, orderAmount: order.amount, orderCurrency: order.currency,
+      chargeAmount: order.charge_amount, chargeFxRate: order.charge_fx_rate,
+    });
+    return { found: true, amountMismatch: true };
+  }
   const charged = Number(order.charge_amount) > 0 && order.charge_currency
     ? { amount: order.charge_amount, currency: order.charge_currency }
     : { amount: order.amount, currency: order.currency };
@@ -136,17 +160,27 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   const extra = (() => { try { return JSON.parse(order.notes || '{}'); } catch { return {}; } })();
 
   const payId = `paymob-${merchantOrderId}`;
-  const payCourseId = orderType === 'course' ? (order.item_id || null) : null;
-  const payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
+  const paymentType = paymobPaymentType(order.type);
+  let payCourseId = orderType === 'course' ? (order.item_id || null) : null;
+  let payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
   // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
   const plan = orderPlan(extra, order.amount);
+  // One scheduled entry of an installment plan, paid from the client's dashboard
+  // (lib/planEntryPayment.js): it marks that entry paid and opens what the plan
+  // now covers — never the whole course for a 2nd instalment.
+  const planEntry = planEntryOf(extra);
+  let settledEntry = null;
 
   // ── Atomic transaction: ensure subscriber + mark order paid + enroll + record payment ──
   const conn = await pool.getConnection();
   let sub;
   try {
     await conn.beginTransaction();
-    await assertWritable(cairoToday(), conn, tenantId);
+    // The Cairo day it was paid, written as a day on the payment and its entry
+    // (the desk's shape for payments.date). The row took NOW(), a UTC instant,
+    // so a card paid at 01:30 on the 1st counted in the month before.
+    const paidDay = cairoToday();
+    await assertWritable(paidDay, conn, tenantId);
 
     // Registration alone never creates a subscribers row (only users + leads —
     // see auth.js), so a customer paying for the first time has no subscriber
@@ -179,8 +213,17 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       "UPDATE orders SET status='paid', transaction_id=?, subscriber_id=COALESCE(subscriber_id,?), paid_at=COALESCE(paid_at,NOW()) WHERE id=? AND tenant_id=?",
       [transactionId, sub?.id || null, merchantOrderId, tenantId]);
 
+    if (planEntry) {
+      settledEntry = await settlePlanEntry(conn, {
+        tenantId, planId: planEntry.planId, index: planEntry.index, subscriberId: sub.id,
+        paymentId: payId, amount: order.amount, currency: order.currency || 'EGP', paidDay,
+      });
+      payCourseId = settledEntry.plan.course_id || null;
+      payBundleId = settledEntry.plan.bundle_id || null;
+    }
+
     // 2. Auto-enroll subscriber for course or bundle payments
-    if ((orderType === 'course' || orderType === 'bundle') && sub) {
+    if (!planEntry && (orderType === 'course' || orderType === 'bundle') && sub) {
       // SECURITY: always fetch bundle courses from DB — never trust client-supplied bundleCourseIds
       let courseIds;
       if (orderType === 'bundle') {
@@ -260,7 +303,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, source, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,?,?,?,?,?,?,'paymob',NOW(),'paid',NOW())`,
+       VALUES (?,?,?,?,?,?,?,'online_paymob',?,?,?,?,?,?,?,'paymob',?,'paid',NOW())`,
       [
         payId,
         sub?.id || null,
@@ -268,20 +311,32 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
         payBundleId,
         order.amount,
         order.currency || 'EGP',
+        settledEntry ? settledEntry.payType : paymentType,
         transactionId || null,
-        plan.installment ? 1 : 0,
-        plan.expected,  // course_expected: the plan's total for an instalment, else the order's amount
+        plan.installment || settledEntry ? 1 : 0,
+        // course_expected: the agreed price for a plan entry, the plan's total for
+        // a first instalment, else the order's amount
+        settledEntry ? settledEntry.courseExpected : plan.expected,
         paymentBranch,
         branchIdForBranch(paymentBranch),
         tenantId,
-        `دفع إلكتروني Paymob — طلب ${merchantOrderId}${transactionId ? ' | معاملة ' + transactionId : ''}`
+        `${settledEntry ? planEntryNote(settledEntry, planEntry.index) + ' — ' : ''}دفع إلكتروني Paymob — طلب ${merchantOrderId}${transactionId ? ' | معاملة ' + transactionId : ''}`,
+        paidDay,
       ]
     );
+    if (settledEntry) {
+      await grantPlanEntryAccess(conn, {
+        tenantId, settled: settledEntry, subscriberId: sub.id, paymentId: payId,
+        amount: order.amount, currency: order.currency || 'EGP',
+        source: 'paymob_order', actor: order.customer_email || 'paymob',
+      });
+    }
     const journalId = await postPaymentJournal({
       paymentId: payId,
       amount: order.amount,
       currency: order.currency || 'EGP',
-      payType: 'COURSE',
+      payType: settledEntry ? settledEntry.payType : paymentType,
+      date: paidDay,
       actor: 'paymob',
       tenantId,
     }, conn);
@@ -481,4 +536,49 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
   }
 }
 
-module.exports = { finalisePaymobOrder, syncLeadDealValue };
+/** Remember which Paymob order a checkout attempt opened for our order. */
+async function linkPaymobOrder({ tenantId, orderId, paymobOrderId }, db = pool) {
+  if (!paymobOrderId) return;
+  await db.query(
+    'INSERT IGNORE INTO paymob_order_links (tenant_id, paymob_order_id, order_id) VALUES (?,?,?)',
+    [tenantId || DEFAULT_TENANT_ID, String(paymobOrderId).slice(0, 64), orderId]
+  );
+}
+
+/**
+ * The order a verified callback pays for. The signed Paymob order id decides
+ * when a checkout recorded it; the unsigned merchant_order_id is believed only
+ * for an order that never recorded one (opened before the links existed).
+ * Returns null when the two disagree — a signed payment replayed with another
+ * order's id.
+ */
+async function resolvePaymobMerchantOrder({ merchantOrderId, signedOrderId, tenantId }, db = pool) {
+  const tenant = tenantId || DEFAULT_TENANT_ID;
+  if (signedOrderId) {
+    const [[link]] = await db.query(
+      'SELECT order_id FROM paymob_order_links WHERE tenant_id=? AND paymob_order_id=? LIMIT 1',
+      [tenant, String(signedOrderId).slice(0, 64)]
+    );
+    if (link) {
+      if (merchantOrderId && String(merchantOrderId) !== String(link.order_id)) {
+        logger.error('[paymob] callback names another order than the one its signed Paymob order was opened for', {
+          merchantOrderId, signedOrderId, linkedOrderId: link.order_id,
+        });
+        return null;
+      }
+      return link.order_id;
+    }
+  }
+  if (!merchantOrderId) return null;
+  const [[linked]] = await db.query(
+    'SELECT paymob_order_id FROM paymob_order_links WHERE tenant_id=? AND order_id=? LIMIT 1',
+    [tenant, merchantOrderId]
+  );
+  if (linked) {
+    logger.error('[paymob] signed Paymob order is not one opened for this order — not crediting', { merchantOrderId, signedOrderId });
+    return null;
+  }
+  return merchantOrderId;
+}
+
+module.exports = { finalisePaymobOrder, linkPaymobOrder, paymobPaymentType, resolvePaymobMerchantOrder, syncLeadDealValue };

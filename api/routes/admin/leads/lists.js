@@ -56,7 +56,7 @@ router.get('/api/admin/leads/table', requireAuth, requireAdminOrStaff, requirePe
         : [null],
       // Deferred join, as in the list below: the OFFSET walks ids only.
       pool.query(
-        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
                 l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
                 l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
                 l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -153,7 +153,7 @@ router.get('/api/admin/leads/board', requireAuth, requireAdminOrStaff, requirePe
     }
     // One small query per column, each riding idx_leads_tenant_status_created.
     const pages = await Promise.all(statuses.filter(status => counts[status]).map(status => pool.query(
-      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -199,7 +199,7 @@ router.get('/api/admin/leads/pool', requireAuth, requireAdminOrStaff, requirePer
     const [[[countRow]], [rows], breakdown] = await Promise.all([
       pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ?${where}`, [req.tenantId, ...whereParams]),
       countOnly ? [[]] : pool.query(
-        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
                 l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
                 l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
                 l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -253,7 +253,7 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
     //   SALES     → only their assigned leads (assigned_sales_id)
     //   COLLECTION → only leads where their subscriber is linked (assigned_cs_id on leads, via subscriber join)
     //   Others (MANAGER, ADMIN, DAQQI_MANAGER, ACCOUNTANT) → all leads
-    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
       l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
       l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
       l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -326,6 +326,13 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
           params.push(like, like, like, like);
         }
       }
+    }
+    // ?ids=a,b — just these rows, in the list's own shape and scope, so a screen
+    // can refresh the lead a payment converted instead of the whole table.
+    const ids = String(req.query.ids || '').split(',').map(id => id.trim()).filter(Boolean).slice(0, 100);
+    if (ids.length) {
+      sql += ' AND l.id IN (?)';
+      params.push(ids);
     }
     const statusFilter = (req.query.status || '').trim().toLowerCase();
     if (statusFilter && statusFilter !== 'all') {

@@ -55,12 +55,48 @@ async function rotateSingleSession(pool, {
     if (updated.affectedRows !== 1) throw new Error('Could not rotate user session');
     await conn.commit();
     transactionStarted = false;
+    await recordSession(pool, { tenantId, userId, sessionId: binding.sessionId, sessionVersion, req });
     return { ...binding, sessionVersion };
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     throw error;
   } finally {
     conn.release();
+  }
+}
+
+// What the account's own «where am I signed in» list shows of an address: the
+// network, not the house — enough to tell «my office» from «not me».
+function ipHint(ip) {
+  const value = String(ip || '');
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(value)) return value.split('.').slice(0, 2).join('.') + '.x.x';
+  if (value.includes(':')) return value.split(':').slice(0, 3).join(':') + ':…';
+  return null;
+}
+
+// Rows older than this are of no use to the list (no token lives that long).
+const SESSION_ROW_DAYS = 30;
+
+/**
+ * One row per sign-in, for routes/auth/sessions.js. Best-effort: a sign-in is
+ * never refused because its row could not be written; the token is the
+ * authority, this is the account's view of it.
+ */
+async function recordSession(pool, { tenantId, userId, sessionId, sessionVersion, req }) {
+  try {
+    await pool.query(
+      `INSERT INTO user_sessions (tenant_id, session_id, user_id, session_version, ip_hint, user_agent)
+       VALUES (?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE session_version=VALUES(session_version), last_seen_at=NOW()`,
+      [tenantId, sessionId, userId, sessionVersion, ipHint(getClientIp(req)),
+        String(req?.headers?.['user-agent'] || '').slice(0, 255) || null]
+    );
+    await pool.query(
+      'DELETE FROM user_sessions WHERE tenant_id=? AND user_id=? AND last_seen_at < NOW() - INTERVAL ? DAY',
+      [tenantId, userId, SESSION_ROW_DAYS]
+    );
+  } catch (error) {
+    require('./logger').warn('[sessions] could not record a sign-in', { err: error.message });
   }
 }
 
@@ -74,7 +110,11 @@ async function closeSingleSession(pool, { userId, tenantId, sessionId }) {
       WHERE id=? AND tenant_id=? AND active_session_id=?`,
     [userId, tenantId, sessionId]
   );
+  await pool.query(
+    'UPDATE user_sessions SET revoked_at=COALESCE(revoked_at, NOW()) WHERE tenant_id=? AND session_id=?',
+    [tenantId, sessionId]
+  ).catch(() => {});
   return result.affectedRows === 1;
 }
 
-module.exports = { createSessionBinding, rotateSingleSession, closeSingleSession };
+module.exports = { createSessionBinding, rotateSingleSession, closeSingleSession, recordSession, ipHint };

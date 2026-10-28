@@ -177,7 +177,7 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
       uid = existing[0].id;
       const hash = await bcrypt.hash(password, 12);
       await conn.execute(
-        `UPDATE users SET password_hash=?, name=?, is_active=1,
+        `UPDATE users SET password_hash=?, name=?, is_active=1, email_unverified=0,
           session_version=session_version+1, active_session_id=NULL,
           active_session_ip_hash=NULL, active_session_started_at=NULL,
           active_session_last_seen_at=NULL WHERE id=? AND tenant_id=?`,
@@ -350,7 +350,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
 
     if (existing) {
       await conn.execute(
-        `UPDATE users SET password_hash=?, name=?, is_active=1,
+        `UPDATE users SET password_hash=?, name=?, is_active=1, email_unverified=0,
           session_version=session_version+1, active_session_id=NULL,
           active_session_ip_hash=NULL, active_session_started_at=NULL,
           active_session_last_seen_at=NULL WHERE id=? AND tenant_id=?`,

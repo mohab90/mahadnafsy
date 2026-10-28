@@ -38,6 +38,7 @@ async function call(router, method, route, { params = {}, body = {}, staff = nul
 
 async function clean() {
   await pool.query('DELETE FROM journal_entry_lines WHERE entry_id IN (SELECT id FROM journal_entries WHERE tenant_id=?)', [TENANT]).catch(() => {});
+  await pool.query("DELETE FROM course_lectures WHERE course_id IN ('co-pc-3','co-pc-4')").catch(() => {});
   for (const table of ['journal_entries', 'payment_audit_log', 'financial_audit_log', 'crm_commissions', 'instructor_fees', 'financial_documents',
     'entitlement_events', 'enrollments', 'orders', 'payments', 'subscribers', 'courses', 'staff', 'tenant_settings', 'outbox']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
@@ -72,10 +73,20 @@ before(async () => {
   await pool.query(
     `INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at, commission_rate) VALUES
        ('st-pc-rep', ?, 'مندوب', 'rep-pc@example.test', '1019000001', 'SALES', 1, '2025-01-01', 10),
-       ('st-pc-mgr', ?, 'المدير', 'mgr-pc@example.test', '1019000002', 'MANAGER', 1, '2025-01-01', 0)`, [TENANT, TENANT]);
+       ('st-pc-mgr', ?, 'المدير', 'mgr-pc@example.test', '1019000002', 'MANAGER', 1, '2025-01-01', 0),
+       ('st-pc-desk', ?, 'الاستقبال', 'desk-pc@example.test', '1019000004', 'RECEPTION_DAQQI', 1, '2025-01-01', 5)`, [TENANT, TENANT, TENANT]);
   await pool.query(
     `INSERT INTO courses (id, tenant_id, title, description, short_description, instructor, thumbnail, category, type, price_egp)
-     VALUES ('co-pc-1', ?, 'كورس', '', '', '', '', 'GENERAL', 'RECORDED', 1000), ('co-pc-2', ?, 'كورس تاني', '', '', '', '', 'GENERAL', 'RECORDED', 2000)`, [TENANT, TENANT]);
+     VALUES ('co-pc-1', ?, 'كورس', '', '', '', '', 'GENERAL', 'RECORDED', 1000), ('co-pc-2', ?, 'كورس تاني', '', '', '', '', 'GENERAL', 'RECORDED', 2000),
+            ('co-pc-3', ?, 'دبلومة', '', '', '', '', 'GENERAL', 'RECORDED', 5000), ('co-pc-4', ?, 'دبلومة تانية', '', '', '', '', 'GENERAL', 'RECORDED', 5000)`, [TENANT, TENANT, TENANT, TENANT]);
+  // Ten published lectures each, so a partial grant has something to be a share of.
+  for (const course of ['co-pc-3', 'co-pc-4']) {
+    for (let i = 1; i <= 10; i += 1) {
+      await pool.query(
+        `INSERT INTO course_lectures (id, course_id, title, lecture_type, video_url, sort_order, is_published) VALUES (?, ?, ?, 'RECORDED', '', ?, 1)`,
+        [`lec-${course}-${i}`, course, `محاضرة ${i}`, i]);
+    }
+  }
   await pool.query(
     `INSERT INTO subscribers (id, tenant_id, name, phone, branch, branch_id, assigned_sales_id)
      VALUES ('sub-pc-1', ?, 'عميل', '1019000003', 'ONLINE_EGYPT', 'branch-online-egypt', 'st-pc-rep')`, [TENANT]);
@@ -166,4 +177,51 @@ test('deleting from the payments page by an order id voids that order\'s payment
   const [[order]] = await pool.query("SELECT deleted_at FROM orders WHERE id='ord-pc-1'");
   assert.ok(pay.deleted_at, 'the payment behind the order is voided');
   assert.ok(order.deleted_at, 'the order row leaves the list');
+});
+
+// L7 of the 20 Oct review: correcting 5,000 down to 500 kept full access (the 500
+// was measured with the 5,000 still counted), and voiding one of two instalments
+// left the whole course open. The access follows the payments that are left.
+const accessOf = async course => {
+  const [[row]] = await pool.query(
+    "SELECT status, access_type, lecture_limit FROM enrollments WHERE tenant_id=? AND subscriber_id='sub-pc-1' AND course_id=?", [TENANT, course]);
+  return row;
+};
+
+test('correcting a payment down takes the access down with it', { skip }, async () => {
+  const id = await record({ courseId: 'co-pc-3', amount: 5000, courseExpected: 5000, transactionId: 'TX-PC-DOWN' });
+  assert.equal((await accessOf('co-pc-3')).access_type, 'full');
+  const res = await call(corrections, 'patch', '/api/admin/payments/:id', { params: { id }, body: { reason: 'المبلغ 500 مش 5000', amount: 500 }, staff: MANAGER });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const [rows] = await pool.query("SELECT amount FROM payments WHERE tenant_id=? AND course_id='co-pc-3' AND deleted_at IS NULL", [TENANT]);
+  assert.deepEqual(rows.map(r => Number(r.amount)), [500], 'one payment of 500, not 5,500');
+  const access = await accessOf('co-pc-3');
+  assert.deepEqual([access.status, access.access_type, Number(access.lecture_limit)], ['active', 'limited', 1], '10% paid opens one lecture of ten');
+});
+
+test('voiding one of two instalments leaves the share the other paid for', { skip }, async () => {
+  const first = await record({ courseId: 'co-pc-4', amount: 2500, courseExpected: 5000, isInstallment: true, transactionId: 'TX-PC-I1' });
+  await record({ courseId: 'co-pc-4', amount: 2500, courseExpected: 5000, isInstallment: true, transactionId: 'TX-PC-I2' });
+  assert.equal((await accessOf('co-pc-4')).access_type, 'full');
+  const res = await call(corrections, 'delete', '/api/admin/payments/:id', { params: { id: first }, body: { reason: 'اتسجل مرتين' }, staff: MANAGER });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const access = await accessOf('co-pc-4');
+  assert.deepEqual([access.status, access.access_type, Number(access.lecture_limit)], ['active', 'limited', 5]);
+});
+
+// L-note-b of the 20 Oct review: approving a pending payment paid the commission
+// to whoever recorded it (the desk), while the same payment recorded as paid
+// paid the client's sales rep. Both pay the rep now.
+test('an approved payment pays the commission to the client\'s rep, not to the desk that recorded it', { skip }, async () => {
+  const finance = require('../../routes/core/financepay');
+  const { cairoToday } = require('../../lib/dates');
+  await pool.query(
+    `INSERT INTO payments (id, tenant_id, subscriber_id, course_id, amount, currency, payment_type, payment_method, date, status,
+       staff_id, staff_name, branch, branch_id, source, created_at)
+     VALUES ('pay-pc-desk', ?, 'sub-pc-1', 'co-pc-2', 1000, 'EGP', 'COURSE', 'كاش', ?, 'pending',
+       'st-pc-desk', 'الاستقبال', 'ONLINE_EGYPT', 'branch-online-egypt', 'manual', NOW())`, [TENANT, cairoToday()]);
+  const res = await call(finance, 'patch', '/api/admin/payments/:id/status', { params: { id: 'pay-pc-desk' }, body: { status: 'paid' } });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const [rows] = await pool.query("SELECT staff_id, commission_amount FROM crm_commissions WHERE tenant_id=? AND payment_id='pay-pc-desk'", [TENANT]);
+  assert.deepEqual(rows.map(r => [r.staff_id, Number(r.commission_amount)]), [['st-pc-rep', 100]]);
 });

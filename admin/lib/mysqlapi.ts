@@ -568,14 +568,22 @@ export const mysqlAdmin = {
     fetchAllPages(offset => `/admin/subscribers?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
   listAllLeads:            (pageSize = 5000, maxRows = 50000): Promise<AR[]> =>
     fetchAllPages(offset => `/admin/leads?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
+  // A few leads by id, in the list's own shape — what a payment or a single
+  // edit changed — instead of downloading the whole table again.
+  listLeadsByIds:          (ids: string[]): Promise<AR[]> =>
+    apiFetch(`/admin/leads?limit=100&ids=${ids.slice(0, 100).map(encodeURIComponent).join(',')}`, {}, A),
   // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
   // query, so the CRM shows correct counts without loading every row.
   // Revenue from the books (payments.amount_egp, refunds netted) — the overview
   // used to add up the 500 newest orders in the browser.
   getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
     apiFetch(`/admin/overview/revenue`, {}, A),
-  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }> }> =>
+  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }>; scoreBands?: { high: number; mid: number; low: number } }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
+  // Each rep's clients' collected payments in a month, in EGP — what «أداء المبيعات» used to sum out of the clients
+  // it had loaded with their payments.
+  getRepRevenue:           (month: string): Promise<{ month: string; byStaff: Record<string, number> }> =>
+    apiFetch(`/admin/leads/rep-revenue?month=${encodeURIComponent(month)}`, {}, A),
   // The header bell's count: open leads followed up today or overdue, in the
   // caller's own scope — instead of the 500 newest leads to count them from.
   getDueFollowups:         (): Promise<{ due: number; overdue: number; today: number }> =>
@@ -1316,6 +1324,24 @@ export const mysqlPaymob = {
 };
 
 // ── Custom Auth ───────────────────────────────────────────────────────────────
+export interface MfaRequirement {
+  required: boolean;
+  enrolled: boolean;
+  verified: boolean;
+  graceEndsAt: string | null;
+  blocked: boolean;
+  graceDays: number | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  ipHint: string | null;
+  device: string | null;
+}
+
 export const mysqlAuth = {
   login: (email: string, password: string) =>
     apiFetch<{
@@ -1351,6 +1377,15 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
   get2faStatus: () =>
     apiFetch<{ enabled: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/status'),
+  // Whether the tenant's policy requires 2FA of this account and, until it
+  // enrols, when its grace period ends (components/MfaEnrolmentGate.tsx).
+  get2faRequirement: () =>
+    apiFetch<MfaRequirement>('/auth/2fa/requirement'),
+  // Where this account is signed in, and signing the other devices out.
+  listSessions: () =>
+    apiFetch<{ sessions: ActiveSession[] }>('/auth/sessions'),
+  logoutOtherSessions: () =>
+    apiFetch<{ ok: boolean; signedOut: number }>('/auth/sessions/logout-others', { method: 'POST', body: JSON.stringify({}) }),
   setup2fa: () =>
     apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
   // recoveryCodes come back once, here, and are never shown again.

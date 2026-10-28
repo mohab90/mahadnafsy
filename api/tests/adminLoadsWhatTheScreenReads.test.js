@@ -15,6 +15,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -112,7 +113,10 @@ test('a screen nobody has read through gets every list, as it had before', () =>
   assert.deepEqual([...listsForTab('no_such_screen')], [...SITE_LISTS]);
   assert.deepEqual([...listsForTab('overview')], []);
   // Read through since: the heaviest screens open on their own lists.
-  assert.deepEqual([...listsForTab('online_clients')].sort(), ['daqqiRounds', 'subscribers']);
+  // The client screens and the CRM page from the server for every account, the administration included: neither
+  // asks for the clients or the leads any more (staffListTabs.ts, LeadsTab.tsx).
+  assert.deepEqual([...listsForTab('online_clients')].sort(), ['daqqiRounds']);
+  assert.deepEqual([...listsForTab('leads')], []);
   assert.deepEqual([...listsForTab('team_inbox')], []);
   for (const tab of Object.keys(tabSiteLists)) {
     for (const list of tabSiteLists[tab]) assert.ok(SITE_LISTS.includes(list), `${tab}: no list called ${list}`);
@@ -145,7 +149,7 @@ test('the sign-in loads none of the on-demand lists, and every one has a loader'
 });
 
 test('the dashboard asks for the lists of the tab on screen', () => {
-  const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const dashboard = codeOnly(dashboardSource());
   assert.ok(dashboard.includes('void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));'),
     'a screen of an employee that pages from the server asks for every list but the ones the administration screen reads');
   assert.ok(dashboard.includes('void ensureSiteLists(overlayLists);'), 'the popups drawn over every screen ask too');
@@ -327,7 +331,7 @@ function dashboardStatements(body) {
 
 /** name → the lists it carries, for every name in Dashboard's body. */
 function dashboardTaint() {
-  const source = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const source = codeOnly(dashboardSource());
   const body = source.slice(source.indexOf('const Dashboard: React.FC'));
   const taint = new Map();
   const context = body.match(/const\s*\{([^{}]*)\}\s*=\s*useSiteData\(\)/);
@@ -488,7 +492,7 @@ test('a page outside the tabs asks for every list it reads', () => {
     assert.deepEqual(missing, [], `${rel} reads ${missing.join(', ')} but never asks for it, so it sees an empty list`);
   }
   // The premise: there are readers to check.
-  for (const rel of ['admin/pages/StaffProfile.tsx', 'admin/pages/ClientProfile.tsx', 'admin/pages/UnifiedClientPage.tsx', 'admin/components/PaymentModal.tsx']) {
+  for (const rel of ['admin/pages/StaffProfile.tsx', 'admin/pages/ClientProfile.tsx', 'admin/pages/UnifiedClientPage.tsx', 'admin/components/payment-modal/usePaymentModalModel.tsx']) {
     assert.ok(readers.includes(rel), `${rel} no longer reads a list — update this test`);
   }
 });
@@ -497,7 +501,7 @@ test('a page outside the tabs asks for every list it reads', () => {
 // comes from GET /admin/leads/followups-due, in the session's own scope, and
 // the panel no longer loads the leads for it.
 test('the follow-up bell counts on the server, not out of the 500 newest leads', () => {
-  const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const dashboard = codeOnly(dashboardSource());
   const overlay = dashboard.slice(dashboard.indexOf('const overlayLists'), dashboard.indexOf('void ensureSiteLists(overlayLists)'));
   assert.ok(!/currentStaff\s*&&\s*!usesStaffScopedData\s*\?\s*\['leads'/.test(overlay), 'the bell loads the leads again');
   assert.ok(dashboard.includes('mysqlAdmin.getDueFollowups()'));
@@ -507,8 +511,10 @@ test('the follow-up bell counts on the server, not out of the 500 newest leads',
   const route = codeOnly(read('api/routes/admin/leads/stats.js'));
   const handler = route.slice(route.indexOf("'/api/admin/leads/followups-due'"));
   assert.ok(handler.includes("requirePermission('view_leads')"));
-  // The same scope as the leads list, and the same «open» and follow-up date as the browser.
+  // The same scope as the leads list, and the same «open» and follow-up date as every screen
+  // (lib/leadFollowUps.js: the terminal statuses, the column else crm_json's date).
   assert.ok(handler.includes("leadScope(req, 'l')"));
-  assert.ok(handler.includes('TERMINAL_LIST'));
-  assert.ok(handler.includes('NEXT_FOLLOWUP'));
+  assert.ok(handler.includes('dueBy(today)'));
+  const definition = codeOnly(read('api/lib/leadFollowUps.js'));
+  assert.ok(definition.includes('TERMINAL_SQL') && definition.includes('NEXT_FOLLOWUP') && definition.includes('l.hidden = 0'));
 });

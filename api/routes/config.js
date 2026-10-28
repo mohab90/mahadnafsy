@@ -7,8 +7,8 @@ const router = express.Router();
 const { pool, cacheInvalidate } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { loadRoleOverrides } = require('../lib/rbacOverrides');
-const { loadTemplates } = require('../lib/messageTemplates');
+const { reloadRoleOverrides } = require('../lib/rbacOverrides');
+const { reloadTemplates } = require('../lib/messageTemplates');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { invalidateFxCache } = require('../lib/finance');
 const { redactSecrets, preserveStoredSecrets } = require('../lib/configSecrets');
@@ -321,8 +321,8 @@ router.put('/api/admin/content', requireAuth, requireAdmin, async (req, res) => 
     await saveContentAndBranchCatalog(req, stampManualRates(existing, incoming));
     invalidateFxCache(req.tenantId);
     cacheInvalidate('site_content');
-    loadRoleOverrides(req.tenantId).catch(() => {}); // re-sync backend RBAC enforcement immediately
-    loadTemplates(req.tenantId).catch(() => {});     // re-sync editable message templates immediately
+    reloadRoleOverrides(req.tenantId).catch(() => {}); // re-sync backend RBAC enforcement immediately, in every process
+    reloadTemplates(req.tenantId).catch(() => {});     // re-sync editable message templates immediately, in every process
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -337,8 +337,8 @@ router.patch('/api/admin/content', requireAuth, requireAdmin, async (req, res) =
     await saveContentAndBranchCatalog(req, merged);
     invalidateFxCache(req.tenantId);
     cacheInvalidate('site_content');
-    loadRoleOverrides(req.tenantId).catch(() => {}); // re-sync backend RBAC enforcement immediately
-    loadTemplates(req.tenantId).catch(() => {});     // re-sync editable message templates immediately
+    reloadRoleOverrides(req.tenantId).catch(() => {}); // re-sync backend RBAC enforcement immediately, in every process
+    reloadTemplates(req.tenantId).catch(() => {});     // re-sync editable message templates immediately, in every process
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);

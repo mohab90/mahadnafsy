@@ -408,7 +408,9 @@ router.get('/api/staff/me', requireAuth, async (req, res) => {
       'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? AND email = ? AND is_active = 1 LIMIT 1',
       [req.tenantId, email]
     );
-    if (!rows.length) return res.json(null);
+    // A refusal, not an empty 200: a student asking for staff data is not
+    // «staff with nothing to show».
+    if (!rows.length) return res.status(403).json({ error: 'Not a staff member', code: 'NOT_STAFF' });
     const r = rows[0];
     res.json({
       id: r.id,

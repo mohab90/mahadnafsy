@@ -24,7 +24,7 @@ interface LeadActionsParams {
   notify: NotifyFn;
   updateLead: (lead: LeadItem) => Promise<boolean>;
   addLead: (lead: NewLeadDraft) => Promise<unknown>;
-  reloadLeads: AsyncReload;
+  reloadLeads: (opts?: { only?: string[] }) => Promise<void>;
   reloadSubscribers: AsyncReload;
   bulkRedistributeLeads: (scope: 'unassigned', dailyCap?: number) => Promise<number>;
   recordSubscriberPayment: (
@@ -34,7 +34,6 @@ interface LeadActionsParams {
   fetchSalesData?: () => void | Promise<void>;
   setActiveDashboardTab?: (tab: TabKey) => void;
   salesReps: StaffMember[];
-  leads: LeadItem[];
   /** Every lead under the filters on screen, read from the server a page at a time. */
   fetchVisibleLeads: () => Promise<LeadItem[]>;
   bundles: Bundle[];
@@ -74,7 +73,7 @@ export function useLeadActions(params: LeadActionsParams) {
     notify, updateLead, addLead, reloadLeads, reloadSubscribers,
     bulkRedistributeLeads,
     recordSubscriberPayment, fetchSalesData, setActiveDashboardTab,
-    salesReps, leads, fetchVisibleLeads, bundles,
+    salesReps, fetchVisibleLeads, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly,
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
     convertLeadModal, setConvertLeadModal, setSelectedId,
@@ -116,13 +115,14 @@ export function useLeadActions(params: LeadActionsParams) {
     }
   };
 
+  // The server finds the leads with no branch itself and says how many it fixed; the check that ran first here
+  // looked only at the leads the browser held.
   const handleMigrateBranches = async () => {
-    const missing = leads.filter(lead => !lead.hidden && !lead.branch);
-    if (!missing.length) return notify('info', 'جميع العملاء لديهم فرع مُعيَّن بالفعل');
     setMigratingBranches(true);
     try {
       const result = await mysqlAdmin.migrateLeadBranches();
       if (result.updated) await reloadLeads();
+      if (!result.updated && !result.unresolved) return notify('info', 'جميع العملاء لديهم فرع مُعيَّن بالفعل');
       notify(
         result.updated ? 'success' : 'info',
         result.updated
@@ -225,7 +225,8 @@ export function useLeadActions(params: LeadActionsParams) {
     if (!lead || !courseId) return;
     try {
       await mysqlAdmin.convertLead(lead.id, { courseId, accessMode });
-      await Promise.all([reloadLeads(), reloadSubscribers()]);
+      // Only this lead changed; a wrapper that takes no options reloads them all.
+      await Promise.all([reloadLeads({ only: [lead.id] }), reloadSubscribers()]);
       notify('success', 'تم تحويل العميل وربط الكورس داخل النظام بنجاح');
       setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' });
     } catch (error) {

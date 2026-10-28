@@ -5,6 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { receiptSeriesOf, nextReceiptNo, sequenceProblems, findReceiptGaps } = require('../lib/receiptNumbers');
@@ -99,8 +100,8 @@ test('a recorded payment takes its number inside its transaction and answers wit
 });
 
 test('the receipt, the register and the managers see the number — and voiding one tells the managers', () => {
-  assert.match(read('admin/components/PaymentModal.tsx'), /إيصال رقم \{data\.receiptNo\}/);
-  assert.match(read('admin/components/PaymentModal.tsx'), /forgetReceipts\(\);/);
+  assert.match(paymentModalSource(), /إيصال رقم \{data\.receiptNo\}/);
+  assert.match(paymentModalSource(), /forgetReceipts\(\);/);
   assert.match(read('admin/lib/mysqlapi.ts'), /noteReceipt\(answer\)/);
   assert.match(read('api/routes/finance-payments-register.js'), /number: r\.receipt_no != null \? Number\(r\.receipt_no\)/);
   // The alert is in the accounts — the branch's own and the main ones — not on the Dokki schedule page.

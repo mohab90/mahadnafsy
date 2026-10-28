@@ -5,10 +5,11 @@ import type {
   ActivityLogItem, AdminAiConfig, AiAgentConfig, AutomationWorkflow, Bundle,
   ConsultationItem, ContactMessage, Course,
   CourseQuiz, DaqqiRound, DiscountRule, ExpenseItem, FacebookLeadAdsConfig,
-  JoinUsApplication, LeadItem, LeadStatus, LiveStream, MessagingChannelsConfig,
+  JoinUsApplication, LeadItem, LiveStream, MessagingChannelsConfig,
   NotificationBroadcast, OrderItem, StaffMember, SubscriberItem, TestimonialItem,
   Therapist,
 } from '../../types';
+import { mergeSubscribers, normalizeLeads, normalizeSubscribers, type WholeTables } from './crmRows';
 import { normalizeApplicants } from './normalizeApplicants';
 import { normalizeOrders } from './normalizeOrders';
 import type { SiteList } from './siteLists';
@@ -30,6 +31,8 @@ interface RuntimeState {
   lastCRMWriteRef: Ref<number>;
   subscribersRef: Ref<SubscriberItem[]>;
   leadsRef: Ref<LeadItem[]>;
+  /** Which whole tables are held, for the reloads after a write (crmRows.ts heldRowsOf). */
+  wholeTablesRef: Ref<WholeTables>;
   staffMembersRef: Ref<StaffMember[]>;
   contentRef: Ref<Record<string, string>>;
   setRemoteReady: Setter<boolean>;
@@ -74,65 +77,12 @@ function normalizeStaffStatus(staff: StaffWire): StaffMember['status'] {
     : 'inactive';
 }
 
-/**
- * Newest first, decided once here rather than per screen.
- *
- * The API already answers `ORDER BY created_at DESC` on both lists, so the
- * order was usually right — but no screen asked for it. Every table downstream
- * (the archive pool, العملاء الأونلاين, الدقي) renders whatever order the array
- * happens to arrive in, so a route that paginates differently, a merge of two
- * fetches, or a filter that rebuilds the array silently reorders the page with
- * nothing to point at. Sorting where the rows enter the app makes it a property
- * of the data instead of a coincidence of the fetch.
- *
- * Rows without a date sort last: an undated row is not new, and floating it to
- * the top would put the least-known records in front of today's work.
- */
-const newestFirst = <T extends { createdAt?: string | null }>(rows: T[]): T[] =>
-  [...rows].sort((a, b) => {
-    const left = String(a.createdAt || '');
-    const right = String(b.createdAt || '');
-    if (!left && !right) return 0;
-    if (!left) return 1;
-    if (!right) return -1;
-    return right.localeCompare(left);
-  });
-
-function normalizeLeads(rows: unknown): LeadItem[] {
-  return newestFirst((rows as LeadItem[]).map(lead => ({
-    ...lead,
-    status: (lead.status || 'new').toLowerCase() as LeadStatus,
-  })));
-}
-
-function normalizeSubscribers(rows: unknown): SubscriberItem[] {
-  return newestFirst((rows as SubscriberItem[]).map(subscriber => ({
-    ...subscriber,
-    enrolledCourseIds: Array.isArray(subscriber.enrolledCourseIds) ? subscriber.enrolledCourseIds : [],
-  })));
-}
-
 function withTimeout<T>(promise: Promise<T>, ms = 7000): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<T>((_, reject) => {
     timer = setTimeout(() => reject(new Error('timeout')), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-/**
- * The clients already held, with `incoming` laid over them by id.
- *
- * A page that arrives is added to what is on screen; it does not replace it. The
- * background refresh used to replace the whole array with the newest 500, so a
- * branch's clients loaded for its screen vanished two minutes later and the
- * count fell back to however many of them were among the newest 500.
- */
-function mergeSubscribers(current: SubscriberItem[], incoming: SubscriberItem[]): SubscriberItem[] {
-  const byId = new Map<string, SubscriberItem>();
-  for (const row of current) byId.set(row.id, row);
-  for (const row of incoming) byId.set(row.id, row);
-  return newestFirst([...byId.values()]);
 }
 
 type RuntimeUserValue = NonNullable<RuntimeUser>;
@@ -168,7 +118,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
 } {
   const {
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
-    subscribersRef, leadsRef, staffMembersRef, contentRef,
+    subscribersRef, leadsRef, wholeTablesRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
     setContent, setCourses, setBundles, setTherapists,
     setTestimonials, setCourseQuizzes, setLiveStreams, setExpenses, setActivityLogs,
@@ -509,6 +459,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
         const rows = await mysqlAdmin.listAllLeads();
         const leads = normalizeLeads(rows);
         leadsRef.current = leads;
+        wholeTablesRef.current.leads = true;
         setLeads(leads);
       } catch (error) {
         fullLeadsRef.current = null;
@@ -516,7 +467,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
       }
     })();
     return fullLeadsRef.current;
-  }, [leadsRef, setLeads]);
+  }, [leadsRef, wholeTablesRef, setLeads]);
 
   const loadFullSubscribers = useCallback(async () => {
     if (fullSubsRef.current) return fullSubsRef.current;
@@ -525,6 +476,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
         const rows = await mysqlAdmin.listAllSubscribers();
         const subscribers = normalizeSubscribers(rows);
         subscribersRef.current = subscribers;
+        wholeTablesRef.current.subscribers = true;
         setSubscribers(subscribers);
       } catch (error) {
         fullSubsRef.current = null;
@@ -532,7 +484,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
       }
     })();
     return fullSubsRef.current;
-  }, [subscribersRef, setSubscribers]);
+  }, [subscribersRef, wholeTablesRef, setSubscribers]);
 
   // Both halves, for the screens that genuinely read both. Settled rather than
   // all-or-nothing so one table failing still delivers the other.

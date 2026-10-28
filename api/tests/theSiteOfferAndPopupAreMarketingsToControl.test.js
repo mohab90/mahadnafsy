@@ -112,7 +112,7 @@ test('the controls live in التسويق ← الخصومات and the site read
 
   const home = read('client/pages/Home.tsx');
   assert.match(home, /offerIsShown\(content\)/, 'the home page hides a switched-off or finished offer');
-  assert.match(read('client/components/home/OfferSpotlight.tsx'), /offerPrices\(content, offerCourse, currency\)/, 'and shows the offer\'s own price');
+  assert.match(read('client/components/home/OfferSpotlight.tsx'), /offerPrices\(content, offerCourse \? \{ price: \{ \[currency\]: coursePrice \} \} : null, currency\)/, 'and shows the offer\'s own price');
   assert.doesNotMatch(home, /24 \* 60 \* 60 \* 1000/, 'no hard-coded 24 hours left in the page');
 
   const popup = read('client/components/SpecialOffer.tsx');

@@ -18,6 +18,18 @@ const LOGIN_REFUSED = [
 const refusalIn = (text: string) =>
   LOGIN_REFUSED.find(needle => text.toLowerCase().includes(needle.toLowerCase()));
 
+/**
+ * A privileged account that has not enrolled in two-factor yet is shown the
+ * enrolment screen (admin/components/MfaEnrolmentGate.tsx) while its grace
+ * period runs. «لاحقاً» lets it go on working for this tab, which is what a
+ * test signing in a fresh account does. After the grace period there is no
+ * «لاحقاً», and the test fails on the enrolment screen, as it should.
+ */
+async function passTwoFactorReminder(page: Page) {
+  const later = page.getByRole('button', { name: 'لاحقاً' }).first();
+  if (await later.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)) await later.click();
+}
+
 export async function loginAdmin(page: Page, baseUrl: string, email: string, password: string) {
   // 'commit', not 'domcontentloaded': the admin SPA routes '/' → '/dashboard'
   // from the router the moment it boots, and if that client-side navigation
@@ -63,7 +75,10 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
     // report success. Ask the context for the cookie instead.
     const cookies = await page.context().cookies().catch(() => []);
     const signedIn = cookies.some(c => c.name === 'authToken' && Boolean(c.value));
-    if (signedIn && !emailVisible && !await otp.isVisible().catch(() => false) && bodyText.length > 80) return;
+    if (signedIn && !emailVisible && !await otp.isVisible().catch(() => false) && bodyText.length > 80) {
+      await passTwoFactorReminder(page);
+      return;
+    }
     const refusal = refusalIn(bodyText);
     if (refusal) {
       throw new Error(`login refused for ${email} (matched "${refusal}"): ${bodyText.slice(0, 240)}`);

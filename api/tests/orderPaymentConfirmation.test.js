@@ -93,6 +93,10 @@ test('confirmOrderPayment: creates a real payment row, posts the journal, and ma
   assert.ok(payInsert, 'must actually write a payments row — this is the exact step PAY-02 was skipping');
   assert.equal(payInsert.params[0], paymentId);
   assert.equal(payInsert.params[4], 500, 'amount must come from the order');
+  // Filed on the Cairo day as a day, like the desk's payments — NOW() was a UTC
+  // instant, so a 01:30 confirmation on the 1st counted in the month before.
+  assert.doesNotMatch(payInsert.sql, /NOW\(\),'paid'/);
+  assert.equal(payInsert.params[12], require('../lib/dates').cairoToday());
 
   assert.ok(conn.calls.some(c => c.sql.includes('INSERT INTO journal_entries')), 'must post a journal entry, not just a bare status flip');
   assert.ok(conn.calls.some(c => c.sql.includes('INSERT INTO enrollments')), 'must grant enrollment for a course order');
@@ -223,4 +227,16 @@ test('confirmOrderPayment: throws when the journal fails to post (never leaves a
     () => confirmOrderPayment({ order: zeroAmountOrder, transfer: null, linkedTransferId: null, tenantId: 't1', actorEmail: 'admin@x.com' }, conn),
     /journal posting failed/i
   );
+});
+
+test('the receipt and card approvals file the payment on its Cairo day too', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+  for (const rel of ['routes/payment-proofs.js', 'lib/paymobFinalise.js']) {
+    const source = read(rel);
+    assert.doesNotMatch(source, /NOW\(\),'paid'/, `${rel} writes a UTC instant into payments.date`);
+    assert.match(source, /const paidDay = (cairoToday|dateOnlyInTimeZone)\(\);\s+await assertWritable\(paidDay, conn, tenantId\);/, rel);
+    assert.match(source, /date: paidDay,/, `${rel} posts its journal entry on the same day`);
+  }
 });

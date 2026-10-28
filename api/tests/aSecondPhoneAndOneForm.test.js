@@ -4,6 +4,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -23,7 +24,7 @@ test('every save that takes a number asks who already holds it', () => {
 });
 
 test('the booking\'s phone confirmation can edit the number and add a second', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /<PhoneConfirm/);
   const part = read('admin/components/PhoneConfirm.tsx');
   assert.match(part, /changedFields: \['phone', 'phone2'\]/);

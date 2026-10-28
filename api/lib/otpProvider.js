@@ -2,6 +2,12 @@
 
 const { toDialable } = require('./phoneNumber');
 const { getOtpProviderSettings } = require('./saasSettings');
+const { postWebhook } = require('./webhookSecurity');
+
+// A provider that never answers must not hold a sign-in (or the request that
+// sent the code) open forever.
+const PROVIDER_TIMEOUT_MS = Number(process.env.OTP_PROVIDER_TIMEOUT_MS || 8000);
+const providerSignal = () => AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
 
 async function sendGreenApiWhatsApp({ phone, message, instanceId, apiToken }) {
   if (!phone || !instanceId || !apiToken) return { ok: false, reason: 'not_configured' };
@@ -12,6 +18,7 @@ async function sendGreenApiWhatsApp({ phone, message, instanceId, apiToken }) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId, message }),
+    signal: providerSignal(),
   });
   const data = await response.json().catch(() => ({}));
   return response.ok && data.idMessage ? { ok: true, idMessage: data.idMessage } : { ok: false, reason: data };
@@ -34,7 +41,7 @@ async function sendSmsOtp({ phone, message, settings }) {
       from: String(cfg.sender_id || 'MAHAD').slice(0, 11),
       text: message,
     });
-    const response = await fetch('https://rest.nexmo.com/sms/json', { method: 'POST', body });
+    const response = await fetch('https://rest.nexmo.com/sms/json', { method: 'POST', body, signal: providerSignal() });
     const data = await response.json().catch(() => ({}));
     const first = Array.isArray(data.messages) ? data.messages[0] : null;
     return response.ok && first?.status === '0' ? { ok: true, provider } : { ok: false, provider, reason: data };
@@ -48,6 +55,7 @@ async function sendSmsOtp({ phone, message, settings }) {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}` },
       body,
+      signal: providerSignal(),
     });
     const data = await response.json().catch(() => ({}));
     return response.ok && data.sid ? { ok: true, provider, sid: data.sid } : { ok: false, provider, reason: data };
@@ -55,16 +63,23 @@ async function sendSmsOtp({ phone, message, settings }) {
 
   if (provider === 'webhook' || cfg.webhook_url) {
     if (!cfg.webhook_url) return { ok: false, reason: 'missing_webhook_url' };
-    const response = await fetch(String(cfg.webhook_url), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(cfg.api_key ? { Authorization: `Bearer ${cfg.api_key}` } : {}),
-      },
-      body: JSON.stringify({ to: `+${dialable}`, from: cfg.sender_id || 'MAHAD', text: message }),
-    });
-    const data = await response.json().catch(() => ({}));
-    return response.ok ? { ok: true, provider: 'webhook', response: data } : { ok: false, provider: 'webhook', reason: data };
+    // The address comes from platform settings, so it goes through the same
+    // gate as every tenant webhook: HTTPS, no private or loopback address
+    // (checked again at connect time), no redirects followed. A plain fetch()
+    // here let a saved URL reach the server's own network.
+    let result;
+    try {
+      result = await postWebhook(String(cfg.webhook_url), {
+        headers: cfg.api_key ? { Authorization: `Bearer ${cfg.api_key}` } : {},
+        body: { to: `+${dialable}`, from: cfg.sender_id || 'MAHAD', text: message },
+        timeoutMs: PROVIDER_TIMEOUT_MS,
+      });
+    } catch (error) {
+      return { ok: false, provider: 'webhook', reason: `webhook_refused: ${error.message}` };
+    }
+    return result.status >= 200 && result.status < 300
+      ? { ok: true, provider: 'webhook', status: result.status }
+      : { ok: false, provider: 'webhook', reason: `http_${result.status}` };
   }
 
   return { ok: false, reason: 'unsupported_sms_provider', provider };

@@ -23,6 +23,7 @@ const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require(
 const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
+const { discardObject, readProofImage, storeProofImage } = require('../lib/storedFiles');
 const { isJourneyState } = require('../lib/journeyStates');
 const { dateOnlyInTimeZone } = require('../lib/dates');
 const { logFinancialAudit, logPaymentAudit } = require('../lib/finance');
@@ -36,6 +37,7 @@ const { getTenantSetting } = require('../lib/tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('../lib/consultationRequests');
 const { classifyPaymentProof, paymentProofReviewStep } = require('../lib/paymentProofReview');
 const { orderPlan, planAccess } = require('../lib/orderPlan');
+const { planEntryOf, settlePlanEntry, grantPlanEntryAccess, planEntryNote } = require('../lib/planEntryPayment');
 const { storeTransferScreenshot } = require('../lib/transferScreenshot');
 
 function tenantIdFor(req) {
@@ -61,6 +63,8 @@ const isPendingOrder = status => isJourneyState('order', status, 'pending');
 router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
+  // The receipt's bucket object (STORAGE_DRIVER=s3), removed if the row is not saved.
+  let unsavedObjectKey = null;
   try {
     const { uid, email } = req.user;
     const tenantId = tenantIdFor(req);
@@ -136,6 +140,13 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
       amount: order.amount, currency: order.currency || 'EGP', policy: reviewPolicy,
     });
     const reviewDueAt = new Date(Date.now() + review.slaHours * 60 * 60 * 1000);
+    // Local driver: the data URL in the row, as before. s3: the picture in the
+    // bucket and `storage:<key>` in the row (lib/storedFiles.js).
+    // On Drive (proofUrl): nothing else is kept. Otherwise the picture itself, in the row or the bucket.
+    const storedImage = proofUrl
+      ? { value: null, key: null }
+      : await storeProofImage({ tenantId, proofId: id, dataUrl: proof_image || null, db: conn });
+    unsavedObjectKey = storedImage.key;
     await conn.query(
       `INSERT INTO payment_proofs
          (id, order_id, payment_intent_id, payment_attempt_id, subscriber_id, course_id, bundle_id, item_type, amount, currency,
@@ -143,17 +154,23 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, order.id, intent.id, attemptId, sub.id, order.course_id || null, order.bundle_id || null,
        String(order.type || 'OTHER').toLowerCase(), order.amount, order.currency || 'EGP',
-       String(payment_method || 'instapay').slice(0, 50), proofUrl ? null : (proof_image || null), proofUrl, safeNote, reviewDueAt,
+       String(payment_method || 'instapay').slice(0, 50), storedImage.value, proofUrl, safeNote, reviewDueAt,
        review.riskLevel, review.secondReviewRequired ? 1 : 0,
        tenantId, order.branch_id || sub.branch_id || 'branch-other']
     );
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, id, payment_intent_id: intent.id, payment_attempt_id: attemptId });
+    unsavedObjectKey = null;
+    // When the review is due, so the page can say «قيد المراجعة» with a time
+    // rather than a bare «سيتم مراجعته».
+    res.json({ ok: true, id, payment_intent_id: intent.id, payment_attempt_id: attemptId, status: 'PENDING', review_due_at: reviewDueAt.toISOString(), review_hours: review.slaHours });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
-  } finally { conn.release(); }
+  } finally {
+    conn.release();
+    if (unsavedObjectKey) await discardObject(unsavedObjectKey);
+  }
 });
 
 // PATCH /api/me/progress — client saves their own lecture progress (no admin needed)
@@ -366,7 +383,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
               pp.amount, pp.currency, pp.payment_method, pp.proof_image, pp.proof_url, pp.note, pp.status,
               pp.branch_id, pp.payment_intent_id, pp.payment_attempt_id, pp.second_review_required,
               pp.first_reviewer_id, pp.first_review_note, pp.first_reviewed_at, pp.review_due_at, pp.risk_level,
-              o.item_id, o.item_title, o.notes AS order_notes,
+              o.item_id, o.item_title, o.notes AS order_notes, o.amount AS order_amount, o.currency AS order_currency,
               o.customer_name, o.customer_email, o.customer_phone, o.status AS order_status,
                s.lead_id, s.branch, s.assigned_sales_id
          FROM payment_proofs pp
@@ -383,6 +400,20 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     }
     if (proof.status !== 'PENDING') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Already reviewed' }); }
     if (!isPendingOrder(proof.order_status)) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending' }); }
+    // The receipt pays the order as it stood when it was uploaded. An order
+    // whose amount or currency has changed since (the customer went back to
+    // checkout and switched instalment → cash) is no longer what this receipt
+    // paid: approving it booked the new terms — full access for a first
+    // instalment. The accountant rejects it and the customer uploads against
+    // the order they now hold.
+    if (action === 'approve' && (Math.abs(Number(proof.order_amount) - Number(proof.amount)) > 0.009
+      || String(proof.order_currency || 'EGP') !== String(proof.currency || 'EGP'))) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({
+        error: `الطلب اتغيّر بعد رفع الإيصال (الإيصال ${proof.amount} ${proof.currency || 'EGP'} — الطلب دلوقتي ${proof.order_amount} ${proof.order_currency || 'EGP'}). ارفض الإيصال واطلب من العميل يرفعه على طلبه الحالي.`,
+        code: 'ORDER_CHANGED_SINCE_PROOF',
+      });
+    }
 
     const actorId = req.staffRecord?.id || req.user?.uid || req.user?.email || 'system';
     const reviewStep = paymentProofReviewStep({
@@ -437,18 +468,29 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       const payId = `proof-${proof.id}`;
       // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
       const plan = orderPlan(proof.order_notes, proof.amount);
-      await assertWritable(dateOnlyInTimeZone(), conn, tenantId);
+      // The Cairo day the money is approved on, written as a day — the way the desk
+      // writes payments.date. NOW() is a UTC instant: approved at 01:30 on 1 October
+      // it read 30 September in every report, a month already closed.
+      const paidDay = dateOnlyInTimeZone();
+      await assertWritable(paidDay, conn, tenantId);
+      // A receipt for one entry of the client's installment plan marks that entry
+      // paid and opens what the plan now covers (lib/planEntryPayment.js).
+      const planEntry = planEntryOf(proof.order_notes);
+      const settledEntry = planEntry ? await settlePlanEntry(conn, {
+        tenantId, planId: planEntry.planId, index: planEntry.index, subscriberId: proof.subscriber_id,
+        paymentId: payId, amount: proof.amount, currency: proof.currency || 'EGP', paidDay,
+      }) : null;
       await conn.query(
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
             transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
             source, item_title, branch, branch_id, tenant_id, proof_url, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,?,NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'paid',?,?,?,?,?,?,?,?,NOW())`,
         [payId, proof.subscriber_id, proof.course_id || null, proof.bundle_id || null,
          proof.amount, proof.currency || 'EGP', paymentType, proof.payment_method || 'تحويل', proof.id,
-         plan.installment ? 1 : 0, plan.expected,
-         `تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
-         reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
+         plan.installment || settledEntry ? 1 : 0, settledEntry ? settledEntry.courseExpected : plan.expected,
+         `${settledEntry ? planEntryNote(settledEntry, planEntry.index) + ' — ' : ''}تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
+         paidDay, reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
          proof.branch || branchForId(proof.branch_id), proof.branch_id || 'branch-other', tenantId, proof.proof_url || null]
       );
       const journalId = await postPaymentJournal({
@@ -456,6 +498,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         amount: proof.amount,
         currency: proof.currency || 'EGP',
         payType: paymentType,
+        date: paidDay,
         actor: req.user?.email || 'system',
         tenantId,
       }, conn);
@@ -471,7 +514,12 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         actor: reviewer?.id || req.user?.email || 'system',
       }, conn);
 
-      if ((paymentType === 'COURSE' && proof.course_id) || (paymentType === 'BUNDLE' && proof.bundle_id)) {
+      if (settledEntry) {
+        await grantPlanEntryAccess(conn, {
+          tenantId, settled: settledEntry, subscriberId: proof.subscriber_id, paymentId: payId,
+          amount: proof.amount, currency: proof.currency || 'EGP', source: 'payment_proof', actor: req.user?.email || 'system',
+        });
+      } else if ((paymentType === 'COURSE' && proof.course_id) || (paymentType === 'BUNDLE' && proof.bundle_id)) {
         const access = await planAccess(conn, {
           plan, tenantId, subscriberId: proof.subscriber_id, paymentId: payId, amount: proof.amount, currency: proof.currency || 'EGP',
           courseId: paymentType === 'COURSE' ? proof.course_id : null, bundleId: paymentType === 'BUNDLE' ? proof.bundle_id : null,
@@ -624,7 +672,11 @@ router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrSta
     );
     if (!row || (!row.proof_image && !row.proof_url)) return res.status(404).json({ error: 'No image' });
     if (!financialRecordMatches(scope, row)) return res.status(403).json({ error: 'Payment proof is outside your financial scope' });
-    res.json({ image: row.proof_image || null, url: row.proof_url || null });
+    // A receipt on Drive is answered by its link; one kept in the bucket is read
+    // back here, after the same checks, in the same shape (lib/storedFiles.js).
+    const image = row.proof_image ? await readProofImage(row.proof_image) : null;
+    if (!image && !row.proof_url) return res.status(404).json({ error: 'No image' });
+    res.json({ image: image || null, url: row.proof_url || null });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });

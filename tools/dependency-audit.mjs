@@ -94,7 +94,22 @@ export function classifyAudit(project, report, now = new Date()) {
 // project's threshold; anything found only in the full tree is printed as a
 // build-tool warning with its advisory, so it is still seen and still fixed
 // when the toolchain is next upgraded. Lockfiles are not touched here.
-function audit(project, { productionOnly }) {
+// The registry's audit endpoint sometimes answers with an error rather than a
+// report (it failed one CI run on 22 Oct 2026). That says nothing about our
+// dependencies, so it is asked again before the gate fails on it. A report
+// that lists advisories is never retried away: it fails as before.
+function audit(project, options) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return auditOnce(project, options);
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      spawnSync(process.execPath, ['-e', `setTimeout(() => {}, ${attempt * 3000})`]);
+    }
+  }
+}
+
+function auditOnce(project, { productionOnly }) {
   const npmCli = process.env.npm_execpath;
   const command = npmCli ? process.execPath : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
   const auditArgs = ['audit', '--json', ...(productionOnly ? ['--omit=dev'] : [])];

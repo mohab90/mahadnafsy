@@ -87,13 +87,24 @@ export function TicketContactButtons({ ticketId, subscriberId, personName, phone
         channel, outcome, said: said.trim(), cause: cause.trim(), next: effectiveNext, nextDate: effectiveNext === 'follow_up' ? nextDate : undefined,
       });
       // The step chosen is then taken, through the same routes the ticket's own buttons use.
+      // The contact is already on record by now, so a failure here closes the form
+      // (a retry would log the contact twice) and says plainly which step did not
+      // happen — it used to read like the whole thing had failed, or, worse, like
+      // the ticket had been escalated when it had not.
       const summary = `${said.trim()}${cause.trim() ? ` (السبب: ${cause.trim()})` : ''}`;
-      if (effectiveNext === 'resolved') {
-        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(ticketId)}/status`, { status: 'resolved', closed_reason: summary });
-      } else if (effectiveNext === 'escalate') {
-        await mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(ticketId)}/escalate`, { reason: summary, kind });
-      } else if (effectiveNext === 'refund') {
-        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(ticketId)}/route`, { category: 'refund' });
+      try {
+        if (effectiveNext === 'resolved') {
+          await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(ticketId)}/status`, { status: 'resolved', closed_reason: summary });
+        } else if (effectiveNext === 'escalate') {
+          await mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(ticketId)}/escalate`, { reason: summary, kind });
+        } else if (effectiveNext === 'refund') {
+          await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(ticketId)}/route`, { category: 'refund' });
+        }
+      } catch (error) {
+        setChannel(null);
+        const why = error instanceof Error && error.message ? ` (${error.message})` : '';
+        onError(`اتسجل التواصل، لكن «${NEXT_LABEL[effectiveNext]}» ما اتنفذش${why} — نفّذها من أزرار التذكرة`);
+        return;
       }
       setChannel(null);
       onLogged(`اتسجل التواصل — ${NEXT_LABEL[effectiveNext]}${effectiveNext === 'follow_up' ? ` (${nextDate})` : ''}`);

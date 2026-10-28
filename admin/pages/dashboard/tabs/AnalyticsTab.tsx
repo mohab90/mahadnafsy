@@ -93,7 +93,6 @@ const AnalyticsTab: React.FC<Props> = () => {
   // ── Monthly revenue (6 months, always full) ──────────────────
   const monthlyRevenue = useMemo(
     () => (orderFigures?.monthly ?? []).map(month => ({ label: monthLabel(month.month, true), rev: sumEgp(month.amounts), orders: month.orders })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [orderFigures, sumEgp],
   );
   const maxMonthRev = Math.max(...monthlyRevenue.map(m => m.rev), 1);

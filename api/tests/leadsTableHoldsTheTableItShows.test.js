@@ -28,34 +28,28 @@ const stripComments = source => source
   .map(line => (/^\s*(\/\/|\*)/.test(line) ? '' : line.split('//')[0]))
   .join('\n');
 
-test('the leads landing table pages on the server, the scanning views still load the table', () => {
+test('the leads screen reads no lead or client list: the pools are the server\'s pool', () => {
+  // Every sub-tab answers from the server now — the table and the board a page at a time, the pools from
+  // GET /admin/leads/pool, the reminders, the counts and the performance figures as aggregates — so the set of sub-tabs
+  // that downloaded every lead is gone, and the screen asks the context for no list.
   const groups = stripComments(read('admin/pages/dashboard/dashboardTabGroups.ts'));
-  const set = groups.match(/fullLeadArraySubTabs = new Set<string>\(\[([\s\S]*?)\]\)/)?.[1];
-  assert.ok(set !== undefined, 'fullLeadArraySubTabs must still be a literal set this can read');
-  const members = [...set.matchAll(/'([a-zA-Z]+)'/g)].map(m => m[1]);
-  assert.ok(!members.includes('table'),
-    'the table reads one page from /admin/leads/table — downloading every lead for it is the cost this removed');
-  // The board, duplicate review and the reminders' queues are answered by the server now.
-  for (const served of ['pipeline', 'duplicates', 'reminders']) {
-    assert.ok(!members.includes(served), `${served} reads its own server data`);
-  }
-  // The pool tabs read their pool from GET /admin/leads/pool instead.
-  for (const pool of ['localNew', 'dawliOld', 'dawliNew', 'archive']) {
-    assert.ok(!members.includes(pool), `${pool} reads its own pool from the server, not every lead`);
-  }
+  assert.doesNotMatch(groups, /fullLeadArraySubTabs/);
   const tab = stripComments(read('admin/pages/dashboard/tabs/LeadsTab.tsx'));
-  assert.match(tab, /leads=\{poolView \? leadPool\.rows : leads\}/, 'the pool views are fed the server pool');
+  assert.match(tab, /leads=\{leadPool\.rows\}/, 'the pool views are fed the server pool');
+  const context = tab.match(/const \{([^}]*)\} = useSiteData\(\);/)[1];
+  for (const list of ['leads', 'subscribers', 'loadFullCrmData', 'loadFullLeads']) {
+    assert.ok(!context.split(',').map(part => part.trim()).includes(list), `LeadsTab reads ${list} from the context again`);
+  }
 });
 
-test('opening one of those sub-tabs is what triggers the full load', () => {
+test('the insights are asked for where they are drawn, not on every sub-tab', () => {
   const tab = stripComments(read('admin/pages/dashboard/tabs/LeadsTab.tsx'));
-  assert.match(tab, /fullLeadArraySubTabs\.has\(subTab\)[\s\S]{0,40}loadFullCrmData\(\)/,
-    'the set has to be wired to the loader, or membership means nothing');
+  assert.match(tab, /useCrmInsights\(smartIdleDays, performanceOnly \|\| subTab === 'reminders', insightsKey\)/);
+  assert.match(tab, /useRepRevenue\(targetMonth, performanceOnly\)/);
 });
 
 test('the table shows the server page and the server total', () => {
-  // Out of fullLeadArraySubTabs only because of this: the rows are the server's
-  // page and the count is the server's total. If the table went back to
+  // The rows are the server's page and the count is the server's total. If the table went back to
   // slicing the array, it would count the 500-row bootstrap page as the table.
   const tab = stripComments(read('admin/pages/dashboard/tabs/LeadsTab.tsx'));
   assert.match(tab, /<LeadTable\s+rows=\{serverTable\.rows\}\s+paging=\{\{[^}]*total: serverTable\.total/,

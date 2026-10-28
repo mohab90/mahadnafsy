@@ -1,5 +1,5 @@
 'use strict';
-const { TERMINAL_SQL } = require('../../lib/leadStatuses');
+const { dueOn } = require('../../lib/leadFollowUps');
 const logger = require('../../lib/logger');
 const { escapeHtml } = require('../../lib/html');
 const { uuidv4 } = require('../../lib/id');
@@ -124,7 +124,6 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
 function scheduleDailyReport() {
   dailyAtCairo(7, 'daily-report', sendDailyReport);
 }
-scheduleDailyReport();
 
 // GET /api/admin/reports/daily-preview — preview what the daily report would look like
 
@@ -149,16 +148,18 @@ function queueReminderWhatsApp({ tenantId, phone, message, category, dedupeKey }
 async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   try {
     const today = cairoToday();
-    // Leads due for follow-up today
+    // Leads due for follow-up today, as every screen counts them
+    // (lib/leadFollowUps.js) — this read the column alone and took archived
+    // leads with it, so the 08:00 message and the bell disagreed.
+    const due = dueOn(today);
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email,
              l.next_follow_up_date, l.status, l.source, l.assigned_sales_id,
              st.name AS staff_name, st.phone AS staff_phone, st.email AS staff_email
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.next_follow_up_date >= ? AND l.next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY)
-        AND l.status NOT IN ${TERMINAL_SQL}
-      LIMIT 100`, [tenantId, today, today]);
+      WHERE l.tenant_id = ?${due.sql}
+      LIMIT 100`, [tenantId, ...due.params]);
 
     let sent = 0;
     // Batch-check which leads were already reminded today (1 query instead of N)
@@ -218,9 +219,6 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
 function scheduleFollowUpReminders() {
   dailyAtCairo(8, 'followup-reminders', runFollowUpReminders);
 }
-scheduleFollowUpReminders();
-// And the day's follow-ups as in-app notifications, to each owner and a team one to the managers.
-require('../../lib/followUpDigest').scheduleFollowUpDigest();
 
 // Every open ticket in the system had passed its first-response window, which
 // is what happens when nothing ever raises its hand: a ticket that breaches its
@@ -275,11 +273,10 @@ function scheduleSlaBreachSweep() {
   // would report a breach up to a day after it mattered.
   setTimeout(() => {
     forEachActiveTenant(runSlaBreachSweep);
-    setInterval(() => forEachActiveTenant(runSlaBreachSweep), 60 * 60 * 1000);
-  }, 5 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(runSlaBreachSweep), 60 * 60 * 1000).unref?.();
+  }, 5 * 60 * 1000).unref?.();
   logger.info('[sla-sweep] scheduled — hourly, first run in 5m');
 }
-scheduleSlaBreachSweep();
 
 // Certificates earn themselves: half the course watched and 90% of it paid;
 // and «شهادات المعهد», 90% paid whatever was watched (lib/instituteCertificates.js).
@@ -291,11 +288,10 @@ function scheduleAutoCertificateSweep() {
   const sweep = tenantId => runAutoCertificateSweep(tenantId).then(() => sweepInstituteCertificates(tenantId));
   setTimeout(() => {
     forEachActiveTenant(sweep);
-    setInterval(() => forEachActiveTenant(sweep), 60 * 60 * 1000);
-  }, 7 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(sweep), 60 * 60 * 1000).unref?.();
+  }, 7 * 60 * 1000).unref?.();
   logger.info('[auto-certificate] scheduled — hourly, first run in 7m');
 }
-scheduleAutoCertificateSweep();
 
 // «تذكير قبل الاستشارة»: the lecturer and the client are reminded an hour before a confirmed session
 // (lib/consultationReminders.js). Every ten minutes; each message once, however many sweeps see the session.
@@ -309,7 +305,6 @@ function scheduleConsultationReminders() {
   }, 3 * 60 * 1000);
   logger.info('[consultation-reminders] scheduled — every 10m, first run in 3m');
 }
-scheduleConsultationReminders();
 
 // The Dokki manager's Saturday report, the morning brief of the day's rounds and,
 // once switched on, the absence follow-up (lib/dokkiWeeklyReport.js,
@@ -326,10 +321,9 @@ function scheduleDokkiAutomation() {
   ]);
   setTimeout(() => {
     forEachActiveTenant(tick);
-    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
-  }, 11 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000).unref?.();
+  }, 11 * 60 * 1000).unref?.();
 }
-scheduleDokkiAutomation();
 
 // «التقرير الأسبوعي للفروع» on WhatsApp, Saturday morning, once switched on
 // (lib/weeklyBranchReport.js). Hourly; each number once a week.
@@ -339,10 +333,9 @@ function scheduleWeeklyBranchReport() {
     .catch(error => logger.warn('[weekly-branch-report]', error.message));
   setTimeout(() => {
     forEachActiveTenant(tick);
-    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
-  }, 13 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000).unref?.();
+  }, 13 * 60 * 1000).unref?.();
 }
-scheduleWeeklyBranchReport();
 
 // A payment waiting on the accountant is money the institute has not decided
 // about yet. One waiting more than a day is a payment nobody is looking at.
@@ -380,11 +373,10 @@ async function runPaymentReviewSweep(tenantId = DEFAULT_TENANT) {
 function schedulePaymentReviewSweep() {
   setTimeout(() => {
     forEachActiveTenant(runPaymentReviewSweep);
-    setInterval(() => forEachActiveTenant(runPaymentReviewSweep), 60 * 60 * 1000);
-  }, 9 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(runPaymentReviewSweep), 60 * 60 * 1000).unref?.();
+  }, 9 * 60 * 1000).unref?.();
   logger.info('[payment-review] scheduled — hourly, first run in 9m');
 }
-schedulePaymentReviewSweep();
 
 // GET /api/admin/leads/due-today — list leads due for follow-up today
 
@@ -459,7 +451,6 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
 function schedulePaymentReminders() {
   dailyAtCairo(9, 'payment-reminders', runPaymentDueReminders);
 }
-schedulePaymentReminders();
 
 // GET /api/admin/payments/due-upcoming?days=7 — payments due soon
 
@@ -653,4 +644,23 @@ const KV_ALLOWED_KEYS = ['tasks_board', 'support_tickets', 'sales_motiv_posts', 
 
 // GET /api/admin/kv/:key
 
-module.exports = { logLogin, sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };
+// The timers above used to start the moment this file was required, so every
+// process that loaded the routes ran them: two web instances sent the daily
+// report and the reminders twice (their locks are skipped, not waited for, and
+// a quick run frees the lock before the other process fires). They start from
+// lib/routeJobs.js now, only in the process that owns the jobs (MAHAD_ROLE).
+function startSharedRouteJobs() {
+  scheduleDailyReport();
+  scheduleFollowUpReminders();
+  // And the day's follow-ups as in-app notifications, to each owner and a team one to the managers.
+  require('../../lib/followUpDigest').scheduleFollowUpDigest();
+  scheduleSlaBreachSweep();
+  scheduleAutoCertificateSweep();
+  scheduleDokkiAutomation();
+  scheduleWeeklyBranchReport();
+  schedulePaymentReviewSweep();
+  schedulePaymentReminders();
+  scheduleConsultationReminders();
+}
+
+module.exports = { startSharedRouteJobs, logLogin, sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };

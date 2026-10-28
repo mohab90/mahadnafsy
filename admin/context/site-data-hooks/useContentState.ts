@@ -13,6 +13,10 @@ export function useContentState(
   const [content, setContent] = useState<Record<string, string>>(initialContent);
   const contentRef = useRef<Record<string, string>>(initialContent);
   const contentWriteQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
+  // The latest `track` (rebuilt every render around the signed-in account): the queue below is built once, and the
+  // `track` of the first render — before /auth/me answered — logged every content save as «unknown».
+  const trackRef = useRef(track);
+  trackRef.current = track;
 
   const mergeContent = (incoming: Record<string, string>) => {
     contentRef.current = { ...contentRef.current, ...incoming };
@@ -48,7 +52,7 @@ export function useContentState(
         contentRef.current = next;
         setContent(next);
         if (keys.some((k) => BRAND_KEYS.includes(k))) applyBrandTheme(next);
-        track(action, 'content', label);
+        trackRef.current(action, 'content', label);
         return true;
       } catch (err) {
         window.dispatchEvent(new CustomEvent('site-persist-error', {
@@ -59,11 +63,7 @@ export function useContentState(
     });
     contentWriteQueueRef.current = queued;
     return queued;
-    // Same as the CRM writers: the ref is stable, and `track` is rebuilt every
-    // render by useActivityLogState, so depending on it would rebuild this
-    // queue-flushing callback on each render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lastLocalConfigWriteRef]);
 
   const setContentValue = useCallback((key: string, value: string) =>
     queueContentMutation([key], 'update', (current) => ({ ...current, [key]: value })), [queueContentMutation]);

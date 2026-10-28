@@ -260,9 +260,9 @@ export const ValueStackSection: React.FC<ValueStackProps> = ({ course, content, 
               {isDiscounted(strike, pay) && <s className="text-base tabular-nums text-white/55">بدل {formatAmount(strike)} {currencySymbol}</s>}
               <p className="text-[52px] font-black leading-none tabular-nums">{formatAmount(pay)} <span className="text-2xl text-gold-pale">{currencySymbol}</span></p>
               <div className="mx-auto mt-4 w-full max-w-xs space-y-1.5 rounded-2xl bg-white/10 p-3 text-sm font-bold ring-1 ring-white/15">
-                <p className="flex justify-between gap-2"><span>كاش (خصم {percentLabel(rates.cash)}%)</span><b className="tabular-nums">{formatAmount(amountDueNow(currentPrice, 'cash', rates))} {currencySymbol}</b></p>
-                <p className="flex justify-between gap-2"><span>تقسيط (إجمالي)</span><b className="tabular-nums">{formatAmount(installmentTotal(currentPrice, rates))} {currencySymbol}</b></p>
-                <p className="flex justify-between gap-2 text-gold-pale"><span>تبدأ بأول دفعة</span><b className="tabular-nums">{formatAmount(amountDueNow(currentPrice, 'installment', rates))} {currencySymbol}</b></p>
+                <p className="flex justify-between gap-2"><span>كاش (خصم {percentLabel(rates.cash)}%)</span><b className="tabular-nums">{formatAmount(amountDueNow(pay, 'cash', rates))} {currencySymbol}</b></p>
+                <p className="flex justify-between gap-2"><span>تقسيط (إجمالي)</span><b className="tabular-nums">{formatAmount(installmentTotal(pay, rates))} {currencySymbol}</b></p>
+                <p className="flex justify-between gap-2 text-gold-pale"><span>تبدأ بأول دفعة</span><b className="tabular-nums">{formatAmount(amountDueNow(pay, 'installment', rates))} {currencySymbol}</b></p>
               </div>
             </>
           ) : (

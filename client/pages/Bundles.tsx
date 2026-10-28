@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Layers, Map as MapIcon, ArrowLeft, Check, Send, Award, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg, cdnSrcSet } from '../lib/img';
 import { discountPercent, formatPrice, isDiscounted } from '../../shared/priceFormat';
 import { useSeo } from '../lib/useSeo';
+import { usePriceList, withEffectivePrices } from '../lib/usePrices';
 import PageHeader from '../components/PageHeader';
 
 const Bundles: React.FC = () => {
-  const { bundles, content, currency, remoteReady } = useSiteData();
+  const { bundles: catalogBundles, content, currency, remoteReady, catalogFailed, retryCatalog } = useSiteData();
+  // Each path at the price checkout charges for it, discount included (lib/usePrices).
+  const priceList = usePriceList();
+  const bundles = useMemo(() => catalogBundles.map(b => withEffectivePrices(priceList, 'bundle', b)), [catalogBundles, priceList]);
   const navigate = useNavigate();
 
   useSeo({ title: 'المسارات والباقات | معهد الدراسات النفسية', path: '/bundles', description: 'مسارات تعليمية متكاملة وباقات مجمعة بخصومات تصل إلى 40% — من المبتدئ إلى المحترف.' });
@@ -75,7 +79,12 @@ const Bundles: React.FC = () => {
               bundles that were all still empty produced neither the list nor this
               message — just a hero, two info cards and nothing else. */}
           {visibleBundles.length === 0 && (
-            remoteReady ? (
+            remoteReady && catalogFailed ? (
+              <div className="flex flex-col items-center justify-center gap-4 rounded-[24px] border border-dashed border-line-deep bg-paper px-4 py-20 text-center">
+                <p className="text-lg font-black text-ink">تعذر تحميل المسارات. تحقق من اتصالك وحاول مرة أخرى.</p>
+                <button type="button" onClick={retryCatalog} className="rounded-xl bg-primary-700 px-6 py-2.5 font-bold text-white hover:bg-primary-800">إعادة المحاولة</button>
+              </div>
+            ) : remoteReady ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-[24px] border border-dashed border-line-deep bg-paper px-4 py-20 text-center">
                 <p className="text-lg font-black text-ink">لا توجد مسارات متاحة حالياً</p>
                 <p className="text-sm text-muted">تابعنا — يتم إضافة مسارات جديدة باستمرار.</p>

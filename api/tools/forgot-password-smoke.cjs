@@ -53,12 +53,18 @@ async function main() {
 
     const forgot = await api('/api/auth/forgot-password', { email: user.email });
     assert.equal(forgot.status, 200, JSON.stringify(forgot.payload));
-    const [[otp]] = await db.query(
-      `SELECT id,code,delivery_status,provider_message_id,sent_at
-         FROM otp_codes WHERE tenant_id=? AND email=? AND type='password_reset'
-         ORDER BY created_at DESC LIMIT 1`,
-      ['tenant-default', user.email]
-    );
+    // The route answers before it sends (one answer for every identifier), so
+    // wait for the code to be delivered.
+    let otp = null;
+    for (let tries = 0; tries < 50 && otp?.delivery_status !== 'accepted'; tries += 1) {
+      if (tries) await new Promise(resolve => setTimeout(resolve, 200));
+      [[otp]] = await db.query(
+        `SELECT id,code,delivery_status,provider_message_id,sent_at
+           FROM otp_codes WHERE tenant_id=? AND email=? AND type='password_reset'
+           ORDER BY created_at DESC LIMIT 1`,
+        ['tenant-default', user.email]
+      );
+    }
     assert.equal(otp.delivery_status, 'accepted');
     assert.ok(otp.provider_message_id);
     assert.ok(otp.sent_at);

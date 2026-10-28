@@ -13,6 +13,7 @@ import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, enrollmentRates, installmentTotal, percentLabel } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
 import { trackLead } from '../lib/tracking';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
@@ -29,6 +30,7 @@ const authAr: Record<string, string> = {
 const Enrollment: React.FC = () => {
   useSeo({ title: 'التسجيل في الكورس | معهد الدراسات النفسية', path: '/enroll' });
   const { courses, bundles, currency, content, authUser } = useSiteData();
+  const priceList = usePriceList();
   // The two discounts marketing sets (التسويق ← الخصومات); the server prices with the same ones.
   const rates = enrollmentRates(content);
   const cashPct = percentLabel(rates.cash);
@@ -58,23 +60,19 @@ const Enrollment: React.FC = () => {
 
   const [searchParams] = useSearchParams();
 
-  // Selected item keys (multi-select via dropdowns)
-  const [selectedIds, setSelectedIds] = useState<string[]>(['']);  // start with one empty slot
-  const [payType, setPayType] = useState<PayType>('cash');
-  const [branch, setBranch] = useState('');
-
-  // Pre-select from URL params: ?course=ID or ?bundle=ID
-  useEffect(() => {
+  // Selected item keys (multi-select via dropdowns). Seeded from ?course=/?bundle=
+  // once, at mount: keys resolve against the catalogue whenever it arrives. It
+  // was re-seeded each time the catalogue refreshed (it does on tab refocus),
+  // which threw away whatever the visitor had since picked in the form.
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     const courseId = searchParams.get('course');
     const bundleId = searchParams.get('bundle');
-    if (courseId) setSelectedIds([`course:${courseId}`]);
-    else if (bundleId) setSelectedIds([`bundle:${bundleId}`]);
-    // Seeds the selection from ?course=/?bundle= once the catalogue is loaded,
-    // which is why allOptions is the trigger. searchParams is a new object on
-    // every render of this route; depending on it would overwrite whatever the
-    // visitor had since picked in the form.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allOptions]);
+    if (courseId) return [`course:${courseId}`];
+    if (bundleId) return [`bundle:${bundleId}`];
+    return [''];  // start with one empty slot
+  });
+  const [payType, setPayType] = useState<PayType>('cash');
+  const [branch, setBranch] = useState('');
 
   // Form fields
   const [fullName, setFullName] = useState('');
@@ -103,7 +101,10 @@ const Enrollment: React.FC = () => {
   const getItem = (key: string) => allOptions.find(x => x.key === key) ?? null;
   // Never fall back to Egypt pricing for a Saudi/international visitor.
   // The server independently resolves and validates the same location currency.
-  const getBasePrice = (item: SelItem) => Number(item.price[currency]) || 0;
+  // The list price checkout starts from: the catalogue price less the discount
+  // running on the item (lib/usePrices) — the rates below go on top of it there.
+  const getBasePrice = (item: SelItem) =>
+    effectivePrice(priceList, item.kind, item.key.replace(/^(course|bundle):/, ''), currency, Number(item.price[currency]) || 0).price;
   // Both from shared/enrollmentPricing, which exists so a rate change cannot
   // apply to one side and not the other — this page had re-derived the same two
   // formulas from the raw constants, which is a second copy of the rule under a
@@ -600,9 +601,15 @@ const Enrollment: React.FC = () => {
                       <label className={label}>كلمة المرور *</label>
                       <input
                         required value={password} onChange={e => setPassword(e.target.value)}
-                        placeholder="6 أحرف على الأقل" type="password" autoComplete="new-password"
+                        placeholder="8 أحرف على الأقل" type="password" autoComplete="new-password" minLength={8}
+                        aria-describedby="enroll-password-rule"
                         className={field}
                       />
+                      {/* The rule said «6» while the server and the button wanted 8: the
+                          button stayed off with nothing saying why. Said before submit now. */}
+                      <p id="enroll-password-rule" className={`mt-1 text-xs font-bold ${password.length >= 8 ? 'text-green-700' : 'text-muted'}`}>
+                        {password.length >= 8 ? 'كلمة المرور تمام ✓' : `كلمة المرور لازم تكون 8 حروف أو أرقام على الأقل${password ? ` — فاضل ${8 - password.length}` : ''}`}
+                      </p>
                     </div>
                   </div>
                 )}

@@ -11,6 +11,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 
@@ -312,7 +313,7 @@ test('the owner names who brought a payment, the name rides on that payment only
   assert.equal(api.split('const staffId = takePaymentAttribution();').length - 1, 2);
   // The name rides on the payment only when it carries none of its own (the pictures' links ride the same way).
   assert.match(api, /\.\.\.\(staffId && !payment\.staffId \? \{ staffId \} : \{\}\)/);
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /if \(asksWhoBroughtIt\) attributeNextPayment\(broughtBy\);/);
   assert.match(modal, /attributeNextPayment\(null\);/);
   // A payment past what is left on the course is asked about before it is sent.

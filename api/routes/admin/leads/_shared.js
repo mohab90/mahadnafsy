@@ -49,6 +49,8 @@ const { postPaymentJournal, logPaymentAudit } = require('../../../lib/finance');
 const { bulkOperationLimiter } = require('../../../middleware/rateLimits');
 const { assertWritable } = require('../../../lib/periodLock');
 const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../../lib/staffEmailGuard');
+const { attributionLabel } = require('../../../lib/visitAttribution');
+const attributionOf = r => ({ utm_source: r.utm_source, utm_medium: r.utm_medium, utm_campaign: r.utm_campaign, fbclid: r.fbclid, gclid: r.gclid });
 function cleanLegacyLeadText(value) {
   if (typeof value !== 'string') return value;
   return value
@@ -82,6 +84,8 @@ function mapLeadRow(r, communicationsByLead) {
   return { ...crm,
     id: r.id, name: r.name, email: r.email, phone: r.phone,
     source: r.source, status, notes: cleanLegacyLeadText(r.notes), createdAt: r.created_at,
+    // The ad visit that brought them (lib/visitAttribution.js), for the card.
+    ...(attributionLabel(attributionOf(r)) ? { adSource: attributionLabel(attributionOf(r)) } : {}),
     branch, rawBranch: cleanLegacyLeadText(crm.rawBranch || rawBranch || ''), interestedCourseIds, clientCode, dealValue,
     assignedSalesId: r.assigned_sales_id || null,
     assignedSalesName: r.assigned_sales_name || null,

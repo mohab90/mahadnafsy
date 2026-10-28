@@ -120,6 +120,9 @@ export interface NotificationsBellProps {
   panelRef: React.RefObject<HTMLDivElement | null>;
   /** Kept for callers that still pass it; the bell now opens the exact page by address. */
   onNavigate?: (tab: TabKey) => void;
+  /** The last poll failed: the count on the bell may be stale. */
+  loadFailed?: boolean;
+  onRetry?: () => void;
 }
 
 /**
@@ -133,7 +136,7 @@ export interface NotificationsBellProps {
  * or the clients due today. Opening the panel never marks anything read; the reader does.
  */
 export const NotificationsBell: React.FC<NotificationsBellProps> = ({
-  rows, setRows, unread, setUnread, open, setOpen, panelRef,
+  rows, setRows, unread, setUnread, open, setOpen, panelRef, loadFailed, onRetry,
 }) => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('all');
@@ -213,10 +216,11 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({
       <button
         onClick={() => setOpen(o => !o)}
         className={`relative w-8 h-8 rounded-xl grid place-items-center transition ${unread > 0 ? 'bg-primary-50 text-primary-700 hover:bg-primary-100' : 'bg-gray-100 hover:bg-primary-50 hover:text-primary-600 text-gray-500'} ${ringing ? 'animate-bounce' : ''}`}
-        title="الإشعارات"
-        aria-label={unread > 0 ? `الإشعارات — ${unread} غير مقروء` : 'الإشعارات'}
+        title={loadFailed ? 'الإشعارات — تعذر التحديث' : 'الإشعارات'}
+        aria-label={`${unread > 0 ? `الإشعارات — ${unread} غير مقروء` : 'الإشعارات'}${loadFailed ? ' — تعذر التحديث' : ''}`}
       >
         <Bell size={15} className={ringing ? 'fill-current' : ''} />
+        {loadFailed && <span className="absolute -bottom-0.5 -left-0.5 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white" aria-hidden="true" />}
         {unread > 0 && (
           <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center leading-none">
             {ringing && <span className="absolute inset-0 rounded-full bg-red-400 opacity-60 animate-ping" />}
@@ -263,6 +267,15 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({
                   className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1 font-bold text-white hover:bg-amber-700 disabled:opacity-50">
                   {pushState === 'working' ? '…' : 'فعّل'}
                 </button>
+              )}
+            </div>
+          )}
+
+          {loadFailed && (
+            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-gray-100 text-[11px] bg-red-50 text-red-800">
+              <span className="font-bold">تعذر تحديث الإشعارات — القائمة والعدد قد يكونا قديمين</span>
+              {onRetry && (
+                <button onClick={onRetry} className="shrink-0 rounded-lg bg-red-600 px-2.5 py-1 font-bold text-white hover:bg-red-700">إعادة المحاولة</button>
               )}
             </div>
           )}

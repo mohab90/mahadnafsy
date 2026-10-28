@@ -109,7 +109,7 @@ test('the payment methods the settings screen writes are the ones the dialogs re
   assert.match(helper, /mergePaymentBoxes\(configured, inUse\)/);
 
   for (const screen of [
-    'admin/components/PaymentModal.tsx',
+    'admin/components/payment-modal/usePaymentModalModel.tsx',
     'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
   ]) {
     const source = codeOnly(read(screen));

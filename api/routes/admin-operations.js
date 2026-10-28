@@ -16,7 +16,7 @@ const { insertNotification } = require('../lib/notification');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
-const { toNumbers } = require('../lib/mappers');
+const { toNumbers, getNextClientCode, lockClientCodeCounter, raiseClientCodeCounter, setClientCodeCounter } = require('../lib/mappers');
 const { addDaysToDateOnly, cairoDayStartUtc, safeDateOnly, cairoToday } = require('../lib/dates');
 const { SYSTEM_ACTORS, departmentOf, describeLabel } = require('../lib/activityDescribe');
 const { listEnv } = require('../lib/platformAccess');
@@ -743,13 +743,17 @@ router.get('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, re
   } catch (e) { routeError(res, e); }
 });
 
-router.post('/api/admin/next-client-code', requireAuth, requireAdmin, async (_req, res) => {
+router.post('/api/admin/next-client-code', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
   try {
-    await pool.query('UPDATE client_code_counter SET next_value = next_value + 1 WHERE id = 1');
-    const [[row]] = await pool.query('SELECT next_value FROM client_code_counter WHERE id = 1');
-    const code = `C${(row.next_value - 1)}`;
+    await conn.beginTransaction();
+    const code = await getNextClientCode(conn, scopedTenantId(req));
+    await conn.commit();
     res.json({ ok: true, code });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    routeError(res, e);
+  } finally { conn.release(); }
 });
 
 router.post('/api/admin/sync-client-code-counter', requireAuth, requireAdmin, async (req, res) => {
@@ -768,26 +772,22 @@ router.post('/api/admin/sync-client-code-counter', requireAuth, requireAdmin, as
     );
     const maxVal = Math.max(subMax.mx || 0, leadMax.mx || 0);
     const newNext = maxVal >= 10000 ? maxVal + 1 : 10001;
-    await conn.query(
-      'UPDATE client_code_counter SET next_value = ? WHERE id = 1 AND next_value < ?',
-      [newNext, newNext]
-    );
+    await raiseClientCodeCounter(conn, scopedTenantId(req), newNext);
+    const counterNow = await lockClientCodeCounter(conn, scopedTenantId(req));
     await conn.commit();
-    const [[counterRow]] = await conn.query('SELECT next_value FROM client_code_counter WHERE id=1');
-    res.json({ ok: true, maxExisting: maxVal, counterNow: counterRow.next_value });
+    res.json({ ok: true, maxExisting: maxVal, counterNow });
   } catch (e) {
     await conn.rollback();
     routeError(res, e);
   } finally { conn.release(); }
 });
 
-router.post('/api/admin/client-code', requireAuth, requireAdmin, async (_req, res) => {
+router.post('/api/admin/client-code', requireAuth, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [rows] = await conn.query('SELECT next_value FROM client_code_counter WHERE id=1 FOR UPDATE');
-    const next = rows[0]?.next_value ?? 10001;
-    await conn.query('UPDATE client_code_counter SET next_value=? WHERE id=1', [next + 1]);
+    const next = await lockClientCodeCounter(conn, scopedTenantId(req));
+    await setClientCodeCounter(conn, scopedTenantId(req), next + 1);
     await conn.commit();
     res.json({ ok: true, code: `C${next}` });
   } catch (e) {

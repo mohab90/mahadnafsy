@@ -852,7 +852,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     // Auto-generate client_code if not provided — never allow a subscriber to be saved without one
     let code = clientCode || client_code || null;
     if (!code) {
-      try { code = await getNextClientCode(conn); } catch { /* handled by uniqueness validation below */ }
+      try { code = await getNextClientCode(conn, tenantId); } catch { /* handled by uniqueness validation below */ }
     }
     // ── Uniqueness checks ──────────────────────────────────────────────────────
     // Email uniqueness (subscribers table, excluding current record)
@@ -905,7 +905,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       );
       if (codeRow) {
         // Auto-generate a new unique code instead of rejecting
-        try { code = await getNextClientCode(conn); } catch { /* duplicate key will fail closed */ }
+        try { code = await getNextClientCode(conn, tenantId); } catch { /* duplicate key will fail closed */ }
       }
     }
     // ───────────────────────────────────────────────────────────────────────────

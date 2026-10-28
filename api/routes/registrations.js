@@ -184,7 +184,7 @@ router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requ
     );
     if (existing) { await conn.rollback(); return res.status(409).json({ error: 'Already an online client' }); }
     const subscriberId = uuidv4();
-    const clientCode = await getNextClientCode(conn);
+    const clientCode = await getNextClientCode(conn, tenantId);
     // is_active=1. This used to insert 0, and the online-clients list drops
     // anything inactive (`if (s.isActive === false) return false`) — so the
     // conversion reported success and the customer then appeared nowhere.

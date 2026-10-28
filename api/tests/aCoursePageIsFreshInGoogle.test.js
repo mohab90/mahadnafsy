@@ -49,6 +49,7 @@ async function call(route, params = {}) {
     statusCode: 200, body: '', headers: {},
     status(code) { this.statusCode = code; return this; },
     set(name, value) { this.headers[name.toLowerCase()] = value; return this; },
+    removeHeader(name) { delete this.headers[name.toLowerCase()]; this.removed = [...(this.removed || []), name]; },
     type(value) { this.headers['content-type'] = value; return this; },
     send(body) { this.body = String(body); return this; },
   };
@@ -81,6 +82,8 @@ test('its page names it, canonicalises to it, and tells Google it is a course', 
   const res = await call(PAGE, { kind: 'c', key: 'cbt' });
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['cache-control'], 'no-store');
+  // The app's page, not an API answer: the API's script-forbidding CSP is taken off it.
+  assert.ok((res.removed || []).includes('Content-Security-Policy'));
   const html = res.body;
   assert.match(html, /<title>العلاج المعرفي \| معهد الدراسات النفسية<\/title>/);
   assert.match(html, /<link rel="canonical" href="https:\/\/mahadnafsy\.com\/c\/cbt"/);

@@ -17,6 +17,10 @@ const {
 } = require('./_shared');
 const { clearRecoveryCodes } = require('../../lib/twoFactor');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../lib/staffEmailGuard');
+
+// The logins a customer can hold; anything else (admin, staff, instructor…) is not changed here.
+const CUSTOMER_ROLES = new Set(['user', 'client', 'student']);
 
 const router = Router();
 
@@ -134,23 +138,37 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
       'SELECT id, name, email, phone FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
       [id, req.tenantId]
     );
+    // The account is the subscriber's, never one named in the body. Taking
+    // `currentEmail` from the request let an online manager point this at any
+    // login — the owner's included — and set its password; the staff check
+    // below only ran when the email was being changed.
+    if (!subscriber) return res.status(404).json({ error: 'لم يُعثر على المشترك.' });
+    const subscriberEmail = String(subscriber.email || '').toLowerCase().trim();
+    if (currentEmail && String(currentEmail).toLowerCase().trim() !== subscriberEmail) {
+      return res.status(400).json({ error: 'البريد الحالي لا يطابق بريد المشترك.' });
+    }
     let account = null;
-    const emailKey = String(currentEmail || subscriber?.email || '').toLowerCase().trim();
+    const emailKey = subscriberEmail;
     if (emailKey) {
       [[account]] = await conn.execute(
-        'SELECT id, email FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, emailKey]);
+        'SELECT id, email, role FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, emailKey]);
     }
     if (!account && subscriber) {
       // Accounts created from a subscriber reuse the subscriber id (see the
       // INSERT below), and phone is the other stable identifier.
       [[account]] = await conn.execute(
-        'SELECT id, email FROM users WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, subscriber.id]);
+        'SELECT id, email, role FROM users WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, subscriber.id]);
       if (!account && subscriber.phone) {
         [[account]] = await conn.execute(
-          'SELECT id, email FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [req.tenantId, subscriber.phone]);
+          'SELECT id, email, role FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [req.tenantId, subscriber.phone]);
       }
     }
-    if (!account && !subscriber) return res.status(404).json({ error: 'لم يُعثر على المشترك.' });
+    // A customer's credentials only: an account carrying a staff address, or a
+    // login that is not a client's, is changed from the staff accounts screen.
+    if (account && (await staffOwnsEmail(conn, req.tenantId, account.email, ADMIN_EMAILS)
+      || !CUSTOMER_ROLES.has(String(account.role || 'user')))) {
+      return res.status(STAFF_EMAIL_REFUSAL.status).json(STAFF_EMAIL_REFUSAL.body);
+    }
     // Validate new email not already taken by another user
     const newEmailKey = newEmail ? newEmail.toLowerCase().trim() : null;
     if (newEmailKey && newEmailKey !== String(account?.email || '').toLowerCase().trim()) {

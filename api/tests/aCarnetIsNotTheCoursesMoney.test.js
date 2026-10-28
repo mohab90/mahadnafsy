@@ -7,6 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
@@ -36,5 +37,5 @@ test('a paid carnet neither takes the course\'s price nor opens it', () => {
 });
 
 test('the desk is asked «أكبر من المتبقي» only for the course\'s own money', () => {
-  assert.match(read('admin/components/PaymentModal.tsx'), /const left = d\.paymentType === 'course' && chosen && _effPx > 0/);
+  assert.match(paymentModalSource(), /const left = d\.paymentType === 'course' && chosen && _effPx > 0/);
 });
