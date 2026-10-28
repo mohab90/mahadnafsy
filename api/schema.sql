@@ -5794,7 +5794,7 @@ CREATE TABLE `box_balance_events` (
   `tenant_id` varchar(64) NOT NULL,
   `method` varchar(191) NOT NULL,
   `currency` varchar(3) NOT NULL DEFAULT 'EGP',
-  `kind` enum('reset','set_balance','set_total','reset_all') NOT NULL,
+  `kind` enum('reset','set_balance','set_total','reset_all','withdraw','transfer','merge','void_withdrawal') NOT NULL,
   `balance_before` decimal(14,2) NOT NULL DEFAULT 0.00,
   `balance_after` decimal(14,2) NOT NULL DEFAULT 0.00,
   `note` varchar(500) DEFAULT NULL,
@@ -5802,6 +5802,42 @@ CREATE TABLE `box_balance_events` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_box_balance_events` (`tenant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `box_withdrawals` and `box_aliases` (migration 309: withdrawals from a cash box, and boxes merged into one)
+--
+
+CREATE TABLE `box_withdrawals` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `method` varchar(191) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `amount` decimal(14,2) NOT NULL,
+  `kind` enum('partner','expense','transfer','other') NOT NULL,
+  `partner` varchar(32) DEFAULT NULL,
+  `to_method` varchar(191) DEFAULT NULL,
+  `account_code` varchar(32) DEFAULT NULL,
+  `account_name` varchar(255) DEFAULT NULL,
+  `journal_entry_id` varchar(36) DEFAULT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `withdrawn_on` date NOT NULL,
+  `actor` varchar(255) DEFAULT NULL,
+  `voided_at` datetime DEFAULT NULL,
+  `voided_by` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_box_withdrawals` (`tenant_id`,`created_at`),
+  KEY `idx_box_withdrawals_partner` (`tenant_id`,`partner`,`withdrawn_on`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `box_aliases` (
+  `tenant_id` varchar(64) NOT NULL,
+  `alias` varchar(191) NOT NULL,
+  `target` varchar(191) NOT NULL,
+  `created_by` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`alias`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --

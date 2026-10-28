@@ -1,21 +1,27 @@
 import { useEffect, useState } from 'react';
-import { History, Loader2, Pencil, RefreshCw, RotateCcw, Vault } from 'lucide-react';
+import { ArrowDownToLine, GitMerge, History, Loader2, Pencil, RefreshCw, RotateCcw, Vault } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { cairoDateTime } from '../../../../../shared/cairoDate';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
+import { Modal } from '../../../../../shared/ui/Modal';
+import { BoxWithdrawDialog } from './BoxWithdrawDialog';
+import { PartnerWithdrawalsTable } from './PartnerWithdrawalsTable';
 
 type Window = 1 | 7 | 15 | 30;
 type Box = {
   method: string; currency: string; totals: Record<Window, number>; counts: Record<Window, number>;
   yesterday: { total: number; count: number }; balance?: number;
 };
-type Balances = { canManage: boolean; totals: Record<string, number>; general: Record<string, number> };
+type Balances = { canManage: boolean; totals: Record<string, number>; general: Record<string, number>; partners?: { key: string; name: string }[] };
 type BoxesReport = { branch: string | null; today: string; yesterday: string; windows: Record<Window, string>; boxes: Box[]; balances: Balances | null };
 type BoxEvent = { id: string; method: string; currency: string; kind: string; before: number; after: number; note: string; actor: string; at: string };
 
 const WINDOWS: Array<[Window, string]> = [[1, 'اليوم'], [7, 'آخر 7 أيام'], [15, 'آخر 15 يوم'], [30, 'آخر 30 يوم']];
-const KIND: Record<string, string> = { reset: 'تصفير خزنة', set_balance: 'تعديل رصيد خزنة', set_total: 'تعديل الرصيد العام', reset_all: 'تصفير كل الخزائن' };
+const KIND: Record<string, string> = {
+  reset: 'تصفير خزنة', set_balance: 'تعديل رصيد خزنة', set_total: 'تعديل الرصيد العام', reset_all: 'تصفير كل الخزائن',
+  withdraw: 'سحب من خزنة', transfer: 'تحويل بين خزائن', merge: 'دمج خزنتين', void_withdrawal: 'إلغاء سحب',
+};
 const num = (value: number) => value.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 const unit = (currency: string) => (currency === 'EGP' ? 'ج.م' : currency);
 
@@ -32,6 +38,10 @@ export function BoxesReportPanel({ branch }: { branch?: string }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
+  const [withdrawing, setWithdrawing] = useState<Box | null>(null);
+  const [merging, setMerging] = useState<Box | null>(null);
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const load = () => {
     setLoading(true);
@@ -166,6 +176,8 @@ export function BoxesReportPanel({ branch }: { branch?: string }) {
                         {canManage && (
                           <span className="mr-2 inline-flex gap-1 align-middle">
                             <button type="button" title="تعديل الرصيد" aria-label="تعديل الرصيد" disabled={Boolean(busy)} onClick={() => void editBox(box)} className={`${iconButton} border-gray-200 text-gray-600 hover:bg-gray-100`}><Pencil size={12} /></button>
+                            <button type="button" title="سحب من الرصيد" aria-label="سحب من الرصيد" disabled={Boolean(busy)} onClick={() => setWithdrawing(box)} className={`${iconButton} border-amber-200 text-amber-700 hover:bg-amber-50`}><ArrowDownToLine size={12} /></button>
+                            <button type="button" title="دمج في خزنة تانية" aria-label="دمج في خزنة تانية" disabled={Boolean(busy)} onClick={() => { setMerging(box); setMergeTarget(''); }} className={`${iconButton} border-violet-200 text-violet-700 hover:bg-violet-50`}><GitMerge size={12} /></button>
                             <button type="button" title="تصفير" aria-label="تصفير" disabled={Boolean(busy)} onClick={() => void resetBox(box)} className={`${iconButton} border-red-200 text-red-600 hover:bg-red-50`}><RotateCcw size={12} /></button>
                           </span>
                         )}
@@ -206,6 +218,35 @@ export function BoxesReportPanel({ branch }: { branch?: string }) {
           : ''}
         الاسترداد بيتخصم من الخزنة اللي خرج منها. الأرقام من الدفعات المعتمدة بس — الدفعات اللي مستنية مراجعة مش محسوبة.
       </p>
+
+      {withdrawing && balances && (
+        <BoxWithdrawDialog box={withdrawing.method} currency={withdrawing.currency} balance={withdrawing.balance ?? 0}
+          boxes={report?.boxes.filter(item => item.currency === withdrawing.currency).map(item => item.method) || []}
+          partners={balances.partners || []} onClose={() => setWithdrawing(null)} onDone={() => { load(); setRefreshKey(key => key + 1); }} />
+      )}
+      {merging && (
+        <Modal open onClose={() => setMerging(null)} size="sm" title="دمج خزنة في خزنة تانية" subtitle={merging.method} icon={<GitMerge size={16} />}>
+          <div className="space-y-3 text-sm" dir="rtl">
+            <p className="text-xs text-gray-600">الخزنتين دول نفس الخزنة؟ «{merging.method}» هتتحسب من دلوقتي باسم الخزنة اللي تختارها، ورصيدها ({num(merging.balance ?? 0)} {unit(merging.currency)}) بيتجمع على رصيدها. الدفعات القديمة مبتتغيرش.</p>
+            <select value={mergeTarget} onChange={event => setMergeTarget(event.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+              <option value="">— دمجها في أنهي خزنة؟ —</option>
+              {(report?.boxes || []).filter(item => item.method !== merging.method).map(item => <option key={`${item.method}:${item.currency}`} value={item.method}>{item.method}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button type="button" disabled={!mergeTarget || Boolean(busy)} onClick={async () => {
+                const from = merging.method;
+                const note = await askNote();
+                if (note === null) return;
+                setMerging(null);
+                await send(`m:${from}`, 'merge', { from, into: mergeTarget, note });
+                setRefreshKey(key => key + 1);
+              }} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">ادمج</button>
+              <button type="button" onClick={() => setMerging(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-xs text-gray-600">إلغاء</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {balances && <PartnerWithdrawalsTable canManage={canManage} refreshKey={refreshKey} onChanged={load} />}
 
       {balances && events.length > 0 && (
         <div className="rounded-2xl border border-gray-200 bg-white">

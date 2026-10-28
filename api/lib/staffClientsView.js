@@ -169,12 +169,31 @@ function clientItems(client, catalogue, fallbackCurrency) {
   Object.entries(client.priorPaid || {}).forEach(([item, amount]) => {
     if (item && Number(amount) > 0 && !item.startsWith('multi:') && !inTracks.has(item)) keys.add(item);
   });
-  return [...keys].map(item => {
+  const built = [...keys].map(item => {
     const entry = item.startsWith('bundle:') ? catalogue.bundles.get(item.slice(7)) : catalogue.courses.get(item);
     const currency = (client.paymentHistory || []).find(payment => itemKeyOf(payment) === item)?.currency || fallbackCurrency;
     const expected = agreedPriceFor(client, item, catalogueIn(entry?.price, currency), currency);
     const paid = paidFor(client, item, currency) + (Number(client.priorPaid?.[item]) || 0);
-    return { currency, paid, remaining: Math.max(0, expected - paid) };
+    return { item, currency, expected, paid };
+  });
+  // The same rule as the table (admin/lib/agreedPrice.ts clientItems): a course inside a track the client holds is not an item of its own — its
+  // price is the track's — and what was paid for it counts toward the track, in the same currency, so a filter and a row cannot disagree.
+  const trackOf = new Map();
+  for (const row of built) {
+    if (!row.item.startsWith('bundle:')) continue;
+    for (const courseId of catalogue.bundles.get(row.item.slice(7))?.courseIds || []) if (!trackOf.has(courseId)) trackOf.set(courseId, row.item);
+  }
+  const carried = new Map();
+  const shown = built.filter(row => {
+    const track = row.item.startsWith('bundle:') ? undefined : trackOf.get(row.item);
+    if (!track) return true;
+    const owner = built.find(candidate => candidate.item === track);
+    if (owner && owner.currency === row.currency) carried.set(track, (carried.get(track) || 0) + row.paid);
+    return false;
+  });
+  return shown.map(row => {
+    const paid = row.paid + (carried.get(row.item) || 0);
+    return { currency: row.currency, paid, remaining: Math.max(0, row.expected - paid) };
   });
 }
 

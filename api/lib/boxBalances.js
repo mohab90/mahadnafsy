@@ -15,6 +15,7 @@
 
 const { uuidv4 } = require('./id');
 const { canonicalChannel } = require('./paymentChannels');
+const { applyAlias, loadBoxAliases, registerAlias } = require('./boxAliases');
 
 const GENERAL = '__general__';
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -22,8 +23,12 @@ const fail = (message, code, statusCode = 400) => Object.assign(new Error(messag
 
 const PAID = "(p.status = 'paid' OR p.status IS NULL)";
 
-/** Payments' sums by (box, currency), merged from the raw spellings; `since` limits them to payments entered after it. */
-async function sumsByBox(db, { tenantId, since = null }) {
+/**
+ * What is in a box beyond its opening, by (box, currency): the paid payments merged from their raw spellings and read through the box aliases,
+ * less what was withdrawn from it and plus what was transferred in (lib/boxWithdrawals.js). `since` limits all of it to what was entered after it.
+ */
+async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
+  const names = aliases || await loadBoxAliases(db, tenantId);
   const [rows] = await db.query(
     `SELECT p.payment_method AS method, p.currency, SUM(p.amount) AS total
        FROM payments p
@@ -32,8 +37,21 @@ async function sumsByBox(db, { tenantId, since = null }) {
     since ? [tenantId, since] : [tenantId]);
   const sums = new Map();
   for (const row of rows) {
-    const key = `${canonicalChannel(row.method)}|${row.currency || 'EGP'}`;
+    const key = `${applyAlias(canonicalChannel(row.method), names)}|${row.currency || 'EGP'}`;
     sums.set(key, round2((sums.get(key) || 0) + Number(row.total)));
+  }
+  const [taken] = await db.query(
+    `SELECT method, to_method, currency, kind, SUM(amount) AS total FROM box_withdrawals
+      WHERE tenant_id = ? AND voided_at IS NULL${since ? ' AND created_at > ?' : ''}
+      GROUP BY method, to_method, currency, kind`,
+    since ? [tenantId, since] : [tenantId]);
+  for (const row of taken) {
+    const out = `${applyAlias(row.method, names)}|${row.currency}`;
+    sums.set(out, round2((sums.get(out) || 0) - Number(row.total)));
+    if (row.kind === 'transfer' && row.to_method) {
+      const into = `${applyAlias(row.to_method, names)}|${row.currency}`;
+      sums.set(into, round2((sums.get(into) || 0) + Number(row.total)));
+    }
   }
   return sums;
 }
@@ -45,8 +63,9 @@ async function sumsByBox(db, { tenantId, since = null }) {
 async function currentBalances(db, { tenantId, lock = false }) {
   const [stored] = await db.query(
     `SELECT method, currency, opening_amount, baseline_at FROM box_balances WHERE tenant_id = ?${lock ? ' FOR UPDATE' : ''}`, [tenantId]);
+  const aliases = await loadBoxAliases(db, tenantId);
   const baselines = new Map(stored.map(row => [`${row.method}|${row.currency}`, row]));
-  const everything = await sumsByBox(db, { tenantId });
+  const everything = await sumsByBox(db, { tenantId, aliases });
   // A box with a baseline counts only what came in after it: one grouped query per distinct baseline.
   const sinceCache = new Map();
   const balances = new Map();
@@ -56,7 +75,7 @@ async function currentBalances(db, { tenantId, lock = false }) {
     let sums = everything;
     if (base?.baseline_at) {
       const stamp = new Date(base.baseline_at).getTime();
-      if (!sinceCache.has(stamp)) sinceCache.set(stamp, await sumsByBox(db, { tenantId, since: base.baseline_at }));
+      if (!sinceCache.has(stamp)) sinceCache.set(stamp, await sumsByBox(db, { tenantId, since: base.baseline_at, aliases }));
       sums = sinceCache.get(stamp);
     }
     const opening = round2(base?.opening_amount);
@@ -72,6 +91,31 @@ async function logEvent(db, { tenantId, method, currency, kind, before, after, n
     `INSERT INTO box_balance_events (id, tenant_id, method, currency, kind, balance_before, balance_after, note, actor)
      VALUES (?,?,?,?,?,?,?,?,?)`,
     [uuidv4(), tenantId, method, currency, kind, before, after, String(note || '').trim().slice(0, 500) || null, actor ? String(actor).slice(0, 255) : null]);
+}
+
+/**
+ * «دمج»: one box is another's under a different name. The name is read through box_aliases from now on, the merged box's own opening row is removed, and
+ * the surviving box is set to the SUM of the two balances as they were — nothing is lost or invented by merging. Every currency either box has is done.
+ */
+async function mergeBoxes(db, { tenantId, from, into, note = '', actor = null }) {
+  const source = String(from || '').trim();
+  const target = String(into || '').trim();
+  const before = await currentBalances(db, { tenantId, lock: true });
+  const survivor = await registerAlias(db, { tenantId, from: source, into: target, actor });
+  const currencies = [...new Set([...before.keys()].filter(key => key.startsWith(`${source}|`) || key.startsWith(`${survivor}|`)).map(key => key.slice(key.lastIndexOf('|') + 1)))];
+  await db.query('DELETE FROM box_balances WHERE tenant_id = ? AND method = ?', [tenantId, source]);
+  const after = await currentBalances(db, { tenantId, lock: true });
+  const moved = [];
+  for (const currency of currencies) {
+    const want = round2((before.get(`${source}|${currency}`)?.balance || 0) + (before.get(`${survivor}|${currency}`)?.balance || 0));
+    const current = after.get(`${survivor}|${currency}`) || { balance: 0, opening: 0 };
+    if (Math.abs(current.balance - want) > 0.004) {
+      await writeBox(db, { tenantId, method: survivor, currency, opening: round2(current.opening + want - current.balance), baselineNow: false, actor });
+    }
+    await logEvent(db, { tenantId, method: `${source} ← دُمجت في ${survivor}`.slice(0, 191), currency, kind: 'merge', before: want, after: want, note, actor });
+    moved.push({ currency, balance: want });
+  }
+  return { into: survivor, balances: moved };
 }
 
 const cleanCurrency = value => {
@@ -149,4 +193,4 @@ async function recentEvents(db, { tenantId, limit = 30 }) {
   }));
 }
 
-module.exports = { GENERAL, currentBalances, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, sumsByBox, totalOf };
+module.exports = { GENERAL, currentBalances, logEvent, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, sumsByBox, totalOf, writeBox };

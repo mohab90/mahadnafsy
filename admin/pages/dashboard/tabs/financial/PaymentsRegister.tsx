@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Receipt, Search, X } from 'lucide-react';
+import { ArrowDown01, Download, Receipt, Search, X } from 'lucide-react';
 import { escapeHtml } from '../../../../lib/safeHtml';
 import { useNavigate } from 'react-router-dom';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import { downloadCsv } from '../../../../../shared/csv';
 import { TransferProofLink } from '../../../../components/TransferProofLink';
+import { ReceiptGapsReport } from '../daqqi/ReceiptGapsAlert';
 
 type RegisterRow = {
   id: string;
@@ -77,6 +78,7 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [byNumber, setByNumber] = useState(false);
 
   useEffect(() => { setMethod(initialMethod || ''); if (initialMethod) setChannel(''); }, [initialMethod]);
   useEffect(() => { const t = setTimeout(() => setSearch(q.trim()), 350); return () => clearTimeout(t); }, [q]);
@@ -87,8 +89,9 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
     set('q', search); set('from', from); set('to', to); set('channel', channel);
     if (!channel) set('method', method);
     set('type', type); set('staff', staff); set('status', status); set('branch', branch || '');
+    if (byNumber) params.set('sort', 'number');
     return params.toString();
-  }, [search, from, to, channel, method, type, staff, status, branch]);
+  }, [search, from, to, channel, method, type, staff, status, branch, byNumber]);
   useEffect(() => { setPage(0); }, [query]);
 
   useEffect(() => {
@@ -190,12 +193,18 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
               <X size={11} /> مسح الفلاتر
             </button>
           )}
+          <button type="button" onClick={() => setByNumber(value => !value)} aria-pressed={byNumber}
+            className={`flex items-center gap-1 text-xs border rounded-xl px-3 py-2 font-bold ${byNumber ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'}`}>
+            <ArrowDown01 size={11} /> {byNumber ? 'مرتّبة بأرقام العمليات' : 'ترتيب أرقام العمليات + الناقص'}
+          </button>
           <button type="button" onClick={() => void exportCsv()} disabled={exporting || !data?.total}
             className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-3 py-2 font-bold hover:bg-emerald-100 disabled:opacity-50">
             <Download size={11} /> {exporting ? 'جارٍ التصدير…' : 'تصدير CSV'}
           </button>
         </div>
       </div>
+
+      {byNumber && <ReceiptGapsReport branch={branch ? branch.toUpperCase() : undefined} />}
 
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         {error && <div className="px-4 py-3 text-xs text-red-600 bg-red-50">{error}</div>}

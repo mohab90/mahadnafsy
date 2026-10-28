@@ -89,7 +89,7 @@ export function clientItems(
     if (item && Number(amount) > 0 && !item.startsWith('multi:') && !inTracks.has(item)) keys.add(item);
   });
 
-  return [...keys].map(item => {
+  const built = [...keys].map(item => {
     const isTrack = item.startsWith('bundle:');
     const entry = isTrack ? bundles.find(bundle => `bundle:${bundle.id}` === item) : courses.find(course => course.id === item);
     const currency = (subscriber.paymentHistory || []).find(payment => itemKeyOf(payment) === item)?.currency || fallbackCurrency;
@@ -97,6 +97,33 @@ export function clientItems(
     const paid = paidFor(subscriber, item, currency) + (Number(subscriber.priorPaid?.[item]) || 0);
     const pending = pendingFor(subscriber, item, currency);
     return { item, title: entry?.title || item, isTrack, currency, expected, paid, pending, remaining: Math.max(0, expected - paid) };
+  });
+
+  // «مدام اتحول للمسار مينفعش تعرض الكورس الصغير»: a course that is inside a track the client holds is not listed beside it — its price is the
+  // track's. What was paid for it (a payment, a saved price, money from before the system, left from a booking made as a single course) is
+  // the client's money all the same, so it is counted toward the track instead of vanishing with the row, in the same currency only.
+  const trackOf = new Map<string, string>();
+  for (const row of built) {
+    if (!row.isTrack) continue;
+    const bundle = bundles.find(entry => `bundle:${entry.id}` === row.item);
+    for (const course of bundle?.courses || []) if (!trackOf.has(course.id)) trackOf.set(course.id, row.item);
+  }
+  const folded = new Map<string, { paid: number; pending: number }>();
+  const shown = built.filter(row => {
+    const track = row.isTrack ? undefined : trackOf.get(row.item);
+    if (!track) return true;
+    const owner = built.find(candidate => candidate.item === track);
+    if (owner && owner.currency === row.currency) {
+      const carried = folded.get(track) || { paid: 0, pending: 0 };
+      folded.set(track, { paid: carried.paid + row.paid, pending: carried.pending + row.pending });
+    }
+    return false;
+  });
+  return shown.map(row => {
+    const carried = folded.get(row.item);
+    if (!carried) return row;
+    const paid = row.paid + carried.paid;
+    return { ...row, paid, pending: row.pending + carried.pending, remaining: Math.max(0, row.expected - paid) };
   });
 }
 

@@ -35,6 +35,8 @@ function boxDb({ payments }) {
         }
         return [[...sums].map(([key, total]) => ({ method: key.split('|')[0], currency: key.split('|')[1], total }))];
       }
+      if (/^SELECT alias, target FROM box_aliases/.test(text)) return [[]];
+      if (/FROM box_withdrawals/.test(text)) return [[]];
       if (/^INSERT INTO box_balances/.test(text)) {
         const [, method, currency, opening] = params;
         const previous = state.balances.get(keyOf(method, currency));

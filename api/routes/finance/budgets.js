@@ -18,7 +18,9 @@ const {
 const { loadExpenseCategories, expenseCategoryLabel } = require('../../lib/expenseCategories');
 const { canonicalChannel } = require('../../lib/paymentChannels');
 const { hasPermission } = require('../../constants/permissions');
-const { GENERAL, currentBalances, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
+const { GENERAL, currentBalances, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
+const { PARTNERS, listWithdrawals, voidWithdrawal, withdraw } = require('../../lib/boxWithdrawals');
+const { applyAlias, loadBoxAliases } = require('../../lib/boxAliases');
 
 const router = Router();
 
@@ -173,7 +175,9 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
         ORDER BY total_30 DESC`,
       [...BOX_WINDOWS.flatMap(days => [since(days), since(days)]), yesterday, yesterday, req.tenantId, since(30), today,
         ...(scope.branchId ? [scope.branchId] : [])]);
-    // One box per channel: «فودافون كاش 7722» typed two ways is one box (lib/paymentChannels.js).
+    // One box per channel: «فودافون كاش 7722» typed two ways is one box (lib/paymentChannels.js); two numbers the desk says are one box are read
+    // as one through the aliases (lib/boxAliases.js).
+    const aliases = await loadBoxAliases(pool, req.tenantId);
     const merged = new Map();
     const emptyBox = (method, currency) => ({
       method,
@@ -183,7 +187,7 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
       yesterday: { total: 0, count: 0 },
     });
     for (const row of rows) {
-      const method = canonicalChannel(row.method);
+      const method = applyAlias(canonicalChannel(row.method), aliases);
       const currency = row.currency || 'EGP';
       const box = merged.get(`${method}|${currency}`) || emptyBox(method, currency);
       for (const days of BOX_WINDOWS) {
@@ -207,6 +211,7 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
       const currencies = [...new Set([...merged.values()].map(box => box.currency).concat([...current.keys()].map(currencyOf)))];
       balances = {
         canManage: Boolean(req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_financial')),
+        partners: PARTNERS.map(({ key, name }) => ({ key, name })),
         totals: Object.fromEntries(currencies.map(currency => [currency, totalOf(current, currency)])),
         general: Object.fromEntries(currencies.map(currency => [currency, current.get(`${GENERAL}|${currency}`)?.opening || 0])),
       };
@@ -264,6 +269,28 @@ router.post('/api/admin/finance/boxes/reset', ...mainBooks, boxChange((db, { ten
 router.post('/api/admin/finance/boxes/balance', ...mainBooks, boxChange((db, { tenantId, actor, body }) => setBoxBalance(db, { tenantId, method: body.method, currency: body.currency, amount: body.amount, note: body.note, actor }), 'box_set_balance'));
 router.post('/api/admin/finance/boxes/total', ...mainBooks, boxChange((db, { tenantId, actor, body }) => setTotalBalance(db, { tenantId, currency: body.currency, amount: body.amount, note: body.note, actor }), 'box_set_total'));
 router.post('/api/admin/finance/boxes/reset-all', ...mainBooks, boxChange((db, { tenantId, actor, body }) => resetAll(db, { tenantId, currency: body.currency, note: body.note, actor }), 'box_reset_all'));
+// «سحب من الرصيد»: money out of a box, directed to an account (a partner's drawings, an expense, any account) or to another box.
+router.post('/api/admin/finance/boxes/withdraw', ...mainBooks, boxChange((db, { tenantId, actor, body }) => withdraw(db, { tenantId, actor, today: dateOnlyInTimeZone(), input: body }), 'box_withdraw'));
+router.post('/api/admin/finance/boxes/withdrawals/void', ...mainBooks, boxChange((db, { tenantId, actor, body }) => voidWithdrawal(db, { tenantId, id: String(body.id || ''), actor, today: dateOnlyInTimeZone() }), 'box_withdraw_void'));
+// «دمج»: one box is another's. The balances are added, nothing else changes.
+router.post('/api/admin/finance/boxes/merge', ...mainBooks, boxChange(async (db, { tenantId, actor, body }) => {
+  const result = await mergeBoxes(db, { tenantId, from: body.from, into: body.into, note: body.note, actor });
+  const total = result.balances.reduce((sum, entry) => sum + entry.balance, 0);
+  return { ...result, before: total, after: total };
+}, 'box_merge'));
+router.get('/api/admin/finance/boxes/withdrawals', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const scope = resolveFinancialScope(req, { requestedBranch: null });
+    if (scope.branchId || scope.kind !== 'all') return res.json({ rows: [], partners: [] });
+    const date = value => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null);
+    res.json(await listWithdrawals(pool, {
+      tenantId: req.tenantId, from: date(req.query.from), to: date(req.query.to), kind: req.query.kind || null, partner: req.query.partner || null,
+    }));
+  } catch (e) {
+    logger.error('[finance/boxes withdrawals]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
 router.get('/api/admin/finance/boxes/history', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: null });

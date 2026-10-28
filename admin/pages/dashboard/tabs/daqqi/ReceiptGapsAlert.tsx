@@ -15,15 +15,15 @@ type BranchGaps = Run & { branch: string; label: string; expenses?: Run; ok: boo
  * sequence is whole, and nothing for anyone the endpoint does not answer.
  */
 /** One run's problems — the receipts' or the expenses' — as lines under its heading; nothing when whole. */
-function RunProblems({ title, noun, run }: { title: string; noun: string; run: Run }) {
-  if (!run.missing.length && !run.removed.length) return null;
+function RunProblems({ title, noun, run, limit = 20, whole = false }: { title: string; noun: string; run: Run; limit?: number; whole?: boolean }) {
+  if (!run.missing.length && !run.removed.length) return whole ? <p className="mb-1.5 text-emerald-700"><b>{title}</b> — التسلسل كامل ✓</p> : null;
   return (
     <div className="mb-1.5 last:mb-0">
       <p className="mb-1 font-bold">{title}</p>
       {run.missing.length > 0 && (
         <p>
-          {run.missing.slice(0, 20).map(number => `${noun} رقم ${number}`).join('، ')}
-          {run.missing.length > 20 ? ` … و${run.missing.length - 20} كمان` : ''} <b>مش موجود</b> في التسلسل.
+          {run.missing.slice(0, limit).map(number => `${noun} رقم ${number}`).join('، ')}
+          {run.missing.length > limit ? ` … و${run.missing.length - limit} كمان` : ''} <b>مش موجود</b> في التسلسل.
         </p>
       )}
       {run.removed.map(row => (
@@ -32,6 +32,34 @@ function RunProblems({ title, noun, run }: { title: string; noun: string; run: R
           {row.date ? ` — ${cairoDay(row.date)}` : ''}{row.staffName ? ` — سجّله ${row.staffName}` : ''}).
         </p>
       ))}
+    </div>
+  );
+}
+
+/**
+ * «زر يرتب أرقام العمليات بالترتيب ويطلع الأرقام الناقصة»: the register is sorted by its numbers and this lists EVERY missing or removed number of
+ * each branch's receipts and expenses (the alert above shows the first twenty, and nothing when whole).
+ */
+export function ReceiptGapsReport({ branch }: { branch?: string }) {
+  const [gaps, setGaps] = useState<BranchGaps[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    mysqlAdmin.adminGet<{ branches: BranchGaps[] }>('/admin/receipts/gaps')
+      .then(answer => setGaps((answer.branches || []).filter(entry => !branch || entry.branch === branch)), () => setError('تعذر فحص تسلسل الأرقام'));
+  }, [branch]);
+  if (error) return <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>;
+  if (!gaps) return <p className="text-xs text-gray-500">بيفحص التسلسل…</p>;
+  if (!gaps.length) return <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">مفيش فروع ليها ترقيم إيصالات متسلسل.</p>;
+  return (
+    <div className="space-y-2 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3 text-xs leading-relaxed text-gray-800">
+      <p className="font-extrabold text-indigo-900">الأرقام الناقصة في تسلسل الإيصالات والمصروفات</p>
+      {gaps.map(entry => (
+        <div key={entry.branch} className="rounded-xl bg-white/80 p-2.5">
+          <RunProblems whole limit={Infinity} title={`${entry.label} — ${entry.count} إيصال، آخر رقم ${entry.highest}`} noun="إيصال" run={entry} />
+          {entry.expenses && <RunProblems whole limit={Infinity} title={`${entry.label} — ${entry.expenses.count} مصروف، آخر رقم ${entry.expenses.highest}`} noun="مصروف" run={entry.expenses} />}
+        </div>
+      ))}
+      <p className="text-[11px] text-gray-500">الدفعات الأونلاين ليها رقم عام بيجري على كل الفروع، فمفيش «ناقص» بالمعنى ده فيها.</p>
     </div>
   );
 }

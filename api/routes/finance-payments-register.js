@@ -47,6 +47,8 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
       const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
       const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
       const status = ['paid', 'pending', 'refunded', 'failed', 'all'].includes(req.query.status) ? req.query.status : 'paid';
+      // «ترتيب أرقام العمليات»: each branch's receipts in their own order (1, 2, 3…), then the rest by their running number, instead of by date.
+      const byNumber = req.query.sort === 'number';
 
       // The range and the scope define the population the facets describe;
       // the other filters narrow the rows within it.
@@ -122,7 +124,7 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
                   p.staff_id, COALESCE(st.name, NULLIF(p.staff_name, '')) AS staff_name
              ${from}
             WHERE p.tenant_id = ?${where}
-            ORDER BY p.date DESC, p.payment_no DESC
+            ORDER BY ${byNumber ? 'CASE WHEN p.receipt_no IS NULL THEN 1 ELSE 0 END, p.branch ASC, COALESCE(p.receipt_no, p.payment_no) ASC' : 'p.date DESC, p.payment_no DESC'}
             LIMIT ? OFFSET ?`,
           [req.tenantId, ...params, pageSize, page * pageSize]),
       ]);
@@ -134,6 +136,7 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
           // every other payment keeps the institute-wide one.
           number: r.receipt_no != null ? Number(r.receipt_no) : (r.payment_no != null ? Number(r.payment_no) : null),
           receiptBranch: r.receipt_no != null ? (r.branch === 'TAGAMOA' ? 'التجمع' : 'الدقي') : null,
+          branch: r.branch || null,
           operationNo: r.payment_no != null ? Number(r.payment_no) : null,
           date: r.date,
           amount: Number(r.amount),
