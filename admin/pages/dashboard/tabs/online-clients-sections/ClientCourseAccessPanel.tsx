@@ -109,6 +109,7 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
 
   useEffect(() => {
     void load();
+    // Once per client: load reads only that client's address and setters; notify is rebuilt by the parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscriberId]);
 

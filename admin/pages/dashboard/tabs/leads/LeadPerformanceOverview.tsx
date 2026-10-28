@@ -4,9 +4,7 @@ import type { NavigateFunction } from 'react-router-dom';
 import type { LeadItem, LeadStatus, SalesTarget, StaffMember } from '../../../../types';
 import type { NotifyFn } from '../CrmSettingsModal';
 import { useCrmData } from '../../../../context/siteDataSlices';
-import { calcLeadScore } from '../leadUtils';
 import { LEAD_STATUS_CFG, ScoreBadge, crmStatusLabels } from './LeadSubcomponents';
-import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 type SalesPerformanceRow = {
   rep: StaffMember;
@@ -36,7 +34,6 @@ type SmartRedistributionCandidate = {
   suggestedRep?: StaffMember;
 };
 
-type ScoredLead = LeadItem & { _score: number };
 
 type LeadPerformanceOverviewProps = {
   targetMonth: string;
@@ -44,7 +41,6 @@ type LeadPerformanceOverviewProps = {
   salesReps: StaffMember[];
   handleDistribute: () => void | Promise<void>;
   distributing: boolean;
-  leads: LeadItem[];
   salesPerformance: SalesPerformanceRow[];
   salesTargets: SalesTarget[];
   saveSalesTargets: (targets: SalesTarget[]) => void;
@@ -55,9 +51,9 @@ type LeadPerformanceOverviewProps = {
   updateLead: (lead: LeadItem) => void | Promise<boolean>;
   notify: NotifyFn;
   navigate: NavigateFunction;
-  scoredLeads: ScoredLead[];
   totalConverted: number;
-  overdueLeads: LeadItem[];
+  /** Open leads whose follow-up is today or past (GET /admin/leads/followups-due), null until it answers. */
+  overdueCount: number | null;
 };
 
 export function LeadPerformanceOverview({
@@ -66,7 +62,6 @@ export function LeadPerformanceOverview({
   salesReps,
   handleDistribute,
   distributing,
-  leads,
   salesPerformance,
   salesTargets,
   saveSalesTargets,
@@ -77,18 +72,15 @@ export function LeadPerformanceOverview({
   updateLead,
   notify,
   navigate,
-  scoredLeads,
   totalConverted,
-  overdueLeads,
+  overdueCount,
 }: LeadPerformanceOverviewProps) {
   const { leadStats } = useCrmData();
-  // Both /admin/leads and /admin/leads/stats filter hidden = 0 under the same
-  // role scoping, so they describe the same population and this substitution is
-  // exact rather than merely close. Falls back to counting the array while the
-  // aggregate is still in flight.
+  // Every figure here is the server's (GET /admin/leads/stats), over the caller's whole scope. They fell back to
+  // counting the leads the browser held — the newest 500 — before the aggregate answered; the screen holds none now.
   const activeLeadCount = leadStats
     ? Math.max(0, leadStats.total - (leadStats.byStatus?.converted || 0) - (leadStats.byStatus?.lost || 0))
-    : leads.filter(l => isOpenLeadStatus(l.status) && !l.hidden).length;
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -132,9 +124,7 @@ export function LeadPerformanceOverview({
             const wanted = statusesFor(s.key);
             return {
               ...s,
-              count: leadStats
-                ? wanted.reduce((sum, status) => sum + (leadStats.byStatus?.[status] || 0), 0)
-                : leads.filter(l => !l.hidden && wanted.includes(l.status)).length,
+              count: wanted.reduce((sum, status) => sum + (leadStats?.byStatus?.[status] || 0), 0),
             };
           });
           const maxCount = Math.max(...counts.map(s => s.count), 1);
@@ -470,9 +460,9 @@ export function LeadPerformanceOverview({
         </h4>
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'سكور عالي (70+)', count: scoredLeads.filter(l => l._score >= 70 && isOpenLeadStatus(l.status)).length, color: 'bg-emerald-500' },
-            { label: 'متوسط (40–69)',   count: scoredLeads.filter(l => l._score >= 40 && l._score < 70 && isOpenLeadStatus(l.status)).length, color: 'bg-amber-500' },
-            { label: 'منخفض (<40)',     count: scoredLeads.filter(l => l._score < 40 && isOpenLeadStatus(l.status)).length, color: 'bg-gray-400' },
+            { label: 'سكور عالي (70+)', count: leadStats?.scoreBands?.high ?? 0, color: 'bg-emerald-500' },
+            { label: 'متوسط (40–69)',   count: leadStats?.scoreBands?.mid ?? 0, color: 'bg-amber-500' },
+            { label: 'منخفض (<40)',     count: leadStats?.scoreBands?.low ?? 0, color: 'bg-gray-400' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <div className={`${s.color} text-white text-3xl font-extrabold rounded-2xl py-5 mb-2`}>{s.count}</div>
@@ -487,14 +477,10 @@ export function LeadPerformanceOverview({
         {[
           { label: 'ليدز نشطة', val: activeLeadCount, color: 'bg-blue-50 text-blue-700 border-blue-200' },
           { label: 'محوّل لمشترك',  val: totalConverted, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-          { label: 'تذكيرات متأخرة', val: overdueLeads.length, color: 'bg-red-50 text-red-700 border-red-200' },
+          { label: 'تذكيرات متأخرة', val: overdueCount ?? 0, color: 'bg-red-50 text-red-700 border-red-200' },
           {
             label: 'متوسط السكور',
-            val: leadStats
-              ? leadStats.avgScore
-              : (leads.filter(l => !l.hidden).length > 0
-                  ? Math.round(leads.filter(l => !l.hidden).reduce((s, l) => s + calcLeadScore(l), 0) / leads.filter(l => !l.hidden).length)
-                  : 0),
+            val: leadStats?.avgScore ?? 0,
             color: 'bg-violet-50 text-violet-700 border-violet-200',
           },
         ].map(c => (

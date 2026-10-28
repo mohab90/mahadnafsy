@@ -247,9 +247,13 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   // the subscriber bootstrap carries only the history it happened to include —
   // so clicking a box in «الخزائن» used to filter whatever was already in the
   // browser, which for most boxes was nothing at all.
+  // The rows are the branch's: another branch asks again. This said loadDbPayments «only reads setState setters», and it
+  // reads branchFilter — the screen kept the rows it had loaded for the branch it was opened with.
+  useEffect(() => { setDbPayments(null); }, [branchFilter]);
   useEffect(() => {
     if ((orderMethodFilter || financialSubTab === 'overview') && dbPayments === null && !loadingDbPayments) void loadDbPayments();
-    // loadDbPayments is stable enough for this: it only reads setState setters.
+    // loadDbPayments is rebuilt every render and reads only branchFilter (reset above) and setters; listing it would
+    // re-run this on every render, which the null check already makes harmless but pointless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderMethodFilter, financialSubTab, dbPayments, loadingDbPayments]);
 

@@ -115,34 +115,10 @@ export const saasOpsTabs = new Set<string>([
  * loading data nobody looks at is slow, but a screen computing over a partial
  * array is wrong, and wrong is worse.
  */
-/** Sub-tabs of the leads screen that genuinely need every lead in memory.
- *
- *  The screen itself is not in `fullCrmDataTabs`; the reminder / performance /
- *  analytics panels read server aggregates instead. The pipeline board reads
- *  each column's count and first cards from GET /admin/leads/board
- *  (the pipeline now reads the same server page as the table), under the same filters.
- *
- *  Duplicate review reads GET /admin/leads/duplicates itself, and the
- *  reminders' undated queues («محدش كلمهم», «وعدوا بالدفع») now come from
- *  crm-insights with the dated ones, so neither needs every lead.
- *
- *  The pool views (localNew, dawliOld/dawliNew = «داتا سعودي», archive) are not
- *  here any more: each reads its own pool from GET /admin/leads/pool
- *  (leads/useLeadPool.ts, api/lib/leadPoolFilter.js), filtered by the server
- *  with the same rules leadSourceGroups.ts applies.
- *
- *  'table' is not here any more: it pages against GET /admin/leads/table
- *  (leads/useServerLeadTable.ts), which filters and counts in the database.
- *  It was here because it sliced the whole array in the browser — the
- *  500-row bootstrap page read as "500 عميل" against 30,964 real leads — and
- *  holding the whole array stops being possible past the fetch's 50,000-row cap.
- *
- *  LeadsTab calls loadFullCrmData() when one of these opens, so the 30,964-row
- *  fetch happens on the screens that need it and nowhere else. */
-export const fullLeadArraySubTabs = new Set<string>([
-  // Empty: every lead sub-tab reads its own server data now. Kept so a future
-  // screen that truly must scan every lead has one place to declare it.
-]);
+/** The leads screen (LeadsTab) holds no lead or client list at all: its table, board and pools page from the server
+ *  (GET /admin/leads/table, /board, /pool) and every figure on it is a server aggregate (/stats, /followups-due,
+ *  /crm-insights, /rep-revenue). The set of its sub-tabs that loaded every lead (fullLeadArraySubTabs) was empty and
+ *  is gone with the loader it fed. */
 
 /**
  * Which whole table a screen needs, split three ways.
@@ -206,7 +182,8 @@ export const fullLeadTabs = new Set<string>([
 
 /** Reads every subscriber, no leads. */
 export const fullSubscriberTabs = new Set<string>([
-  'online_clients',
+  // online_clients is not here any more: it pages from the server for every account, the administration included
+  // (staffListTabs.ts staffClientsArePaged) — the whole client table with its payments was 6.3 MB on the lab.
   // analytics_hub is not here any more: retention buckets the clients by the month they joined and finished and averages
   // what they paid, and the server does it over every client (GET /api/admin/analytics-hub/retention), whatever page is
   // loaded. It was in no loading set at all once, and read the 500-row bootstrap page: "500 إجمالي المشتركين" against 1,371.

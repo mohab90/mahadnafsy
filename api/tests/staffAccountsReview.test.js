@@ -16,6 +16,7 @@ const { leadsRouteSource, sourceOf } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -186,7 +187,7 @@ test('employee requests: hours on a permission, the HR inbox, and payroll excusi
 // from accounts the server would refuse; every role now holds manage_payments,
 // so the button is on every account and its save is never refused.
 test('booking is on every account, and every account may record it', () => {
-  assert.match(read('admin/pages/Dashboard.tsx'), /\n      <Suspense fallback=\{null\}>\s*<DashboardQuickBooking/);
+  assert.match(dashboardSource(), /\n      <Suspense fallback=\{null\}>\s*<DashboardQuickBooking/);
   const { ROLE_PERMS } = require('../constants/permissions');
   for (const [role, perms] of Object.entries(ROLE_PERMS)) {
     assert.ok(perms === '*' || perms.includes('manage_payments'), `${role} cannot record the booking it is offered`);

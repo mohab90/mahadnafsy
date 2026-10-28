@@ -1326,6 +1326,8 @@ export interface LeadStats {
   createdToday: number;
   /** Collection officers holding leads, for the rep filter («بعد السيلز … اسماء التحصيل»). */
   collectionHolders?: Array<{ id: string; name: string; count: number }>;
+  /** Open leads by score band (≥70, 40–69, <40), for the performance page's «توزيع السكور». */
+  scoreBands?: { high: number; mid: number; low: number };
 }
 /** GET /admin/leads/staff-performance — per-rep lead counts inside a date
  *  range, keyed by staff id. */

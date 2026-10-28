@@ -21,7 +21,10 @@ const {
 } = require('./_shared');
 
 const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueOn } = require('../../../lib/leadFollowUps');
-const { addDaysToDateOnly, cairoToday } = require('../../../lib/dates');
+const { addDaysToDateOnly, cairoToday, monthRange } = require('../../../lib/dates');
+const { toEgp } = require('../../../lib/staffClientsView');
+const { resolveDataScope } = require('../../../constants/permissions');
+const { branchesFromScope } = require('../../../lib/leadAccess');
 
 const router = Router();
 
@@ -125,6 +128,52 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
 
     res.json({ from, byStaff });
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/rep-revenue?month=YYYY-MM — what each rep's clients paid in a month, in EGP.
+//
+// «أداء المبيعات» showed each rep's month revenue summed in the browser from the clients' payments, so the leads
+// screen asked for the 500 newest clients with their payment history (700 KB on the lab) and still counted only
+// those 500. The same rule over every client: a payment that is collected (status paid, or none — admin/lib/money.ts
+// isCollected) dated in the month, on a client whose assigned_sales_id is the rep, converted at the browser's own
+// fallback rates (lib/staffClientsView.js toEgp), so the figure is the one the screen used to show over the whole table.
+//
+// Scoped like the clients themselves: everyone for an «all» scope, a branch's clients for a branch scope, and a rep or
+// a collection officer is told their own figure only.
+router.get('/api/admin/leads/rep-revenue', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const range = monthRange(String(req.query.month || '') || cairoToday().slice(0, 7));
+    if (!range) return res.status(400).json({ error: 'month must be YYYY-MM' });
+    const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: Boolean(req.isSuperAdmin), fallback: 'assigned_sales' });
+    if (scope === 'none') return res.json({ month: range.startDate.slice(0, 7), byStaff: {} });
+    let scopeSql = '';
+    const scopeParams = [];
+    if (scope.startsWith('branch:')) {
+      const branches = branchesFromScope(scope);
+      scopeSql = branches.length ? ` AND s.branch IN (${branches.map(() => '?').join(',')})` : ' AND 1=0';
+      scopeParams.push(...branches);
+    } else if (scope !== 'all') {
+      scopeSql = ' AND s.assigned_sales_id = ?';
+      scopeParams.push(String(req.staffRecord?.id || ''));
+    }
+    const [rows] = await pool.query(
+      `SELECT s.assigned_sales_id AS staff_id, p.currency, SUM(p.amount) AS amount
+         FROM payments p
+         JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND s.deleted_at IS NULL
+          AND s.assigned_sales_id IS NOT NULL AND s.assigned_sales_id <> ''
+          AND (p.status IS NULL OR p.status = 'paid')
+          AND p.\`date\` >= ? AND p.\`date\` < ?${scopeSql}
+        GROUP BY s.assigned_sales_id, p.currency`,
+      [req.tenantId, range.startDate, range.endDate, ...scopeParams],
+    );
+    const byStaff = {};
+    for (const row of rows) {
+      const id = String(row.staff_id);
+      byStaff[id] = (byStaff[id] || 0) + toEgp(row.amount, row.currency);
+    }
+    res.json({ month: range.startDate.slice(0, 7), byStaff });
+  } catch (e) { logger.error('[leads-rep-revenue]', e.message); sendRouteError(res, e); }
 });
 
 // GET /api/admin/leads/scored?minScore=&status=&source=&q=&sortBy=&limit=

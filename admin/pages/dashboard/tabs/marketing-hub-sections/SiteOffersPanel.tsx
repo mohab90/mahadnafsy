@@ -85,6 +85,7 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     const fresh = enrollmentRates(content);
     setCashPct(String(percentLabel(fresh.cash)));
     setInstallPct(String(percentLabel(fresh.install)));
+    // Keyed on the saved values' signature: content is a new object on every refresh, and re-seeding on it would undo typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ratesSig]);
   const saveRates = async () => {
@@ -116,6 +117,7 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     setDiscount(content['home.offer.discountPercent'] || '45');
     setHours(String(offerHours(content)));
     setPrices({ EGP: content['offer.price.EGP'] || '', SAR: content['offer.price.SAR'] || '', USD: content['offer.price.USD'] || '' });
+    // Keyed on the saved offer's signature, as above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerSig]);
 
@@ -201,6 +203,7 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
       delaySeconds: content['popup.delaySeconds'] || '3',
       theme: (content['popup.theme'] || 'royal') as PopupTheme,
     });
+    // Keyed on the saved popup's signature, as above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popupSig]);
   const setP = <K extends keyof typeof popup>(key: K, value: (typeof popup)[K]) => setPopup(prev => ({ ...prev, [key]: value }));

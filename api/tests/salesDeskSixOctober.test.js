@@ -23,6 +23,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 
@@ -281,7 +282,7 @@ test('a carnet or a book is never a course instalment, and books beside its cour
   const newClient = read('admin/lib/createClientWithPayment.ts');
   assert.match(newClient, /if \(paymentType === 'course' && !draft\.courseId\) throw new Error/);
   assert.match(newClient, /await mysqlAdmin\.saveSubscriberPayment\(result\.subscriberId, \{/);
-  assert.match(read('admin/components/PaymentModal.tsx'), /\(d\.paymentType !== 'course' \|\| !!d\.courseId\)/);
+  assert.match(paymentModalSource(), /\(d\.paymentType !== 'course' \|\| !!d\.courseId\)/);
 });
 
 test('a Saudi client\'s local number is completed with 966, and only a Saudi client\'s', () => {
@@ -358,7 +359,8 @@ test('the follow-ups page is one list by kind, and it refreshes after each actio
   for (const label of ['متأخرة', 'النهارده', 'الأسبوع ده', 'وعدوا يدفعوا', 'محدش كلمهم']) assert.ok(page.includes(`label: '${label}'`), label);
   assert.match(page, /سجّل التواصل/);
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
-  assert.match(tab, /useCrmInsights\(smartIdleDays, true, insightsKey\)/);
+  // Asked for while the follow-ups page (or the performance page) is open, and again after each action.
+  assert.match(tab, /useCrmInsights\(smartIdleDays, performanceOnly \|\| subTab === 'reminders', insightsKey\)/);
   assert.match(tab, /useLeadQuickCommunication\(\{ reloadLeads, onSaved: bumpInsights \}\)/);
   for (const gone of ['LeadRemindersPanel', 'LeadStaleLeadsPanel', 'CrmWorkQueuePanel', 'useLeadRemoteReminders']) {
     assert.ok(!fs.existsSync(path.join(ROOT, 'admin/pages/dashboard/tabs/leads', `${gone}.tsx`)), gone);
@@ -430,7 +432,9 @@ test('every rep has the inbox and «واتسابي», collection «واتساب�
   assert.match(read('api/routes/team-inbox.js'), /const guard = \[requireAuth, requireAdminOrStaff, requireChannel\('inbox'\)\];/);
   assert.match(read('api/routes/whatsapp-web.js'), /const guard = \[requireAuth, requireAdminOrStaff, requireChannel\('whatsapp'\)\];/);
   assert.match(read('admin/constants/permissions.ts'), /export function canUseChannel\(/);
-  assert.match(read('admin/pages/Dashboard.tsx'), /canOpenTab=\{canOpenChannelTab\}/);
+  // The gate, the menu and the bars apply the same job rule (admin/lib/access.ts canUseChannel, via canOpenTab).
+  assert.match(dashboardSource(), /canOpenTab=\{canOpenTab\}/);
+  assert.match(read('admin/lib/access.ts'), /if \(viewer\.role === 'collection'\) return channel === 'whatsapp';/);
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
   const collectionNav = nav.slice(nav.indexOf('Collection horizontal nav'), nav.indexOf('Reception Daqqi horizontal nav'));
   assert.doesNotMatch(collectionNav, /key: 'team_inbox'/);

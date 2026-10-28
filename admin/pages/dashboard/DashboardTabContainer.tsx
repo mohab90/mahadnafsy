@@ -2,17 +2,14 @@ import React from 'react';
 import { Settings2 } from 'lucide-react';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
-import type { StaffPermission } from '../../types';
 import { AccessDenied } from './DashboardGuards';
 import type { TabKey } from './navigation';
-import { TAB_PERMISSION_MAP } from './dashboardShared';
 
 type DashboardTabContainerProps = {
   activeTab: TabKey;
   isAdmin: boolean;
-  hasPermission: (permission: StaffPermission) => boolean;
-  /** A tab whose access is decided by the job rather than one permission — the inbox and «واتسابي». */
-  canOpenTab?: (tab: TabKey) => boolean | undefined;
+  /** Whether the viewer may open a tab — lib/access.ts canOpenTab, the rule the menu and the role bars use too. */
+  canOpenTab: (tab: TabKey) => boolean;
   children: React.ReactNode;
   placeholderTabs?: TabKey[];
 };
@@ -20,22 +17,14 @@ type DashboardTabContainerProps = {
 export function DashboardTabContainer({
   activeTab,
   isAdmin,
-  hasPermission,
   canOpenTab,
   children,
   placeholderTabs = [],
 }: DashboardTabContainerProps) {
-  // A tab names one permission or several; several means any one of them opens
-  // it. See the comment on TAB_PERMISSION_MAP for why.
-  const requiredPermission = TAB_PERMISSION_MAP[activeTab];
-  // null names a tab that is the viewer's own page; undefined is a tab nobody
-  // mapped, which stays denied.
-  const byJob = canOpenTab?.(activeTab);
-  const allowed = byJob !== undefined ? byJob : requiredPermission === null
-    ? true
-    : Array.isArray(requiredPermission)
-      ? requiredPermission.some(hasPermission)
-      : requiredPermission !== undefined && hasPermission(requiredPermission);
+  // The same decision that put the tab in the menu or the bar (lib/access.ts): a tab names one permission or
+  // several (TAB_PERMISSION_MAP), null is the viewer's own page, the message screens go by the job, and a tab
+  // nobody mapped stays denied.
+  const allowed = canOpenTab(activeTab);
 
   if (!isAdmin && !allowed) {
     return <AccessDenied />;

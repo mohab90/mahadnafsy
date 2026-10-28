@@ -416,8 +416,9 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
   return {
     ids: matching, tabCounts, followCounts,
     figures: { total: all.length, ...markets, ...(dokki ? dokkiCounts : {}), today: collectedToday, week: collectedWeek, month: collectedMonth, remaining, unassigned },
-    // The old-data distribution panel's: how many of the matching clients nobody holds, and how many each person holds.
-    ...(dokki ? { unassignedMatching, assignedCounts } : {}),
+    // The old-data distribution panel's: how many of the matching clients nobody holds, and how many each person holds —
+    // on both screens, since the administration's online screen pages from the server too.
+    unassignedMatching, assignedCounts,
   };
 }
 

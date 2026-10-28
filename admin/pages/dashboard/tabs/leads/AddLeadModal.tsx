@@ -17,13 +17,13 @@ import {
   STATUS_CFG,
 } from '../leadUtils';
 import { TagInput } from './LeadInputs';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
 
-export function AddLeadModal({ courses, bundles, salesReps, leads, sources, branches, onClose, onSave }: {
+export function AddLeadModal({ courses, bundles, salesReps, sources, branches, onClose, onSave }: {
   courses: Course[];
   bundles: Bundle[];
   salesReps: { id: string; name: string }[];
-  leads: LeadItem[];
   sources: string[];
   branches: { id: string; label: string }[];
   onClose: () => void;
@@ -50,10 +50,19 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
     if (!draft.phone.trim()) return setErr('رقم الهاتف مطلوب');
     if (!draft.branch) return setErr('الفرع مطلوب — اختر الفرع أولاً');
     if (!overrideDup) {
+      // Asked of the server (the number's indexed spellings, in the caller's scope): the check looked through the
+      // leads the browser held — the newest 500, and none at all once the screen stopped loading them — so an older
+      // lead with the same number was never found. A failed lookup does not block the save; the server keeps its own
+      // one-lead-per-number rule.
       const normalise = (p?: string | null) => latinDigits(p || '').replace(/\D/g, '');
       const draftPhone = normalise(draft.phone);
-      const dup = leads.find(l => !l.hidden && draftPhone.length >= 7 && normalise(l.phone) === draftPhone);
-      if (dup) { setDupInfo({ name: dup.name, status: dup.status }); return; }
+      if (draftPhone.length >= 7) {
+        try {
+          const found = await mysqlAdmin.listLeadsPage(5, 0, { q: draftPhone }) as unknown as LeadItem[];
+          const dup = found.find(l => !l.hidden && normalise(l.phone) === draftPhone);
+          if (dup) { setDupInfo({ name: dup.name, status: dup.status }); return; }
+        } catch { /* saved below; the server refuses a real duplicate */ }
+      }
     }
     setDupInfo(null);
     setSaving(true);

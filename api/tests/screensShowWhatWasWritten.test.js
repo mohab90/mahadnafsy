@@ -12,6 +12,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -39,7 +40,7 @@ test('a staff member\'s own lists are refreshed one at a time, and the timer and
   assert.ok(own.includes('if (runningRef.current) { queuedRef.current = true; return runningRef.current; }'), 'a call during a run joins it');
   assert.ok(own.includes('if (queuedRef.current) { queuedRef.current = false; runningRef.current = run(); }'), 'and asks for exactly one more');
   assert.ok(own.includes('fetchSalesDataIfStale'));
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.ok(dashboard.includes('void fetchSalesDataIfStale(110 * 1000)'), 'the timer');
   assert.ok(dashboard.includes('void fetchSalesDataIfStale(2 * 60 * 1000)'), 'the return to the tab');
   assert.ok(!/visibilityState === 'visible'\) void fetchSalesData\(\)/.test(dashboard), 'a return to the tab is not a full download');

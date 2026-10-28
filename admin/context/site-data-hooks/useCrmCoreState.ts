@@ -6,13 +6,10 @@ import { normalizeApplicants } from './normalizeApplicants';
 import { normalizeOrders } from './normalizeOrders';
 import { announceCrmChanged, staffListsWanted } from '../../lib/crmChanged';
 import { coalesce, patchRowsById } from '../../lib/reloadCoalescing';
+import { heldRowsOf, mergeSubscribers, normalizeLeads, normalizeSubscribers, type WholeTables } from './crmRows';
 
 type Track = (action: string, entity: string, label: string) => void;
 
-const normalizeLeads = (rows: unknown[]): LeadItem[] => (rows as LeadItem[]).map(l => ({
-  ...l,
-  status: (l.status || 'new').toLowerCase() as LeadStatus,
-}));
 
 // subscribers/leads/staffScoped*/consultations/orders/joinUsApplications are kept
 // together as one "CRM core" domain rather than split further — they're read and
@@ -31,6 +28,7 @@ export function useCrmCoreState(
   subscribersRef: MutableRefObject<SubscriberItem[]>,
   leadsRef: MutableRefObject<LeadItem[]>,
   lastCRMWriteRef: MutableRefObject<number>,
+  wholeTablesRef: MutableRefObject<WholeTables>,
   track: Track,
   issueClientCodeAsync: () => Promise<string>,
   isValidClientCodeFormat: (code: string) => boolean,
@@ -75,21 +73,25 @@ export function useCrmCoreState(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistPaymentHistoryToCollection = (_subscriberId: string, _entries: SubscriberItem['paymentHistory']) => { /* PG-only */ };
 
-  const fetchAllLeads = useCallback(async () => {
+  // What the session holds is what a write refreshes (crmRows.ts heldRowsOf): the whole table only when a screen pulled
+  // the whole table, the first page when one asked for a page, and nothing — only the announcement, which the screens
+  // that page from the server answer by asking again — when no screen holds the list.
+  const fetchHeldLeads = useCallback(async () => {
+    const held = heldRowsOf(wholeTablesRef.current.leads, leadsRef.current.length);
     try {
-      const normalized = normalizeLeads(await mysqlAdmin.listAllLeads());
-      leadsRef.current = normalized;
-      setLeads(normalized);
+      if (held !== 'none') {
+        const normalized = normalizeLeads(held === 'whole' ? await mysqlAdmin.listAllLeads() : await mysqlAdmin.listLeadsPage(500, 0));
+        leadsRef.current = normalized;
+        setLeads(normalized);
+      }
     } catch { /* silent */ }
     // The staff's own lists follow (lib/crmChanged.ts).
     announceCrmChanged();
-  }, [leadsRef]);
+  }, [leadsRef, wholeTablesRef]);
 
-  // reloadLeads() downloads the whole table (27k rows, six pages) and is called
-  // from dozens of places — several at once after one save (a payment reloaded
-  // it from the dialog, the handler and the client page together). Callers now
-  // share the download (lib/reloadCoalescing.ts).
-  const reloadAllLeads = useMemo(() => coalesce(fetchAllLeads), [fetchAllLeads]);
+  // reloadLeads() is called from dozens of places — several at once after one save (a payment reloaded it from the
+  // dialog, the handler and the client page together). Callers share the download (lib/reloadCoalescing.ts).
+  const reloadAllLeads = useMemo(() => coalesce(fetchHeldLeads), [fetchHeldLeads]);
 
   /**
    * reloadLeads({ only: [id] }) refreshes just those leads in place: what a
@@ -119,18 +121,18 @@ export function useCrmCoreState(
     // A screen that pages from the server has no list to reload (lib/crmChanged.ts staffListsWanted), and neither has a
     // session where no screen has asked for the clients yet: the first one that does reads them fresh. Without this a
     // payment taken on the Dokki schedule (which holds no list) downloaded the whole client table to refresh nothing.
-    if (!staffListsWanted() || subscribersRef.current.length === 0) { announceCrmChanged(); return; }
+    if (!staffListsWanted()) { announceCrmChanged(); return; }
+    const held = heldRowsOf(wholeTablesRef.current.subscribers, subscribersRef.current.length);
+    if (held === 'none') { announceCrmChanged(); return; }
     try {
-      const fresh = await mysqlAdmin.listAllSubscribers();
-      const normalized = (fresh as unknown as SubscriberItem[]).map(s => ({
-        ...s,
-        enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [],
-      }));
-      subscribersRef.current = normalized;
-      setSubscribers(normalized);
+      // The whole table is replaced by the whole table; a page is laid over what is held (a branch screen's clients stay).
+      const fresh = normalizeSubscribers(held === 'whole' ? await mysqlAdmin.listAllSubscribers() : await mysqlAdmin.listSubscribersPage(500, 0));
+      const next = held === 'whole' ? fresh : mergeSubscribers(subscribersRef.current, fresh);
+      subscribersRef.current = next;
+      setSubscribers(next);
     } catch { /* caller keeps current state on a transient refresh failure */ }
     announceCrmChanged();
-  }, [subscribersRef]);
+  }, [subscribersRef, wholeTablesRef]);
 
   const recordSubscriberPayment = async (
     subscriberId: string,
@@ -325,6 +327,11 @@ export function useCrmCoreState(
     }
   };
 
+  // The latest `track`, for the memoized writers: useActivityLogState rebuilds it every render around the signed-in
+  // account, and the one captured on the first render — before /auth/me answered — logged every lead edit as
+  // «unknown». Read through the ref, the writer stays stable and logs who made the change.
+  const trackRef = useRef(track);
+  trackRef.current = track;
   const updateLead = useCallback(async (item: LeadItem): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     const prevLeads = leadsRef.current;
@@ -345,13 +352,9 @@ export function useCrmCoreState(
       }));
       return false;
     }
-    track('update', 'lead', item.name);
+    trackRef.current('update', 'lead', item.name);
     return true;
-    // The refs are stable and `track` is not: useActivityLogState rebuilds it on
-    // every render, so listing it would rebuild this callback — and everything
-    // memoized on it — each time. It is only ever called, never read from.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lastCRMWriteRef, leadsRef]);
 
   // Updates local state only — no API call. Use for bulk auto-convert on mount.
   const markLeadsConverted = (ids: string[]) => {
@@ -424,14 +427,9 @@ export function useCrmCoreState(
     const result = await mysqlAdmin.distributeLeads(mode, dailyCap);
     const assigned = result.assigned ?? 0;
     if (assigned === 0) return 0;
-    // Reload leads from server so the UI reflects the new assignments
-    const freshLeads = await mysqlAdmin.listAllLeads();
-    const normalizedLeads = (freshLeads as unknown as LeadItem[]).map(l => ({
-      ...l,
-      status: (l.status || 'new').toLowerCase() as LeadStatus,
-    }));
-    leadsRef.current = normalizedLeads;
-    setLeads(normalizedLeads);
+    // What the session holds follows the new assignments (fetchHeldLeads): this downloaded the whole lead table for a
+    // screen (the pool) that pages from the server and holds none of it.
+    await reloadAllLeads();
     track('update', 'lead', `bulkRedistribute:${assigned}`);
     return assigned;
   };

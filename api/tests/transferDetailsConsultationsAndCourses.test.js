@@ -6,6 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -32,7 +33,7 @@ test('the sender of a transfer is stored on the payment and read back by every p
 });
 
 test('the operation number, sender and number are optional — typed, they travel with the payment', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.doesNotMatch(modal, /transferNeedsDetails|transferProblem/, 'never a reason to refuse a booking');
   assert.match(modal, /const isValid = !subjectChosen/);
   assert.match(modal, /field\.label\} <span className="text-gray-400 font-normal">\(اختياري\)<\/span>/);

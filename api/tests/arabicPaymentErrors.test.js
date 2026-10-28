@@ -7,6 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
@@ -53,8 +54,8 @@ test('the payment hooks send the reason under the key the toast reads, and the d
   for (const file of ['admin/pages/unified-client/useUnifiedClientPayments.ts', 'admin/pages/unified-client/useUnifiedClientLifecycleActions.ts']) {
     assert.match(read(file), /reason: arabicReason\(error\)/, file);
   }
-  assert.match(read('admin/components/PaymentModal.tsx'), /setSubmitError\(arabicReason\(error, /);
-  assert.match(read('admin/pages/Dashboard.tsx'), /arabicReason\(String\(detail\.reason\), ''\)/);
+  assert.match(paymentModalSource(), /setSubmitError\(arabicReason\(error, /);
+  assert.match(dashboardSource(), /arabicReason\(String\(detail\.reason\), ''\)/);
 });
 
 test('the booking route no longer answers a rep in English', () => {

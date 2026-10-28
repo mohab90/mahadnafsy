@@ -37,6 +37,10 @@ const renderFiles = fs.readdirSync(D).filter(f => /\.tsx$/.test(f))
 let renderSrc = '';
 for (const f of renderFiles) renderSrc += fs.readFileSync(path.join(D, f), 'utf8') + '\n';
 renderSrc += read('admin/pages/Dashboard.tsx');
+// The dashboard's state hook (dashboard/shell/) was part of Dashboard.tsx until 22 Oct 2026.
+if (fs.existsSync(path.join(D, 'shell'))) {
+  for (const f of fs.readdirSync(path.join(D, 'shell')).filter(name => /\.tsx?$/.test(name))) renderSrc += '\n' + fs.readFileSync(path.join(D, 'shell', f), 'utf8');
+}
 const rendered = new Set();
 for (const re of [
   /activeTab\s*===\s*'([a-z_0-9]+)'/g,

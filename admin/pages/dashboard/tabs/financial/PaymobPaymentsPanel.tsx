@@ -49,6 +49,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
 
   useEffect(() => {
     void load();
+    // Once on opening; the refresh button calls load again. notify is rebuilt by the parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

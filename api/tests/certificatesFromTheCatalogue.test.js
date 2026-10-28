@@ -37,7 +37,7 @@ test('a certificate customer service added can be requested and is priced', () =
 
 test('every screen that offers a certificate lists the catalogue', () => {
   const users = [
-    'admin/components/PaymentModal.tsx',
+    'admin/components/payment-modal/usePaymentModalModel.tsx',
     'admin/pages/dashboard/tabs/CertRequestsTab.tsx',
     'admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx',
     'admin/pages/unified-client/UnifiedClientCertificatesPanel.tsx',

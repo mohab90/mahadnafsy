@@ -800,6 +800,7 @@ async function staffClientsPage(req, sc) {
   return {
     rows: await shapeStaffSubscribers(tenantId, pageRows),
     total: view.ids.length, tabCounts: view.tabCounts, followCounts: view.followCounts, figures: view.figures,
+    unassignedMatching: view.unassignedMatching, assignedCounts: view.assignedCounts,
   };
 }
 

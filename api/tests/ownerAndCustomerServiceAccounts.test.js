@@ -8,6 +8,7 @@
 const { authRouteSource, financeRouteSource, leadsRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 const { ROLE_PERMS, DATA_SCOPE, hasPermission } = require('../constants/permissions');
@@ -35,7 +36,7 @@ test('every account changes its own password, the owner included', () => {
   // A wrong current password is a 401 about the request; it signed the user out.
   assert.match(read('admin/lib/mysqlapi.ts'), /path\.startsWith\('\/auth\/update-password'\)\) return;/);
 
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /isProfileTab\(activeTab\) && !currentStaff && \([\s\S]{0,120}<OwnerProfilePage[\s\S]{0,200}isOwner=\{isAdmin\}/);
   assert.ok(!dashboard.includes('صفحات الموظف غير متاحة لحسابك'));
   const owner = read('admin/pages/dashboard/my-profile/OwnerProfilePage.tsx');
@@ -70,7 +71,7 @@ test('customer service works both branches\' clients and its three desks, and no
   }
   assert.match(read('api/routes/campaigns.js'), /router\.get\('\/api\/admin\/nps', requireAuth, requireAdminOrStaff, requireAnyPermission\('view_reports', 'manage_inbox'\)/);
 
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.ok(dashboard.includes('canViewDaqqiClients={isDaqqiManager || isReceptionDaqqi || isSupport || isAdmin}'));
   assert.match(read('admin/pages/dashboard/DashboardCustomerServiceTabs.tsx'), /activeTab === 'refund_requests' && \(isCollectionRole \|\| isSupport \|\|/);
 });

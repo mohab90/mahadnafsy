@@ -19,6 +19,7 @@
 const { ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -106,7 +107,7 @@ test('the review list names the course or track and the branch', () => {
 // ── Dokki: one set of rounds, one fresh set of clients ──────────────────────
 
 test('the clients screen reads the context\'s rounds and clients, not the copies that only change on the next poll', () => {
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /salesOwnDaqqiRounds: siteDaqqiRounds,/);
   assert.doesNotMatch(dashboard, /salesOwnDaqqiRounds: salesOwnDaqqiRounds \?\? \[\],/);
   assert.match(dashboard, /setStaffScopedRounds: bulkSetDaqqiRounds,/);
@@ -114,9 +115,11 @@ test('the clients screen reads the context\'s rounds and clients, not the copies
   assert.match(own, /setStaffScopedRounds\?\.\(parsedRounds\);/);
   const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
   assert.doesNotMatch(growth, /roundsOverride=\{isNonAdminStaff/);
-  // The clients are the context's too: the desk keeps no copy of its own that changes on the next poll.
+  // The clients are the server's page, asked again after every write (useStaffClientsPage listens for
+  // CRM_CHANGED_EVENT): the desk keeps no copy of its own that changes on the next poll, and no list at all.
   const clients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(clients, /const masterList = paged \? \[\] : subscribers;/);
+  assert.match(clients, /const masterList: SubscriberItem\[\] = \[\];/);
+  assert.match(clients, /useStaffClientsPage\(\{ enabled: paged,/);
   assert.doesNotMatch(clients, /salesOwnSubscribers/);
 });
 
@@ -146,7 +149,7 @@ test('after a payment the rounds are read back, not patched in the browser', () 
 });
 
 test('the payment dialog sees a course held by money, a price, a prior payment or the round', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /heldItemIds\?: string\[\];/);
   assert.match(modal, /const enrolledIds: string\[\] = \[\.\.\.new Set\(\[\.\.\.\(subject\.enrolledCourseIds \|\| \[\]\), \.\.\.heldByMoney\]\)\];/);
   assert.match(modal, /\(Number\(subject\.priorPaid\?\.\[cid\]\) \|\| 0\) \+ payHistory\.filter/);

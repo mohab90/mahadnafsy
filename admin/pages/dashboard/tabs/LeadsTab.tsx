@@ -3,8 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import { AlarmClock, Phone } from 'lucide-react';
-import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
-import type { PermissionKey, RoleKey } from '../../../constants/permissions';
+import { useAccess } from '../../../hooks/useAccess';
 import { Suspense } from 'react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
@@ -18,16 +17,14 @@ import { DEFAULT_SOURCES, isOnlineSource } from './crmConstants';
 import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { SubTabKey } from './leads/LeadSubTabs';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
-import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
+import { useLeadPerformanceData, useRepRevenue } from './leads/useLeadPerformanceData';
 import { useServerLeadTable } from './leads/useServerLeadTable';
 import { useLeadFilteringData } from './leads/useLeadFilteringData';
 import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
 import { useLeadRemindersData } from './leads/useLeadRemindersData';
 import { useLeadOpsInsights } from './leads/useLeadOpsInsights';
 import { useCrmInsights } from './leads/useCrmInsights';
-import { fullLeadArraySubTabs } from '../dashboardTabGroups';
 import { useLeadAnalyticsData } from './leads/useLeadAnalyticsData';
-import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 
 
@@ -55,7 +52,7 @@ import SectionCustomTabs from './SectionCustomTabs';
 import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
-import { isLocalNewLead, poolReasonOf, POOL_REASON_LABELS, type PoolReason } from './leads/leadSourceGroups';
+import { POOL_REASON_LABELS, type PoolReason } from './leads/leadSourceGroups';
 import { poolViewOf, useLeadPool, useLocalNewCount } from './leads/useLeadPool';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -74,6 +71,9 @@ const SalesOffersPanel = React.lazy(() => import('./leads/SalesOffersPanel'));
 const LeadTable = React.lazy(() => import('./LeadTable').then(module => ({ default: module.LeadTable })));
 const QuickEditPanel = React.lazy(() => import('./leads/LeadSubcomponents').then(module => ({ default: module.QuickEditPanel })));
 
+/** The rows this screen hands the filtering hook: none — see useLeadFilteringData below. */
+const NO_ROWS: LeadItem[] = [];
+
 const LeadSectionFallback = () => (
   <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">
     جاري تحميل قسم العملاء المحتملين...
@@ -83,7 +83,7 @@ const LeadSectionFallback = () => (
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter, performanceOnly = false }: LeadsTabProps) {
   const {
-    leads, leadStats, loadFullCrmData, loadFullLeads, staffMembers, subscribers, courses, bundles, updateLead, addLead,
+    leadStats, staffMembers, courses, bundles, updateLead, addLead,
     reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
     authUser, isAdmin, recordSubscriberPayment, bulkRedistributeLeads,
     currentStaff: contextStaff,
@@ -105,39 +105,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   }, []);
   const { subTab: requestedSubTab, setSubTab } = useLeadSubTab();
   const subTab: SubTabKey = performanceOnly ? 'performance' : requestedSubTab;
-  // The whole leads table, fetched only for the sub-tabs that scan it. Opening
-  // the CRM used to pull all 26,878 rows before drawing anything; the landing
-  // table is paginated and the panels beside it read aggregates, so nothing here
-  // needs them until one of these four views is opened. loadFullCrmData()
-  // de-duplicates its own in-flight promise, so repeated switching is one fetch.
-  //
-  // The pull takes seconds, and until it lands the pools count whatever has
-  // arrived — a «محلي جديد» of a few leads that grows by itself — so the screen
-  // says it is still loading, against the server's own total, instead of showing
-  // the partial number as if it were the pool.
-  const [fullLeadsState, setFullLeadsState] = useState<'loading' | 'ready' | 'failed'>('ready');
-  const [fullLeadsAttempt, setFullLeadsAttempt] = useState(0);
-  useEffect(() => {
-    if (fullLeadArraySubTabs.has(subTab)) void loadFullCrmData();
-  }, [subTab, loadFullCrmData, fullLeadsAttempt]);
-  // loadFullCrmData settles both tables whatever happens, so it cannot tell a
-  // failed leads pull from a finished one; loadFullLeads (the same cached
-  // promise) rejects, and that is what the banner follows.
-  useEffect(() => {
-    if (!fullLeadArraySubTabs.has(subTab)) return undefined;
-    let alive = true;
-    setFullLeadsState('loading');
-    loadFullLeads().then(
-      () => { if (alive) setFullLeadsState('ready'); },
-      () => { if (alive) setFullLeadsState('failed'); },
-    );
-    return () => { alive = false; };
-  }, [subTab, loadFullLeads, fullLeadsAttempt]);
+  // The screen holds no list of leads or clients: the table, the board and the pools page from the server
+  // (useServerLeadTable, useLeadPool), and every figure on it is a server aggregate — the lead stats, the follow-ups
+  // count, the CRM insights and the reps' revenue. It used to ask for the 500 newest leads and the 500 newest clients
+  // with their payments (1 MB on the lab) to fall back on, and those fallbacks counted the page as if it were the table.
   const { crmSettings, setCrmSettings, pipelineStages, reloadPipeline, selfStaff } =
     useLeadCrmBootstrap(notify);
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
-  const [waRepId, setWaRepId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The lead as the card held it. The panel looked its lead up in the leads held in memory — the newest 500 — so
   // a lead from the server's page that is older than those opened nothing: «تفاصيل / تعديل» was dead for it.
@@ -176,24 +151,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   // performance, the distribution panels — «ليه بيظهر في حساب التحصيل قيم
   // العملاء المحتملين كامله؟ خلي يظهرله زي ما بيظهر للسيلز».
   const isSalesOnly = ['sales', 'collection'].includes(String(selfStaff?.role || staffSelfProp?.role || '').toLowerCase());
-  const permissionSubject = currentStaff
-    ? {
-        role: currentStaff.role as RoleKey,
-        permissions: currentStaff.permissions as PermissionKey[] | undefined,
-      }
-    : null;
-  const canExportLeads = isAdmin || hasStaffPermission(permissionSubject, 'export_leads');
-  const canManageLeads = isAdmin || hasStaffPermission(permissionSubject, 'manage_leads');
+  // lib/access.ts: the server's permission table for this account (an admin holds all of them).
+  const access = useAccess();
+  const canExportLeads = access.can('export_leads');
+  const canManageLeads = access.can('manage_leads');
   // Publishing an offer changes what a course may be sold for, so it sits behind
   // the same manager-level gate as sales targets — not `manage_leads`, which
   // every rep holds.
-  const canViewReports = isAdmin || hasStaffPermission(permissionSubject, 'view_reports');
-  const { effectiveLeads } = useLeadEffectiveRecords({
-    leads,
-    isSalesOnly,
-    selfStaff,
-    staffSelfProp,
-  });
+  const canViewReports = access.can('view_reports');
   // Sales users: do NOT auto-set assignFilter — the table, the board and every other figure are scoped by the server
 
   // Close actions menu on outside click
@@ -230,7 +195,17 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   // panels used to answer by scanning every lead in the browser.
   // Bumped after every follow-up action, so the lists show what is left.
   const [insightsKey, bumpInsights] = React.useReducer((count: number) => count + 1, 0);
-  const crmInsights = useCrmInsights(smartIdleDays, true, insightsKey);
+  // Only where it is drawn: the follow-ups page and the performance page. It answered on every sub-tab (634 KB on the
+  // lab — up to 500 reminders and 500 promised leads) for a table that reads none of it.
+  const crmInsights = useCrmInsights(smartIdleDays, performanceOnly || subTab === 'reminders', insightsKey);
+  // The header's «متأخر» and the performance page's overdue card: open leads due today or before, counted by the
+  // server over the caller's scope (the same rule as the bell).
+  const [dueFollowups, setDueFollowups] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    mysqlAdmin.getDueFollowups().then(answer => { if (alive) setDueFollowups(answer.due); }).catch(() => { /* keep the last */ });
+    return () => { alive = false; };
+  }, [insightsKey]);
   // ── Communications tab state ─────────────────────────────────────────────
   const {
     showAddComm,
@@ -260,7 +235,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
     snooze1Day,
     markDone,
   } = useLeadRemindersData({
-    leads,
     reminderStaffFilter,
     snoozeIds,
     onChanged: bumpInsights,
@@ -275,35 +249,33 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
     ),
     [staffMembers]
   );
-  // "محلي جديد" pool — the same predicate LeadArchiveViews lists, so the badge,
-  // the counter and the table agree. The count is of the ones waiting for a rep.
-  const unassignedLeads = useMemo(() => leads.filter(lead => isLocalNewLead(lead) && poolReasonOf(lead) === 'waiting'), [leads]);
   // The pool tabs read their own pool from the server (leads/useLeadPool.ts)
   // instead of filtering every lead here.
   const poolView = poolViewOf(subTab);
   const leadPool = useLeadPool(poolView, poolView === 'localNew' ? poolReason : null);
   // The server's count everywhere: on «محلي جديد» from the pool itself, on
-  // every other tab from a count-only request. What is loaded is the fallback.
-  const serverLocalNewCount = useLocalNewCount(`${leads.length}:${leadPool.total}:${distributing}:${archiving}`);
-  const unassignedCount = poolView === 'localNew' && leadPool.breakdown ? leadPool.breakdown.waiting : (serverLocalNewCount ?? unassignedLeads.length);
+  // every other tab from a count-only request; zero until it answers.
+  const serverLocalNewCount = useLocalNewCount(`${leadPool.total}:${distributing}:${archiving}`);
+  const unassignedCount = poolView === 'localNew' && leadPool.breakdown ? leadPool.breakdown.waiting : (serverLocalNewCount ?? 0);
   // How many of each kind «محلي جديد» holds — the chips above its list.
   const poolBreakdown = subTab === 'localNew' ? leadPool.breakdown : null;
   // A distribution or a move to the archive changes the pool on the server.
   const poolBusy = distributing || archiving;
   const wasPoolBusy = useRef(false);
+  const reloadPool = leadPool.reload;
   useEffect(() => {
-    if (wasPoolBusy.current && !poolBusy) leadPool.reload();
+    if (wasPoolBusy.current && !poolBusy) reloadPool();
     wasPoolBusy.current = poolBusy;
-  }, [poolBusy, leadPool.reload]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [poolBusy, reloadPool]);
 
-  const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
+  const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(salesReps, crmInsights);
 
-  const {
-    activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads,
-    matchesFilters,
-  } = useLeadFilteringData({
-    effectiveLeads,
-    leads,
+  // The filter bar's predicate, for the pool rows the archive views filter on screen (LeadArchiveViews), and the rep
+  // list. The hook is also the browser's half of the table's parity contract (api/tests/integration/
+  // leadTableParity.integration.test.js); this screen hands it no rows of its own.
+  const { assignedReps, matchesFilters } = useLeadFilteringData({
+    effectiveLeads: NO_ROWS,
+    leads: NO_ROWS,
     salesReps,
     selectedId,
     isSalesOnly,
@@ -382,31 +354,21 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
     setLeadsFollowupFilter('all');
   }, [workspaceBranchFilter]);
 
-  const { salesPerformance, commsByRep } = useLeadPerformanceData(salesReps, leads, subscribers, salesTargets, targetMonth, leadStats);
+  const repRevenue = useRepRevenue(targetMonth, performanceOnly);
+  const { salesPerformance, commsByRep } = useLeadPerformanceData(salesReps, repRevenue, salesTargets, targetMonth, leadStats);
 
   // The CRM header's "N عميل محتمل" — every lead whose source is not one of the
-  // online ones. It counted the array, which since this screen stopped loading
-  // the table is the 500-row bootstrap page: the header read 500 against 27,012.
-  //
-  // bySource answers it exactly, because it is a count per source over the whole
-  // table: total minus the online buckets is the offline count. Falls back to
-  // the array until the aggregate lands.
-  const offlineLeadTotal = useMemo(() => {
-    if (!leadStats?.bySource) {
-      return leads.filter(l => !l.hidden && !isOnlineSource(l.source)).length;
-    }
-    return Object.entries(leadStats.bySource)
-      .filter(([source]) => !isOnlineSource(source))
-      .reduce((sum, [, count]) => sum + count, 0);
-  }, [leadStats, leads]);
+  // online ones: total minus the online buckets of bySource, a count per source
+  // over the whole table (0 until the stats answer).
+  const offlineLeadTotal = useMemo(() => Object.entries(leadStats?.bySource || {})
+    .filter(([source]) => !isOnlineSource(source))
+    .reduce((sum, [, count]) => sum + count, 0), [leadStats]);
 
-  const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leads, effectiveLeads, leadStats);
+  const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leadStats);
 
 
-  // The lead in memory when there is one (it is the freshest), else the one the card was drawn from.
-  const openLead = activeLead ?? (selectedId && pickedLead?.id === selectedId ? pickedLead : null);
-
-  const waActiveRep = waRepId ? salesReps.find(r => r.id === waRepId) ?? null : null;
+  // The lead the card or the row was drawn from (the server's page holds the freshest copy).
+  const openLead = selectedId && pickedLead?.id === selectedId ? pickedLead : null;
 
   const {
     handleSave, handleDistribute, handleMigrateBranches,
@@ -416,7 +378,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
     notify, updateLead, addLead, reloadLeads, reloadSubscribers,
     bulkRedistributeLeads,
     recordSubscriberPayment, fetchSalesData, setActiveDashboardTab,
-    salesReps, leads, fetchVisibleLeads: serverTable.exportAll, bundles,
+    salesReps, fetchVisibleLeads: serverTable.exportAll, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly: Boolean(isSalesOnly),
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
     convertLeadModal, setConvertLeadModal, setSelectedId,
@@ -426,7 +388,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   const cardStatusChange = useCallback(async (lead: LeadItem, status: LeadStatus) => {
     await handleStatusChange(lead, status);
     refreshServerTable();
-  }, [handleStatusChange, refreshServerTable]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [handleStatusChange, refreshServerTable]);
 
   // Puts old unassigned data away in "محلي قديم" in one server call — the
   // alternative was editing thousands of leads one at a time. Nothing is
@@ -460,7 +422,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
             salesReps={salesReps}
             handleDistribute={handleDistribute}
             distributing={distributing}
-            leads={leads}
             salesPerformance={salesPerformance}
             salesTargets={salesTargets}
             saveSalesTargets={saveSalesTargets}
@@ -471,14 +432,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
             updateLead={updateLead}
             notify={notify}
             navigate={navigate}
-            scoredLeads={scoredLeads}
             totalConverted={totalConverted}
-            overdueLeads={overdueLeads}
+            overdueCount={dueFollowups}
           />
         </Suspense>
         <Suspense fallback={<div className="text-center py-10 text-gray-400">جاري تحميل الرسوم...</div>}>
           <LeadPerformancePanel
-            leads={leads}
             totalConverted={totalConverted}
             monthlyTrend={monthlyTrend}
             funnelData={funnelData}
@@ -499,7 +458,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
         canManageLeads={canManageLeads}
         canExportLeads={canExportLeads}
         totalOfflineLeads={offlineLeadTotal}
-        overdueCount={overdueLeads.length}
+        overdueCount={dueFollowups ?? 0}
         unassignedCount={unassignedCount}
         subTab={subTab}
         setSubTab={setSubTab}
@@ -532,17 +491,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
 
-      {fullLeadArraySubTabs.has(subTab) && leadStats && leads.length < leadStats.total && fullLeadsState !== 'ready' && (
-        <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold ${fullLeadsState === 'failed' ? 'border-red-200 bg-red-50 text-red-800' : 'border-sky-200 bg-sky-50 text-sky-800'}`} role="status">
-          {fullLeadsState === 'failed'
-            ? <span>تعذّر تحميل كل الليدز — الأرقام هنا جزئية ({leads.length.toLocaleString('ar-EG-u-nu-latn')} من {leadStats.total.toLocaleString('ar-EG-u-nu-latn')}).</span>
-            : <span>جاري تحميل كل الليدز… {leads.length.toLocaleString('ar-EG-u-nu-latn')} من {leadStats.total.toLocaleString('ar-EG-u-nu-latn')} — الأعداد تحت مؤقتة لحد ما يخلص.</span>}
-          {fullLeadsState === 'failed' && (
-            <button type="button" onClick={() => setFullLeadsAttempt(count => count + 1)} className="rounded-lg bg-red-600 px-3 py-1 text-white hover:bg-red-700">إعادة المحاولة</button>
-          )}
-        </div>
-      )}
-
       {/* The archive views render the same table with the same actions, so
           they get the same controls — they had none at all. */}
       <LeadFilterBar
@@ -573,16 +521,16 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
         totalLost={totalLost}
         knownSources={Object.keys(leadStats?.bySource || {})}
         sourceCounts={leadStats?.bySource}
-        visibleLeadsCount={onServerPage ? serverTable.total : visibleLeads.length}
+        visibleLeadsCount={onServerPage ? serverTable.total : leadPool.total}
       />
 
       <LeadEmptyDiagnostics
         visible={onServerPage && !serverTable.loading && !serverTable.error}
         isSalesOnly={isSalesOnly}
         salesDataLoading={salesDataLoading}
-        totalLeads={leadStats?.total ?? leads.length}
+        totalLeads={leadStats?.total ?? 0}
         effectiveCount={leadStats?.total ?? serverTable.total}
-        visibleCount={onServerPage ? serverTable.total : visibleLeads.length}
+        visibleCount={onServerPage ? serverTable.total : leadPool.total}
         filtersActive={leadFiltersActive}
         currentStaffName={currentStaff?.name || selfStaff?.name || authUser?.email || ''}
         onClearFilters={clearLeadFilters}
@@ -792,7 +740,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
         )}
         <LeadArchiveViews
           subTab={subTab}
-          leads={poolView ? leadPool.rows : leads}
+          leads={leadPool.rows}
           matchesFilters={matchesFilters}
           staffMembers={staffMembers}
           addLead={addLead}
@@ -850,7 +798,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
           setLeadPayRow={setLeadPayRow}
           instituteBranches={instituteBranches}
           salesNotifOpen={salesNotifOpen}
-          leads={leads}
+          knownSources={Object.keys(leadStats?.bySource || {}).filter(Boolean)}
           isSalesOnly={isSalesOnly}
           setSalesNotifOpen={setSalesNotifOpen}
           setLeadsFollowupFilter={setLeadsFollowupFilter}
@@ -866,8 +814,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
           setShowAddLead={setShowAddLead}
           sources={crmSettings.leadSources}
           handleAddLead={handleAddLead}
-          waActiveRep={waActiveRep}
-          setWaRepId={setWaRepId}
         />
       </Suspense>
     </div>
