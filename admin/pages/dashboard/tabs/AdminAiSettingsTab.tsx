@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { savedSecretPlaceholder } from '../../../lib/savedSecrets';
 import { Settings2, Bot, FileText, AlertCircle, Zap, Save, CheckCircle, Code2, Video } from 'lucide-react';
 import { useStaticData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -183,7 +184,7 @@ export default function AdminAiSettingsTab({ notify }: Props) {
               <input type="password" value={adminAiDraft.apiKey}
                 onChange={e => setAdminAiDraft({ ...adminAiDraft, apiKey: e.target.value })}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
-                placeholder={adminAiDraft.provider === 'gemini' ? 'AIza... أو AQ....' : adminAiDraft.provider === 'openai' ? 'sk-...' : 'sk-ant-...'} />
+                placeholder={savedSecretPlaceholder(adminAiConfig?.__savedSecrets, 'apiKey', adminAiDraft.provider === 'gemini' ? 'AIza... أو AQ....' : adminAiDraft.provider === 'openai' ? 'sk-...' : 'sk-ant-...')} />
               <p className="text-xs text-gray-400 mt-1">
                 {adminAiDraft.provider === 'gemini' && <span>مفتاح من <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">aistudio.google.com/apikey</a> (بيبدأ بـ AIza) أو مفتاح Vertex AI من Google Cloud (بيبدأ بـ AQ.) — الاتنين شغالين. سيبها فاضية عشان تفضل على المفتاح المحفوظ.</span>}
                 {adminAiDraft.provider === 'openai' && <span>من: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">platform.openai.com/api-keys</a> (يحتاج رصيد)</span>}

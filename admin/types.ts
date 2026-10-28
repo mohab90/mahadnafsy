@@ -1100,6 +1100,8 @@ export interface AiKnowledgeEntry {
 }
 
 export interface AdminAiConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   provider: string;
   apiKey: string;
   model: string;
@@ -1109,6 +1111,8 @@ export interface AdminAiConfig {
 }
 
 export interface AiAgentConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   id: string;
   name: string;
   provider: AiProvider;
@@ -1128,6 +1132,8 @@ export interface AiAgentConfig {
 export type MessagingChannel = 'whatsapp' | 'messenger' | 'instagram' | 'webchat';
 
 export interface WhatsAppChannelConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   enabled: boolean;
   phoneNumberId: string;
   whatsappBusinessAccountId: string;
@@ -1141,6 +1147,8 @@ export interface WhatsAppChannelConfig {
 }
 
 export interface MessengerChannelConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   enabled: boolean;
   pageId: string;
   pageAccessToken: string;
@@ -1152,6 +1160,8 @@ export interface MessengerChannelConfig {
 }
 
 export interface InstagramChannelConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   enabled: boolean;
   instagramAccountId: string;
   accessToken: string;

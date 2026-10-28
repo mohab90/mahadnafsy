@@ -99,7 +99,8 @@ async function saveContentAndBranchCatalog(req, content) {
 // Settings (adminAiConfig, aiAgentConfig, messagingChannels, fbLeadAdsConfig)
 router.get('/api/admin/settings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    res.json(redactSecrets(await getTenantSetting('settings', { tenantId: req.tenantId, fallback: {} })));
+    // The forms that edit these show «محفوظ (••••1234)» from the hints and read the webhook verify token back (it is pasted into Meta's form).
+    res.json(redactSecrets(await getTenantSetting('settings', { tenantId: req.tenantId, fallback: {} }), { hints: true, keepVerifyTokens: true }));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
