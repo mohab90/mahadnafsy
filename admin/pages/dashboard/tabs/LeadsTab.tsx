@@ -262,10 +262,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   // A distribution or a move to the archive changes the pool on the server.
   const poolBusy = distributing || archiving;
   const wasPoolBusy = useRef(false);
+  const reloadPool = leadPool.reload;
   useEffect(() => {
-    if (wasPoolBusy.current && !poolBusy) leadPool.reload();
+    if (wasPoolBusy.current && !poolBusy) reloadPool();
     wasPoolBusy.current = poolBusy;
-  }, [poolBusy, leadPool.reload]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [poolBusy, reloadPool]);
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(salesReps, crmInsights);
 
@@ -387,7 +388,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   const cardStatusChange = useCallback(async (lead: LeadItem, status: LeadStatus) => {
     await handleStatusChange(lead, status);
     refreshServerTable();
-  }, [handleStatusChange, refreshServerTable]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [handleStatusChange, refreshServerTable]);
 
   // Puts old unassigned data away in "محلي قديم" in one server call — the
   // alternative was editing thousands of leads one at a time. Nothing is

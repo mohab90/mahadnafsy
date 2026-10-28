@@ -35,7 +35,8 @@ export function SharedPhonePanel({ phone, branch, value, onChange, onOpenHolder 
     return () => { alive = false; window.clearTimeout(timer); };
   }, [phone, branch]);
 
-  // The number changed to one nobody holds: nothing is shared any more.
+  // The number changed to one nobody holds: nothing is shared any more. Keyed on the holder alone: value and onChange
+  // are this render's, and re-running on them would clear a link the desk is choosing while the lookup is in flight.
   useEffect(() => { if (!holder && value) { onChange(null); setAsking(false); } }, [holder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!holder) return null;

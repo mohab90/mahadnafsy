@@ -67,6 +67,7 @@ export function useClientsByIds(ids: readonly string[]): SubscriberItem[] {
     return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
   }, []);
 
+  // held is a ref the fetches fill; version is what says it changed, so it stands in for it here.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => (key ? key.split(',') : []).map(id => held.current.get(id)).filter((row): row is SubscriberItem => Boolean(row)), [key, version]);
 }

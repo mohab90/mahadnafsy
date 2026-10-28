@@ -83,6 +83,7 @@ export function usePaymentModalModel({
     if (d.nameAr) return;
     const known = mode === 'new' ? d.name : subject.name;
     if (known && !arabicNameProblem(known)) setDraft({ ...d, nameAr: known.trim() });
+    // Once per client opened: on the draft it would refill a name the desk has just cleared.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject.id]);
 

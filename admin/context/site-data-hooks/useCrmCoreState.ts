@@ -327,6 +327,11 @@ export function useCrmCoreState(
     }
   };
 
+  // The latest `track`, for the memoized writers: useActivityLogState rebuilds it every render around the signed-in
+  // account, and the one captured on the first render — before /auth/me answered — logged every lead edit as
+  // «unknown». Read through the ref, the writer stays stable and logs who made the change.
+  const trackRef = useRef(track);
+  trackRef.current = track;
   const updateLead = useCallback(async (item: LeadItem): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     const prevLeads = leadsRef.current;
@@ -347,13 +352,9 @@ export function useCrmCoreState(
       }));
       return false;
     }
-    track('update', 'lead', item.name);
+    trackRef.current('update', 'lead', item.name);
     return true;
-    // The refs are stable and `track` is not: useActivityLogState rebuilds it on
-    // every render, so listing it would rebuild this callback — and everything
-    // memoized on it — each time. It is only ever called, never read from.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lastCRMWriteRef, leadsRef]);
 
   // Updates local state only — no API call. Use for bulk auto-convert on mount.
   const markLeadsConverted = (ids: string[]) => {
