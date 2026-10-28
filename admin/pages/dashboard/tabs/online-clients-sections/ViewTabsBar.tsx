@@ -143,9 +143,8 @@ export function ViewTabsBar({
             { key: 'paused'     as const, label: 'المتوقفين',     color: 'amber'  },
             { key: 'refunded'   as const, label: 'المستردين',     color: 'red'    },
             ...(isDaqqiClientsTab ? [
-              { key: 'booked2024' as const, label: 'عملاء 24',     color: 'purple' },
-              { key: 'booked2025' as const, label: 'عملاء 25',     color: 'indigo' },
-              { key: 'old_data'  as const, label: '📥 استيراد',    color: 'slate'  },
+              // «عملاء 24» and «عملاء 25» are folded into المنتهين / المتوقفين; what is older than 2024 has this tab.
+              { key: 'old_data'  as const, label: 'عملاء قبل 24',  color: 'slate'  },
             ] : [
               { key: 'old_local' as const, label: '🏠 محلي قديم',  color: 'indigo' },
               { key: 'old_intl'  as const, label: '🇸🇦 سعودي قديم',  color: 'violet' },
