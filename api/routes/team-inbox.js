@@ -23,10 +23,11 @@ const { uuidv4 } = require('../lib/id');
 const { sendWhatsApp, sendWhatsAppTemplate, listMetaTemplates } = require('../lib/whatsapp');
 const { sendMessengerMessage, PLATFORM: SOCIAL } = require('../lib/messenger');
 const { getSendableChannel } = require('../lib/messagingChannels');
-const { isWindowOpen, recordOnThread, PLATFORMS } = require('../lib/inboxThreads');
+const { distributeWaiting, isWindowOpen, recordOnThread, PLATFORMS } = require('../lib/inboxThreads');
 const { loadSettings: loadBotSettings } = require('../lib/inboxBot');
 const { createNotification } = require('../lib/notification');
 const { resolveDataScope } = require('../constants/permissions');
+const { allowedView, mayOpenThread, saveTeamInboxSettings, signed, teamInboxSettings } = require('../lib/teamInboxSettings');
 const { requireAuth, requireAdminOrStaff, requireChannel } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { canDelete, refusalMessage, resolveDeleteRights, REFUSAL_CODE } = require('../lib/deleteRights');
@@ -85,8 +86,10 @@ async function visibleThread(req, id, db = pool) {
     `SELECT ${THREAD_COLUMNS} FROM inbox_threads t ${THREAD_JOINS} WHERE t.tenant_id=? AND t.id=? LIMIT 1`,
     [req.tenantId, id]);
   if (!thread) throw refuse(404, 'المحادثة مش موجودة');
-  if (!seesAll(req) && thread.assigned_staff_id && thread.assigned_staff_id !== me(req)) {
-    throw refuse(403, `المحادثة دي مع ${thread.assigned_name || 'زميل تاني'}`, 'THREAD_TAKEN');
+  // «pool»: mine and the ones nobody has taken. «own»: only mine — the owner and the sales manager (data scope «everything») still see all.
+  const settings = await teamInboxSettings(req.tenantId, db);
+  if (!mayOpenThread({ seesAll: seesAll(req), me: me(req), thread, settings })) {
+    throw refuse(403, thread.assigned_staff_id ? `المحادثة دي مع ${thread.assigned_name || 'زميل تاني'}` : 'المحادثة دي لسه متوزعتش على مندوبة', 'THREAD_TAKEN');
   }
   return thread;
 }
@@ -103,7 +106,9 @@ router.get('/api/admin/team-inbox/threads', ...guard, async (req, res) => {
   try {
     const where = ['1=1'];
     const params = [];
-    const view = ['mine', 'unassigned', 'all'].includes(req.query.view) ? req.query.view : 'mine';
+    const settings = await teamInboxSettings(req.tenantId);
+    // In «own» a rep has one list — hers — whatever she asks for.
+    const view = allowedView({ seesAll: seesAll(req), requested: req.query.view, settings });
     if (view === 'mine') { where.push('t.assigned_staff_id = ?'); params.push(me(req)); }
     else if (view === 'unassigned') where.push('t.assigned_staff_id IS NULL');
     else if (!seesAll(req)) { where.push('(t.assigned_staff_id = ? OR t.assigned_staff_id IS NULL)'); params.push(me(req)); }
@@ -127,7 +132,7 @@ router.get('/api/admin/team-inbox/threads', ...guard, async (req, res) => {
         WHERE t.tenant_id = ? AND ${where.join(' AND ')}
         ORDER BY t.last_message_at DESC LIMIT ?`,
       [req.tenantId, ...params, limit]);
-    res.json({ threads: rows.map(present), hasMore: rows.length === limit, seesAll: seesAll(req) });
+    res.json({ threads: rows.map(present), hasMore: rows.length === limit, seesAll: seesAll(req), repVisibility: settings.repVisibility });
   } catch (error) { fail(res, error, '[team-inbox list]'); }
 });
 
@@ -141,9 +146,11 @@ router.get('/api/admin/team-inbox/counts', ...guard, async (req, res) => {
               COUNT(*) AS allOpen
          FROM inbox_threads WHERE tenant_id = ? AND status = 'open'`,
       [me(req), me(req), req.tenantId]);
+    const ownOnly = !seesAll(req) && (await teamInboxSettings(req.tenantId)).repVisibility === 'own';
     res.json({
       mine: Number(row.mine) || 0, mineUnread: Number(row.mineUnread) || 0,
-      unassigned: Number(row.unassigned) || 0, all: seesAll(req) ? Number(row.allOpen) || 0 : null,
+      // In «own» the ones nobody has taken are not a rep's to know about.
+      unassigned: ownOnly ? 0 : Number(row.unassigned) || 0, all: seesAll(req) ? Number(row.allOpen) || 0 : null,
     });
   } catch (error) { fail(res, error, '[team-inbox counts]'); }
 });
@@ -179,6 +186,9 @@ router.get('/api/admin/team-inbox/threads/:id', ...guard, async (req, res) => {
 router.post('/api/admin/team-inbox/threads/:id/claim', ...guard, async (req, res) => {
   try {
     if (!me(req)) throw refuse(403, 'الحساب ده مش مربوط بموظف — حوّلها لموظف بدل ما تستلمها');
+    if (!seesAll(req) && (await teamInboxSettings(req.tenantId)).repVisibility === 'own') {
+      throw refuse(403, 'المحادثات بتتوزع على المندوبات تلقائياً — مفيش استلام يدوي', 'AUTO_ASSIGNED');
+    }
     const [result] = await pool.query(
       `UPDATE inbox_threads SET assigned_staff_id=?, assigned_at=NOW()
         WHERE tenant_id=? AND id=? AND assigned_staff_id IS NULL`,
@@ -261,12 +271,14 @@ router.post('/api/admin/team-inbox/threads/:id/reply', ...guard, bulkOperationLi
 
     let result;
     let channelId = thread.channel_id || null;
+    // With the option on, the rep's first name goes under the reply — the customer sees who is answering from the company number.
+    const outgoing = signed(text, req.staffRecord?.name, await teamInboxSettings(req.tenantId));
     // Direct, not queued: a reply typed in the conversation, and the person
     // who typed it is told here whether WhatsApp took it.
     if (thread.platform === 'whatsapp') {
       result = template
         ? await sendWhatsAppTemplate(thread.contact_key, template, { tenantId: req.tenantId, channelId, category: 'inbox_reply' })
-        : await sendWhatsApp(thread.contact_key, text, { tenantId: req.tenantId, channelId, category: 'inbox_reply' });
+        : await sendWhatsApp(thread.contact_key, outgoing, { tenantId: req.tenantId, channelId, category: 'inbox_reply' });
       channelId = result.channelId || channelId;
     } else {
       // Messenger and Instagram answer through the page's token.
@@ -274,7 +286,7 @@ router.post('/api/admin/team-inbox/threads/:id/reply', ...guard, bulkOperationLi
         || await getSendableChannel({ tenantId: req.tenantId, kind: 'messenger' }).catch(() => null);
       if (!resolved) throw refuse(409, SEND_FAILURES.not_configured);
       channelId = resolved.row.id;
-      result = await sendMessengerMessage(thread.contact_key, text, resolved.credentials);
+      result = await sendMessengerMessage(thread.contact_key, outgoing, resolved.credentials);
     }
     if (!result?.ok) {
       const reason = typeof result?.reason === 'string' ? result.reason : null;
@@ -287,7 +299,7 @@ router.post('/api/admin/team-inbox/threads/:id/reply', ...guard, bulkOperationLi
 
     const shown = template
       ? `📋 قالب «${template.name}»${(template.params || []).length ? `: ${template.params.join(' · ')}` : ''}`
-      : text;
+      : outgoing;
     const prefix = thread.platform === 'whatsapp' ? '' : SOCIAL[thread.platform].idPrefix;
     const id = uuidv4();
     const now = new Date();
@@ -507,6 +519,67 @@ router.get('/api/admin/team-inbox/agents', ...guard, async (req, res) => {
       [req.tenantId]);
     res.json(rows);
   } catch (error) { fail(res, error, '[team-inbox agents]'); }
+});
+
+/**
+ * Whether each platform can actually bring messages INTO the inbox. A channel can be «connected» and still receive nothing: Wapilot has no
+ * inbound webhook (a company number on it can send, never receive), the official API needs the app secret and the verify token on the
+ * server before Meta's webhook can be verified, and Messenger and Instagram need the page token and the page subscribed to the app.
+ */
+router.get('/api/admin/team-inbox/readiness', ...guard, async (req, res) => {
+  try {
+    const { listChannels } = require('../lib/messagingChannels');
+    const { resolveSecret } = require('../lib/secretResolver');
+    const has = name => { try { return Boolean(resolveSecret(name)); } catch { return false; } };
+    const list = await listChannels({ tenantId: req.tenantId, ownerStaffId: null });
+    const company = kind => {
+      const rows = list.filter(channel => channel.kind === kind && channel.is_active === 1);
+      return rows.find(channel => channel.is_default === 1) || rows[0] || null;
+    };
+    const shown = channel => (channel ? { label: channel.label, provider: channel.provider, status: channel.status, displayNumber: channel.display_number || null } : null);
+    const whatsapp = company('whatsapp');
+    const page = company('messenger');
+    const whatsappReceives = Boolean(whatsapp && ['meta', 'green-api'].includes(whatsapp.provider));
+    res.json({
+      whatsapp: {
+        channel: shown(whatsapp), receives: whatsappReceives,
+        webhookSecrets: whatsapp?.provider === 'meta' ? has('WHATSAPP_APP_SECRET') && has('WHATSAPP_WEBHOOK_VERIFY_TOKEN') : null,
+        hint: !whatsapp ? 'مفيش رقم واتساب للشركة — ضيف قناة'
+          : !whatsappReceives ? 'الرقم ده على Wapilot بيبعت بس ومبيستقبلش رسايل في الصندوق — اربط رقم على واتساب الرسمي (Meta)'
+            : whatsapp.status !== 'connected' ? 'القناة مش متصلة — افتح «قنوات المراسلة» واضغط تحقّق' : null,
+      },
+      messenger: { channel: shown(page), receives: Boolean(page && page.status === 'connected'), hint: !page ? 'مفيش قناة ماسنجر' : page.status !== 'connected' ? 'التوكن محتاج تجديد من «قنوات المراسلة ← تعديل»' : null },
+      instagram: {
+        channel: shown(page), receives: Boolean(page && page.status === 'connected'),
+        hint: 'انستجرام بيشتغل بنفس توكن صفحة الفيسبوك: لازم الحساب يكون مربوط بالصفحة، والتوكن بصلاحية instagram_manage_messages، وحقل messages متفعّل لانستجرام في الـ Webhook',
+      },
+    });
+  } catch (error) { fail(res, error, '[team-inbox readiness]'); }
+});
+
+/**
+ * «كل واحدة تشوف رسايلها بس واحنا اللي نشوف كله»: who sees which conversation, and whether replies carry the rep's name.
+ * Anyone may read it (the screen needs it); only the people who see everything — the owner, the sales manager — change it.
+ */
+router.get('/api/admin/team-inbox/settings', ...guard, async (req, res) => {
+  try {
+    res.json({ settings: await teamInboxSettings(req.tenantId), canEdit: seesAll(req) });
+  } catch (error) { fail(res, error, '[team-inbox settings]'); }
+});
+
+router.put('/api/admin/team-inbox/settings', ...guard, async (req, res) => {
+  try {
+    if (!seesAll(req)) throw refuse(403, 'إعدادات الصندوق للإدارة بس', 'MANAGERS_ONLY');
+    const body = req.body || {};
+    const settings = await saveTeamInboxSettings(req.tenantId, {
+      repVisibility: body.repVisibility, autoAssign: body.autoAssign, signReplies: body.signReplies,
+    }, { actorId: req.user?.uid || req.user?.email || null });
+    // Switching the distribution on gives out what is waiting now, or those conversations would stay where no rep can see them.
+    const given = settings.autoAssign && body.distributeWaiting !== false
+      ? await distributeWaiting(pool, req.tenantId).catch(error => { logger.warn('[team-inbox distribute]', error.message); return 0; })
+      : 0;
+    res.json({ ok: true, settings, distributed: given });
+  } catch (error) { fail(res, error, '[team-inbox settings save]'); }
 });
 
 /** The company number's approved templates, for a reply after 24 hours. */

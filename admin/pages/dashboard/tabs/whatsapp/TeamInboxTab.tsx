@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Bot, Check, CheckCheck, FileText, Hand, IdCard, Inbox, Loader2, Lock, RotateCcw, Search, Send, StickyNote, UserRound, Zap } from 'lucide-react';
+import { BarChart3, Bot, Check, CheckCheck, FileText, Hand, IdCard, Inbox, Loader2, Lock, RotateCcw, Search, Send, Settings2, StickyNote, UserRound, Zap } from 'lucide-react';
+import { InboxVisibilitySettings } from './InboxVisibilitySettings';
 import { ContactPanel, InboxStatsPanel, LabelEditor, QuickRepliesManager, QuickReplyPicker, fillReply, useQuickReplies, waitingFor, type QuickReply } from './inboxExtras';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { useVisibleInterval } from '../../../../../shared/useVisibleInterval';
@@ -69,6 +70,8 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
   const [search, setSearch] = useState('');
   const [threads, setThreads] = useState<Thread[]>([]);
   const [seesAll, setSeesAll] = useState(false);
+  const [repVisibility, setRepVisibility] = useState<'pool' | 'own'>('pool');
+  const [showSettings, setShowSettings] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [active, setActive] = useState<Thread | null>(null);
@@ -103,11 +106,12 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
       if (labelFilter) query.set('label', labelFilter);
       if (waitingOnly) query.set('waiting', '1');
       const [list, badge] = await Promise.all([
-        mysqlAdmin.adminGet<{ threads: Thread[]; seesAll: boolean }>(`${API}/threads?${query}`),
+        mysqlAdmin.adminGet<{ threads: Thread[]; seesAll: boolean; repVisibility?: 'pool' | 'own' }>(`${API}/threads?${query}`),
         mysqlAdmin.adminGet<Counts>(`${API}/counts`),
       ]);
       setThreads(list.threads);
       setSeesAll(list.seesAll);
+      setRepVisibility(list.repVisibility === 'own' ? 'own' : 'pool');
       setCounts(badge);
     } catch (error) { notify('error', errorText(error)); }
   }, [view, platform, closed, search, labelFilter, waitingOnly, notify]);
@@ -224,8 +228,8 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
         <h2 className="ml-2 font-bold text-gray-800">صندوق الرسائل</h2>
         <div className="flex rounded-xl bg-gray-100 p-1">
           {tab('mine', 'محادثاتي', counts?.mineUnread)}
-          {tab('unassigned', 'مش مستلمة', counts?.unassigned)}
-          {tab('all', seesAll ? 'الكل' : 'محادثاتي + المش مستلمة')}
+          {(seesAll || repVisibility !== 'own') && tab('unassigned', 'مش مستلمة', counts?.unassigned)}
+          {(seesAll || repVisibility !== 'own') && tab('all', seesAll ? 'الكل' : 'محادثاتي + المش مستلمة')}
         </div>
         <div className="flex gap-1">
           {(['', 'whatsapp', 'messenger', 'instagram'] as const).map(key => (
@@ -248,10 +252,17 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
           </select>
         )}
         <div className="mr-auto flex gap-1.5">
+          {seesAll && (
+            <button type="button" onClick={() => setShowSettings(v => !v)} aria-pressed={showSettings}
+              className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${showSettings ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              <Settings2 size={13} /> مين يشوف إيه
+            </button>
+          )}
           <button type="button" onClick={() => { setManaging(true); void quick.load(); }} className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"><Zap size={13} className="text-amber-500" /> الردود السريعة</button>
           <button type="button" onClick={() => setShowStats(v => !v)} aria-pressed={showStats} className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${showStats ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}><BarChart3 size={13} /> سرعة الرد</button>
         </div>
       </div>
+      {showSettings && seesAll && <InboxVisibilitySettings notify={notify} onSaved={() => { setView('mine'); void loadThreads(); }} />}
       {showStats && <InboxStatsPanel notify={notify} />}
       {managing && <QuickRepliesManager list={quick.list} reload={quick.load} onClose={() => setManaging(false)} notify={notify} />}
 
