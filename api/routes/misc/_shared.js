@@ -305,7 +305,6 @@ function scheduleConsultationReminders() {
   }, 3 * 60 * 1000);
   logger.info('[consultation-reminders] scheduled — every 10m, first run in 3m');
 }
-scheduleConsultationReminders();
 
 // The Dokki manager's Saturday report, the morning brief of the day's rounds and,
 // once switched on, the absence follow-up (lib/dokkiWeeklyReport.js,
@@ -661,6 +660,7 @@ function startSharedRouteJobs() {
   scheduleWeeklyBranchReport();
   schedulePaymentReviewSweep();
   schedulePaymentReminders();
+  scheduleConsultationReminders();
 }
 
 module.exports = { startSharedRouteJobs, logLogin, sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };

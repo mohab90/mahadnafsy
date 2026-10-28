@@ -1073,15 +1073,11 @@
  },
  "trainer": {
   "menu": [
-   "consultations",
-   "courses",
-   "lectures"
+   "consultations"
   ],
   "gate": [
    "consultation_calendar",
    "consultations",
-   "courses",
-   "lectures",
    "my_hr",
    "staff_home",
    "staff_settings"
@@ -1091,14 +1087,12 @@
  "expert": {
   "menu": [
    "consultations",
-   "courses",
    "tasks_board"
   ],
   "gate": [
    "analytics",
    "consultation_calendar",
    "consultations",
-   "courses",
    "my_hr",
    "nps_dashboard",
    "staff_home",
@@ -1109,15 +1103,11 @@
  },
  "instructor": {
   "menu": [
-   "consultations",
-   "courses",
-   "lectures"
+   "consultations"
   ],
   "gate": [
    "consultation_calendar",
    "consultations",
-   "courses",
-   "lectures",
    "my_hr",
    "staff_home",
    "staff_settings"
