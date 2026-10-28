@@ -70,7 +70,8 @@ test('an instalment records the plan total, not its own amount', () => {
   const insert = source.slice(source.indexOf('INSERT INTO payments'));
   // The course's agreed price when the booking recorded one — a plan is often
   // made for what is left — and the plan's total otherwise.
-  assert.match(insert.slice(0, 1200), /courseExpected, `قسط رقم/);
+  // (The note says when it is only a part of the instalment.)
+  assert.match(insert.slice(0, 1200), /courseExpected, `\$\{update\.partial \? `جزء من القسط[^`]*` : ''\}قسط رقم/);
   assert.match(source, /const courseExpected = Number\(agreed\?\.expected\) > 0 \? Number\(agreed\.expected\) : Number\(plan\.total_amount\);/);
   assert.doesNotMatch(insert.slice(0, 1200), /update\.scheduledAmount/);
 });

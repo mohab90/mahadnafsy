@@ -5,6 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
@@ -25,7 +26,7 @@ test('the lib refuses what would corrupt the books', () => {
 });
 
 test('the payment dialog offers «إعادة» only for a client who holds a course, in its own dialog', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /\{ v: 'retake', ic: '🔁', lb: 'إعادة' \}/);
   assert.match(modal, /const canRetake = mode === 'subscriber' && Boolean\(subject\.id\) && retakeOptions\.length > 0;/);
   assert.match(modal, /<RetakeDialog/);

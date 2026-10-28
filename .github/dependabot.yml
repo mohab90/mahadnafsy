@@ -1,0 +1,32 @@
+# Security fixes for the packages that ship arrive as pull requests, so a new
+# advisory is fixed by merging one instead of by hand after CI goes red.
+# Patch and minor updates are grouped; a major version waits for a person.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /api
+    schedule:
+      interval: weekly
+      day: sunday
+    open-pull-requests-limit: 5
+    groups:
+      api-patches:
+        update-types: [patch, minor]
+  - package-ecosystem: npm
+    directory: /admin
+    schedule:
+      interval: weekly
+      day: sunday
+    open-pull-requests-limit: 5
+    groups:
+      admin-patches:
+        update-types: [patch, minor]
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+      day: sunday
+    open-pull-requests-limit: 5
+    groups:
+      client-patches:
+        update-types: [patch, minor]

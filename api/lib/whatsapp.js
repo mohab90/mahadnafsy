@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 const logger = require('./logger');
 // ── WhatsApp helper ───────────────────────────────────────────────────────────
 // Two ways to send, and they are not equivalent:
@@ -86,10 +90,10 @@ async function panelAllowed(tenantId) {
   panelCache.set(key, { value, at: Date.now() });
   return value;
 }
-function invalidateOutbound(tenantId) {
+const invalidateOutbound = shared('whatsapp-outbound', function invalidateOutboundHere(tenantId) {
   if (tenantId) { panelCache.delete(String(tenantId)); templateCache.delete(String(tenantId)); }
   else { panelCache.clear(); templateCache.clear(); }
-}
+});
 
 // ── Approved templates per kind of message ───────────────────────────────────
 // Outside the 24 hours after a customer last wrote, Meta delivers a template or
@@ -205,10 +209,10 @@ async function getWaCfg(tenantId = DEFAULT_TENANT) {
   return value;
 }
 
-function invalidateWaCfg(tenantId) {
+const invalidateWaCfg = shared('whatsapp-config', function invalidateWaCfgHere(tenantId) {
   if (tenantId) waCfgCache.delete(String(tenantId));
   else waCfgCache.clear();
-}
+});
 
 // Resolve which provider to use: explicit config wins, else infer from whatever
 // creds are present (config first, then env).

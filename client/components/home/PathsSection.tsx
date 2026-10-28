@@ -4,6 +4,7 @@ import { ArrowLeft, Check } from 'lucide-react';
 import type { Bundle, Currency } from '../../types';
 import { discountPercent, formatPrice, isDiscounted } from '../../../shared/priceFormat';
 import { bundlesForHome } from '../../../shared/homePaths';
+import { usePriceList, withEffectivePrices } from '../../lib/usePrices';
 import { Reveal } from './Reveal';
 
 type Content = Record<string, string | undefined>;
@@ -15,7 +16,9 @@ type Content = Record<string, string | undefined>;
  * from the bundles marketing publishes; nothing here is typed.
  */
 const PathsSection: React.FC<{ content: Content; bundles: Bundle[]; currency: Currency }> = ({ content, bundles, currency }) => {
-  const shown = bundlesForHome(bundles);
+  // At the price checkout charges, discount included (lib/usePrices).
+  const priceList = usePriceList();
+  const shown = bundlesForHome(bundles).map(b => withEffectivePrices(priceList, 'bundle', b));
   if (shown.length === 0) return null;
   const saving = (bundle: Bundle) => discountPercent(bundle.originalPrice?.[currency], bundle.price?.[currency]);
   const bestSaving = Math.max(...shown.map(saving));

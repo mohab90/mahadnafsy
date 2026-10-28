@@ -54,7 +54,6 @@ export function BoxesReportPanel({ branch }: { branch?: string }) {
       .catch(err => setError(err instanceof Error ? err.message : 'تعذر تحميل الخزائن'))
       .finally(() => setLoading(false));
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [branch]);
 
   const balances = report?.balances || null;

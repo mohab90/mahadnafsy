@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
@@ -6,14 +7,17 @@ import react from '@vitejs/plugin-react';
 // sw.js is a static file (public/), so Vite's asset hashing never touches it. Without
 // this, its cache name stays fixed forever and the activate handler never purges old
 // cached bundles across deploys — found live 2026-07-15 causing returning visitors to
-// get stuck on stale JS/CSS indefinitely. Stamps the same per-build timestamp used for
-// chunk filenames into the cache name so each deploy gets an isolated cache.
-function swVersionPlugin(version: string): Plugin {
+// get stuck on stale JS/CSS indefinitely. The cache name is derived from the names of
+// the files the build wrote — content hashes — so a deploy that changed something gets
+// a fresh cache, and one that changed nothing (a re-deploy, an API-only release) keeps
+// the visitor's cache instead of throwing it away. It used to be the build's minute.
+function swVersionPlugin(): Plugin {
   return {
     name: 'sw-version-stamp',
-    writeBundle() {
+    writeBundle(_options, bundle) {
       const swPath = path.resolve(__dirname, 'dist/sw.js');
       if (!fs.existsSync(swPath)) return;
+      const version = createHash('sha256').update(Object.keys(bundle).sort().join('\n')).digest('hex').slice(0, 12);
       const contents = fs.readFileSync(swPath, 'utf8').replace(/__SW_VERSION__/g, version);
       fs.writeFileSync(swPath, contents);
     },
@@ -53,8 +57,6 @@ export default defineConfig(({ mode }) => {
     // a staging gate) — http-proxy does not pick this up from userinfo
     // embedded in the target URL, it needs its own `auth` option.
     const apiProxyBasicAuth = env.VITE_API_PROXY_BASIC_AUTH || '';
-    const d = new Date();
-    const buildVersion = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
     return {
       server: {
         port: 3000,
@@ -69,7 +71,7 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
-      plugins: [react(), swVersionPlugin(buildVersion), preloadFontsPlugin()],
+      plugins: [react(), swVersionPlugin(), preloadFontsPlugin()],
       esbuild: {
         charset: 'ascii',
       },
@@ -107,16 +109,13 @@ export default defineConfig(({ mode }) => {
               return undefined;
             },
             assetFileNames: 'assets/[name]-[hash][extname]',
-            chunkFileNames: (chunkInfo) => {
-              const d = new Date();
-              const v = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-              return `assets/${chunkInfo.name}-[hash]-${v}.js`;
-            },
-            entryFileNames: (chunkInfo) => {
-              const d = new Date();
-              const v = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-              return `assets/${chunkInfo.name}-[hash]-${v}.js`;
-            },
+            // Named by content alone. A build timestamp used to be appended to every
+            // chunk, so each deploy renamed every file — unchanged React, icons and
+            // charts included — and every visitor downloaded the whole app again.
+            // index.html is never cached (nginx: no-store), so a changed chunk is still
+            // picked up at once; an unchanged one keeps its name and stays cached.
+            chunkFileNames: 'assets/[name]-[hash].js',
+            entryFileNames: 'assets/[name]-[hash].js',
           },
         },
       },

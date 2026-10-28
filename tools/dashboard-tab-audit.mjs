@@ -100,7 +100,10 @@ const profileTabs = [...read(path.join(DASH_DIR, 'my-profile', 'profileTabs.ts')
 
 // Dashboard.tsx draws a number of tabs itself; those are ungated by definition.
 {
-  const src = read(DASHBOARD);
+  // Dashboard.tsx and its state hook (dashboard/shell/), which was part of it until 22 Oct 2026.
+  const shell = path.join(DASH_DIR, 'shell');
+  const src = [DASHBOARD, ...(fs.existsSync(shell) ? fs.readdirSync(shell).filter(f => /\.tsx?$/.test(f)).map(f => path.join(shell, f)) : [])]
+    .map(read).join('\n');
   for (const m of src.matchAll(/activeTab\s*===\s*'([a-z_0-9]+)'/g)) claim(m[1], 'Dashboard');
   for (const m of src.matchAll(/\[([^\]]*?)\]\s*\.includes\(activeTab\)/g))
     for (const k of m[1].matchAll(/'([a-z_0-9]+)'/g)) claim(k[1], 'Dashboard');

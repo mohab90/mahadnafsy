@@ -69,7 +69,6 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 interface Props {
   activeTab: string;
-  subscribers: SubscriberItem[];
   courses: Course[];
   bundles: Bundle[];
   staffMembers: StaffMember[];
@@ -103,10 +102,10 @@ interface Props {
 }
 
 export default function OnlineClientsTab({
-  activeTab, subscribers,
+  activeTab,
   courses, bundles, staffMembers, content, salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
   updateSubscriber: updateSubscriberProp, addSubscriber, reloadSubscribers: reloadSubscribersProp, reloadLeads, deleteSubscriber: deleteSubscriberProp, notify,
-  isDaqqiManager, canDeleteSubscriber, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
+  isDaqqiManager, canDeleteSubscriber, isReceptionDaqqi, isAdmin, isOnlineManager, currentStaff,
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
   setSubPayRow, setSubPayDraft,
@@ -120,10 +119,9 @@ export default function OnlineClientsTab({
   // Dokki's clients, or Tagamoa's when shown in its section (lib/physicalBranch.tsx).
   const physicalBranch = usePhysicalBranch();
   const isDaqqiClientsTab = activeTab === 'daqqi_clients';
-  // «عملاء الدقي» (for everyone), a sales rep's and a collection officer's «عملائي» read a page at a time from the
-  // server, which filters and counts (useStaffClientsPage); the administration's and the online manager's online screen
-  // still holds the whole list and filters it here.
-  const paged = staffClientsArePaged(activeTab, isNonAdminStaff, isOnlineManager);
+  // Both client screens read a page at a time from the server, which filters and counts (useStaffClientsPage), for
+  // every account — the administration's online screen held the whole client table and filtered it here.
+  const paged = staffClientsArePaged(activeTab);
 
   // Collection role — online clients tab state
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
@@ -418,9 +416,10 @@ export default function OnlineClientsTab({
               }
               const isIntlSub = isInternationalSubscriber;
               // The context's list: the administration's online screen holds it; a screen that pages from the server holds none.
-              const masterList = paged ? [] : subscribers;
+              // No list of clients is held here: both screens page from the server (useStaffClientsPage).
+              const masterList: SubscriberItem[] = [];
               const shouldUseScopedSubscribers = paged;
-              const actionSubscribers = paged ? [...serverPage.seen.current.values()] : subscribers;
+              const actionSubscribers = [...serverPage.seen.current.values()];
               const branchScopedMasterList = branchFilter
                 ? masterList.filter(s => branchMatchesFilter(s.branch, branchFilter))
                 : masterList;
@@ -683,7 +682,7 @@ export default function OnlineClientsTab({
                   />
                   {/* Table (hidden when old_data tab is active) */}
                   {/* ── Distribution panel for محلي قديم / سعودي قديم ── */}
-                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (!paged || isDaqqiClientsTab) && (
+                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (isAdmin || isDaqqiClientsTab) && (
                     <div className="mb-4 bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <span className="text-base">📊</span>
@@ -702,7 +701,7 @@ export default function OnlineClientsTab({
                               <select value={entry.staffId} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,staffId:e.target.value} : p))}
                                 className="border border-indigo-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-200 focus:outline-none min-w-[160px]">
                                 <option value="">{isDaqqiClientsTab ? `— اختر من فريق ${physicalBranch.label} —` : '— اختر مسئول تحصيل —'}</option>
-                                {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({paged ? serverData?.assignedCounts?.[s.id] ?? 0 : subscribers.filter(sub=>sub.assignedCsId===s.id).length} موزع)</option>)}
+                                {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({serverData?.assignedCounts?.[s.id] ?? 0} موزع)</option>)}
                               </select>
                               <input type="number" min="1" max={unassignedMatching} placeholder="عدد العملاء"
                                 value={entry.count} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,count:e.target.value} : p))}
@@ -960,7 +959,7 @@ export default function OnlineClientsTab({
                   {collectionSettingsOpen && (
                     <CollectionSettingsModal
                       staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
-                      subscribers={paged ? [] : subscribers}
+                      subscribers={[]}
                       notify={notify}
                       onClose={() => setCollectionSettingsOpen(false)}
                       onChanged={reloadSubscribers}

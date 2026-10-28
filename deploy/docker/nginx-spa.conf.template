@@ -12,10 +12,15 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # HSTS, framing, sniffing, referrer and the report-only CSP; repeated in
+    # every location that sets a header of its own (nginx drops these there).
+    include /etc/nginx/snippets/mahad-security-headers.conf;
+
     # Vite emits content-hashed filenames, so assets can be cached forever.
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     # Course and bundle pages and the sitemap, fresh from the API between
@@ -31,6 +36,7 @@ server {
         proxy_read_timeout 5s;
         proxy_intercept_errors on;
         error_page 404 429 500 502 503 504 = @build_files;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     location = /sitemap.xml {
@@ -41,16 +47,19 @@ server {
         proxy_read_timeout 5s;
         proxy_intercept_errors on;
         error_page 404 429 500 502 503 504 = @build_files;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     location @build_files {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-store" always;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     # The brand files, or the old hosted logo until they are in the build.
     location /brand/ {
         try_files $uri @brand_fallback;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     location @brand_fallback {
@@ -62,12 +71,14 @@ server {
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-store" always;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     # The service worker is re-fetched on every navigation; caching it strands
     # clients on a previous release.
     location = /sw.js {
         add_header Cache-Control "no-store" always;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
     }
 
     access_log /var/log/nginx/access.log;

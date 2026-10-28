@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 const logger = require('./logger');
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
@@ -219,7 +223,7 @@ function _expenseAccountCode(category) {
 // is available.
 const _FX_FALLBACK = { SAR: 13, USD: 48 };
 const _fxCache = new Map();
-function invalidateFxCache(tenantId = null) { if (tenantId) _fxCache.delete(tenantId); else _fxCache.clear(); }
+const invalidateFxCache = shared('fx-rates', function invalidateFxCacheHere(tenantId = null) { if (tenantId) _fxCache.delete(tenantId); else _fxCache.clear(); });
 async function getFxSnapshot(tenantId = DEFAULT_TENANT) {
   const cached = _fxCache.get(tenantId);
   if (cached?.rates && Date.now() - cached.ts < 10 * 60 * 1000) return cached;
@@ -300,7 +304,13 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
       throw new Error(`FX rate unavailable for ${normalizedCurrency}`);
     }
     const amtEgp = parseFloat(((Number(amount) || 0) * appliedRate).toFixed(2));
-    if (amtEgp <= 0) return null;
+    if (amtEgp === 0) return null;
+    // A refund is a negative payment row (lib/refunds.js). It used to stop here
+    // — no journal, no amount_egp — so the ledger and every report summing
+    // amount_egp still counted the money as earned. It posts the reverse entry
+    // instead: revenue debited, cash credited.
+    const refund = amtEgp < 0;
+    const size = Math.abs(amtEgp);
     if ((!branch || !branchId) && paymentId) {
       const [paymentRows] = await db.query(
         'SELECT branch, branch_id FROM payments WHERE id=? AND tenant_id=? LIMIT 1',
@@ -312,11 +322,18 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
     }
     const entryDate = journalDate(date) || dateOnlyInTimeZone();
     const journalId = await postJournalEntry('payment', paymentId, entryDate,
-      `دفعة ${amount} ${currency || 'EGP'} (= ${amtEgp} EGP) — ${payType || 'OTHER'}`,
-      [
-        { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
-        { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
-      ],
+      refund
+        ? `استرداد ${Math.abs(Number(amount))} ${currency || 'EGP'} (= ${size} EGP) — ${payType || 'OTHER'}`
+        : `دفعة ${amount} ${currency || 'EGP'} (= ${amtEgp} EGP) — ${payType || 'OTHER'}`,
+      refund
+        ? [
+          { account_code: accCode, account_name: accName, debit: size, credit: 0 },
+          { account_code: '1100', account_name: 'نقدية وبنوك', debit: 0, credit: size },
+        ]
+        : [
+          { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
+          { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
+        ],
       actor || 'system', db, tenantId, { branch, branchId }
     );
     if (!journalId) return null;
@@ -324,6 +341,8 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
       'UPDATE payments SET fx_rate_to_egp=?,amount_egp=?,fx_source=?,fx_applied_at=COALESCE(fx_applied_at,NOW()) WHERE id=? AND tenant_id=?',
       [appliedRate, amtEgp, fx.source, paymentId, tenantId]
     );
+    // A refund is not invoiced; its credit note is issued by the refund flow.
+    if (refund) return journalId;
     await ensureInvoiceForPayment(db, {
       id: paymentId,
       tenant_id: tenantId,

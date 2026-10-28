@@ -31,11 +31,9 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // ── Read through on 12 Oct 2026, every file each screen draws, the lazy
   // sections and popups among them, and the props Dashboard.tsx hands it. ──
 
-  // العملاء: the table is the context's clients (the full table for الأونلاين,
-  // the branch's pages for الدقي — both loaded in Dashboard.tsx); the housing
-  // column reads the rounds. A staff-built tab asks for the leads it lists
-  // (SectionCustomTabs), the refund popup reads the clients.
-  online_clients: ['subscribers', 'daqqiRounds'],
+  // العملاء: the table is a page from the server for every account (useStaffClientsPage — GET /api/staff/subscribers
+  // ?paged=1); the housing column reads the rounds. A staff-built tab asks for the leads it lists (SectionCustomTabs).
+  online_clients: ['daqqiRounds'],
   // The Dokki clients page from the server (GET /api/admin/dokki/clients) for everyone.
   daqqi_clients: ['daqqiRounds'],
   // The accounts: the orders, and the clients the ?branch= filter and the
@@ -56,9 +54,10 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   installment_plans: ['subscribers'],
   subscriptions: ['subscribers'],
   archived_clients: [],
-  // The leads table, the board and the reminders read the server; the
-  // performance strip and the conversion popup still read the loaded rows.
-  leads: ['leads', 'subscribers'],
+  // Every part of it reads the server: the table, the board and the pools a page at a time, the reminders, the
+  // counts and the performance figures as aggregates (LeadsTab.tsx). The 500 newest leads and clients it asked for
+  // were 1 MB on the lab, and only ever a fallback that counted the page as the table.
+  leads: [],
   sales_hub: ['leads', 'orders', 'subscribers'],
   sales_team: ['leads', 'orders'],
   sales_reports: ['leads', 'orders'],

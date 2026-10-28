@@ -1,5 +1,5 @@
 import { Activity, BarChart2, Phone, TrendingUp } from 'lucide-react';
-import { cairoMonthOnly, cairoDay } from '../../../../../shared/cairoDate';
+import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { useCrmData } from '../../../../context/siteDataSlices';
 import {
   BarChart,
@@ -14,7 +14,6 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import type { LeadItem } from '../../../../types';
 import { PIE_COLORS } from '../leadUtils';
 import { LeadPerformanceAnalyticsKpis } from './LeadPerformanceAnalyticsKpis';
 
@@ -24,7 +23,6 @@ type SourceRow = { name: string; value: number };
 type CommsByRepRow = Record<string, string | number>;
 
 interface LeadPerformancePanelProps {
-  leads: LeadItem[];
   totalConverted: number;
   monthlyTrend: TrendRow[];
   funnelData: FunnelRow[];
@@ -44,7 +42,6 @@ function groupSources(rows: SourceRow[]): SourceRow[] {
 }
 
 export function LeadPerformancePanel({
-  leads,
   totalConverted,
   monthlyTrend,
   funnelData,
@@ -52,16 +49,12 @@ export function LeadPerformancePanel({
   commsByRep,
 }: LeadPerformancePanelProps) {
   const { leadStats } = useCrmData();
-  // Three whole-table counts. leadStats answers each of them without the array;
-  // the array arms are what run before the stats request resolves.
-  const visibleCount = leadStats ? leadStats.total : leads.filter(l => !l.hidden).length;
+  // Three whole-table counts, the server's (GET /admin/leads/stats); zero until it answers — the screen holds no leads
+  // to count, and the page of them it once held was not the table.
+  const visibleCount = leadStats?.total ?? 0;
   const thisMonth = cairoMonthOnly();
-  const totalComms = leadStats
-    ? leadStats.totalCommunications
-    : leads.reduce((s, l) => s + (l.communicationCount ?? l.communications?.length ?? 0), 0);
-  const monthlyLeads = leadStats
-    ? (leadStats.byMonth?.[thisMonth]?.total ?? 0)
-    : leads.filter(l => cairoDay(l.createdAt).startsWith(thisMonth)).length;
+  const totalComms = leadStats?.totalCommunications ?? 0;
+  const monthlyLeads = leadStats?.byMonth?.[thisMonth]?.total ?? 0;
 
   return (
     <div className="space-y-5">

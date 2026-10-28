@@ -103,7 +103,7 @@ test('a declined transaction credits nothing', () => {
   const src = checkoutSource();
   // Both entry points gate on success before finalising.
   assert.match(src, /if \(!paymobSuccess\(params\)\) return res\.json\(\{ ok: true, verified: true, paid: false \}\)/);
-  assert.match(src, /if \(paymobSuccess\(params\)\) \{[\s\S]{0,200}?finalisePaymobOrder/);
+  assert.match(src, /if \(paymobSuccess\(params\)\) \{[\s\S]{0,400}?finalisePaymobOrder/);
   // And success is read strictly, not truthily — 'false' is a string here.
   assert.match(src, /String\(params\.success \?\? params\.obj\?\.success \?\? ''\)\.toLowerCase\(\) === 'true'/);
 });
@@ -176,7 +176,8 @@ test('course access is granted from the database, never from the order body', ()
   assert.ok(!/extra\.bundleCourseIds/.test(grantBlock),
     'the grant reads the caller-supplied course list');
   // And only a course or bundle order grants anything at all.
-  assert.match(src, /if \(\(orderType === 'course' \|\| orderType === 'bundle'\) && sub\)/);
+  // (A plan-entry order grants through lib/planEntryPayment.js, by what the plan now covers.)
+  assert.match(src, /if \(!planEntry && \(orderType === 'course' \|\| orderType === 'bundle'\) && sub\)/);
 });
 
 test('the verify endpoint does not call a refused capture "paid"', () => {

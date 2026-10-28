@@ -60,8 +60,8 @@ test('sales goals, targets, actuals and performance are tenant scoped', () => {
   assert.match(migration, /PRIMARY KEY \(tenant_id, staff_id, period\)/);
   assert.match(route, /FROM sales_goals WHERE tenant_id=\?/);
   assert.match(route, /FROM sales_targets WHERE tenant_id=\?/);
-  assert.match(route, /FROM leads WHERE tenant_id=\?/);
-  assert.match(route, /FROM payments WHERE tenant_id=\?/);
+  // The performance figures' leads and payments: one institute's never count in
+  // another's (tests/integration/tenantIsolation.integration.test.js, over HTTP).
   assert.match(route, /SUM\(amount_egp\).*actual_revenue/);
   // Target reads stay open to the sales role (the team leaderboard needs them),
   // but writing a target must not be: manage_leads is a default sales-rep

@@ -3,7 +3,7 @@ const { certificateDue } = require('../../lib/certificatePricing');
 const { loadPlacements, placeCourse, ownOrPlaced } = require('../../lib/coursePlacement');
 const { certificatePricing } = require('../../lib/certificatePayments');
 const { CONVERTED_SQL, TERMINAL_SQL } = require('../../lib/leadStatuses');
-const { NEXT_FOLLOWUP } = require('../../lib/leadTableFilter');
+const { FOLLOW_UP_DATE: NEXT_FOLLOWUP, FOLLOW_UP_OPEN } = require('../../lib/leadFollowUps');
 const { ARCHIVE_SOURCE_PREFIXES } = require('../../lib/leadArchive');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
@@ -807,6 +807,7 @@ async function staffClientsPage(req, sc) {
   return {
     rows: await shapeStaffSubscribers(tenantId, pageRows),
     total: view.ids.length, tabCounts: view.tabCounts, followCounts: view.followCounts, figures: view.figures,
+    unassignedMatching: view.unassignedMatching, assignedCounts: view.assignedCounts,
   };
 }
 
@@ -1262,7 +1263,7 @@ router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireA
     const payload = await cached(key, 15 * 1000, async () => {
       const out = {
         totalLeads: 0, converted: 0, convertedThisMonth: 0, newThisMonth: 0, callsThisMonth: 0, last7: [],
-        overdue: [], today: [], recent: [], urgent: [], clients: 0,
+        overdue: [], today: [], overdueCount: 0, todayCount: 0, recent: [], urgent: [], clients: 0,
         // This month's new clients, by the week the monthly target ring draws (days 1-7, 8-14, 15-21, 22-28), and all of them.
         signups: { month: 0, weeks: [0, 0, 0, 0] },
       };
@@ -1276,10 +1277,13 @@ router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireA
         if (!scope.none) {
           const base = `FROM leads l WHERE l.tenant_id=? AND l.hidden=0${scope.sql}`;
           const p = [req.tenantId, ...scope.params];
-          const openSql = `l.status NOT IN ${TERMINAL_SQL}`;
+          // Open, and the follow-up date, as every screen counts them (lib/leadFollowUps.js).
+          const openSql = FOLLOW_UP_OPEN;
           const [[[totals]], [[month]], [overdue], [dueToday], [recent], [urgent], [calls], [convDays]] = await Promise.all([
             pool.query(`SELECT COUNT(*) AS total, COALESCE(SUM(l.status IN ${CONVERTED_SQL}), 0) AS converted,
-                                COALESCE(SUM(l.status IN ${CONVERTED_SQL} AND l.updated_at >= ?), 0) AS convertedMonth ${base}`, [monthStart, ...p]),
+                                COALESCE(SUM(l.status IN ${CONVERTED_SQL} AND l.updated_at >= ?), 0) AS convertedMonth,
+                                COALESCE(SUM(${openSql} AND ${NEXT_FOLLOWUP} < ?), 0) AS overdueCount,
+                                COALESCE(SUM(${openSql} AND ${NEXT_FOLLOWUP} = ?), 0) AS todayCount ${base}`, [monthStart, today, today, ...p]),
             pool.query(`SELECT COUNT(*) AS n ${base} AND l.created_at >= ?`, [...p, monthStart]),
             pool.query(`SELECT l.* ${base} AND ${openSql} AND ${NEXT_FOLLOWUP} < ? ORDER BY ${NEXT_FOLLOWUP} ASC LIMIT 30`, [...p, today]),
             pool.query(`SELECT l.* ${base} AND ${openSql} AND ${NEXT_FOLLOWUP} = ? LIMIT 30`, [...p, today]),
@@ -1299,6 +1303,9 @@ router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireA
           out.newThisMonth = Number(month.n) || 0;
           out.overdue = overdue.map(mapStaffLeadRow);
           out.today = dueToday.map(mapStaffLeadRow);
+          // The true counts: the lists stop at 30 rows, and the page counted the list.
+          out.overdueCount = Number(totals.overdueCount) || 0;
+          out.todayCount = Number(totals.todayCount) || 0;
           out.recent = recent.map(mapStaffLeadRow);
           out.urgent = urgent.map(mapStaffLeadRow);
           const callsByDay = Object.fromEntries(calls.map(row => [String(row.day).slice(0, 10), Number(row.n) || 0]));

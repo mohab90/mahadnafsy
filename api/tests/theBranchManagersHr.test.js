@@ -5,6 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { hrReach, staffInReach, staffReachSql } = require('../lib/branchHr');
@@ -72,7 +73,7 @@ test('a branch manager\'s old grid still opens the branch HR, and HR boxes do no
 test('a branch manager opening «الموارد البشرية» from any link lands on their branch\'s HR', () => {
   // The institute's HR tab refuses them (view_hr does not apply to the role), and
   // links and saved addresses (/dashboard/hr, /dashboard/hr/attendance) led there.
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /const branchHrOnly = \['daqqi_manager', 'tagamoa_manager'\]\.includes\(String\(currentStaff\?\.role \|\| ''\)\.toLowerCase\(\)\);/);
   assert.match(dashboard, /branchHrOnly && \['hr', 'hr_analytics'\]\.includes\(activeScreen\) \? 'branch_hr' : activeScreen/);
 });

@@ -1,0 +1,77 @@
+# The API's background jobs in their own process (api/worker.js,
+# api/lib/processRole.js). NOT installed or enabled by any script: until it is,
+# the API runs its jobs itself, exactly as before.
+#
+# To switch it on (as root, at a quiet hour):
+#   1. Make WorkingDirectory, User and the secret lines match what
+#      `systemctl cat mahad-api` shows: the jobs write audit rows and send
+#      messages, so they need the API's secrets and database. The values
+#      below follow deploy/systemd/mahad-api.service.
+#   2. install -m 0644 mahad-api-worker.service /etc/systemd/system/
+#   3. Add MAHAD_ROLE=web to the API — `systemctl edit mahad-api`:
+#        [Service]
+#        Environment=MAHAD_ROLE=web
+#   4. systemctl daemon-reload && systemctl enable --now mahad-api-worker \
+#        && systemctl restart mahad-api
+# From then on deploy-release.sh restarts it with the API on every switch and
+# rollback (it asks `systemctl is-enabled mahad-api-worker`).
+#
+# Skipping step 3 is not dangerous — both processes would run the jobs, and
+# each job takes a database lock (lib/jobLock.js) — but it saves nothing.
+# Back out: systemctl disable --now mahad-api-worker, remove the drop-in,
+# systemctl restart mahad-api.
+#
+# The reps' WhatsApp sessions stay in the API: its routes send through the
+# connection held in memory. A cache dropped by a job here is dropped in the
+# web process too, within two seconds (lib/cacheBus.js, on by itself with
+# MAHAD_ROLE=web). Several web instances: deploy/MULTI_INSTANCE.md.
+[Unit]
+Description=Mahad API background jobs
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/mahad-api
+ExecStart=/usr/bin/node worker.js
+Environment=TZ=UTC
+Environment=NODE_ENV=production
+Environment=MAHAD_ROLE=worker
+Environment=PROCESS_MANAGER=systemd
+
+LoadCredential=jwt:/etc/mahad/secrets/jwt
+LoadCredential=session:/etc/mahad/secrets/session
+LoadCredential=otp:/etc/mahad/secrets/otp
+LoadCredential=audit:/etc/mahad/secrets/audit
+Environment=JWT_SECRET_FILE=%d/jwt
+Environment=SESSION_BINDING_SECRET_FILE=%d/session
+Environment=OTP_HMAC_SECRET_FILE=%d/otp
+Environment=AUDIT_HMAC_SECRET_FILE=%d/audit
+Environment=AUTH_SECRET_SOURCE=platform-secret
+Environment=AUTH_SECRET_PROVIDER=systemd-credentials
+Environment=AUTH_SECRET_ROTATED_AT=2026-08-03
+Environment=JWT_SECRET_REFERENCE=systemd-cred:mahad/jwt@2026-08-03
+Environment=SESSION_BINDING_SECRET_REFERENCE=systemd-cred:mahad/session@2026-08-03
+Environment=OTP_HMAC_SECRET_REFERENCE=systemd-cred:mahad/otp@2026-08-03
+Environment=AUDIT_SECRET_SOURCE=platform-secret
+Environment=AUDIT_SECRET_PROVIDER=systemd-credentials
+Environment=AUDIT_SECRET_REFERENCE=systemd-cred:mahad/audit@2026-08-03
+Environment=AUDIT_SECRET_ROTATED_AT=2026-08-03
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+SuccessExitStatus=0 143
+LimitNOFILE=65535
+# Jobs only; its own drain-and-restart (lib/productionRuntimeGuard.js) comes
+# before the cap.
+Environment=MEMORY_HEAL_LIMIT_MB=800
+MemoryHigh=900M
+MemoryMax=1G
+
+StandardOutput=append:/var/log/mahad-api-worker.log
+StandardError=append:/var/log/mahad-api-worker.log
+
+[Install]
+WantedBy=multi-user.target

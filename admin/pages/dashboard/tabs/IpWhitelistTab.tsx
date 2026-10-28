@@ -19,19 +19,24 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
   const [newIp, setNewIp] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [loading, setLoading] = useState(false);
+  // A failed load is not an empty list: it said «القائمة فارغة» over a list
+  // that was simply never read.
+  const [loadError, setLoadError] = useState('');
   const [myIp, setMyIp] = useState<string>('');
 
   // Fetch current IP list from API
   async function loadWhitelist() {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await fetch(`/api/admin/ip-whitelist`, { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setWhitelist(data.whitelist || []);
-        setMyIp(data.currentIp || '');
-      }
-    } catch {}
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setWhitelist(data.whitelist || []);
+      setMyIp(data.currentIp || '');
+    } catch {
+      setLoadError('تعذر تحميل القائمة من الخادم — اضغط إعادة التحميل.');
+    }
     setLoading(false);
   }
 
@@ -85,7 +90,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
         <Globe size={18} className="text-blue-500 flex-shrink-0" />
         <div className="flex-1">
           <div className="text-sm font-semibold text-blue-800">عنوان IP الخاص بك الحالي</div>
-          <div className="font-mono text-blue-700 font-bold">{myIp || 'جاري التحميل...'}</div>
+          <div className="font-mono text-blue-700 font-bold">{myIp || (loadError ? 'غير متاح' : 'جاري التحميل...')}</div>
         </div>
         {myIp && (
           <button onClick={addMyIp} className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition flex items-center gap-1">
@@ -129,7 +134,12 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
             </button>
           </div>
         </div>
-        {whitelist.length === 0 ? (
+        {loadError ? (
+          <div className="p-10 text-center text-red-600">
+            <AlertCircle size={32} className="mx-auto mb-3 text-red-300" />
+            <p>{loadError}</p>
+          </div>
+        ) : whitelist.length === 0 ? (
           <div className="p-10 text-center text-gray-400">
             <Shield size={32} className="mx-auto mb-3 text-gray-200" />
             <p>القائمة فارغة — أضف عناوين IP للسماح بوصولها</p>

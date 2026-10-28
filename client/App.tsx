@@ -55,6 +55,7 @@ const lazyPage = (element: React.ReactNode) => (
 );
 import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import EmailVerifyNotice from './components/EmailVerifyNotice';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { instituteWhatsApp } from './lib/whatsappLink';
@@ -580,6 +581,7 @@ const AppShell: React.FC = () => {
           <WaFloat />
           <SessionTimeoutWarner />
           <SessionEndedNotice />
+          <EmailVerifyNotice />
         </div>
       </ErrorBoundary>
     </>

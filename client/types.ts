@@ -6,6 +6,8 @@ export interface AuthUser {
   email: string;
   displayName?: string;
   isAdmin?: boolean;
+  /** false while the sign-up email waits for its link or code; absent from older answers. */
+  emailVerified?: boolean;
 }
 
 export type MeetingProvider = 'zoom' | 'google_meet' | 'custom';

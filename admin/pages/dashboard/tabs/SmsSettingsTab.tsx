@@ -34,6 +34,10 @@ const DEFAULT_CONFIG: SmsConfig = {
 export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
   const [config, setConfig] = useState<SmsConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
+  // Until the saved settings have actually been read, the form shows
+  // DEFAULT_CONFIG; saving that would overwrite the real provider/sender.
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState('هذه رسالة اختبار من منصة محاد نفسي');
@@ -42,19 +46,21 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
 
   async function loadSettings() {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await fetch(apiPath('/admin/sms-settings'), { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) {
-        const d = await res.json();
-        setConfig({
-          ...DEFAULT_CONFIG,
-          provider: d.provider || DEFAULT_CONFIG.provider,
-          senderId: d.sender_id || DEFAULT_CONFIG.senderId,
-          enabled: Boolean(d.is_active),
-        });
-      }
-    } catch {}
-    finally { setLoading(false); }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      setConfig({
+        ...DEFAULT_CONFIG,
+        provider: d.provider || DEFAULT_CONFIG.provider,
+        senderId: d.sender_id || DEFAULT_CONFIG.senderId,
+        enabled: Boolean(d.is_active),
+      });
+      setLoaded(true);
+    } catch {
+      setLoadError('تعذر تحميل إعدادات SMS المحفوظة — الحفظ متوقف حتى تُحمَّل.');
+    } finally { setLoading(false); }
   }
 
   useEffect(() => { loadSettings(); }, []);
@@ -64,6 +70,7 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
   }
 
   async function saveSettings() {
+    if (!loaded) return;
     setSaving(true);
     try {
       const res = await fetch(apiPath('/admin/sms-settings'), {
@@ -109,6 +116,15 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
         <h2 className="text-xl font-bold flex items-center gap-2"><MessageSquare size={22} />إعدادات SMS</h2>
         <p className="text-green-100 text-sm mt-1">ضبط مزود SMS لإرسال الرسائل النصية للعملاء</p>
       </div>
+
+      {loadError && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button onClick={loadSettings} disabled={loading} className="flex items-center gap-1 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />إعادة المحاولة
+          </button>
+        </div>
+      )}
 
       {/* Config form */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
@@ -160,8 +176,9 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
           {/* Also disabled while the initial fetch is in flight. Until it lands
               the form is still showing DEFAULT_CONFIG, so saving early would
               overwrite the real provider/sender settings with the defaults —
-              the `loading` flag was being tracked but never actually used. */}
-          <button onClick={saveSettings} disabled={saving || loading}
+              the `loading` flag was being tracked but never actually used. A
+              failed fetch leaves the defaults on screen too, so `loaded` gates it. */}
+          <button onClick={saveSettings} disabled={saving || loading || !loaded}
             className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition disabled:opacity-50">
             {saving || loading ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
             {loading ? 'جاري تحميل الإعدادات...' : saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}

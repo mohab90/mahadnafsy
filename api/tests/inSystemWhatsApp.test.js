@@ -5,6 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -57,7 +58,7 @@ test('the buttons open the system\'s own WhatsApp; the floating sender is gone a
   assert.match(booking, /aria-label="بحث في كل العملاء"/);
   assert.match(booking, /h-10 w-10 items-center justify-center rounded-full/, 'a small round button');
   assert.match(booking, /<Search size=\{17\} \/>/, 'the search mark only');
-  assert.doesNotMatch(read('admin/pages/Dashboard.tsx'), /navigate=\{navigate\}\s+notify=\{notify\}/);
+  assert.doesNotMatch(dashboardSource(), /navigate=\{navigate\}\s+notify=\{notify\}/);
 
   const page = read('admin/pages/dashboard/tabs/whatsapp/WhatsAppWebTab.tsx');
   assert.match(page, /const wantedPhone = params\.get\('phone'\)/);

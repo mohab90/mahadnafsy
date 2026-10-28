@@ -90,7 +90,7 @@ test('content goes straight to the public copy for everyone but an admin', () =>
 test('the management messages bell shows only for those who can read it', () => {
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
   const line = nav.split('\n').find(l => l.includes('<MessagesBell mode="management"'));
-  assert.ok(line && line.includes("hasPermission(currentStaff, 'view_hr')"), `the bell is unconditional: ${line && line.trim()}`);
+  assert.ok(line && line.includes("access.can('view_hr')"), `the bell is unconditional: ${line && line.trim()}`);
   assert.ok(routes.includes("router.get('/api/admin/hr/staff-messages/inbox', requireAuth, requireAdminOrStaff, requirePermission('view_hr'),"),
     'the bell must be gated on what its route requires');
 });

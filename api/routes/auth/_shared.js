@@ -22,13 +22,13 @@ const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { branchIdForBranch } = require('../../lib/branches');
 const { grantCourseSelections } = require('../../lib/entitlements');
 const {
-  JWT_SECRET, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
+  JWT_SECRET, JWT_MAX_AGE_SECONDS, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
 } = require('../../lib/token');
 const {
   ADMIN_EMAILS, ADMIN_UIDS, isInstituteOwner, requireAuth, requireAdmin, requireSuperAdmin,
   requireAdminOrOnlineManager, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../../middleware/auth');
-const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../../middleware/rateLimits');
+const { registerLimiter, loginLimiter, resetPasswordLimiter, otpLimiter, resetOtpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../../middleware/validate');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
@@ -79,6 +79,7 @@ module.exports = {
   branchIdForBranch,
   grantCourseSelections,
   JWT_SECRET,
+  JWT_MAX_AGE_SECONDS,
   signAccessToken,
   setAuthCookie,
   clearAuthCookie,
@@ -96,7 +97,9 @@ module.exports = {
   invalidateIdentity,
   registerLimiter,
   loginLimiter,
+  resetPasswordLimiter,
   otpLimiter,
+  resetOtpLimiter,
   forgotPasswordLimiter,
   bulkOperationLimiter,
   isString,

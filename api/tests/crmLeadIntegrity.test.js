@@ -76,7 +76,8 @@ test('admin conversion uses one server transaction and the UI waits for persiste
   assert.match(route, /transitionLead\(\{[\s\S]*toStatus: 'converted'/);
   assert.match(route, /await conn\.commit\(\)/);
   assert.match(ui, /await mysqlAdmin\.convertLead\(lead\.id, \{ courseId, accessMode \}\)/);
-  assert.match(ui, /await Promise\.all\(\[reloadLeads\(\), reloadSubscribers\(\)\]\)/);
+  // Waits for both lists; of the leads only the converted one is fetched again.
+  assert.match(ui, /await Promise\.all\(\[reloadLeads\(\{ only: \[lead\.id\] \}\), reloadSubscribers\(\)\]\)/);
 });
 
 test('lead assignments validate tenant staff and persist audit in the same transaction', () => {
@@ -172,7 +173,8 @@ test('CRM writes, bulk messaging and interaction deletion preserve role data sco
   // duplicated data. Same form, mounted beside the leads screen so the pipeline
   // card's button can open it from any tab.
   const communications = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'leads', 'QuickLogContactPanel.tsx'), 'utf8');
-  assert.match(leadsTab, /hasStaffPermission\(permissionSubject, 'manage_leads'\)/);
+  // The account's own permission, by the one rule over the server's table (admin/lib/access.ts).
+  assert.match(leadsTab, /const canManageLeads = access\.can\('manage_leads'\);/);
   assert.match(leadTable, /canManageLeads && selectedIds\.length/);
   assert.match(leadTable, /mysqlAdmin\.addLeadInteraction/);
   assert.match(communications, /canManageLeads && showAddComm/);

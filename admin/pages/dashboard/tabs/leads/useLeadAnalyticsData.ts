@@ -1,43 +1,36 @@
 import { useMemo } from 'react';
 
-import type { LeadItem, LeadStats } from '../../../../types';
-import { cairoDay, cairoMonthStart } from '../../../../../shared/cairoDate';
+import type { LeadStats } from '../../../../types';
+import { cairoMonthStart } from '../../../../../shared/cairoDate';
 
 /**
- * Trend, funnel and source charts.
+ * Trend, funnel and source charts, and the converted / lost totals.
  *
- * All three are counts over the whole leads table, which is why they used to
- * need the whole leads table in the browser. `leadStats` carries the same three
- * as GROUP BYs; the array path below stays as the pre-response fallback.
- *
- * `totals` is not part of that: it counts `effectiveLeads`, the filtered set the
- * user is currently looking at, so it stays client-side by definition.
+ * All of them are counts over the whole leads table, which is why they used to
+ * need the whole leads table in the browser. `leadStats` (GET /admin/leads/stats)
+ * carries the same counts as GROUP BYs. The fallback that counted the leads the
+ * browser held saw only the page of them a screen had loaded; the screen holds
+ * none now, so until the stats answer the charts read zero.
  */
-export function useLeadAnalyticsData(leads: LeadItem[], effectiveLeads: LeadItem[], leadStats?: LeadStats | null) {
+export function useLeadAnalyticsData(leadStats?: LeadStats | null) {
   const monthlyTrend = useMemo(() => {
     const months = Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
-
     return months.map(month => {
       // The server omits months with no leads; the axis still needs them.
       const agg = leadStats?.byMonth?.[month];
       return {
         month: `${month.slice(5)}/${month.slice(2, 4)}`,
-        'ليدز': leadStats
-          ? (agg?.total ?? 0)
-          : leads.filter(lead => cairoDay(lead.createdAt).slice(0, 7) === month).length,
-        'محوّل': leadStats
-          ? (agg?.converted ?? 0)
-          : leads.filter(lead => cairoDay(lead.createdAt).slice(0, 7) === month && lead.status === 'converted').length,
+        'ليدز': agg?.total ?? 0,
+        'محوّل': agg?.converted ?? 0,
       };
     });
-  }, [leads, leadStats]);
+  }, [leadStats]);
 
   const funnelData = useMemo(() => {
     // byStatus is already scoped to hidden = 0, which is what every stage here
-    // filters for by hand.
-    const count = (...statuses: string[]) => leadStats
-      ? statuses.reduce((sum, status) => sum + (leadStats.byStatus?.[status] || 0), 0)
-      : leads.filter(lead => statuses.includes(lead.status) && !lead.hidden).length;
+    // filtered for by hand.
+    const count = (...statuses: string[]) =>
+      statuses.reduce((sum, status) => sum + (leadStats?.byStatus?.[status] || 0), 0);
     return [
       { name: 'وارد جديد', value: count('new'), color: '#6366f1' },
       { name: 'تم التواصل', value: count('contacted'), color: '#8b5cf6' },
@@ -45,39 +38,22 @@ export function useLeadAnalyticsData(leads: LeadItem[], effectiveLeads: LeadItem
       { name: 'مغلق/لا يرد', value: count('closed', 'no_answer'), color: '#f59e0b' },
       { name: 'محوّل', value: count('converted'), color: '#10b981' },
     ];
-  }, [leads, leadStats]);
+  }, [leadStats]);
 
   const sourcesData = useMemo(() => {
     const counts: Record<string, number> = {};
-    if (leadStats) {
-      // The server keys the no-source bucket as '', which is the same lead the
-      // array path labelled 'غير محدد'.
-      for (const [source, value] of Object.entries(leadStats.bySource || {})) {
-        counts[source || 'غير محدد'] = value;
-      }
-    } else {
-      leads.filter(lead => !lead.hidden).forEach(lead => {
-        const source = lead.source || 'غير محدد';
-        counts[source] = (counts[source] || 0) + 1;
-      });
+    // The server keys the no-source bucket as '' — labelled 'غير محدد'.
+    for (const [source, value] of Object.entries(leadStats?.bySource || {})) {
+      counts[source || 'غير محدد'] = value;
     }
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [leads, leadStats]);
+  }, [leadStats]);
 
-  // From the server's counts while the array is only a page of the table — the
-  // main table no longer downloads every lead, and counting the bootstrap page
-  // would report a few hundred as the institute's conversions.
-  const totals = useMemo(() => {
-    if (leadStats && leads.length < leadStats.total) {
-      return { converted: leadStats.byStatus?.converted || 0, lost: leadStats.byStatus?.lost || 0 };
-    }
-    return {
-      converted: effectiveLeads.filter(lead => lead.status === 'converted').length,
-      lost: effectiveLeads.filter(lead => lead.status === 'lost').length,
-    };
-  }, [effectiveLeads, leads.length, leadStats]);
-
-  return { monthlyTrend, funnelData, sourcesData, totalConverted: totals.converted, totalLost: totals.lost };
+  return {
+    monthlyTrend, funnelData, sourcesData,
+    totalConverted: leadStats?.byStatus?.converted || 0,
+    totalLost: leadStats?.byStatus?.lost || 0,
+  };
 }

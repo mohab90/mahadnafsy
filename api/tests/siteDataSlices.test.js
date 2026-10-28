@@ -121,7 +121,7 @@ test('the twelve static screens moved as recorded', () => {
   })();
 
   const moved = [
-    'admin/components/PaymentModal.tsx',
+    'admin/components/payment-modal/usePaymentModalModel.tsx',
     'admin/hooks/useBranches.ts',
     'admin/pages/dashboard/tabs/AdminAiSettingsTab.tsx',
     'admin/pages/dashboard/tabs/consultations/ConsultationSettingsTab.tsx',

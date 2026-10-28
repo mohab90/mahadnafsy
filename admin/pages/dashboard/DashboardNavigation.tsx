@@ -11,7 +11,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
-import { hasPermission, LECTURER_ROLES } from '../../constants/permissions';
+import { useAccess } from '../../hooks/useAccess';
+import { LECTURER_ROLES } from '../../constants/permissions';
 import { NotificationsBell, type NotificationsBellProps } from './NotificationsBell';
 import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
 import type { StaffMember } from '../../types';
@@ -53,6 +54,8 @@ type Props = {
   setNotifRows: React.Dispatch<React.SetStateAction<NotifRow[]>>;
   notifUnread: number;
   setNotifUnread: React.Dispatch<React.SetStateAction<number>>;
+  notifError: boolean;
+  refreshNotifs: () => void;
   pendingProofsCount: number;
   inboxUnreadCount: number;
   currentStaff: StaffMember | null | undefined;
@@ -195,9 +198,15 @@ function RoleBell() {
 }
 
 function CompactRoleNav({
-  tabs, activeTab, setActiveTab, currentStaff, salesDataLoading, staffNotifBadge,
+  tabs: listed, activeTab, setActiveTab, currentStaff, salesDataLoading, staffNotifBadge,
   setSalesNotifOpen, notify, extraTabsSlot, extraHeaderButtons,
 }: CompactRoleNavProps) {
+  // A role's bar is a hand-written list; it offers only what the account may open, by the rule the gate applies
+  // (lib/access.ts). The list can narrow what the menu would show, never widen it.
+  const { canOpenTab } = useAccess();
+  const tabs = listed
+    .map(entry => (isGroup(entry) ? { ...entry, items: entry.items.filter(item => canOpenTab(item.key)) } : entry))
+    .filter(entry => (isGroup(entry) ? entry.items.length > 0 : canOpenTab(entry.key)));
   const navigate = useNavigate();
   const { logout } = useAuth();
   // Signing out has to tell the app, not only the server. This cleared the
@@ -291,13 +300,14 @@ export function DashboardNavigation(props: Props) {
     isSalesCollectionManager, isAdmin, visibleMenuGroups, activeTab, setActiveTab,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect,
     notifRef,
-    notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread,
+    notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread, notifError, refreshNotifs,
     pendingProofsCount, inboxUnreadCount, currentStaff, salesDataLoading, staffNotifBadge,
     setSalesNotifOpen, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen, setOnlineMgrFollowupOpen,
     onlineMgrFollowupBadge, setOnlineMgrNewEventsOpen, onlineMgrNewEventsBadge, notify,
   } = props;
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const access = useAccess();
   // A role with a bar of its own sees that bar and nothing else. The management
   // bar was hidden for four of them and not for the Dokki manager or the sales
   // and collection manager, who got both — the whole panel's groups on top of
@@ -353,7 +363,7 @@ export function DashboardNavigation(props: Props) {
     );
   };
 
-  const bellProps: NotificationsBellProps = { rows: notifRows, setRows: setNotifRows, unread: notifUnread, setUnread: setNotifUnread, open: notifOpen, setOpen: setNotifOpen, panelRef: notifRef, onNavigate: setActiveTab };
+  const bellProps: NotificationsBellProps = { rows: notifRows, setRows: setNotifRows, unread: notifUnread, setUnread: setNotifUnread, open: notifOpen, setOpen: setNotifOpen, panelRef: notifRef, onNavigate: setActiveTab, loadFailed: notifError, onRetry: refreshNotifs };
   return (
 <BellContext.Provider value={bellProps}>
         {/* ── Main nav bar ── */}
@@ -441,7 +451,7 @@ export function DashboardNavigation(props: Props) {
                     until someone opened that person's file. Only for those its
                     route answers (view_hr): for everyone else it was a bell that
                     always read 0 and opened empty, on a 403 every page load. */}
-                {(isAdmin || hasPermission(currentStaff, 'view_hr')) && <MessagesBell mode="management" notify={notify} />}
+                {access.can('view_hr') && <MessagesBell mode="management" notify={notify} />}
                 <NotificationsBell
                   rows={notifRows}
                   setRows={setNotifRows}
@@ -451,6 +461,8 @@ export function DashboardNavigation(props: Props) {
                   setOpen={setNotifOpen}
                   panelRef={notifRef}
                   onNavigate={setActiveTab}
+                  loadFailed={notifError}
+                  onRetry={refreshNotifs}
                 />
                 <button onClick={signOut}
                   className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
@@ -687,7 +699,7 @@ export function DashboardNavigation(props: Props) {
                             { key: 'live_streams' as TabKey, label: 'البث المباشر', icon: Video },
                             { key: 'community' as TabKey, label: 'المجتمع', icon: MessageSquareText },
                             { key: 'institute_gallery' as TabKey, label: 'معرض صور المعهد', icon: Image },
-                          ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[]).map(item => {
+                          ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[]).filter(item => access.canOpenTab(item.key)).map(item => {
                             const Icon = item.icon;
                             const isActive = activeTab === item.key;
                             return (

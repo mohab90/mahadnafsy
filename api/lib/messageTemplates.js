@@ -67,6 +67,9 @@ async function loadTemplates(tenantId = DEFAULT_TENANT) {
   }
 }
 
+// Saved templates reload at once in every API process (routes/config.js).
+const reloadTemplates = require('./cacheBus').shared('message-templates', tenantId => loadTemplates(tenantId || DEFAULT_TENANT));
+
 function startTemplatesRefresh(intervalMs = 60 * 1000) {
   const refresh = async () => {
     const [rows] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[]]);
@@ -80,4 +83,4 @@ function startTemplatesRefresh(intervalMs = 60 * 1000) {
   return _timer;
 }
 
-module.exports = { TEMPLATE_DEFAULTS, setTemplates, renderTemplate, loadTemplates, startTemplatesRefresh };
+module.exports = { TEMPLATE_DEFAULTS, setTemplates, renderTemplate, loadTemplates, reloadTemplates, startTemplatesRefresh };

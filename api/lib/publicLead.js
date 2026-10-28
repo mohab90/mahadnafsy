@@ -13,9 +13,29 @@ const { branchIdForBranch, normalizeBranch } = require('./branches');
 const { logLeadEvent } = require('./crm');
 const { getNextSalesRep } = require('./leadAssignment');
 const { phoneIdentityClause } = require('./leadMatching');
+const { completeForBranch, toIdentity } = require('./phoneNumber');
+const { attributionValues, fillAttributionSql } = require('./visitAttribution');
+
+// The one form clients are kept in (lib/phoneNumber.js toIdentity), so the desk
+// and the conversion find this lead by the client's number; as typed only when
+// it has no digits to keep.
+const storedPhone = (phone, branch) => toIdentity(completeForBranch(phone, branch)).slice(0, 30) || String(phone).trim().slice(0, 30);
 
 /** Returns { id, existing }, or { busy: true } when the same number is being filed right now. */
-async function capturePublicLead({ tenantId, name, phone, notes, source, branch }, db = pool) {
+async function capturePublicLead(input, db = pool) {
+  const result = await fileLead(input, db);
+  // The welcome message is queued only after this request's connection is back
+  // in the pool. Queuing it from inside — while still holding the connection and
+  // the number's lock — needed a second connection: forty forms at once held all
+  // twenty, each waited for a twenty-first, and the API stopped answering until
+  // it was restarted.
+  if (result.created) {
+    await require('./lifecycle').trigger('lead_created', { name: input.name, phone: input.phone, tenantId: input.tenantId });
+  }
+  return result.created ? { id: result.id, existing: false, assignedSalesId: result.assignedSalesId } : result;
+}
+
+async function fileLead({ tenantId, name, phone, notes, source, branch, attribution = null }, db) {
   const conn = await db.getConnection();
   let transactionStarted = false;
   const normPhone = normalizePhone(phone);
@@ -36,9 +56,11 @@ async function capturePublicLead({ tenantId, name, phone, notes, source, branch 
         [tenantId, ...identityMatch.params]
       );
       if (existing) {
+        // The visit that first brought them is kept; a later form fills only what is empty.
         await conn.query(
-          `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END, updated_at = NOW() WHERE id = ? AND tenant_id=?`,
-          [note, note, existing.id, tenantId]
+          `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END,
+                  ${fillAttributionSql()}, updated_at = NOW() WHERE id = ? AND tenant_id=?`,
+          [note, note, ...attributionValues(attribution), existing.id, tenantId]
         );
         await logLeadEvent(existing.id, 'note_added', 'Public form submitted again', { source: origin }, tenantId, conn);
         await conn.commit();
@@ -48,20 +70,20 @@ async function capturePublicLead({ tenantId, name, phone, notes, source, branch 
     }
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     let code = null;
-    try { code = await getNextClientCode(conn); } catch (_) { /* a lead without a code is still a lead */ }
+    try { code = await getNextClientCode(conn, tenantId); } catch (_) { /* a lead without a code is still a lead */ }
     const normalizedBranch = normalizeBranch(branch, 'OTHER');
     const rep = await getNextSalesRep(tenantId, conn, { branch: normalizedBranch, lead: { source: origin, courseIds: [] } });
     await conn.execute(
-      `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)
-       VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, NOW(), 0)`,
-      [id, tenantId, code, String(name).trim().slice(0, 120), String(phone).trim().slice(0, 30), note, origin,
-        normalizedBranch, branchIdForBranch(normalizedBranch), rep?.id || null, rep?.name || null]
+      `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name,
+         utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, created_at, hidden)
+       VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 0)`,
+      [id, tenantId, code, String(name).trim().slice(0, 120), storedPhone(phone, normalizedBranch), note, origin,
+        normalizedBranch, branchIdForBranch(normalizedBranch), rep?.id || null, rep?.name || null, ...attributionValues(attribution)]
     );
     await logLeadEvent(id, 'created', 'Public lead captured', { source: origin, assignedSalesId: rep?.id || null }, tenantId, conn);
     await conn.commit();
     transactionStarted = false;
-    await require('./lifecycle').trigger('lead_created', { name, phone, tenantId });
-    return { id, existing: false, assignedSalesId: rep?.id || null };
+    return { id, created: true, assignedSalesId: rep?.id || null };
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     throw error;

@@ -6,7 +6,7 @@ import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { CrmSettingsModal } from '../CrmSettingsModal';
 import type { CrmSettings, CrmSettingsSection, NotifyFn } from '../CrmSettingsModal';
 import { ConvertLeadModal, type ConvertLeadModalState } from './ConvertLeadModal';
-import { AddLeadModal, WhatsAppRepModal } from './LeadSubcomponents';
+import { AddLeadModal } from './LeadSubcomponents';
 import { LeadSalesNotificationsPanel } from './LeadSalesNotificationsPanel';
 import type { TabKey } from '../../navigation';
 
@@ -27,7 +27,8 @@ interface LeadModalsHostProps {
   setLeadPayRow: (lead: LeadItem | null) => void;
   instituteBranches: BranchOption[];
   salesNotifOpen: boolean;
-  leads: LeadItem[];
+  /** Every source the caller's leads carry (GET /admin/leads/stats bySource), for the settings' source list. */
+  knownSources: string[];
   isSalesOnly: boolean;
   setSalesNotifOpen: (open: boolean) => void;
   setLeadsFollowupFilter: (filter: 'all' | 'today' | 'overdue') => void;
@@ -43,8 +44,6 @@ interface LeadModalsHostProps {
   setShowAddLead: (open: boolean) => void;
   sources: string[];
   handleAddLead: (...args: any[]) => Promise<void>;
-  waActiveRep: StaffMember | null;
-  setWaRepId: (id: string | null) => void;
 }
 
 export function LeadModalsHost({
@@ -60,7 +59,7 @@ export function LeadModalsHost({
   setLeadPayRow,
   instituteBranches,
   salesNotifOpen,
-  leads,
+  knownSources,
   isSalesOnly,
   setSalesNotifOpen,
   setLeadsFollowupFilter,
@@ -76,8 +75,6 @@ export function LeadModalsHost({
   setShowAddLead,
   sources,
   handleAddLead,
-  waActiveRep,
-  setWaRepId,
 }: LeadModalsHostProps) {
   return (
     <>
@@ -126,7 +123,7 @@ export function LeadModalsHost({
           branchOptions={instituteBranches}
           courses={courses}
           bundles={bundles}
-          knownSources={[...new Set(leads.map(lead => lead.source).filter((source): source is string => Boolean(source)))]}
+          knownSources={knownSources}
           onSynced={async () => {
             setSettingsSection(null);
             await Promise.all([reloadLeads(), reloadPipeline()]);
@@ -144,7 +141,6 @@ export function LeadModalsHost({
           courses={courses}
           bundles={bundles}
           salesReps={salesReps}
-          leads={leads}
           sources={sources}
           branches={instituteBranches}
           onClose={() => setShowAddLead(false)}
@@ -152,14 +148,6 @@ export function LeadModalsHost({
         />
       )}
 
-      {waActiveRep && (
-        <WhatsAppRepModal
-          rep={waActiveRep}
-          leads={leads}
-          onClose={() => setWaRepId(null)}
-          notify={notify}
-        />
-      )}
     </>
   );
 }

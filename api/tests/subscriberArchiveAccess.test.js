@@ -22,29 +22,10 @@ const read = rel => fs.readFileSync(path.join(__dirname, '..', ...rel.split('/')
 const catalog = read('routes/core/catalog.js');
 const identity = read('lib/subscriberIdentity.js');
 
-const archiveBlock = catalog.slice(
-  catalog.indexOf("router.delete('/api/admin/subscribers/:id'"),
-  catalog.indexOf("router.get('/api/admin/subscribers/archived")) || catalog.length;
-const restoreBlock = catalog.slice(
-  catalog.indexOf("router.post('/api/admin/subscribers/:id/restore'"),
-  catalog.indexOf("router.delete('/api/admin/lectures/:id'"));
-
-test('archiving a customer disables the sign-in account by uid, not only by email', () => {
-  assert.ok(archiveBlock.length > 200, 'the archive handler was not located');
-  assert.match(archiveBlock, /SELECT id, email, phone, firebase_uid FROM subscribers/);
-  assert.match(archiveBlock, /UPDATE users u SET u\.is_active=0/);
-  assert.match(archiveBlock, /customerAccountMatch\(sub\)/);
-});
-
-test('restoring gives back exactly what archiving took', () => {
-  assert.ok(restoreBlock.length > 200, 'the restore handler was not located');
-  assert.match(restoreBlock, /SELECT id, name, email, firebase_uid FROM subscribers/);
-  assert.match(restoreBlock, /UPDATE users u SET u\.is_active=1/);
-  // The same predicate, not a second copy of it: the two drifted apart once
-  // already, and a restore that matches less than the archive leaves the
-  // customer active in the list and unable to sign in.
-  assert.match(restoreBlock, /customerAccountMatch\(sub\)/);
-});
+// Archiving signs the login out (found by its id), restoring gives it back, a
+// member of staff is never caught: over HTTP in
+// tests/integration/learningAccess.integration.test.js. The resolver scan below
+// stays: it covers every lookup at once.
 
 test('the account predicate covers every customer role and excludes staff', () => {
   // role='user' alone missed the 17 customer accounts stored as role='client'

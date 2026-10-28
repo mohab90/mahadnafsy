@@ -139,6 +139,13 @@ router.get('/api/seo/page/:kind(c|course|bundle)/:key', publicLimiter, async (re
     const html = render(await loadShell(), page);
     // Like every HTML page of the site: it names the release's asset files.
     res.set('Cache-Control', 'no-store');
+    // This is the app's own page, not an API answer: the API's headers
+    // (lib/httpApp.js helmet — script-src 'none', img-src 'self') would stop
+    // the app's scripts and the course images from loading on it. It gets the
+    // site's headers from nginx instead (deploy/nginx/mahad-security-headers.conf).
+    for (const header of ['Content-Security-Policy', 'Cross-Origin-Opener-Policy', 'Cross-Origin-Resource-Policy', 'X-Frame-Options']) {
+      res.removeHeader(header);
+    }
     res.type('html').send(html);
   } catch (e) {
     logger.warn('[seo/page]', e.message);

@@ -17,21 +17,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SOURCE = fs.readFileSync(
-  path.join(__dirname, '..', 'routes', 'subscriber-payments.js'), 'utf8');
-
-test('a branch named on the payment is the one stored', () => {
-  const block = SOURCE.slice(SOURCE.indexOf('const chosenBranch'), SOURCE.indexOf('const chosenBranch') + 700);
-  assert.match(block, /payment\.branch/, 'the chosen branch must reach the payment row');
-  assert.match(block, /VALID_BRANCHES\.has/, 'and only a real branch may be stored');
-  assert.match(block, /subRow\.branch/, 'with the client\'s own branch as the fallback');
-});
-
-test('the choice is still checked against what the reader may touch', () => {
-  const scope = SOURCE.slice(SOURCE.indexOf('resolveFinancialScope(req, {'), SOURCE.indexOf('resolveFinancialScope(req, {') + 260);
-  assert.match(scope, /requestedBranch: payment\.branch \|\| req\.body\.branch \|\| null/,
-    'the scope must be resolved against the same branch the row will carry');
-});
+// The branch chosen is the branch stored, none named is the client's, a made-up
+// one is refused and a branch-bound desk cannot file elsewhere — over HTTP in
+// tests/integration/deskPaymentsAndOrders.integration.test.js. Left here: the
+// dialog sends the branch it asked for.
 
 test('the branch the desk is asked for is the one that reaches the API', () => {
   const root = path.join(__dirname, '..', '..');

@@ -14,6 +14,7 @@ import { useContentState } from './site-data-hooks/useContentState';
 import { useCourseQuizzesState } from './site-data-hooks/useCourseQuizzesState';
 import { useCommunityState } from './site-data-hooks/useCommunityState';
 import { useAutomationState } from './site-data-hooks/useAutomationState';
+import type { WholeTables } from './site-data-hooks/crmRows';
 import { useActivityLogState } from './site-data-hooks/useActivityLogState';
 import { useAiMessagingConfigState } from './site-data-hooks/useAiMessagingConfigState';
 import { useCatalogState } from './site-data-hooks/useCatalogState';
@@ -210,7 +211,8 @@ export interface SiteDataShape {
   reloadLectures: () => Promise<void>;
   /** Fetch lectures+chapters once, for a screen that reads them. See useEnsureLectures. */
   ensureLectures: () => Promise<void>;
-  reloadLeads: () => Promise<void>;
+  /** The whole lead table, or with { only } just those leads (see useCrmCoreState). */
+  reloadLeads: (opts?: { only?: string[] }) => Promise<void>;
   reloadSubscribers: () => Promise<void>;
   reloadStaffMembers: () => Promise<void>;
   reloadOrders: () => Promise<void>;
@@ -230,7 +232,6 @@ export interface SiteDataShape {
 const STORAGE_KEY = 'mahad-admin-site-data-v1';
 const DATA_VERSION = 4; // v4 removes all CRM/HR/finance/PII from browser persistence
 
-
 // Keys whose old values must be replaced with the new default — even if Firestore has the old value.
 
 const SiteDataContext = createContext<SiteDataShape | null>(null);
@@ -244,6 +245,8 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const subscribersRef = useRef<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
   const leadsRef = useRef<LeadItem[]>(initial.leads || defaultLeads);
+  // Which whole tables a screen pulled (crmRows.ts): a reload after a write fetches what is held.
+  const wholeTablesRef = useRef<WholeTables>({ leads: false, subscribers: false });
   const { currency, setCurrency } = useCurrencyState();
   const { authUser, logout, refreshAuth } = useAuth();
   const { activityLogs, setActivityLogs, track } = useActivityLogState(authUser, initial.activityLogs);
@@ -305,7 +308,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     initial.consultations || defaultConsultations,
     initial.orders || [],
     (initial as typeof seedData & { joinUsApplications?: JoinUsApplication[] }).joinUsApplications || [],
-    subscribersRef, leadsRef, lastCRMWriteRef, track,
+    subscribersRef, leadsRef, lastCRMWriteRef, wholeTablesRef, track,
     issueClientCodeAsync, isValidClientCodeFormat,
   );
   const { discounts, setDiscounts, addDiscount, updateDiscount, deleteDiscount } =
@@ -358,7 +361,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Who is signed in, as a staff record — resolved once for every screen.
   // See useSignedInStaff for why the fallback matters.
   const { currentStaff, staffSelf, staffSelfLoading } = useSignedInStaff(isAdmin, authUser?.email, staffMembers);
-
 
   // ── Per-user subscriber loaded flag ─────────────────────────────────────────────────────────
   const [mySubscriberLoaded, setMySubscriberLoaded] = useState(false);
@@ -483,7 +485,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const { loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists } = useAdminDataRuntime({
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
-    subscribersRef, leadsRef, staffMembersRef, contentRef,
+    subscribersRef, leadsRef, wholeTablesRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
     setContent, setCourses, setBundles, setTherapists,
     setTestimonials, setCourseQuizzes, setLiveStreams, setExpenses, setActivityLogs,
@@ -497,6 +499,9 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     isHydratingRef.current = false;
     setRemoteReady(true);
+    // Not before /auth/me answers: isAdmin reads false until then, so every admin sign-in fetched the public catalogue
+    // (four requests) its own bootstrap fetches again. The effect runs again when the account is known.
+    if (authUser === undefined) return;
 
     // The community, for the accounts whose route answers them — view_community.
     //
@@ -578,8 +583,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // object, would re-issue this whole fan-out of loads on every refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
-
-
 
   const clearAllData = () => {
     setCourses(COURSES);

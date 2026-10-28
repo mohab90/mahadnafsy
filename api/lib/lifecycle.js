@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 /**
  * Customer Lifecycle / Journey engine (growth nervous-system).
  *
@@ -301,10 +305,10 @@ async function scanScheduled() {
   return { stalled, abandoned, checkout };
 }
 
-function invalidateConfig(tenantId) {
+const invalidateConfig = shared('lifecycle-config', function invalidateConfigHere(tenantId) {
   if (tenantId) configCache.delete(String(tenantId));
   else configCache.clear();
-}
+});
 
 const EVENT_LABELS = {
   lead_created: 'عميل محتمل جديد (ترحيب فوري)',

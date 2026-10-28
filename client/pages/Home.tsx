@@ -4,7 +4,7 @@ import { ArrowLeft, Briefcase, CheckCircle2, ChevronLeft, ChevronRight, Graduati
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
-import { isExpiryActive } from '../../shared/cairoDate';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 import { offerHours, offerIsShown, offerRemainingMs } from '../../shared/siteOffers';
 import { useSeo } from '../lib/useSeo';
 import { photoUrl } from '../components/Picture';
@@ -78,7 +78,8 @@ function useHeroVariant(content: Record<string, string | undefined>): HeroVarian
 }
 
 const Home: React.FC = () => {
-  const { courses, bundles, testimonials, therapists, addPublicLead, content, discounts, currency } = useSiteData();
+  const { courses, bundles, testimonials, therapists, addPublicLead, content, currency } = useSiteData();
+  const priceList = usePriceList();
   const timer = useOfferCountdown(content);
   const heroVariant = useHeroVariant(content);
   const offerShown = offerIsShown(content);
@@ -105,19 +106,18 @@ const Home: React.FC = () => {
 
   useSeo({ title: 'الرئيسية | معهد الدراسات النفسية', path: '/', description: 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي — دبلومات معتمدة وتدريب عملي.' });
 
-  // «كورس مميز بخصم» (home.featured.*) with any discount rule running on it.
-  // Expiry is a date judged in Cairo, not an instant — see isExpiryActive.
+  // «كورس مميز بخصم» (home.featured.*), at the price checkout charges for it
+  // (lib/usePrices). This strip used to take the rule off and then its own
+  // percent again — a price nothing ever charged. The featured percent is one
+  // of the discounts the server weighs; the best one running is the price.
   const featured = (() => {
     const featuredId = content['home.featured.courseId'];
     const pct = Number(content['home.featured.discountPercent'] || 0);
     const course = featuredId ? courses.find(c => c.id === featuredId) : null;
     if (!course || !course.price || !pct) return null;
     const was = course.price[currency] ?? 0;
-    const discounted = Math.round(was * (1 - pct / 100));
-    const rule = discounts.find(d => d.active && d.type === 'course' && d.targetId === featuredId && isExpiryActive(d.expiresAt))
-      ?? discounts.find(d => d.active && d.type === 'all_courses' && isExpiryActive(d.expiresAt));
-    const now = rule ? Math.round(discounted * (1 - rule.discountPercent / 100)) : discounted;
-    return { course, pct, was, now };
+    const now = effectivePrice(priceList, 'course', featuredId, currency, Math.round(was * (1 - pct / 100))).price;
+    return { course, pct: was > 0 ? Math.round((1 - now / was) * 100) : pct, was, now };
   })();
   const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
@@ -153,7 +153,7 @@ const Home: React.FC = () => {
           <div className="container mx-auto flex flex-col items-center gap-5 rounded-[28px] border border-line bg-paper p-4 sm:flex-row sm:p-5">
             {featured.course.thumbnail && <img src={cdnImg(featured.course.thumbnail, 480)} alt={featured.course.title} loading="lazy" className="aspect-[16/10] w-full flex-none rounded-2xl object-cover sm:w-56" />}
             <div className="min-w-0 flex-1 text-center sm:text-right">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-700 px-3 py-1 text-xs font-black text-white"><Sparkles size={13} /> عرض خاص — خصم {featured.pct}% إضافي</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-700 px-3 py-1 text-xs font-black text-white"><Sparkles size={13} /> عرض خاص — خصم {featured.pct}%</span>
               <h3 className="mt-2 text-xl font-black text-ink sm:text-2xl">{featured.course.title}</h3>
               <p className="mt-1 text-sm text-muted"><s className="tabular-nums">{featured.was} {sym}</s> <b className="mr-2 text-2xl font-black tabular-nums text-primary-700">{featured.now} {sym}</b></p>
             </div>

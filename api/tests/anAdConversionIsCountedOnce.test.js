@@ -162,7 +162,9 @@ test('every lead route and the paid order send theirs, without waiting on Meta',
   assert.match(paid, /void trackPurchase\(\{ tenantId, order, adContext: extra\?\.adContext \}\);/);
   assert.ok(paid.indexOf('void trackPurchase(') > paid.indexOf('await conn.commit();'), 'only once the payment is committed');
   const forms = read('client/lib/mysqlapi.ts');
-  for (const route of ['/contact', '/registrations', '/leads-public']) {
-    assert.match(forms, new RegExp(`'${route}', \\{ method: 'POST', body: JSON\\.stringify\\(data\\), headers: leadHeaders\\(\\) \\}`), route);
+  assert.match(forms, /'\/contact', \{ method: 'POST', body: JSON\.stringify\(data\), headers: leadHeaders\(\) \}/, '/contact');
+  // The lead forms carry the visit's ad parameters too (client/lib/attribution.ts).
+  for (const route of ['/registrations', '/leads-public']) {
+    assert.match(forms, new RegExp(`'${route}', \\{ method: 'POST', body: JSON\\.stringify\\(\\{ \\.\\.\\.data, attribution: visitAttribution\\(\\) \\}\\), headers: leadHeaders\\(\\) \\}`), route);
   }
 });

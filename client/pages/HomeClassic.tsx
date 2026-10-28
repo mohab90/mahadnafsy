@@ -6,7 +6,7 @@ import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
-import { isExpiryActive } from '../../shared/cairoDate';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 import { formatPrice, isDiscounted } from '../../shared/priceFormat';
 import { offerHours, offerIsShown, offerPrices, offerRemainingMs, offerDiscountPercent } from '../../shared/siteOffers';
 import { useSeo } from '../lib/useSeo';
@@ -46,7 +46,8 @@ function useOfferCountdown(content: Record<string, string | undefined>) {
 }
 
 const HomeClassic: React.FC = () => {
-        const { courses, bundles, testimonials, therapists, addPublicLead, content, discounts, currency } = useSiteData();
+        const { courses, bundles, testimonials, therapists, addPublicLead, content, currency } = useSiteData();
+        const priceList = usePriceList();
     const [offerLeadName, setOfferLeadName] = useState('');
     const [offerLeadPhone, setOfferLeadPhone] = useState('');
     const [offerLeadBranch, setOfferLeadBranch] = useState('');
@@ -299,13 +300,10 @@ const HomeClassic: React.FC = () => {
         const featuredCourse = featuredId ? courses.find(c => c.id === featuredId) : null;
         if (!featuredCourse || !featuredCourse.price || !featuredPct) return null;
         const origPrice = featuredCourse.price[currency] ?? 0;
-        const discountedPrice = Math.round(origPrice * (1 - featuredPct / 100));
+        // The price checkout charges for it (lib/usePrices), not the rule and this percent stacked.
+        const finalPrice = effectivePrice(priceList, 'course', featuredId, currency, Math.round(origPrice * (1 - featuredPct / 100))).price;
+        const shownPct = origPrice > 0 ? Math.round((1 - finalPrice / origPrice) * 100) : featuredPct;
         const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-        // Also check active discount rules for this course. Expiry is a date
-        // judged in Cairo, not an instant — see isExpiryActive.
-        const ruleDiscount = discounts.find(d => d.active && d.type === 'course' && d.targetId === featuredId && isExpiryActive(d.expiresAt))
-          ?? discounts.find(d => d.active && d.type === 'all_courses' && isExpiryActive(d.expiresAt));
-        const finalPrice = ruleDiscount ? Math.round(discountedPrice * (1 - ruleDiscount.discountPercent / 100)) : discountedPrice;
         return (
           <section className="py-16 bg-gradient-to-br from-primary-900 via-primary-800 to-red-900 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-secondary-500 rounded-full blur-[150px] opacity-20"></div>
@@ -320,7 +318,7 @@ const HomeClassic: React.FC = () => {
                 {/* Info */}
                 <div className="flex-1 text-white text-center lg:text-right">
                   <div className="inline-flex items-center gap-2 bg-red-500/30 border border-red-400/50 text-red-300 px-4 py-1 rounded-full text-sm font-bold mb-4">
-                    <Star size={14} fill="currentColor" /> عرض خاص — خصم {featuredPct}% إضافي
+                    <Star size={14} fill="currentColor" /> عرض خاص — خصم {shownPct}%
                   </div>
                   <h2 className="text-2xl md:text-3xl font-bold mb-3">{featuredCourse.title}</h2>
                   <p className="text-gray-300 mb-6 leading-relaxed max-w-xl">{(featuredCourse.shortDescription || '').replace(/<[^>]*>/g, '').trim()}</p>
@@ -331,7 +329,7 @@ const HomeClassic: React.FC = () => {
                     </div>
                     <div className="h-12 w-px bg-white/20"></div>
                     <div className="text-left">
-                      <p className="text-green-400 font-bold">خصم {featuredPct}%</p>
+                      <p className="text-green-400 font-bold">خصم {shownPct}%</p>
                       <p className="text-gray-400 text-xs">عرض محدود</p>
                     </div>
                   </div>
@@ -372,7 +370,9 @@ const HomeClassic: React.FC = () => {
                         const pctOff = offerDiscountPercent(content);
                         const sym24 = currencySymbol;
                         // The offer's own price (typed by marketing) or the course's, in the visitor's currency.
-                        const prices = offerPrices(content, offerCourse, currency);
+                        const prices = offerPrices(content, offerCourse
+                          ? { price: { [currency]: effectivePrice(priceList, 'course', offerCourse.id, currency, offerCourse.price?.[currency] ?? 0).price } }
+                          : null, currency);
                         const displayOld = prices
                           ? `${prices.oldPrice} ${sym24}`
                           : content[`home.offer.oldPrice.${currency}`] || content['home.offer.oldPrice'] || `4500 ${sym24}`;

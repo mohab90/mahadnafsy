@@ -12,7 +12,8 @@ const { reissueCertificate, revokeCertificate } = require('../lib/certificateLif
 const { resolveLectureAccess } = require('../lib/learningAccess');
 const { resolveSubscriberId, resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { createMediaTicket, mediaKind, mediaProvider, playableRedirect, verifyMediaTicket } = require('../lib/mediaAccess');
-const { streamTenantMedia } = require('../lib/uploadSafety');
+const { streamTenantMedia, tenantMediaKey } = require('../lib/uploadSafety');
+const { bucketUrlFor, videoUrlLifetime } = require('../lib/storedFiles');
 const {
   addCohortMember,
   listCohortMembers,
@@ -315,6 +316,17 @@ router.get('/api/media/lectures/:lectureId', publicLimiter, async (req, res) => 
     if (!target) return res.status(404).json({ error: 'Media is unavailable' });
     if (target.startsWith('/uploads/videos/')) {
       if (await streamTenantMedia(req, res, target, ticket.tenantId)) return;
+      // Not on this server's disk: moved to the bucket (lib/objectStorage.js).
+      // Reached only past the ticket and the enrolment check above, so the
+      // bucket URL is never handed to anyone the disk file would not be
+      // streamed to; it lives no longer than the ticket, and the ranges then
+      // come from the bucket, not through this process.
+      const remote = await bucketUrlFor(tenantMediaKey(target, ticket.tenantId), { expiresIn: videoUrlLifetime(ticket.exp) });
+      if (remote) {
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Referrer-Policy', 'no-referrer');
+        return res.redirect(302, remote);
+      }
       return res.status(404).json({ error: 'Media is unavailable' });
     }
     res.set('Cache-Control', 'private, no-store');
@@ -345,7 +357,7 @@ router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdminOrS
     // drip_unlock_days is part of the GET /api/lectures payload, which is cached
     // for five minutes — without this the new unlock schedule did not reach the
     // customer's LMS until the cache expired.
-    cacheInvalidate('courses', 'lectures');
+    cacheInvalidate('courses', 'lectures', 'public-prices');
     res.json({ ok: true, drip_unlock_days: days });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

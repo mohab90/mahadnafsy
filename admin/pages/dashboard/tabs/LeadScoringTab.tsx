@@ -3,8 +3,7 @@ import { Modal } from '../../../../shared/ui/Modal';
 import { Star, MessageSquare, Send, X, Zap } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
-import type { PermissionKey, RoleKey } from '../../../constants/permissions';
+import { useAccess } from '../../../hooks/useAccess';
 import { useScoredLeads } from '../hooks/useScoredLeads';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { toDialable } from '../../../lib/whatsappLink';
@@ -135,7 +134,7 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
 }
 
 export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
-  const { leads, leadStats, staffMembers, authUser, isAdmin, currentStaff } = useSiteData();
+  const { leads, leadStats, staffMembers } = useSiteData();
   // The section gate here is manage_leads; POST /api/admin/leads/bulk-whatsapp
   // is behind bulk_whatsapp. reception_daqqi holds the first and not the
   // second, so it selected fifty leads, wrote a message, and got the raw
@@ -143,13 +142,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
   // gates the identical action; this copy did not.
   // From the context: staffMembers is empty for the ten roles that cannot read
   // the staff list, and this used to search it alone.
-  const canBulkWhatsApp = isAdmin || hasStaffPermission(
-    currentStaff ? {
-      role: currentStaff.role as RoleKey,
-      permissions: currentStaff.permissions as PermissionKey[] | undefined,
-    } : null,
-    'bulk_whatsapp',
-  );
+  const canBulkWhatsApp = useAccess().can('bulk_whatsapp');
   const [minScore, setMinScore] = useState(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');

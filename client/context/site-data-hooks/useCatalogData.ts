@@ -39,6 +39,7 @@ export function useCatalogData({
   const [therapists, setTherapists] = useState<Therapist[]>(initialTherapists);
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>(initialTestimonials);
   const [remoteReady, setRemoteReady] = useState(false);
+  const [catalogFailed, setCatalogFailed] = useState(false);
   // One fetch, the first time a screen actually wants community content.
   const communityLoadedRef = useRef(false);
   const loadCommunity = useCallback(async () => {
@@ -75,10 +76,63 @@ export function useCatalogData({
   const catalogLoadedRef = useRef(false);
 
   // ── Community + catalog loader (public, non-admin) ──────────────────────────
-  // Admin catalog is loaded by the bootstrap above. Non-admin guests load via MySQL.
-  useEffect(() => {
-    setRemoteReady(true);
+  // Ready means the catalog has actually answered. It was set before the first
+  // request left, so a visitor landing on a bundle page from an ad read
+  // «المسار غير موجود» until the list arrived — and for good when it failed.
+  // A failure is reported as such (catalogFailed + retryCatalog), not as "missing".
+  const loadCatalog = useCallback(async () => {
+    // The site's own words and the marketing pop-up come with the content, for everyone. They were fetched inside the
+    // non-admin branch below, so an owner or a staff member looking at the live site — to check the pop-up they had just
+    // switched on, through «معاينة» — saw the built-in defaults and no pop-up at all: «مش شغال ومش بيظهر».
+    const contentLoad = mysqlCatalog.getSiteContent().then((remote) => {
+      if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
+        mergeContent(remote);
+      }
+    }).catch(() => { /* graceful — defaults remain */ });
 
+    let failed = false;
+    // Admin catalog is loaded by the admin app. Non-admin guests load via MySQL.
+    if (!isAdmin) {
+      try {
+        // ── Batch A: courses/bundles/testimonials/therapists ──────────────────
+        const [cRes, bRes, thRes, testRes] = await Promise.allSettled([
+          mysqlCatalog.listCourses(200),
+          mysqlCatalog.listBundles(100),
+          mysqlCatalog.listTherapists(100),
+          mysqlCatalog.listTestimonials(),
+        ]);
+        if (cRes.status === 'fulfilled' && cRes.value.length > 0)
+          setCourses((cRes.value as unknown as Course[]).sort((a, b) => {
+            const so = ((a as any).sortOrder ?? 9999) - ((b as any).sortOrder ?? 9999);
+            if (so !== 0) return so;
+            return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
+          }));
+        if (bRes.status === 'fulfilled' && bRes.value.length > 0)
+          setBundles(bRes.value as unknown as Bundle[]);
+        if (thRes.status === 'fulfilled' && thRes.value.length > 0)
+          setTherapists(thRes.value as unknown as Therapist[]);
+        if (testRes.status === 'fulfilled' && testRes.value.length > 0)
+          setTestimonials(testRes.value as unknown as TestimonialItem[]);
+        // Courses and bundles are what the pages decide "not found" on.
+        failed = cRes.status === 'rejected' || bRes.status === 'rejected';
+        // Lectures/chapters are NOT loaded here — see the login-gated effect
+        // below. Anonymous visitors never need the full ~530 KB lecture list.
+      } catch { failed = true; }
+    }
+    await contentLoad;
+    setCatalogFailed(failed);
+    setRemoteReady(true);
+  // mergeContent is a plain closure over a ref; it does not change what loads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+
+  const retryCatalog = useCallback(() => {
+    setCatalogFailed(false);
+    setRemoteReady(false);
+    void loadCatalog();
+  }, [loadCatalog]);
+
+  useEffect(() => {
     // authUser resolves asynchronously (undefined -> null/uid), which can re-fire this
     // effect 2-3x before settling. Without this guard each firing re-ran the ENTIRE
     // catalog+community fetch sequence (~12 requests, incl. all 5000 lectures) from
@@ -92,49 +146,7 @@ export function useCatalogData({
     // four tables are empty — so they were four round trips returning `[]`
     // before every first paint. loadCommunity() below fetches them the first
     // time a screen asks.
-
-
-    // Load catalog for non-admin users in 2 sequential batches to avoid overwhelming DB connection pool.
-    // Batch A (immediate): catalog data needed for home/courses pages.
-    // Batch B (500ms later): lectures & chapters needed for course detail pages (lighter limit).
-    // The site's own words and the marketing pop-up come with the content, for everyone. They were fetched inside the
-    // non-admin branch below, so an owner or a staff member looking at the live site — to check the pop-up they had just
-    // switched on, through «معاينة» — saw the built-in defaults and no pop-up at all: «مش شغال ومش بيظهر».
-    mysqlCatalog.getSiteContent().then((remote) => {
-      if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
-        mergeContent(remote);
-      }
-    }).catch(() => { /* graceful — defaults remain */ });
-
-    if (!isAdmin) {
-      (async () => {
-        try {
-          // ── Batch A: courses/bundles/testimonials/therapists ──────────────────
-          const [cRes, bRes, thRes, testRes] = await Promise.allSettled([
-            mysqlCatalog.listCourses(200),
-            mysqlCatalog.listBundles(100),
-            mysqlCatalog.listTherapists(100),
-            mysqlCatalog.listTestimonials(),
-          ]);
-          if (cRes.status === 'fulfilled' && cRes.value.length > 0)
-            setCourses((cRes.value as unknown as Course[]).sort((a, b) => {
-              const so = ((a as any).sortOrder ?? 9999) - ((b as any).sortOrder ?? 9999);
-              if (so !== 0) return so;
-              return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
-            }));
-          if (bRes.status === 'fulfilled' && bRes.value.length > 0)
-            setBundles(bRes.value as unknown as Bundle[]);
-          if (thRes.status === 'fulfilled' && thRes.value.length > 0)
-            setTherapists(thRes.value as unknown as Therapist[]);
-          if (testRes.status === 'fulfilled' && testRes.value.length > 0)
-            setTestimonials(testRes.value as unknown as TestimonialItem[]);
-          // Lectures/chapters are NOT loaded here — see the login-gated effect
-          // below. Anonymous visitors never need the full ~530 KB lecture list.
-        } catch { /* ignore — graceful degradation */ }
-      })();
-    }
-
-    // (Admin inbox loading removed — admin features live in the admin app only)
+    void loadCatalog();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUserUid, isAdmin]);
 
@@ -179,6 +191,8 @@ export function useCatalogData({
           }));
         if (bRes.status === 'fulfilled' && (bRes.value as unknown[]).length > 0)
           setBundles(bRes.value as unknown as Bundle[]);
+        // A first load that failed is healed by this one.
+        if (cRes.status === 'fulfilled' && bRes.status === 'fulfilled') setCatalogFailed(false);
       }).catch(() => {});
     };
     document.addEventListener('visibilitychange', refresh);
@@ -191,7 +205,7 @@ export function useCatalogData({
 
   return {
     courses, setCourses, bundles, therapists, testimonials,
-    remoteReady,
+    remoteReady, catalogFailed, retryCatalog,
     loadCommunity,
   };
 }

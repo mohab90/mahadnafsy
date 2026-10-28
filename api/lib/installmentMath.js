@@ -30,6 +30,8 @@ function planEntries(plan) {
       dueDate: String(dueDates[i]).slice(0, 10),
       paidAt: paidDates[i] ? String(paidDates[i]).slice(0, 10) : undefined,
       paidAmount: paidDates[i] && paidAmounts[i] != null ? Number(paidAmounts[i]) : undefined,
+      // Paid in part: what came in so far against an entry still due.
+      partialPaid: !paidDates[i] && Number(paidAmounts[i]) > 0 ? Number(paidAmounts[i]) : undefined,
     });
   }
   return entries;
@@ -71,15 +73,26 @@ function applyInstallmentPayment(plan, { index, paidAmount, paidDate, paymentId 
     const e = new Error('This installment is already paid'); e.statusCode = 409; throw e;
   }
 
-  paidDates[index] = paidDate;
-  paymentIds[index] = paymentId;
-  paidAmounts[index] = paidAmount;
+  // Less than the instalment is a part of it, not the instalment. Any amount
+  // used to mark the entry paid, so 500 against 3,000 closed it: the plan read
+  // fully paid and nobody chased the 2,500. The parts add up on paid_amounts,
+  // and the entry is paid — its date and payment set — once they cover it.
+  // Until then the readers that list what is due (finance-documents.js) see the rest.
+  const scheduled = Number(amounts[index]) || 0;
+  const total = Math.round(((Number(paidAmounts[index]) || 0) + Number(paidAmount)) * 100) / 100;
+  paidAmounts[index] = total;
+  const settled = total + 0.005 >= scheduled;
+  if (settled) {
+    paidDates[index] = paidDate;
+    paymentIds[index] = paymentId;
+  }
   const paidCount = paidDates.filter(Boolean).length;
   const status = paidCount >= amounts.length ? 'completed' : 'active';
 
   return {
     installmentAmounts: amounts, dueDates, paidDates, paymentIds, paidAmounts,
     paidCount, status, scheduledAmount: amounts[index],
+    partial: !settled, remaining: settled ? 0 : Math.round((scheduled - total) * 100) / 100,
   };
 }
 
@@ -99,7 +112,7 @@ function removeInstallmentEntry(plan, { index }) {
   if (index >= amounts.length) {
     const e = new Error('Entry index out of range'); e.statusCode = 400; throw e;
   }
-  if (paidDates[index]) {
+  if (paidDates[index] || Number(paidAmounts[index]) > 0) {
     const e = new Error('Cannot remove an entry that has already been paid'); e.statusCode = 409; throw e;
   }
 

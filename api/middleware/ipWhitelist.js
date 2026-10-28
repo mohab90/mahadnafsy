@@ -1,5 +1,8 @@
 'use strict';
 
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('../lib/cacheBus');
+
 const { isIP } = require('node:net');
 const { pool } = require('../lib/db');
 const logger = require('../lib/logger').child({ middleware: 'ipWhitelist' });
@@ -71,9 +74,9 @@ function isLoopback(ip) {
   return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
 }
 
-function invalidateIpWhitelist(tenantId) {
+const invalidateIpWhitelist = shared('ip-whitelist', function invalidateIpWhitelistHere(tenantId) {
   cache.delete(String(tenantId || 'tenant-default'));
-}
+});
 
 async function loadWhitelist(tenantId) {
   const key = String(tenantId || 'tenant-default');

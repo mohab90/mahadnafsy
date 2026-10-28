@@ -24,7 +24,8 @@
 #   5. checks the archives really are THIS commit's (an old release in artifacts/
 #      once got uploaded in place of a failed build)
 #   6. takes a database backup on the server and refuses to go on if it failed
-#   7. uploads the archives (and the backup script and restore-rehearsal cron)
+#   7. uploads the archives (and the backup, off-site and restore-rehearsal
+#      scripts and their cron files)
 #      and checks their checksums on the server
 #   8. deploys STAGING only (MAHAD_DEPLOY_TARGET=staging deploy-release.sh): its
 #      migrations run before the new code is switched on, and the API must then
@@ -337,7 +338,7 @@ backup() { # <what a failure leaves unchanged>
       echo >&2
       echo "!!! ALERT: the backup was taken on the server, but NO OFF-SITE COPY was made." >&2
       echo "!!! Every copy of the database is on that one machine. Configure the off-site" >&2
-      echo "!!! destination (deploy/README_AR.md, «النسخ الاحتياطي خارج السيرفر») today." >&2
+      echo "!!! destination (deploy/OFFSITE_BACKUPS.md: /etc/mahad/offsite.env) today." >&2
       echo >&2
       ;;
     *) echo "the backup failed — $1" >&2; exit 75 ;;
@@ -354,7 +355,8 @@ scp "${SSH_OPTS[@]}" \
   "artifacts/releases/$RELEASE-api.tgz" "artifacts/releases/$RELEASE-api.tgz.sha256" \
   "artifacts/releases/$RELEASE-admin.tgz" "artifacts/releases/$RELEASE-admin.tgz.sha256" \
   "artifacts/releases/$RELEASE-client.tgz" "artifacts/releases/$RELEASE-client.tgz.sha256" \
-  "deploy-release.sh" "deploy/mahad-db-backup.sh" "deploy/cron/mahad-restore-rehearsal" \
+  "deploy-release.sh" "deploy/mahad-db-backup.sh" "deploy/cron/mahad-restore-rehearsal" "deploy/cron/mahad-db-backup" \
+  "deploy/mahad-offsite.sh" "deploy/cron/mahad-offsite" "deploy/mariadb/60-mahad-binlog.cnf" \
   "$TARGET:$STAGING/"
 ssh "${SSH_OPTS[@]}" "$TARGET" "cd '$STAGING' && sha256sum --check --status \
   '$RELEASE-api.tgz.sha256' '$RELEASE-admin.tgz.sha256' '$RELEASE-client.tgz.sha256'" \

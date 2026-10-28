@@ -65,6 +65,7 @@ async function sendMessengerMessage(psid, text, credentials = {}) {
       messaging_type: 'RESPONSE',
       message: { text: String(text || '').slice(0, 2000) },
     }),
+    signal: AbortSignal.timeout(Number(process.env.MESSENGER_TIMEOUT_MS || 8000)),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

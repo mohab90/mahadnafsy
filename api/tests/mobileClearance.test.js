@@ -19,6 +19,7 @@
 // produced a blank placeholder.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -35,7 +36,7 @@ test('the public footer clears the floating buttons on phones only', () => {
 });
 
 test('the dashboard clears its booking button on phones only', () => {
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   // The bottom is the part that matters and the part this test is named after:
   // «حجز / دفعة» is fixed at bottom-6 and 44px tall, so it owns the bottom 68px
   // of a phone viewport. pb-28 clears it; md:pb-8 puts the normal padding back

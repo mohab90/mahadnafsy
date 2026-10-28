@@ -11,6 +11,7 @@ const { financeRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 
@@ -181,7 +182,7 @@ test('«تكملة»: the course joins the track, its money with it, access unto
   }
   const route = read('api/routes/core/content.js');
   assert.match(route, /'\/api\/admin\/subscribers\/:id\/course-upgrade', requireAuth, requireAdminOrStaff, requirePermission\('manage_payments'\)/);
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /course-upgrade`, \{/);
   assert.match(modal, /lb: 'تكملة لمسار'/);
 });

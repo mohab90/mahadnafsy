@@ -64,3 +64,33 @@ test('lead notifications go to the rep concerned, or to management while nobody 
   assert.match(read('api/routes/subscriber-payments.js'), /'💰 دفعة جديدة', `\$\{subRow\.name \|\| 'عميل'\}/, 'a payment names its client');
   assert.match(read('api/lib/outbox.js'), /coalesceMinutes: 24 \* 60/, 'an outage is one line a day');
 });
+
+test('a sales offer reaches the reps, and the inbox bot\'s hand-over the inbox team only', () => {
+  assert.equal(sees('sales', 'sales'), true, 'the reps the offer is for');
+  assert.equal(sees('online_manager', 'sales'), true);
+  assert.equal(sees('accountant', 'sales'), false);
+  assert.equal(sees('sales', 'inbox'), true);
+  assert.equal(sees('online_manager', 'inbox'), true);
+  for (const role of ['hr', 'accountant', 'support', 'reception_daqqi']) {
+    assert.equal(sees(role, 'inbox'), false, `«البوت محتاج حد» reaches ${role}`);
+  }
+});
+
+test('the bot hands a conversation to the rep who owns its lead before the whole team', async () => {
+  const notification = require('../lib/notification');
+  const sent = [];
+  const original = notification.createNotification;
+  notification.createNotification = async (...args) => { sent.push(args); };
+  try {
+    const { handOff } = require('../lib/inboxBot');
+    const db = { query: async sql => (/FROM leads l/.test(sql) ? [[{ assigned_sales_id: 'rep-1' }]] : [{ affectedRows: 1 }]) };
+    await handOff(db, 't', { id: 'th-1', lead_id: 'lead-1', assigned_staff_id: null }, 'سؤال');
+    assert.equal(sent[0][0], 'inbox');
+    assert.equal(sent[0][5], 'rep-1');
+    const orphan = { query: async sql => (/FROM leads l/.test(sql) ? [[]] : [{ affectedRows: 1 }]) };
+    await handOff(orphan, 't', { id: 'th-2', lead_id: 'lead-2', assigned_staff_id: null }, 'سؤال');
+    assert.equal(sent[1][5], null, 'nobody owns it: the inbox team, by type');
+  } finally {
+    notification.createNotification = original;
+  }
+});

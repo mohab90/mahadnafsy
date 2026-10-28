@@ -3,6 +3,7 @@
 const { authRouteSource, leadsRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -387,7 +388,7 @@ test('CRM reminders render in their own tab and heavy lead views stay deferred',
 });
 
 test('dashboard never performs browser-side customer or lead data migrations', () => {
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.doesNotMatch(dashboard, /lead-mig-/);
   assert.doesNotMatch(dashboard, /clientStatus\s*===\s*['"]leads['"]/);
   assert.doesNotMatch(dashboard, /markLeadsConverted\(/);

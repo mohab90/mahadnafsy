@@ -9,7 +9,7 @@ const helmet = require('helmet');
 const logger = require('./logger');
 const errorMonitor = require('./errorMonitor');
 const perfMonitor = require('./performanceMonitor');
-const { cacheInvalidate } = require('./db');
+const { cacheInvalidateLocal } = require('./db');
 const { uuidv4 } = require('./id');
 const { publishRealtimeEvent } = require('./realtime');
 const { registerRoutes } = require('./registerRoutes');
@@ -20,9 +20,11 @@ const { legacyTenantContainment } = require('../middleware/legacyTenantContainme
 const { enforceAdminIpWhitelist } = require('../middleware/ipWhitelist');
 const { adminLimiter } = require('../middleware/rateLimits');
 const { adminFeatureGate, isPublicAdminPath } = require('./adminFeatureGate');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, hasSignedToken } = require('../middleware/auth');
 const { deleteRightsGuard } = require('./deleteRights');
 const { cleanupMemoryPresence } = require('./onlineUsers');
+const { isDraining } = require('./processLifecycle');
+const { instanceGuard: whatsappWebInstanceGuard } = require('./whatsappWeb');
 
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 eventLoopDelay.enable();
@@ -56,7 +58,16 @@ function csrfOriginGuard() {
   return (req, res, next) => {
     if (SAFE.has(req.method)) return next();
     const origin = req.headers.origin;
-    if (!origin || !/(?:^|;\s*)authToken=/.test(req.headers.cookie || '')) return next();
+    const hasSession = /(?:^|;\s*)authToken=/.test(req.headers.cookie || '');
+    // No Origin on a write is rare from a browser, but it happens (some
+    // privacy extensions and older engines strip it). Sec-Fetch-Site cannot be
+    // set by a page and still says where the request came from: a cross-site
+    // write carrying the session is refused on that alone.
+    if (!origin && hasSession && String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site'
+        && String(process.env.CSRF_ORIGIN_ENFORCE || '').toLowerCase() !== 'false') {
+      return res.status(403).json({ error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' });
+    }
+    if (!origin || !hasSession) return next();
     if (isAllowed(origin)) return next();
     try {
       const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -206,15 +217,30 @@ function timeRequests(req, res, next) {
 // form — so the first one drops them, and the next read counts again.
 function dropFiguresAfterWrites(req, res, next) {
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-    res.on('finish', () => { if (res.statusCode < 400) cacheInvalidate('figures:'); });
+    res.on('finish', () => { if (res.statusCode < 400) cacheInvalidateLocal('figures:'); });
   }
   next();
+}
+
+// From SIGTERM to exit (lib/processLifecycle.js): close each connection after
+// its answer, so nginx opens a fresh one — to the other instance, since this
+// one no longer listens — and report «draining» to health checks. Each answer
+// also names the instance (MAHAD_INSTANCE), to see which one served it.
+function drainingAnswers(req, res, next) {
+  if (process.env.MAHAD_INSTANCE) res.setHeader('X-Mahad-Instance', process.env.MAHAD_INSTANCE);
+  if (!isDraining()) return next();
+  res.setHeader('Connection', 'close');
+  if (req.path === '/api/health' || req.path.startsWith('/api/health/')) {
+    return res.status(503).json({ status: 'draining' });
+  }
+  return next();
 }
 
 function createHttpApp({ pool, brandAssetRoot }) {
   const app = express();
   const proxyHops = Number(process.env.TRUST_PROXY_HOPS);
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1);
+  app.use(drainingAnswers);
   app.use(compression());
   app.use(timeRequests);
   app.use(dropFiguresAfterWrites);
@@ -235,14 +261,12 @@ function createHttpApp({ pool, brandAssetRoot }) {
   // no session — every public form, webhook and scan — gets 1 MB. The body used
   // to be read in full up to 10 MB for anyone, before any rate limit could look at
   // it, so a stranger could make the server buffer and parse ten megabytes a call.
+  // The token is verified, not just looked for: `Cookie: authToken=anything`
+  // used to be enough for the 10 MB limit.
   const keepRaw = (req, _res, buffer) => { req.rawBody = buffer; };
   const signedInParser = express.json({ limit: '10mb', verify: keepRaw });
   const anonymousParser = express.json({ limit: '1mb', verify: keepRaw });
-  app.use((req, res, next) => {
-    const hasSession = /(?:^|;\s*)authToken=/.test(req.headers.cookie || '')
-      || /^Bearer\s+\S+/i.test(req.headers.authorization || '');
-    return (hasSession ? signedInParser : anonymousParser)(req, res, next);
-  });
+  app.use((req, res, next) => (hasSignedToken(req) ? signedInParser : anonymousParser)(req, res, next));
   app.use(sanitizeBody);
   app.use(securityHeaders);
   app.use((req, res, next) => {
@@ -284,6 +308,8 @@ function createHttpApp({ pool, brandAssetRoot }) {
 
   // The staff routes write too — a welcome login, a leave, a resignation, a
   // client's contact — and none of it reached the activity log (MED-13).
+  // The reps' linked WhatsApp lives in one process (lib/whatsappWeb.js waWebMode).
+  app.use('/api/staff/whatsapp-web', whatsappWebInstanceGuard);
   const auditWrites = createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent });
   app.use('/api/admin', auditWrites);
   app.use('/api/staff', auditWrites);
@@ -301,7 +327,9 @@ function createHttpApp({ pool, brandAssetRoot }) {
   // lib/deleteRights.js.
   app.use('/api/admin', deleteRightsGuard);
   app.use('/api/staff', deleteRightsGuard);
-  setInterval(() => cleanupMemoryPresence(), 60 * 1000);
+  // Unref'd like every timer here: the listening server keeps the process up,
+  // and an app built without one (a test) must be able to exit.
+  setInterval(() => cleanupMemoryPresence(), 60 * 1000).unref?.();
   app.use(enforceAdminIpWhitelist);
   app.use('/uploads/branding', express.static(brandAssetRoot, {
     dotfiles: 'deny', etag: true, immutable: true, maxAge: '365d', fallthrough: true,
@@ -320,17 +348,27 @@ function createHttpApp({ pool, brandAssetRoot }) {
     app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   }
   app.use((error, req, res, _next) => {
+    // The body parser's own refusals (too large, bad encoding) are the client's
+    // doing: answer with their status rather than a 500 that also pages us.
+    if (error?.type === 'entity.too.large' || error?.status === 413) {
+      if (res.headersSent) return;
+      return res.status(413).json({ error: 'حجم الطلب أكبر من المسموح.', code: 'PAYLOAD_TOO_LARGE' });
+    }
+    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+      if (res.headersSent) return;
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+    if (error?.type && error.expose && error.status >= 400 && error.status < 500 && !res.headersSent) {
+      return res.status(error.status).json({ error: 'Invalid request body' });
+    }
     logger.error('unhandled route error', {
       reqId: req.reqId, method: req.method, path: req.path, msg: error.message, stack: error.stack,
     });
     errorMonitor.captureException(error, { reqId: req.reqId, method: req.method, path: req.path });
     if (res.headersSent) return;
-    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
-      return res.status(400).json({ error: 'Invalid JSON body' });
-    }
     res.status(500).json({ error: 'Internal server error' });
   });
   return app;
 }
 
-module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites };
+module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites, drainingAnswers };

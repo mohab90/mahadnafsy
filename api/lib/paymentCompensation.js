@@ -3,10 +3,15 @@
 const { uuidv4 } = require('./id');
 const { recordRetentionBonus } = require('./instructorPay');
 const { recordBookingBonuses } = require('./bookingBonuses');
-const { dateOnlyInTimeZone } = require('./dates');
+const { cairoDayOf, dateOnlyInTimeZone } = require('./dates');
 
+// The month a payment counts in. payments.date is a DATETIME, which the driver
+// hands back as a Date: `String(date).slice(0, 10)` gave «Wed Sep 30», matched
+// nothing, and every commission was filed in the month it was processed — a
+// payment of 30 Sep approved on 1 Oct earned its commission in October while
+// its sale and booking bonus counted in September.
 function paymentPeriod(value) {
-  const raw = String(value || '').slice(0, 10);
+  const raw = value instanceof Date ? cairoDayOf(value) : String(value || '').slice(0, 10);
   const match = raw.match(/^(\d{4})-(\d{2})-\d{2}$/);
   if (match) return { year: Number(match[1]), month: Number(match[2]) };
   const today = dateOnlyInTimeZone();

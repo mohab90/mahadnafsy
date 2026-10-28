@@ -1,0 +1,22 @@
+# Off-site copies — installed to /etc/cron.d/ by deploy-release.sh.
+#
+# Every line does nothing until /etc/mahad/offsite.env exists
+# (deploy/OFFSITE_BACKUPS.md), so this file is installed on every server. The
+# hourly dump itself is shipped by mahad-db-backup.sh (deploy/cron/mahad-db-backup)
+# as soon as it is written. A failure is an ALERT line in
+# /var/log/mahad-offsite.log, in syslog and on stderr (cron mails it), and on
+# the incident webhook when ALERT_WEBHOOK_URL is set.
+#
+#   every 15 minutes  closed MariaDB binary logs (nothing while binary logging is off)
+#   02:40 nightly     new or changed uploads (videos, branding, media)
+#   04:10 nightly     off-site retention: 7 days hourly, 35 daily, 12 monthly
+#   05:45 on the 2nd  restore the newest off-site dump into a scratch database —
+#                     only with MAHAD_OFFSITE_REHEARSAL=1 in the settings file
+#
+# No "%" anywhere below: cron treats it as a newline.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/15 * * * * root /usr/local/bin/mahad-offsite ship-binlogs >/dev/null
+40 2 * * * root /usr/local/bin/mahad-offsite sync-uploads >/dev/null
+10 4 * * * root /usr/local/bin/mahad-offsite prune >/dev/null
+45 5 2 * * root /usr/local/bin/mahad-offsite rehearse --scheduled >/dev/null

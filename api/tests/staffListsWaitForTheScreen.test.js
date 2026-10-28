@@ -10,6 +10,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -35,21 +36,21 @@ test('the screens that page from the server are named, and an employee\'s panel 
     for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders', 'daqqi_schedule', 'daqqi_clients']) assert.equal(pages(tab), true, tab);
     // The screens that read the context's lists keep their reload after a write.
     for (const tab of ['client', 'refund_requests', 'financial']) assert.equal(pages(tab), false, tab);
-    assert.equal(paged('online_clients', true, false), true);
-    assert.equal(paged('online_clients', false, true), true, 'the online manager');
-    assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
-    assert.equal(paged('daqqi_clients', false, false), true, '«عملاء الدقي» pages from the server for the administration too');
+    // Both client screens page from the server for every account — the administration's online screen held the
+    // whole client table with its payments (6.3 MB on the lab) until 21 Oct 2026.
+    assert.equal(paged('online_clients'), true);
+    assert.equal(paged('daqqi_clients'), true, '«عملاء الدقي» pages from the server for the administration too');
     assert.deepEqual([...skips('daqqi_clients')], []);
-    assert.equal(paged('leads', true, false), false);
+    assert.equal(paged('leads'), false);
     assert.deepEqual([...skips('orders')], ['orders', 'subscribers']);
-    assert.deepEqual([...skips('online_clients')], ['subscribers']);
+    assert.deepEqual([...skips('online_clients')], [], 'no screen of it asks for the clients');
     assert.deepEqual([...skips('financial')], []);
   }
   // What is left of the hook is the Dokki rounds, the team and the content.
   const hook = read('admin/pages/dashboard/useStaffOwnData.ts');
   assert.doesNotMatch(hook, /streamSubscribers|listStaffLeads|salesOwn(Leads|Subscribers)|wantsLists/);
   assert.match(hook, /listAllDaqqiRounds/);
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.doesNotMatch(dashboard, /salesOwn(Leads|Subscribers|Orders)|setStaffScoped(Subscribers|Leads)|staffScreenReadsLists|wantsStaffLists/);
   assert.match(dashboard, /setStaffListsWanted\(!isNonAdminStaff \|\| !staffScreenPagesFromServer\(activeTab\)\);/,
     'a write on a screen that pages from the server reloads no list');
@@ -59,8 +60,8 @@ test('the bell counts on the server for every employee, so it needs no list', ()
   const badges = read('admin/pages/dashboard/useDashboardBadges.ts');
   assert.match(badges, /const staffNotifBadge = !currentStaff \? 0 : \(dueFollowups \?\? 0\);/);
   assert.doesNotMatch(badges, /salesOwnLeads/);
-  const dashboard = read('admin/pages/Dashboard.tsx');
-  assert.match(dashboard, /const countsOwnFollowups = !!currentStaff && masterHasPermission\(/, 'for a role that may see leads: HR is refused the count');
+  const dashboard = dashboardSource();
+  assert.match(dashboard, /const countsOwnFollowups = !!currentStaff && access\.can\('view_leads'\);/, 'for a role that may see leads: HR is refused the count');
 });
 
 test('the pages that wait for the lists read none of them', () => {
@@ -79,12 +80,12 @@ test('the pages that wait for the lists read none of them', () => {
     assert.doesNotMatch(read(rel), /salesOwn(Leads|Subscribers)|useCrmData|SubscriberItem/, rel);
   }
   assert.match(read('admin/pages/dashboard/useOnlineManagerSummary.ts'), /\/staff\/online-manager-summary/);
-  assert.match(read('admin/pages/Dashboard.tsx'), /<DashboardOnlineManagerPanels[^>]*summary=\{onlineManagerSummary\}/);
+  assert.match(dashboardSource(), /<DashboardOnlineManagerPanels[^>]*summary=\{onlineManagerSummary\}/);
   assert.match(read('admin/pages/dashboard/tabs/StaffHomeTab.tsx'), /useStaffHomeSummary\(staff\)/);
   assert.match(read('admin/pages/dashboard/my-profile/MyPerformanceSection.tsx'), /\/staff\/payments\?summary=1&limit=1/);
   const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
   assert.doesNotMatch(finance, /<StaffPaymentsTab[^>]*salesOwnSubscribers/);
-  assert.doesNotMatch(read('admin/pages/Dashboard.tsx'), /<MyProfilePage[^>]*(leads|subscribers)=/);
+  assert.doesNotMatch(dashboardSource(), /<MyProfilePage[^>]*(leads|subscribers)=/);
 });
 
 test('«مدفوعاتي» asks the database for the period, the status, «mine» and the search, a page at a time', () => {

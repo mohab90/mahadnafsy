@@ -15,7 +15,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   require('./errorMonitor').initErrorMonitor();
 
   if (process.env.ARCHIVE_ACTIVITY_LOGS === 'true') {
-    const archive = () => require('./archiveJob').archiveActivityLogs(pool);
+    const archive = () => require('./archiveJob').archiveActivityLogs(pool).catch(() => {});
     setTimeout(archive, 10 * 60 * 1000).unref?.();
     const interval = setInterval(archive, 24 * 60 * 60 * 1000);
     interval.unref?.();
@@ -30,6 +30,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   const queue = require('./jobQueue');
   const scheduledJobs = require('./scheduledJobHandlers').createScheduledJobHandlers({ pool, logger });
   const subscriptionBilling = require('./subscriptionBilling');
+  const { lockedJob } = require('./jobLock');
   const intervals = [];
   const timeouts = [];
   const later = (fn, delay) => {
@@ -50,12 +51,18 @@ function startBackgroundScheduler({ pool, logger, port }) {
   };
 
   require('./hrAuditRetentionJob').scheduleHrAuditRetention({ pool, logger });
+  // Daily trim of the tables that only grew (lib/dataRetention.js), half an
+  // hour after boot so a deploy is long settled.
+  later(() => {
+    const trim = lockedJob('data_retention', () => require('./dataRetention').runDataRetention({ pool, logger }));
+    trim();
+    repeat(trim, 24 * 60 * 60 * 1000);
+  }, 30 * 60 * 1000);
 
   // Yesterday's unmarked working days, for tenants that switched automatic
   // absence on (lib/autoAbsence.js — off by default). Hourly and idempotent: the
   // insert ignores a day that already has a row, so repeats and a second instance
   // change nothing.
-  const { lockedJob } = require('./jobLock');
   later(() => {
     const run = lockedJob('auto_absence', async () => {
       try {
@@ -175,6 +182,23 @@ function startBackgroundScheduler({ pool, logger, port }) {
     check();
     repeat(check, 6 * 60 * 60 * 1000);
   }, 12 * 60 * 1000);
+
+  // STORAGE_DRIVER=s3: new uploads move to the bucket as they arrive
+  // (lib/storedFiles.js); this picks up any a restart or a bucket outage left
+  // on the disk. Off, and not even scheduled, with the default local driver.
+  if (require('./objectStorage').writesToBucket()) {
+    later(() => {
+      const sweep = lockedJob('storage_offload', async () => {
+        const { createDbLedger } = require('./storageLedger');
+        const result = await require('./storageOffload').offloadPendingUploads({
+          client: require('./objectStorage').remoteStore(), ledger: createDbLedger(pool), logger,
+        });
+        if (result.moved || result.failed) logger.info(`[jobs] storage offload moved=${result.moved} failed=${result.failed}`);
+      });
+      sweep();
+      repeat(sweep, 10 * 60 * 1000);
+    }, 3 * 60 * 1000);
+  }
 
   // The delete right that followed a spelling of a name becomes a saved list of those accounts, once per tenant (lib/deleteRights.js).
   later(() => lockedJob('delete_rights_freeze', async () => {

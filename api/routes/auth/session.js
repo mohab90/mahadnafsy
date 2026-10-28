@@ -38,6 +38,13 @@ const {
 } = require('./_shared');
 
 const deleteRights = require('../../lib/deleteRights');
+const { rememberKnownLogin } = require('../../lib/knownLogin');
+
+// The one refusal for a wrong identifier, a wrong password and an account with
+// no password yet: anything more specific says which numbers and addresses
+// have accounts here. The sign-in screen explains the WhatsApp and «نسيت كلمة
+// المرور» ways in for everyone alike.
+const INVALID_CREDENTIALS = 'Invalid credentials';
 
 const router = Router();
 
@@ -66,10 +73,13 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     conn = await pool.getConnection();
     const [rows] = identifierIsEmail
       ? await conn.execute(
-          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled, u.email_unverified,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
-           FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1`,
+           FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1
+            -- An address typed at sign-up and not yet proven is no way in
+            -- (lib/emailVerification.js); the number it signed up with is.
+            AND u.email_unverified = 0`,
           [req.tenantId, email])
       // Every spelling the number can be stored as, not the one this normaliser
       // happens to produce. `u.phone = ?` compared against toIdentity() only
@@ -86,7 +96,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         const spellings = identitySpellings(rawIdentifier);
         if (!spellings.length) return [[]];
         return conn.execute(
-          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled, u.email_unverified,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
            FROM users u
@@ -121,26 +131,13 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       })();
       conn.release();
       conn = null;
-      if (subExists) {
-        // "Press forgot password" sends a code to an email address. A client who
-        // has none cannot act on that, so they are pointed at the WhatsApp code
-        // instead — the route that does work for them, and the one that creates
-        // their account on first use.
-        const hasEmail = Boolean(String(subExists.email || '').trim());
-        logger.info('[login] subscriber exists but no users record — directing to %s:',
-          hasEmail ? 'reset' : 'whatsapp code', logIdentifier);
-        await logLoginAttempt({ ...tried, req, status: 'failed', failureReason: 'password_not_set' });
-        return res.status(401).json({
-          error: hasEmail
-            ? '\u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u0644\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0639\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0636\u063a\u0637 \u0639\u0644\u0649 "\u0646\u0633\u064a\u062a \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" \u0644\u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062c\u062f\u064a\u062f\u0629.'
-            : '\u062d\u0633\u0627\u0628\u0643 \u0645\u0633\u062c\u0651\u0644 \u0628\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062a\u0641 \u0648\u0628\u062f\u0648\u0646 \u0628\u0631\u064a\u062f \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a. \u0627\u062f\u062e\u0644 \u0639\u0646 \u0637\u0631\u064a\u0642 "\u0627\u0644\u062f\u062e\u0648\u0644 \u0628\u0631\u0642\u0645 \u0627\u0644\u0648\u0627\u062a\u0633\u0627\u0628" \u2014 \u0647\u064a\u0648\u0635\u0644\u0643 \u0643\u0648\u062f \u0639\u0644\u0649 \u0646\u0641\u0633 \u0627\u0644\u0631\u0642\u0645.',
-          needsPasswordReset: hasEmail,
-          useWhatsappLogin: !hasEmail,
-        });
-      }
-      logger.info('[login] no active account for:', logIdentifier);
-      await logLoginAttempt({ ...tried, req, status: 'failed', failureReason: 'account_not_found' });
-      return res.status(401).json({ error: 'Invalid credentials' });
+      // Same cost as checking a real password, so the time taken says nothing either.
+      await bcrypt.compareDummy(password);
+      // The log keeps the difference (a client the desk added, with no
+      // password yet); the answer does not.
+      logger.info('[login] %s for:', subExists ? 'no password set (subscriber only)' : 'no active account', logIdentifier);
+      await logLoginAttempt({ ...tried, req, status: 'failed', failureReason: subExists ? 'password_not_set' : 'account_not_found' });
+      return res.status(401).json({ error: INVALID_CREDENTIALS });
     }
     const user = rows[0];
     // Do not hold a scarce MySQL connection while bcrypt runs or while
@@ -148,8 +145,18 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // that otherwise forms a circular wait and every request times out.
     conn.release();
     conn = null;
-    // Refuse before verifying the password: an account serving a sharing lock
-    // shouldn't be sign-in-able even with correct credentials.
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      logger.info('[login] wrong password for:', logIdentifier);
+      await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'wrong_password' });
+      return res.status(401).json({ error: INVALID_CREDENTIALS });
+    }
+    // This browser has now proven the password: the login limiters stop
+    // counting it with strangers on its network (lib/knownLogin.js).
+    rememberKnownLogin(req, res, rawIdentifier);
+    // An account serving a sharing lock is refused even with the right
+    // password — checked after it, so the lock does not tell a stranger the
+    // account exists.
     const activeLock = await getSharingLock(req.tenantId || 'tenant-default', user.id);
     if (activeLock.locked) {
       await logLoginAttempt({
@@ -159,12 +166,6 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         error: `الحساب موقوف مؤقتاً بسبب الاستخدام من أجهزة متعددة (${activeLock.reason || 'مشاركة الحساب'}). حاول لاحقاً أو تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
       });
-    }
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      logger.info('[login] wrong password for:', logIdentifier);
-      await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'wrong_password' });
-      return res.status(401).json({ error: 'Invalid credentials' });
     }
     // ── Admin 2FA: check if this user is a staff member with TOTP enabled ──
     if (user.totp_enabled) {
@@ -207,11 +208,15 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       // Decides concurrent-device allowance only — it grants no permission.
       isStaff: isOperator,
     });
-    // Link subscriber record to this user account (best-effort)
-    pool.query(
-      `UPDATE subscribers SET firebase_uid = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
-      [user.id, req.tenantId, user.email]
-    ).catch(() => {});
+    // Link subscriber record to this user account (best-effort) — by a proven
+    // address only: a phone sign-in of an account whose email is still a claim
+    // must not take the client record that holds that email.
+    if (user.email && Number(user.email_unverified) !== 1) {
+      pool.query(
+        `UPDATE subscribers SET firebase_uid = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
+        [user.id, req.tenantId, user.email]
+      ).catch(() => {});
+    }
     // Track login count and last login. Columns are owned by migrations, not the login path.
     pool.query(
       `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login = NOW() WHERE id = ? AND tenant_id=?`,
@@ -269,7 +274,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-    const [rows] = await conn.execute('SELECT id, email, name, phone FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
+    const [rows] = await conn.execute('SELECT id, email, name, phone, email_unverified FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
     let isAdmin = isInstituteOwner({ email: u.email, uid: u.id, tenantId: req.tenantId });
@@ -279,7 +284,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
       // kept a list of its own that added daqqi_manager and online_manager, so
       // the panel showed those two every section and skipped their permission
       // checks while the server refused them the data behind it.
-      const [[staff]] = u.email ? await conn.execute(
+      const [[staff]] = u.email && Number(u.email_unverified) !== 1 ? await conn.execute(
         `SELECT role, permissions_json FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
         [req.tenantId, u.email.toLowerCase().trim()]
       ) : [[null]];
@@ -308,7 +313,9 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     // so case never mattered, and stored emails are trimmed (migration 207; the write paths trim).
     let phone = '';
     try {
-      const em = (u.email || '').toLowerCase().trim();
+      // Not by an address still waiting to be proven: that would show a
+      // stranger the phone number of whoever the address belongs to.
+      const em = Number(u.email_unverified) === 1 ? '' : (u.email || '').toLowerCase().trim();
       if (em) {
         const [[subRow]] = await conn.execute(
           "SELECT phone FROM subscribers WHERE tenant_id=? AND email=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [req.tenantId, em]
@@ -335,7 +342,8 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
         canManageDeleteRights = await deleteRights.isDeleteOwner(req);
       } catch (error) { logger.warn('[auth/me] delete rights unavailable', { error: error.message }); }
     }
-    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin,
+    res.json({ uid: u.id, email: u.email, emailVerified: Boolean(u.email) && Number(u.email_unverified) !== 1,
+      displayName: u.name || '', phone, isAdmin,
       permissions: isAdmin ? '*' : staffPermissions, canDelete, canManageDeleteRights });
   } catch (err) {
     logger.error('[auth/me]', err);

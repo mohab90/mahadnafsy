@@ -24,7 +24,17 @@ const {
   claimWhatsAppIdentity,
   normalizeWhatsAppNumber,
   isPlausibleNumber,
+  requireAuth,
+  invalidateIdentity,
+  otpLimiter,
+  resetOtpLimiter,
 } = require('./_shared');
+
+const { toIdentity } = require('../../lib/phoneNumber');
+const { attributionFromRequest } = require('../../lib/visitAttribution');
+const {
+  UNPROVEN_CLAIM_HOURS, issueEmailVerification, verifyEmailCode, verifyEmailToken,
+} = require('../../lib/emailVerification');
 
 const router = Router();
 
@@ -41,6 +51,10 @@ const router = Router();
 // 27 of 32 signups in two days ended here (29–30 Sep 2026): the number already
 // had an account — a client from the sheets, or someone signing up twice. «رقم
 // الهاتف مستخدم بالفعل» told them that and nothing else; this says how to get in.
+// Two spellings of one number: 01012345678 and +201012345678, or 0501234567 and 966501234567.
+const phoneKey = (value) => toIdentity(value).replace(/^966(?=5\d{8}$)/, '');
+const samePhone = (a, b) => Boolean(phoneKey(a)) && phoneKey(a) === phoneKey(b);
+
 const PHONE_TAKEN_MESSAGE = 'الرقم ده عليه حساب عندنا بالفعل. ادخل من «الدخول برقم الواتساب» وهيوصلك كود على نفس الرقم، ومن غير كلمة مرور.';
 
 const validateSignup = validateBody({
@@ -81,8 +95,36 @@ async function signup(req, res) {
       if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
         return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
       }
+      // An address somebody else typed at sign-up and never proved stops
+      // blocking its owner after UNPROVEN_CLAIM_HOURS: it is taken off that
+      // account (which keeps its phone, its way in) and this sign-up proceeds.
+      await conn.execute(
+        `UPDATE users SET email=NULL
+          WHERE tenant_id=? AND email=? AND email_unverified=1 AND created_at < NOW() - INTERVAL ? HOUR`,
+        [tenantId, normalizedEmail, UNPROVEN_CLAIM_HOURS]
+      );
       const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ?', [tenantId, normalizedEmail]);
       if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
+      // A client's email is not a key anyone can claim. The email is not
+      // verified here, and the account is matched to its client by email
+      // (lib/subscriberIdentity.js) — so signing up with a client's address and
+      // one's own number opened that client's paid lectures, payments and data
+      // export, and sent their password-reset code to the newcomer's WhatsApp.
+      // The client themself signs up with the number on their file.
+      const [[client]] = await conn.execute(
+        'SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
+        [tenantId, normalizedEmail]
+      );
+      if (client && !samePhone(client.phone, phone)) {
+        // A client on file with no number cannot prove the address is theirs
+        // here either; customer service adds the number, then they sign in by it.
+        return res.status(409).json({
+          error: phoneKey(client.phone)
+            ? 'البريد ده مسجّل لعميل عندنا برقم تاني. ادخل برقم الواتساب المسجّل عندنا، أو كلّم خدمة العملاء.'
+            : 'البريد ده مسجّل لعميل عندنا من غير رقم واتساب. كلّم خدمة العملاء يضيفوا رقمك، وبعدها ادخل بيه.',
+          code: 'EMAIL_BELONGS_TO_CLIENT',
+        });
+      }
     }
     // Phone is the required identity now, so a number already claimed by
     // another account must reject the signup rather than silently proceeding
@@ -110,11 +152,13 @@ async function signup(req, res) {
     const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId, phone });
     await conn.execute(
       `INSERT INTO users
-         (id, tenant_id, email, phone, password_hash, name, role, active_session_id,
+         (id, tenant_id, email, email_unverified, phone, password_hash, name, role, active_session_id,
           active_session_ip_hash, active_session_started_at, active_session_last_seen_at,
           last_country_code, preferred_currency, last_geo_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
-      [id, tenantId, normalizedEmail, phoneForUser, hash, (name || '').trim(), 'user',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
+      // The email is a claim until its owner follows the link or types the
+      // code (lib/emailVerification.js); the phone is the identity meanwhile.
+      [id, tenantId, normalizedEmail, normalizedEmail ? 1 : 0, phoneForUser, hash, (name || '').trim(), 'user',
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
     // The device the account was made on is its first (lib/customerDevices.js).
@@ -128,8 +172,11 @@ async function signup(req, res) {
     if (ref) {
       const refCode = String(ref).trim().toUpperCase();
       await conn.query('UPDATE referral_codes SET uses = uses + 1 WHERE tenant_id=? AND code = ?', [tenantId, refCode]).catch(() => {});
-      if (normalizedEmail) {
-        await conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, normalizedEmail]).catch(() => {});
+      // The client record it credits is found by the phone, not by the email:
+      // an unproven address must not change somebody else's record.
+      const phoneIdentity = normalizeWhatsAppNumber(phone);
+      if (phoneIdentity) {
+        await conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND phone = ? AND deleted_at IS NULL AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, phoneIdentity]).catch(() => {});
       }
     }
     // There is no `registrations` table and there never has been: "التسجيلات"
@@ -154,6 +201,7 @@ async function signup(req, res) {
         tenantId,
         user: { id, name, email: normalizedEmail, phone: normalizeWhatsAppNumber(phone) },
         branch,
+        attribution: attributionFromRequest(req),
       });
     } catch (leadError) {
       logger.warn('[register] could not add the signup to the client base', { error: leadError.message });
@@ -182,6 +230,12 @@ async function signup(req, res) {
       }, { dedupeKey: `signup:${id}` })
         .catch(err => logger.warn('[register] lead_created journey failed', { error: err.message }));
     }
+    // The link and code that prove the address (best-effort: the account
+    // works by phone meanwhile, and POST /api/auth/email/resend asks again).
+    if (normalizedEmail) {
+      issueEmailVerification(pool, { tenantId, userId: id, email: normalizedEmail, name: (name || '').trim() })
+        .catch(error => logger.warn('[register] email verification not issued', { error: error.message }));
+    }
     // Enqueue registration email sequence (best-effort)
     if (normalizedEmail) {
       enqueueEmailSequence({ tenantId, triggerEvent: 'registration', recipientEmail: normalizedEmail, recipientName: (name || '').trim() }).catch(error => logger.warn('[register] sequence enqueue failed', { error: error.message }));
@@ -194,6 +248,50 @@ async function signup(req, res) {
     if (!res.headersSent) res.status(500).json({ error: 'Registration failed' });
   } finally { if (conn) conn.release(); }
 }
+
+// GET /api/auth/verify-email?t=… — the link in the verification email. One
+// use; it lands the person back on the site with the result in the address.
+router.get('/api/auth/verify-email', resetOtpLimiter, async (req, res) => {
+  const site = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/+$/, '');
+  try {
+    const result = await verifyEmailToken(pool, { tenantId: req.tenantId || 'tenant-default', token: String(req.query?.t || '') });
+    if (result.ok) invalidateIdentity(result.tenantId, result.userId);
+    res.redirect(302, `${site}/?emailVerified=${result.ok ? '1' : '0'}`);
+  } catch (error) {
+    logger.error('[auth/verify-email]', error);
+    res.redirect(302, `${site}/?emailVerified=0`);
+  }
+});
+
+// POST /api/auth/email/verify — the six-digit code from the same email.
+router.post('/api/auth/email/verify', requireAuth, resetOtpLimiter, async (req, res) => {
+  try {
+    const result = await verifyEmailCode(pool, { tenantId: req.tenantId, userId: req.user.uid, code: req.body?.code });
+    if (!result.ok) return res.status(400).json({ error: 'الكود غير صحيح أو انتهت صلاحيته', code: 'EMAIL_CODE_INVALID' });
+    invalidateIdentity(req.tenantId, req.user.uid);
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('[auth/email/verify]', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/email/resend — a new link and code for an unproven address.
+router.post('/api/auth/email/resend', requireAuth, otpLimiter, async (req, res) => {
+  try {
+    const [[user]] = await pool.query(
+      'SELECT email, name, email_unverified FROM users WHERE tenant_id=? AND id=? AND is_active=1 LIMIT 1',
+      [req.tenantId, req.user.uid]
+    );
+    if (!user?.email) return res.status(409).json({ error: 'مفيش بريد على الحساب', code: 'NO_EMAIL' });
+    if (Number(user.email_unverified) !== 1) return res.json({ ok: true, alreadyVerified: true });
+    const result = await issueEmailVerification(pool, { tenantId: req.tenantId, userId: req.user.uid, email: user.email, name: user.name });
+    res.json({ ok: true, sent: Boolean(result.sent) });
+  } catch (error) {
+    logger.error('[auth/email/resend]', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota('users'), validateSignup, signup);
 router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('users'), validateSignup, signup);

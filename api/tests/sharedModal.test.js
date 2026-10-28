@@ -33,7 +33,7 @@ const NOT_A_DIALOG = {
   // The receipt's markup is load-bearing for the @media print rules, which hide
   // body's children and position #payModalPrintReceipt at the page origin.
   // Modal's extra wrappers are exactly what breaks that.
-  'admin/components/PaymentModal.tsx': 'the printed receipt inside it',
+  'admin/components/payment-modal/PrintReceiptModal.tsx': 'the printed receipt the payment dialog shows',
 
   // Media and documents on a dark ground. Modal gives a white panel with a
   // header row — right for a form, wrong for a photo or a certificate. All of

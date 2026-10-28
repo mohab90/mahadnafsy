@@ -231,10 +231,17 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       // wrote the instructor's share at all.
       //
       // recordPaymentCompensation is that rule, and it is now the only copy.
+      //
+      // And to the same person: the client's sales rep, else whoever took the
+      // payment — the rule every other path follows (subscriber-payments,
+      // receipts, orders, instalments, Paymob). This path put the recorder
+      // first, so a payment the desk recorded pending and a manager approved
+      // paid the receptionist, while the same payment recorded as paid paid
+      // the rep. recordPaymentCompensation's own default is that rule.
       await recordPaymentCompensation({
         paymentId: id,
         tenantId,
-        commissionStaffId: payment.staff_id || subscriber?.assigned_sales_id || null,
+        commissionStaffId: subscriber?.assigned_sales_id || payment.staff_id || null,
         actor,
       }, conn);
       if (subscriber?.lead_id) {

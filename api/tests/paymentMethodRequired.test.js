@@ -15,7 +15,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = rel => fs.readFileSync(path.join(__dirname, '..', 'routes', ...rel.split('/')), 'utf8');
 
 // Comments quote the rule they explain, and one of them quotes the Arabic
 // message verbatim. Matching against the source with comments left in lets a
@@ -24,57 +23,12 @@ const codeOnly = source => source
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const create = codeOnly(read('subscriber-payments.js'));
-const approve = codeOnly(read('core/financepay.js'));
 
-test('recording a settled payment requires a method', () => {
-  assert.match(create, /const resolvedMethod = sanitize\(payment\.paymentMethod \|\| payment\.payment_method/);
-  assert.match(create, /if \(isPaid && !resolvedMethod\)/);
-  assert.match(create, /status\(400\)/);
-});
+// The server's half — a settled payment needs a method, a pending one does not, an
+// approver supplies it and it is kept, a rejection is not held to it — runs over
+// HTTP in tests/integration/deskPaymentsAndOrders.integration.test.js. What is
+// left is the review screen and the API client.
 
-test('the value that was validated is the value that is stored', () => {
-  // It used to be sanitized a second time at the INSERT, so a guard on one copy
-  // said nothing about the other.
-  const insert = create.slice(create.indexOf('INSERT INTO payments'));
-  assert.match(insert.slice(0, 2000), /\n\s*resolvedMethod,/);
-  assert.doesNotMatch(insert.slice(0, 2000), /sanitize\(payment\.paymentMethod/);
-});
-
-test('a pending payment may still be recorded without one', () => {
-  // The guard is on isPaid, not on every write: someone taking a booking before
-  // the transfer clears has nothing to name yet.
-  const guard = create.slice(create.indexOf('if (isPaid && !resolvedMethod)'));
-  assert.match(guard.slice(0, 200), /isPaid/);
-  assert.doesNotMatch(create, /if \(!resolvedMethod\) \{[\s\S]{0,80}status\(400\)/);
-});
-
-test('approving a payment to paid requires a method too', () => {
-  assert.match(approve, /const settledMethod = String\(payment\.payment_method \|\| ''\)\.trim\(\) \|\| suppliedMethod/);
-  assert.match(approve, /if \(becomingPaid && !settledMethod\)/);
-  assert.match(approve, /rollback\(\);[\s\S]{0,60}status\(400\)/);
-});
-
-test('an approver can supply the method, and it is persisted', () => {
-  // Nothing else can edit a stored method. Without this, a pending row that
-  // lacks one could never be approved at all.
-  assert.match(approve, /req\.body\.paymentMethod \|\| req\.body\.payment_method/);
-  const update = approve.slice(approve.indexOf('UPDATE payments'));
-  assert.match(update.slice(0, 400), /SET status=\?, payment_method=\?/);
-  assert.match(update.slice(0, 700), /settledMethod \|\| payment\.payment_method \|\| null/);
-});
-
-test('rejecting or reverting a payment is not held to the rule', () => {
-  // Only becomingPaid. A failed or pending outcome must stay reachable.
-  const guard = approve.slice(approve.indexOf('if (becomingPaid && !settledMethod)'), approve.indexOf('const rawAmount'));
-  assert.match(guard, /becomingPaid/);
-  assert.doesNotMatch(guard, /status === 'failed'/);
-});
-
-// ── The admin side of the same rule ────────────────────────────────────────
-// The API refusing is only half a fix: the review queue's «قبول» button sent no
-// method at all, so a row stored without one would have been refused with no
-// way in the screen to supply it.
 const ADMIN = path.join(__dirname, '..', '..', 'admin');
 const readAdmin = rel => fs.readFileSync(path.join(ADMIN, ...rel.split('/')), 'utf8');
 const ordersTab = codeOnly(ordersScreenSource());
