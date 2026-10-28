@@ -323,8 +323,9 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
 
   const live = client => client.isActive !== false && !factsOf(client).terminal;
   const marketTab = (client, market) => factsOf(client).online && factsOf(client).market === market;
+  // «النشطين» at Dokki is the current clients: the ones before 2024 have their own tab and are not counted twice
   const tabCounts = dokki ? {
-    active: all.filter(live).length,
+    active: all.filter(client => live(client) && !OLD_DATA_STATUSES.includes(factsOf(client).status)).length,
     finished: all.filter(client => factsOf(client).status === 'finished').length,
     paused: all.filter(client => factsOf(client).status === 'paused').length,
     refunded: all.filter(client => ['refunded', 'refund_pending'].includes(factsOf(client).status)).length,
@@ -332,7 +333,8 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     booked2025: all.filter(client => bookedIn(client, 2025)).length,
     old_data: all.filter(client => OLD_DATA_STATUSES.includes(factsOf(client).status)).length,
   } : {
-    active: all.filter(live).length,
+    // the clients with a tab of their own for their age (محلي قديم / سعودي قديم) are not counted twice
+    active: all.filter(client => live(client) && !['old_local', 'old_intl'].includes(factsOf(client).status)).length,
     'real-local': 0, 'real-saudi': 0, 'real-intl': 0,
     finished: all.filter(client => factsOf(client).status === 'finished').length,
     paused: all.filter(client => factsOf(client).status === 'paused').length,
@@ -349,7 +351,7 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     const { status, terminal } = factsOf(client);
     if (dokki) {
       switch (filters.view) {
-        case 'active': return client.isActive !== false && !terminal;
+        case 'active': return client.isActive !== false && !terminal && !OLD_DATA_STATUSES.includes(status);
         case 'booked2024': case 'booked2025': return bookedIn(client, BOOKING_YEAR_VIEWS[filters.view]);
         case 'refunded': return status === 'refunded' || status === 'refund_pending';
         case 'old_data': return OLD_DATA_STATUSES.includes(status);
@@ -357,7 +359,7 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
       }
     }
     switch (filters.view) {
-      case 'active': return client.isActive !== false && !terminal;
+      case 'active': return client.isActive !== false && !terminal && !['old_local', 'old_intl'].includes(status);
       case 'real-local': case 'real-saudi': case 'real-intl':
         return marketTab(client, MARKET_VIEWS[filters.view]) && client.isActive !== false && !terminal
           && ((client.enrolledCourseIds || []).length > 0 || hasBooking(client));
@@ -417,7 +419,7 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
   for (const client of all) {
     const { online, market, balance, status, terminal } = factsOf(client);
     if (online) markets[market] += 1;
-    if (!terminal) dokkiCounts.active += 1;
+    if (!terminal && !OLD_DATA_STATUSES.includes(status)) dokkiCounts.active += 1;
     if (status === 'finished') dokkiCounts.finished += 1;
     if (status === 'paused') dokkiCounts.paused += 1;
     remaining += balance.remainingEgp;

@@ -80,7 +80,8 @@ test('the list takes the same branch filter and pages deterministically', async 
   const list = queries.find(q => /FROM subscribers s/.test(q.sql) && /LIMIT \? OFFSET \?/.test(q.sql));
   assert.ok(list, 'the list query ran');
   assert.match(list.sql, /s\.branch IN \(\?\)/);
-  assert.match(list.sql, /ORDER BY s\.created_at DESC, s\.id DESC/, 'a tie on created_at cannot repeat or skip a row across pages');
+  // newest subscription first, and the id last: a tie on the dates cannot repeat or skip a row across pages
+  assert.match(list.sql, /ORDER BY COALESCE\(\(SELECT MAX\(sub_en\.enrolled_at\)[\s\S]*?\), s\.created_at\) DESC, s\.created_at DESC, s\.id DESC/);
   assert.deepEqual(list.params.slice(-3), ['DAQQI', 300, 300]);
 });
 

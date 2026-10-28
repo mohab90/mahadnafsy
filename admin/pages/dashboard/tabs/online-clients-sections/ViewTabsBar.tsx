@@ -143,9 +143,8 @@ export function ViewTabsBar({
             { key: 'paused'     as const, label: 'المتوقفين',     color: 'amber'  },
             { key: 'refunded'   as const, label: 'المستردين',     color: 'red'    },
             ...(isDaqqiClientsTab ? [
-              { key: 'booked2024' as const, label: 'عملاء 24',     color: 'purple' },
-              { key: 'booked2025' as const, label: 'عملاء 25',     color: 'indigo' },
-              { key: 'old_data'  as const, label: '📥 استيراد',    color: 'slate'  },
+              // «عملاء 24» and «عملاء 25» are folded into المنتهين / المتوقفين; what is older than 2024 has this tab.
+              { key: 'old_data'  as const, label: 'عملاء قبل 24',  color: 'slate'  },
             ] : [
               { key: 'old_local' as const, label: '🏠 محلي قديم',  color: 'indigo' },
               { key: 'old_intl'  as const, label: '🇸🇦 سعودي قديم',  color: 'violet' },
@@ -154,7 +153,7 @@ export function ViewTabsBar({
             const market = MARKET_TAB[vt.key];
             const base = vt.key === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) : vt.key === 'old_intl' ? allCombined.filter(isIntlSub) : allCombined;
             const cnt = tabCounts ? (tabCounts[vt.key] ?? 0) : vt.key === 'active'
-              ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'')).length
+              ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && !['old_data', 'daqqi_old_local', 'daqqi_old_intl', ...(isDaqqiClientsTab ? [] : ['old_local', 'old_intl'])].includes(s.clientStatus || '')).length
               : market
               ? allCombined.filter(s => marketOf(s) === market && s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0).length
               : (vt.key === 'old_local' || vt.key === 'old_intl') ? base.filter(s => s.clientStatus === vt.key).length
