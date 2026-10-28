@@ -8,6 +8,11 @@ const { ARCHIVE_SOURCE_PREFIXES } = require('../../lib/leadArchive');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
 const express  = require('express');
+
+// «ترتيب العملاء الأحدث للأقدم بناءً على تاريخ الاشتراك»: a client's latest subscription — the newest of their courses'
+// subscription days (the access panel's «تاريخ الاشتراك») — and the day they were registered when they hold none.
+const NEWEST_SUBSCRIPTION = `COALESCE((SELECT MAX(sub_en.enrolled_at) FROM enrollments sub_en
+  WHERE sub_en.subscriber_id = s.id AND sub_en.tenant_id = s.tenant_id AND sub_en.status <> 'removed'), s.created_at)`;
 const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
@@ -417,7 +422,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.is_active=1 AND (${scopeClause}) AND NOT EXISTS (
          SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
        ) ${adminExclusions}${searchClause}
-       ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+       ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), ...searchParams, limit, offset]
     );
     if (rows.length === 0) return res.json([]);
@@ -748,7 +753,7 @@ async function readScopeClients(tenantId, sc) {
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${sc.where})
-      ORDER BY s.created_at DESC, s.id DESC`,
+      ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC, s.id DESC`,
     [tenantId, ...sc.params]
   );
   // A thousand at a time, four thousands at once: thirty of them one after another were 3 s of the manager's 4.
@@ -832,7 +837,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})${byBranch.sql}${byTerm.sql}${byIds.sql}
-       ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+       ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       params
     );
     res.json(await shapeStaffSubscribers(req.tenantId, rows));
@@ -908,7 +913,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (
              s.assigned_sales_id = ?
           OR (s.lead_id IS NOT NULL AND l.assigned_sales_id = ?))
-       ORDER BY s.created_at DESC LIMIT 2000`,
+       ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC LIMIT 2000`,
       [req.tenantId, staffId, staffId]
     );
     if (rows.length === 0) return res.json([]);
@@ -991,7 +996,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
            OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.assigned_cs_name = (SELECT name FROM staff WHERE id=? AND tenant_id=? LIMIT 1))
           OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?)
            OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionName')) = (SELECT name FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))
-       ORDER BY s.created_at DESC LIMIT 5000`,
+       ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC LIMIT 5000`,
       [req.tenantId, staffId, staffId, req.tenantId, staffId, staffId, req.tenantId]
     );
     if (rows.length === 0) return res.json([]);
@@ -1068,7 +1073,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     const [rows] = await pool.query(
       `SELECT s.* FROM subscribers s
        WHERE s.tenant_id=? AND s.deleted_at IS NULL AND s.branch = ?
-       ORDER BY s.created_at DESC LIMIT 5000`
+       ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC LIMIT 5000`
       , [req.tenantId, branch]
     );
     if (rows.length === 0) return res.json([]);
