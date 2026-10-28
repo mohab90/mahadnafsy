@@ -466,6 +466,8 @@ export default function OnlineClientsTab({
                 if (collOnlineViewTab === 'active') {
                   if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
+                  // Dokki: what is older than 2024 has its own tab
+                  if (isDaqqiClientsTab && ['old_data', 'daqqi_old_local', 'daqqi_old_intl'].includes(clientSt)) return false;
                 } else if (viewMarket) {
                   // فعلي = active + has at least one enrolled course
                   if (s.isActive === false) return false;

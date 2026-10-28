@@ -148,6 +148,7 @@ function screenRun(screen, clients, rounds, f) {
     if (f.view === 'active') {
       if (s.isActive === false) return false;
       if (['finished', 'paused', 'refunded', 'refund_pending'].includes(clientSt)) return false;
+      if (['old_data', 'daqqi_old_local', 'daqqi_old_intl'].includes(clientSt)) return false;
     } else if (BOOKING_YEAR_TABS[f.view]) {
       if (!bookedInYear(s, BOOKING_YEAR_TABS[f.view])) return false;
     } else if (f.view === 'refunded') {
@@ -184,7 +185,7 @@ function screenRun(screen, clients, rounds, f) {
   const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
   // ViewTabsBar's counts and OnlineClientsKpiStrip's, as they counted allCombined.
   const tabCounts = {
-    active: allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus || '')).length,
+    active: allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus || '') && !['old_data', 'daqqi_old_local', 'daqqi_old_intl'].includes(s.clientStatus || '')).length,
     finished: allCombined.filter(s => s.clientStatus === 'finished').length,
     paused: allCombined.filter(s => s.clientStatus === 'paused').length,
     refunded: allCombined.filter(s => s.clientStatus === 'refunded' || s.clientStatus === 'refund_pending').length,
@@ -194,7 +195,7 @@ function screenRun(screen, clients, rounds, f) {
   };
   const figures = {
     total: allCombined.length,
-    active: allCombined.filter(s => !TERMINAL.includes(s.clientStatus || '')).length,
+    active: allCombined.filter(s => !TERMINAL.includes(s.clientStatus || '') && !['old_data', 'daqqi_old_local', 'daqqi_old_intl'].includes(s.clientStatus || '')).length,
     finished: allCombined.filter(s => s.clientStatus === 'finished').length,
     paused: allCombined.filter(s => s.clientStatus === 'paused').length,
     today: screen.calcSubscribersPaidEGP(allCombined, TODAY, TODAY),
