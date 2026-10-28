@@ -314,7 +314,8 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     booked2025: all.filter(client => bookedIn(client, 2025)).length,
     old_data: all.filter(client => OLD_DATA_STATUSES.includes(factsOf(client).status)).length,
   } : {
-    active: all.filter(live).length,
+    // the clients with a tab of their own for their age (محلي قديم / سعودي قديم) are not counted twice
+    active: all.filter(client => live(client) && !['old_local', 'old_intl'].includes(factsOf(client).status)).length,
     'real-local': 0, 'real-saudi': 0, 'real-intl': 0,
     finished: all.filter(client => factsOf(client).status === 'finished').length,
     paused: all.filter(client => factsOf(client).status === 'paused').length,
@@ -339,7 +340,7 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
       }
     }
     switch (filters.view) {
-      case 'active': return client.isActive !== false && !terminal;
+      case 'active': return client.isActive !== false && !terminal && !['old_local', 'old_intl'].includes(status);
       case 'real-local': case 'real-saudi': case 'real-intl':
         return marketTab(client, MARKET_VIEWS[filters.view]) && client.isActive !== false && !terminal
           && ((client.enrolledCourseIds || []).length > 0 || hasBooking(client));

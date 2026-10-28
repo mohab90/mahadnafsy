@@ -153,7 +153,7 @@ export function ViewTabsBar({
             const market = MARKET_TAB[vt.key];
             const base = vt.key === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) : vt.key === 'old_intl' ? allCombined.filter(isIntlSub) : allCombined;
             const cnt = tabCounts ? (tabCounts[vt.key] ?? 0) : vt.key === 'active'
-              ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && !(isDaqqiClientsTab && ['old_data', 'daqqi_old_local', 'daqqi_old_intl'].includes(s.clientStatus || ''))).length
+              ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && !['old_data', 'daqqi_old_local', 'daqqi_old_intl', ...(isDaqqiClientsTab ? [] : ['old_local', 'old_intl'])].includes(s.clientStatus || '')).length
               : market
               ? allCombined.filter(s => marketOf(s) === market && s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0).length
               : (vt.key === 'old_local' || vt.key === 'old_intl') ? base.filter(s => s.clientStatus === vt.key).length
