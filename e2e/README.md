@@ -54,7 +54,7 @@ mysql -e 'CREATE DATABASE mahad_e2e_local'
 DB_NAME=mahad_e2e_local npm run migrate
 DB_NAME=mahad_e2e_local node api/tools/e2e-seed.cjs
 # the API, then the built site and admin with /api proxied to it
-DB_NAME=mahad_e2e_local PORT=3105 CUSTOMER_MAX_DEVICES=50 WA_WEB_DISABLED=1 RUN_MIGRATIONS_ON_STARTUP=false node api/server.js &
+DB_NAME=mahad_e2e_local PORT=3105 CUSTOMER_MAX_DEVICES=50 ACCOUNT_MAX_DISTINCT_DEVICES=50 WA_WEB_DISABLED=1 RUN_MIGRATIONS_ON_STARTUP=false node api/server.js &
 npm --prefix client run build && (cd client && VITE_API_PROXY_TARGET=http://127.0.0.1:3105 npx vite preview --port 3000 &)
 npm --prefix admin run build && (cd admin && VITE_API_PROXY_TARGET=http://127.0.0.1:3105 npx vite preview --port 4000 &)
 cd e2e && E2E_SEEDED=1 API_BASE_URL=http://127.0.0.1:3105 npx playwright test \

@@ -260,14 +260,16 @@ jobs:
           node api/tools/e2e-seed.cjs
       # server.js refuses to start without DB_PASSWORD, and this container's
       # root has none. Two customer devices is the product's limit
-      # (lib/customerDevices.js); every Playwright test is a new browser.
+      # (lib/customerDevices.js), and three distinct devices a day lock an
+      # account for sharing (lib/accountSharingGuard.js); every Playwright test
+      # is a new browser.
       - name: Start the API (3105), the site (3000) and the admin (4000)
         shell: bash
         run: |
           mysql -h127.0.0.1 -P3306 -uroot -e "CREATE USER IF NOT EXISTS 'mahad_e2e'@'%' IDENTIFIED BY 'e2e-pass'; GRANT ALL ON mahad_e2e_ci.* TO 'mahad_e2e'@'%';"
           DB_USER=mahad_e2e DB_PASSWORD=e2e-pass PORT=3105 \
           JWT_SECRET=ci-e2e-jwt-secret-0123456789abcdef0123456789 \
-          RUN_MIGRATIONS_ON_STARTUP=false WA_WEB_DISABLED=1 CUSTOMER_MAX_DEVICES=50 \
+          RUN_MIGRATIONS_ON_STARTUP=false WA_WEB_DISABLED=1 CUSTOMER_MAX_DEVICES=50 ACCOUNT_MAX_DISTINCT_DEVICES=50 \
             nohup node api/server.js > "$RUNNER_TEMP/api.log" 2>&1 &
           (cd client && VITE_API_PROXY_TARGET=http://127.0.0.1:3105 nohup npx vite preview --host 127.0.0.1 --port 3000 --strictPort > "$RUNNER_TEMP/client.log" 2>&1 &)
           (cd admin && VITE_API_PROXY_TARGET=http://127.0.0.1:3105 nohup npx vite preview --host 127.0.0.1 --port 4000 --strictPort > "$RUNNER_TEMP/admin.log" 2>&1 &)
