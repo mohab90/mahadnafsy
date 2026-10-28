@@ -83,6 +83,8 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
  * says so itself; and the login screen, which is already where this leads.
  */
 let endingSession = false;
+// Set when /admin/content has answered 403 for this signed-in account (see mysqlAdmin.getContent).
+let adminContentRefused = false;
 function sessionIsOver(path: string): void {
   if (endingSession) return;
   // A wrong current password is a 401 about the request, not a dead session.
@@ -316,6 +318,8 @@ export interface MessagingChannel {
   isConnected: boolean;
   /** Whether credentials are stored — never what they are. */
   hasCredentials: boolean;
+  /** The identifiers saved with them (not secrets), and the last four characters of the token, so an edit form is not blank. */
+  credentialHints?: { metaPhoneId?: string; metaWabaId?: string; pageId?: string; instanceId?: string; instance?: string; secretTail?: string } | null;
 }
 
 export interface WapilotInstance {
@@ -651,7 +655,7 @@ export const mysqlAdmin = {
     apiFetch<MessagingChannel[]>(`/admin/messaging/channels${kind ? `?kind=${kind}` : ''}`, {}, A),
   createMessagingChannel:  (data: MessagingChannelInput) =>
     apiFetch<MessagingChannel>('/admin/messaging/channels', { method: 'POST', body: JSON.stringify(data) }, A),
-  updateMessagingChannel:  (id: string, data: Partial<MessagingChannelInput> & { isActive?: boolean }) =>
+  updateMessagingChannel:  (id: string, data: Partial<MessagingChannelInput> & { isActive?: boolean; mergeCredentials?: boolean }) =>
     apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }, A),
   setDefaultMessagingChannel: (id: string) =>
     apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}/default`, { method: 'POST' }, A),
@@ -663,7 +667,7 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; messageId?: string }>(`/messaging/channels/${encodeURIComponent(id)}/test`, { method: 'POST', body: JSON.stringify({ to, message }) }, A),
 
   getMyWhatsappChannel:    ()             => apiFetch<MessagingChannel | null>('/staff/me/whatsapp-channel', {}, A),
-  saveMyWhatsappChannel:   (data: { provider?: string; label?: string; displayNumber?: string; credentials: Record<string, string> }) =>
+  saveMyWhatsappChannel:   (data: { provider?: string; label?: string; displayNumber?: string; credentials: Record<string, string>; mergeCredentials?: boolean }) =>
     apiFetch<MessagingChannel>('/staff/me/whatsapp-channel', { method: 'PUT', body: JSON.stringify(data) }, A),
   deleteMyWhatsappChannel: ()             => apiFetch<AR>('/staff/me/whatsapp-channel', { method: 'DELETE' }, A),
 
@@ -732,6 +736,7 @@ export const mysqlAdmin = {
    * applications showed 427 staff ones among them; the screens count what they are given.
    */
   listAllJoinUs:           () => allPages('/admin/join-us', 1000),
+  joinUsFingerprint:       () => apiFetch<{ fingerprint: string }>('/admin/join-us/fingerprint', {}, A),
   /** How many applications there are — counted in the database over the whole scope, by form and status. */
   joinUsCounts:            () => apiFetch<{ total: number; byForm: { staff: number; teaching: number }; byStatus: Record<string, number>; byFormStatus: Record<'staff' | 'teaching', Record<string, number>> }>('/admin/join-us/counts', {}, A),
   /**
@@ -790,10 +795,12 @@ export const mysqlAdmin = {
   // and a caller that already knows it is not an admin goes there directly
   // rather than collecting the 403 first.
   getContent:              async (admin = true) => {
-    if (!admin) return apiFetch<AR>('/content');
+    // Once the admin route has refused this account (a 403 on 75% of its calls in the production log), the public one is asked directly.
+    if (!admin || adminContentRefused) return apiFetch<AR>('/content');
     try {
       return await apiFetch<AR>('/admin/content', {}, A);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && /permission|403/i.test(error.message)) adminContentRefused = true;
       return await apiFetch<AR>('/content');
     }
   },
@@ -1101,7 +1108,7 @@ export const mysqlAdmin = {
     return apiFetch<AR[]>(`/admin/payment-proofs${query ? `?${query}` : ''}`, {}, A);
   },
   getPaymentProofImage: (id: string, branch?: string) =>
-    apiFetch<{ image: string }>(`/admin/payment-proofs/${id}/image${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
+    apiFetch<{ image: string | null; url?: string | null }>(`/admin/payment-proofs/${id}/image${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
   reviewPaymentProof: (id: string, action: 'approve' | 'reject', reviewer_note?: string, branch?: string) =>
     apiFetch<{ ok: boolean; status: string; pendingSecondApproval?: boolean; review_due_at?: string }>(`/admin/payment-proofs/${id}`, {
       method: 'PATCH',

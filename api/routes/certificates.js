@@ -1,6 +1,8 @@
 'use strict';
 const logger = require('../lib/logger');
+const { isEnglish } = require('../lib/certificateEnglish');
 const { hasPaidForCourse } = require('../lib/coursePaid');
+const { recordIssuedInstituteCertificate } = require('../lib/instituteCertificates');
 const express = require('express');
 const router  = express.Router();
 
@@ -404,6 +406,12 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
     }
     if (!sets.length) { await conn.rollback(); return res.json({ ok: true, changed: [] }); }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, request.id, req.tenantId]);
+    // «الاسم بالإنجليزي أنا مدخله قبل كده من صفحة الشهادات»: an English name typed on a request is the client's name, so it fills the blank on
+    // their file too — the institute's certificate and every other one read it from there.
+    const typedNameEn = b.nameEn === undefined ? '' : sanitize(String(b.nameEn ?? ''), 255).trim();
+    if (request.subscriber_id && typedNameEn && isEnglish(typedNameEn)) {
+      await conn.query("UPDATE subscribers SET name_en=? WHERE id=? AND tenant_id=? AND (name_en IS NULL OR TRIM(name_en)='')", [typedNameEn, request.subscriber_id, req.tenantId]);
+    }
     if (request.subscriber_id) {
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_edited', actor: actorName(req),
@@ -624,6 +632,11 @@ router.patch('/api/admin/certificate-requests/:id',
       }
     }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, params);
+    // An institute certificate that is issued by hand has a completion under its own code, so the design opens,
+    // the QR resolves and it is in the history (lib/instituteCertificates.js recordIssuedInstituteCertificate).
+    if (['ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED'].includes(normalizedStatus)) {
+      await recordIssuedInstituteCertificate(conn, { ...request, status: normalizedStatus, issued_at: issued_at || request.issued_at });
+    }
     if (currentStatus !== normalizedStatus && request.subscriber_id) {
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_status', actor: actorName(req),

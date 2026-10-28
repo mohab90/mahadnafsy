@@ -62,6 +62,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
       `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency, o.payment_method, o.customer_name,
        o.customer_email, o.customer_phone, o.status, o.transaction_id, o.coupon_code, o.subscriber_id,
        o.course_id, o.bundle_id, o.notes, o.staff_id, o.staff_name, o.branch_id, o.created_at, o.paid_at, o.linked_transfer_id,
+       (SELECT pp.proof_url FROM payment_proofs pp WHERE pp.order_id=o.id AND pp.tenant_id=o.tenant_id AND pp.proof_url IS NOT NULL ORDER BY pp.submitted_at DESC LIMIT 1) AS proof_url,
        COALESCE(NULLIF(ol.source, ''), '') AS lead_source
        FROM orders o
        LEFT JOIN subscribers s ON s.id=o.subscriber_id AND s.tenant_id=o.tenant_id
@@ -75,6 +76,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
       `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency, o.payment_method, o.customer_name,
        o.customer_email, o.customer_phone, o.status, o.transaction_id, o.coupon_code, o.subscriber_id,
        o.course_id, o.bundle_id, o.notes, o.staff_id, o.staff_name, o.branch_id, o.created_at, o.paid_at, o.linked_transfer_id,
+       (SELECT pp.proof_url FROM payment_proofs pp WHERE pp.order_id=o.id AND pp.tenant_id=o.tenant_id AND pp.proof_url IS NOT NULL ORDER BY pp.submitted_at DESC LIMIT 1) AS proof_url,
        COALESCE(NULLIF(ol.source, ''), '') AS lead_source
        FROM orders o
        LEFT JOIN subscribers s ON s.id=o.subscriber_id AND s.tenant_id=o.tenant_id
@@ -88,7 +90,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     const [payRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
                p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.created_at, p.note,
-               p.staff_id, p.staff_name, p.status, p.branch_id, p.from_account, p.sender_name,
+               p.staff_id, p.staff_name, p.status, p.branch_id, p.from_account, p.sender_name, p.proof_url,
                s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone
        FROM payments p
        LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
@@ -100,7 +102,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     const [pendingPayRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
                p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.created_at, p.note,
-               p.staff_id, p.staff_name, p.status, p.branch_id, p.from_account, p.sender_name,
+               p.staff_id, p.staff_name, p.status, p.branch_id, p.from_account, p.sender_name, p.proof_url,
                s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone
        FROM payments p
        LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
@@ -138,6 +140,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         // The transfer as the desk typed it, shown where the payment is confirmed.
         from_account: p.from_account || null,
         sender_name: p.sender_name || null,
+        proof_url: p.proof_url || null,
         staff_id: p.staff_id || null,
         staff_name: executors.get(p.id) ?? null,
         branch_id: p.branch_id || null,

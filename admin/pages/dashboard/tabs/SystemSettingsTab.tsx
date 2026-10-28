@@ -27,6 +27,7 @@ import { FinancialSection, GeneralSection } from './systemSettingsCoreSections';
 import SaasSetupWizard from './SaasSetupWizard';
 import { SAAS_UI } from '../../../lib/productMode';
 import { GrowthOpsSection } from './GrowthOpsSection';
+import { MeetingIntegrationSection } from './MeetingIntegrationSection';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import SecretRotationCard from '../../../components/SecretRotationCard';
@@ -246,7 +247,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {active !== 'security' && active !== 'backups' && active !== 'growth' && (<>
+            {active !== 'security' && active !== 'backups' && active !== 'growth' && active !== 'meetings' && (<>
             <button onClick={() => reset(active)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition">
               <RotateCcw size={12}/> إعادة
@@ -276,8 +277,9 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         {active === 'security'           && <Security2FASection  notify={notify} />}
         {active === 'security'           && <ActiveSessionsSection notify={notify} />}
         {active === 'growth'             && <GrowthOpsSection    notify={notify} />}
+        {active === 'meetings'            && <MeetingIntegrationSection notify={notify} />}
         {active === 'backups'             && <BackupSection       notify={notify} />}
-        {!['general','financial','exchange_rates','currencies','countries','security','growth','backups'].includes(active) && (
+        {!['general','financial','exchange_rates','currencies','countries','security','growth','meetings','backups'].includes(active) && (
           <>
             <ListSection data={data[active] as ListItem[]} mutate={v => mutate(active, v)} c={c} sectionKey={active}/>
             {active === 'payment_methods' && (

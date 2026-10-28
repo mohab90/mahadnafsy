@@ -39,6 +39,10 @@ const { listCustomerTimeline } = require('../../lib/customerTimeline');
 const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../lib/staffEmailGuard');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
+  if (err?.code === 'ER_DUP_ENTRY') {
+    res.status(409).json({ error: require('../../lib/helpers').duplicateEntryMessage(err), code: 'DUPLICATE_ENTRY' });
+    return;
+  }
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
   const status = err && dbCodes.has(err.code) ? 503 : 500;
   res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
@@ -304,9 +308,14 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         adminNote: request.admin_note || undefined,
       }));
       const [completionRows] = await pool.query(
-        `SELECT id,course_id,certificate_code,completed_at,status,version,revoked_at,revoke_reason
-         FROM course_completions WHERE tenant_id=? AND subscriber_id=?
-         ORDER BY completed_at DESC`,
+        `SELECT cc.id,cc.course_id,cc.certificate_code,cc.completed_at,cc.status,cc.version,cc.revoked_at,cc.revoke_reason,
+                cc.printed_at,cc.printed_by,cc.print_count,cc.downloaded_at,cc.download_count,
+                COALESCE(NULLIF(c.title_ar, ''), c.title, b.title) AS title, (b.id IS NOT NULL AND c.id IS NULL) AS is_track
+         FROM course_completions cc
+         LEFT JOIN courses c ON c.id=cc.course_id AND c.tenant_id=cc.tenant_id
+         LEFT JOIN bundles b ON b.id=cc.course_id AND b.tenant_id=cc.tenant_id
+         WHERE cc.tenant_id=? AND cc.subscriber_id=? AND cc.deleted_at IS NULL
+         ORDER BY cc.completed_at DESC`,
         [req.tenantId, r.id]
       );
       const certificates = completionRows.map(completion => ({
@@ -318,6 +327,13 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         version: Number(completion.version || 1),
         revokedAt: safeIsoString(completion.revoked_at) || undefined,
         revokeReason: completion.revoke_reason || undefined,
+        title: completion.title || undefined,
+        isTrack: Boolean(Number(completion.is_track)),
+        printedAt: safeIsoString(completion.printed_at) || undefined,
+        printedBy: completion.printed_by || undefined,
+        printCount: Number(completion.print_count) || 0,
+        downloadedAt: safeIsoString(completion.downloaded_at) || undefined,
+        downloadCount: Number(completion.download_count) || 0,
       }));
       const clientCode = r.client_code || crm.clientCode || null;
 

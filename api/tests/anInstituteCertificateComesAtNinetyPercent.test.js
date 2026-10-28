@@ -15,21 +15,22 @@ test('90% is the paid share everywhere now', () => {
   assert.equal(require('../lib/autoCertificate').PAID_THRESHOLD, 0.9);
 });
 
-test('every client with course money and no certificate is a candidate — own payments, a track, or money before the system', async () => {
+test('every client with money in and no certificate is a candidate — a course on its own money, a TRACK as one certificate, or money before the system', async () => {
   const { candidatePairs } = require('../lib/instituteCertificates');
   const db = {
     query: async sql => {
       const flat = String(sql).replace(/\s+/g, ' ');
       if (/SELECT DISTINCT p\.subscriber_id, p\.course_id/.test(flat)) return [[{ subscriber_id: 's-1', course_id: 'c-1' }, { subscriber_id: 's-2', course_id: 'c-1' }]];
-      if (/JOIN bundle_courses bc ON bc\.bundle_id=p\.bundle_id/.test(flat)) return [[{ subscriber_id: 's-3', course_id: 'c-2' }]];
+      if (/SELECT DISTINCT p\.subscriber_id, p\.bundle_id/.test(flat)) return [[{ subscriber_id: 's-3', bundle_id: 'b-2' }]];
       if (/crm_json LIKE '%priorPaid%'/.test(flat)) return [[{ id: 's-4', crm_json: JSON.stringify({ priorPaid: { 'c-9': 2000, 'bundle:b-1': 500, 'c-0': 0 } }) }]];
-      if (/FROM bundle_courses WHERE tenant_id=\? AND bundle_id IN/.test(flat)) return [[{ bundle_id: 'b-1', course_id: 'c-5' }]];
       if (/FROM course_completions/.test(flat)) return [[{ subscriber_id: 's-2', course_id: 'c-1' }]];
       return [[]];
     },
   };
-  const pairs = (await candidatePairs(db, 't')).map(pair => `${pair.subscriberId}|${pair.courseId}`).sort();
-  assert.deepEqual(pairs, ['s-1|c-1', 's-3|c-2', 's-4|c-5', 's-4|c-9'], 'a certificate already there, revoked or not, is left alone');
+  const key = pair => `${pair.subscriberId}|${pair.bundleId ? `track:${pair.bundleId}` : pair.courseId}`;
+  const pairs = (await candidatePairs(db, 't')).map(key).sort();
+  assert.deepEqual(pairs, ['s-1|c-1', 's-3|track:b-2', 's-4|c-9', 's-4|track:b-1'],
+    'a client who booked a track gets the track certificate only — never one per course inside it; a certificate already there, revoked or not, is left alone');
 });
 
 test('issued without an online enrolment or an email, by the same function as by hand', () => {
@@ -43,7 +44,7 @@ test('issued without an online enrolment or an email, by the same function as by
 
 test('the client opening it from the site is recorded; the desk\'s own print is not', () => {
   const site = read('api/routes/public.js');
-  assert.match(site, /if \(!formMode && String\(req\.query\.staff \|\| ''\) !== '1'\) \{\s*pool\.query\(\s*'UPDATE course_completions SET downloaded_at=COALESCE\(downloaded_at, NOW\(\)\), download_count=download_count\+1/);
+  assert.match(site, /if \(!formMode && !embedded && String\(req\.query\.staff \|\| ''\) !== '1'\) \{\s*pool\.query\(\s*'UPDATE course_completions SET downloaded_at=COALESCE\(downloaded_at, NOW\(\)\), download_count=download_count\+1/);
   assert.match(site, /router\.post\('\/api\/me\/completions\/:code\/downloaded', requireAuth/);
   // The client's button opens that very page (it counts the download itself), never a blank window.
   assert.match(read('client/components/CourseCertificate.tsx'), /\/api\/completions\/\$\{encodeURIComponent\(certNumber\)\}\/certificate\?print=1/);

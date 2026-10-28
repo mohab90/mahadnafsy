@@ -154,8 +154,25 @@ const parseOffset = (v)                          => parseInt(v) || 0;
  * to it had been copied into routes/admin/stafflists.js without the function.
  * That line was a ReferenceError waiting for its own error path to run.
  */
+/**
+ * A save that ran into a UNIQUE key is a refusal, not a broken server: «Duplicate entry … uq_leads_tenant_phone» answered 500 «Internal
+ * server error» 22 times between 12 and 25 Oct (the number belonged to a hidden or merged lead the duplicate check does not see) and the desk
+ * could not tell what to fix. It is a 409 that names the number, the e-mail or the code.
+ */
+function duplicateEntryMessage(err) {
+  const text = String(err?.sqlMessage || err?.message || '');
+  if (/phone/i.test(text)) return 'رقم الهاتف ده مسجل بالفعل في سجل تاني (ممكن يكون ليد مخفي أو متدمج) — دوّر عليه بالرقم قبل ما تضيفه';
+  if (/email/i.test(text)) return 'البريد الإلكتروني ده مسجل بالفعل لسجل تاني';
+  if (/client_code|code/i.test(text)) return 'الكود ده مستخدم بالفعل';
+  return 'فيه سجل بنفس البيانات دي بالفعل';
+}
+
 function sendRouteError(res, err) {
   if (res.headersSent) return;
+  if (err?.code === 'ER_DUP_ENTRY') {
+    res.status(409).json({ error: duplicateEntryMessage(err), code: 'DUPLICATE_ENTRY' });
+    return;
+  }
   // An error the code raised on purpose carries its status: «Lead not found»
   // (404) for a lead merged away while someone had it open, «لا يمكن تعليم
   // الليد كمحوَّل قبل إنشاء العميل» (409). Every one of them reached the desk as
@@ -171,4 +188,4 @@ function sendRouteError(res, err) {
   res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
 }
 
-module.exports = { ymd, sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone, sendRouteError };
+module.exports = { duplicateEntryMessage, ymd, sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone, sendRouteError };

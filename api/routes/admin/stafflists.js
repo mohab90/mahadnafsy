@@ -58,10 +58,14 @@ async function loadEnrollmentProjection(tenantId, subscriberIds) {
 async function loadCompletionProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
   const [rows] = await pool.query(
-    `SELECT id,subscriber_id,course_id,certificate_code,completed_at,status,version,revoked_at,revoke_reason
-     FROM course_completions
-     WHERE tenant_id=? AND subscriber_id IN (${subscriberIds.map(() => '?').join(',')})
-     ORDER BY completed_at DESC`,
+    `SELECT cc.id,cc.subscriber_id,cc.course_id,cc.certificate_code,cc.completed_at,cc.status,cc.version,cc.revoked_at,cc.revoke_reason,
+            cc.printed_at,cc.print_count,cc.downloaded_at,cc.download_count,
+            COALESCE(NULLIF(c.title_ar, ''), c.title, b.title) AS title, (b.id IS NOT NULL AND c.id IS NULL) AS is_track
+     FROM course_completions cc
+     LEFT JOIN courses c ON c.id=cc.course_id AND c.tenant_id=cc.tenant_id
+     LEFT JOIN bundles b ON b.id=cc.course_id AND b.tenant_id=cc.tenant_id
+     WHERE cc.tenant_id=? AND cc.deleted_at IS NULL AND cc.subscriber_id IN (${subscriberIds.map(() => '?').join(',')})
+     ORDER BY cc.completed_at DESC`,
     [tenantId, ...subscriberIds]
   );
   return rows.reduce((projection, row) => {
@@ -70,6 +74,9 @@ async function loadCompletionProjection(tenantId, subscriberIds) {
       issuedAt: safeIsoString(row.completed_at) || null, status: row.status || 'active',
       version: Number(row.version || 1), revokedAt: safeIsoString(row.revoked_at) || undefined,
       revokeReason: row.revoke_reason || undefined,
+      title: row.title || undefined, isTrack: Boolean(Number(row.is_track)),
+      printedAt: safeIsoString(row.printed_at) || undefined, printCount: Number(row.print_count) || 0,
+      downloadedAt: safeIsoString(row.downloaded_at) || undefined, downloadCount: Number(row.download_count) || 0,
     });
     return projection;
   }, {});

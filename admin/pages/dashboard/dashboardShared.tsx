@@ -37,6 +37,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   // Consultations
   view_consultations: 'عرض الاستشارات (قراءة فقط)',
   manage_consultations: 'إدارة الاستشارات',
+  use_lecturer_portal: 'بوابة المحاضر',
   // Community
   view_community: 'عرض المجتمع (قراءة فقط)',
   manage_community: 'إدارة المجتمع',

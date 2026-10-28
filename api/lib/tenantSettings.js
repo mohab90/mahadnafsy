@@ -19,7 +19,7 @@ function normalizeSettingKey(key) {
 }
 
 function isSecretSetting(key) {
-  return key === 'settings' || /^sys_(payment_gateway|lead_source_connectors|otp_provider)$/.test(key);
+  return key === 'settings' || /^(sys_(payment_gateway|lead_source_connectors|otp_provider)|meeting_integration)$/.test(key);
 }
 
 function parseJson(value, fallback = null) {

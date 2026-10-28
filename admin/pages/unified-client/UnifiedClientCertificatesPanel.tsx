@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Award, Ban, Eye, PencilLine, RotateCcw } from 'lucide-react';
+import { Award, Ban, Download, Eye, PencilLine, Printer, RotateCcw, Trash2 } from 'lucide-react';
 import { CertDataModal, type CertDataRow } from '../dashboard/tabs/CertDataModal';
 import type { Course, ExtraCertificateRequest, SubscriberCertificate, SubscriberItem } from '../../types';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
+import { cairoStamp } from '../../../shared/cairoDate';
 
 interface UnifiedClientCertificatesPanelProps {
   subscriber: SubscriberItem;
@@ -12,6 +13,7 @@ interface UnifiedClientCertificatesPanelProps {
   onViewCertificate: (certificateId: string) => void;
   onRevokeCertificate: (certificateId: string) => void;
   onReissueCertificate: (certificateId: string) => void;
+  onDeleteCertificate: (certificateId: string) => void;
   notify?: (type: 'success' | 'error' | 'info', text: string) => void;
   onCertificateDataSaved?: () => void | Promise<void>;
 }
@@ -53,6 +55,7 @@ export function UnifiedClientCertificatesPanel({
   onViewCertificate,
   onRevokeCertificate,
   onReissueCertificate,
+  onDeleteCertificate,
   notify = () => {},
   onCertificateDataSaved = () => {},
 }: UnifiedClientCertificatesPanelProps) {
@@ -90,12 +93,25 @@ export function UnifiedClientCertificatesPanel({
             <div className="flex gap-3">
               <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base flex-shrink-0">🏆</div>
               <div>
-                <p className="font-bold text-emerald-800 text-sm">{certCourse?.title || cert.courseId}</p>
+                <p className="font-bold text-emerald-800 text-sm">{cert.isTrack ? '🧭 مسار: ' : ''}{certCourse?.title || cert.title || cert.courseId}</p>
                 <p className="text-xs font-mono bg-emerald-100 inline-block px-2 py-0.5 rounded mt-0.5">{cert.certificateNumber}</p>
-                <p className="text-xs text-gray-500 mt-0.5">صدرت في {cert.issuedAt}</p>
+                <p className="text-xs text-gray-500 mt-0.5">صدرت في {cairoStamp(cert.issuedAt) || cert.issuedAt}</p>
                 <p className={`text-[11px] font-bold mt-1 ${isRevoked ? 'text-red-700' : 'text-emerald-700'}`}>
                   {isRevoked ? `ملغاة${cert.revokeReason ? ` — ${cert.revokeReason}` : ''}` : `سارية — إصدار ${cert.version || 1}`}
                 </p>
+                {/* «أي شهادة اتطبعت في المعهد لازم يظهر عليها علامة»; and when the client opened theirs from their account. */}
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {cert.printedAt ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                      <Printer size={11} /> اتطبعت في المعهد{cert.printCount && cert.printCount > 1 ? ` (${cert.printCount} مرات)` : ''} — {cert.printedAt.slice(0, 10)}{cert.printedBy ? ` — ${cert.printedBy}` : ''}
+                    </span>
+                  ) : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">لسه ما اتطبعتش</span>}
+                  {cert.downloadedAt ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700">
+                      <Download size={11} /> العميل شافها ونزّلها من حسابه{cert.downloadCount && cert.downloadCount > 1 ? ` (${cert.downloadCount} مرات)` : ''} — {cert.downloadedAt.slice(0, 10)}
+                    </span>
+                  ) : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">العميل لسه ما نزّلهاش</span>}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -106,9 +122,14 @@ export function UnifiedClientCertificatesPanel({
                 <Eye size={12} /> عرض
               </button>}
               {isRevoked ? (
-                <button onClick={() => onReissueCertificate(cert.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-50">
-                  <RotateCcw size={12} /> إعادة إصدار
-                </button>
+                <>
+                  <button onClick={() => onReissueCertificate(cert.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-50">
+                    <RotateCcw size={12} /> إعادة إصدار
+                  </button>
+                  <button onClick={() => onDeleteCertificate(cert.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-red-300 text-red-700 rounded-lg text-xs font-bold hover:bg-red-50">
+                    <Trash2 size={12} /> حذف
+                  </button>
+                </>
               ) : (
                 <button onClick={() => onRevokeCertificate(cert.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-red-300 text-red-700 rounded-lg text-xs font-bold hover:bg-red-50">
                   <Ban size={12} /> إلغاء

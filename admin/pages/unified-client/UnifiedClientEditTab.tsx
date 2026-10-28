@@ -41,6 +41,8 @@ interface UnifiedClientEditTabProps {
   bundles: Bundle[];
   onSaveSubscriber: () => void | Promise<void>;
   onSaveLead: () => void | Promise<void>;
+  /** Opens «بيانات الشهادة» (English name, national id, course dates) — undefined for staff who may not edit them. */
+  onCertificateData?: () => void;
   currentPassword: string | null;
   currentPasswordLoading: boolean;
   showCurrentPassword: boolean;
@@ -79,6 +81,7 @@ export function UnifiedClientEditTab({
   bundles,
   onSaveSubscriber,
   onSaveLead,
+  onCertificateData,
   currentPassword,
   currentPasswordLoading,
   showCurrentPassword,
@@ -144,6 +147,21 @@ export function UnifiedClientEditTab({
                 <div key={field}><label className="text-[10px] text-gray-400 block mb-0.5">{label}</label>
                   <input type="number" min="0" value={subDraft[field]} onChange={e => setSubDraft({ ...subDraft, [field]: e.target.value })} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" /></div>
               ))}
+            </div>
+          </div>
+          {/* «ليه البيانات دي مش موجودة في تعديل البيانات بتاعت العميل؟»: what every certificate prints is kept on the client, so it shows here too. */}
+          <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold text-amber-800">🏆 بيانات الشهادة</p>
+              {onCertificateData && (
+                <button type="button" onClick={onCertificateData} className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100">تعديل بيانات الشهادة</button>
+              )}
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
+              <div><span className="block text-[11px] text-gray-500">الاسم بالإنجليزي</span>
+                {subscriber?.nameEn ? <span dir="ltr" className="font-bold text-gray-800">{subscriber.nameEn}</span> : <span className="text-xs font-bold text-red-600">ناقص — الشهادة مش هتتطبع من غيره</span>}</div>
+              <div><span className="block text-[11px] text-gray-500">الرقم القومي / الهوية</span>
+                {subscriber?.nationalId ? <span dir="ltr" className="font-mono font-bold text-gray-800">{subscriber.nationalId}</span> : <span className="text-xs text-gray-400">لسه ما اتسجلش</span>}</div>
             </div>
           </div>
           <UnifiedClientCredentialsSection

@@ -47,6 +47,8 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
       const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
       const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
       const status = ['paid', 'pending', 'refunded', 'failed', 'all'].includes(req.query.status) ? req.query.status : 'paid';
+      // «ترتيب أرقام العمليات»: each branch's receipts in their own order (1, 2, 3…), then the rest by their running number, instead of by date.
+      const byNumber = req.query.sort === 'number';
 
       // The range and the scope define the population the facets describe;
       // the other filters narrow the rows within it.
@@ -116,13 +118,13 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
           .then(([result]) => [result]),
         pool.query(
           `SELECT p.id, p.payment_no, p.receipt_no, p.date, p.created_at, p.amount, p.currency, p.amount_egp, p.payment_type, p.payment_method,
-                  p.transaction_id, p.from_account, p.sender_name, p.status, p.note, p.source, p.is_installment, p.branch,
+                  p.transaction_id, p.from_account, p.sender_name, p.proof_url, p.status, p.note, p.source, p.is_installment, p.branch,
                   ${SERVICE_SQL} AS service,
                   p.subscriber_id, s.name AS client_name, s.client_code, s.phone AS client_phone,
                   p.staff_id, COALESCE(st.name, NULLIF(p.staff_name, '')) AS staff_name
              ${from}
             WHERE p.tenant_id = ?${where}
-            ORDER BY p.date DESC, p.payment_no DESC
+            ORDER BY ${byNumber ? 'CASE WHEN p.receipt_no IS NULL THEN 1 ELSE 0 END, p.branch ASC, COALESCE(p.receipt_no, p.payment_no) ASC' : 'p.date DESC, p.payment_no DESC'}
             LIMIT ? OFFSET ?`,
           [req.tenantId, ...params, pageSize, page * pageSize]),
       ]);
@@ -134,6 +136,7 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
           // every other payment keeps the institute-wide one.
           number: r.receipt_no != null ? Number(r.receipt_no) : (r.payment_no != null ? Number(r.payment_no) : null),
           receiptBranch: r.receipt_no != null ? (r.branch === 'TAGAMOA' ? 'التجمع' : 'الدقي') : null,
+          branch: r.branch || null,
           operationNo: r.payment_no != null ? Number(r.payment_no) : null,
           date: r.date,
           amount: Number(r.amount),
@@ -148,6 +151,8 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
           // The transfer as the desk typed it: who sent it and from which number/account.
           senderName: r.sender_name || null,
           fromAccount: r.from_account || null,
+          // The client's transfer screenshot on Google Drive, when they uploaded one.
+          proofUrl: r.proof_url || null,
           status: r.status,
           installment: Boolean(r.is_installment),
           note: r.note,

@@ -18,7 +18,7 @@ const query = async (sql, params = []) => {
   if (/^SELECT id,email,name FROM subscribers/.test(flat)) return [[{ id: 's-1', email: 'c@example.com', name: 'ياسمين محمد' }]];
   if (/FROM staff/.test(flat)) return [[{ id: 'st-cs', name: 'منى', role: 'support' }]];
   if (/^SELECT id FROM subscribers WHERE tenant_id=\? AND deleted_at IS NULL AND REGEXP_REPLACE/.test(flat)) return [[{ id: 's-1' }]];
-  if (/^SELECT status,department,assigned_to,subject,subscriber_id/.test(flat)) return [[ticket]];
+  if (/^SELECT status,department,assigned_to,category,escalated_at,subject,subscriber_id/.test(flat)) return [[ticket]];
   if (/FROM ticket_replies WHERE ticket_id=\? AND tenant_id=\? AND author_type='STAFF'/.test(flat)) return [[{ body: 'اتكلمنا معاها واتنقلت لمحاضر تاني' }]];
   if (/^(INSERT|UPDATE)/.test(flat)) { writes.push({ sql: flat, params }); return [{ affectedRows: 1 }]; }
   return [[]];

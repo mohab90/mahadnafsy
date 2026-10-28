@@ -75,6 +75,27 @@ const EXEMPT_DELETE_ROUTES = Object.freeze([
     route: 'DELETE /api/admin/daqqi-rounds/:roundId/attendance/:subscriberId/:sessionNumber',
     reason: 'Takes back an attendance tap made by mistake at the Dokki desk — the undo of a mark, not the removal of a client from a round (that one is guarded).',
   },
+  // The lecturer's portal (routes/lecturer-portal.js): each handler narrows the caller to their own rows, so these open nothing of anyone else's.
+  {
+    route: 'DELETE /api/staff/lecturer/lives/:id',
+    reason: 'A lecturer cancelling their own live that has not started — the handler deletes only an UPCOMING live whose instructor is the caller.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/availability/blocked/:id',
+    reason: 'A lecturer reopening a day they had closed on their own consultation hours — the handler is keyed on the caller’s own profile.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/rounds/:roundId/attendance/:subscriberId/:sessionNumber',
+    reason: 'A lecturer taking back an attendance tap they made by mistake in their own round — the undo of a mark, not the removal of a client from a round.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/community/posts/:id',
+    reason: 'A lecturer removing their own community post — the handler deletes only a post whose staff_id is the caller’s.',
+  },
+  {
+    route: 'DELETE /api/staff/lecturer/community/comments/:id',
+    reason: 'A lecturer removing their own comment, or a comment on their own post — nothing of a client’s record or money is removed.',
+  },
 ]);
 
 const routePattern = path => new RegExp(`^${String(path).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z_]+/g, '[^/]+')}/?$`);
@@ -135,6 +156,20 @@ async function saveDeleteRights(tenantId, staffIds, { actorId = null, db = pool 
   await setTenantSetting(SETTING_KEY, { staffIds: ids, savedAt: new Date().toISOString(), savedBy: actorId }, { tenantId, actorId, db });
   invalidateDeleteRights(tenantId);
   return resolveDeleteRights(tenantId, { db, fresh: true });
+}
+
+/**
+ * Until the owner saves the list, who may delete is whoever's NAME matches «وليد|حازم|مهاب» — a rule that follows a spelling, not a person: a
+ * new employee called Mohab would hold the right the day they were hired, and a rename would take it away. This writes the people the rule
+ * names today into the saved list once (nothing changes for anyone), so from then on it is those accounts, editable from «صلاحية الحذف».
+ */
+async function freezeDefaultDeleteRights(tenantId, { db = pool } = {}) {
+  const stored = storedIds(await getTenantSetting(SETTING_KEY, { tenantId, fallback: null, db }));
+  if (stored) return { frozen: false, reason: 'already saved' };
+  const rights = await resolveDeleteRights(tenantId, { db, fresh: true });
+  if (!rights.staffIds.length) return { frozen: false, reason: 'nobody matches yet' };
+  await saveDeleteRights(tenantId, [...rights.staffIds], { actorId: null, db });
+  return { frozen: true, names: [...rights.names] };
 }
 
 /** The caller's staff row, looked up once per request. */
@@ -256,5 +291,6 @@ module.exports = {
   requireDeleteRight,
   requireDeleteRightWhen,
   resolveDeleteRights,
+  freezeDefaultDeleteRights,
   saveDeleteRights,
 };

@@ -7,6 +7,7 @@ import type { ConsultationItem } from '../../../../types';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { waLink } from '../../../../lib/whatsappLink';
+import { ConsultationTimingBadge } from '../../../../components/ConsultationTimingBadge';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -206,10 +207,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
 
                   {/* The session */}
                   <div className="min-w-0 space-y-0.5">
-                    <div className="font-bold text-gray-800">
-                      {item.source === 'site_express' ? 'يتحدد بالتواصل' : (bookingDate(item) || 'بدون تاريخ')}
-                      {item.sessionTime ? ` · ${item.sessionTime}` : ''}
-                    </div>
+                    <ConsultationTimingBadge item={item} />
                     <div className="text-gray-600">{[item.therapistName, kind].filter(Boolean).join(' · ') || '—'}</div>
                     {item.slotLabel && <div className="text-[10px] text-gray-400">{item.slotLabel}</div>}
                     {item.createdAt && <div className="text-[10px] text-gray-400">وصل {String(item.createdAt).slice(0, 10)}</div>}

@@ -31,6 +31,8 @@ export function normalizeOrders(rows: unknown): OrderItem[] {
     // Who sent the transfer and from where (payments.sender_name / from_account) — shown where the payment is confirmed.
     senderName: (row.senderName ?? row.sender_name ?? undefined) as string | undefined,
     fromAccountNumber: (row.fromAccountNumber ?? row.from_account ?? undefined) as string | undefined,
+    // The client's transfer screenshot on Google Drive (payment_proofs.proof_url / payments.proof_url).
+    proofUrl: (row.proofUrl ?? row.proof_url ?? undefined) as string | undefined,
     customerPhone: (row.customerPhone ?? row.customer_phone ?? undefined) as string | undefined,
     staffId: (row.staffId ?? row.staff_id ?? undefined) as string | undefined,
     staffName: (row.staffName ?? row.staff_name ?? undefined) as string | undefined,

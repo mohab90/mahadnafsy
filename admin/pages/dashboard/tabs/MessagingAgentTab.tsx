@@ -1,6 +1,7 @@
 import React from 'react';
 import { Save } from 'lucide-react';
 import { useStaticData } from '../../../context/siteDataSlices';
+import { savedSecretPlaceholder } from '../../../lib/savedSecrets';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
@@ -119,7 +120,7 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
             ].map(f => (
               <div key={f.key} className={f.key === 'accessToken' ? 'sm:col-span-2' : ''}>
                 <label className="block text-xs font-bold text-gray-600 mb-1">{f.label}</label>
-                <input type={f.type} value={(chDraft.whatsapp as unknown as Record<string, string>)[f.key] || ''} placeholder={f.ph}
+                <input type={f.type} value={(chDraft.whatsapp as unknown as Record<string, string>)[f.key] || ''} placeholder={savedSecretPlaceholder(chDraft.whatsapp.__savedSecrets, f.key, f.ph)}
                   onChange={e => setChDraft(p => ({ ...p, whatsapp: { ...p.whatsapp, [f.key]: e.target.value } as typeof p.whatsapp }))}
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400" dir="ltr" />
               </div>
@@ -174,7 +175,7 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
             ].map(f => (
               <div key={f.key}>
                 <label className="block text-xs font-bold text-gray-600 mb-1">{f.label}</label>
-                <input type="text" value={(chDraft.messenger as unknown as Record<string, string>)[f.key] || ''} placeholder={f.ph}
+                <input type="text" value={(chDraft.messenger as unknown as Record<string, string>)[f.key] || ''} placeholder={savedSecretPlaceholder(chDraft.messenger.__savedSecrets, f.key, f.ph)}
                   onChange={e => setChDraft(p => ({ ...p, messenger: { ...p.messenger, [f.key]: e.target.value } as typeof p.messenger }))}
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400" dir="ltr" />
               </div>
@@ -220,7 +221,7 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
             ].map(f => (
               <div key={f.key}>
                 <label className="block text-xs font-bold text-gray-600 mb-1">{f.label}</label>
-                <input type="text" value={(chDraft.instagram as unknown as Record<string, string>)[f.key] || ''} placeholder={f.ph}
+                <input type="text" value={(chDraft.instagram as unknown as Record<string, string>)[f.key] || ''} placeholder={savedSecretPlaceholder(chDraft.instagram.__savedSecrets, f.key, f.ph)}
                   onChange={e => setChDraft(p => ({ ...p, instagram: { ...p.instagram, [f.key]: e.target.value } as typeof p.instagram }))}
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-pink-400" dir="ltr" />
               </div>
@@ -343,7 +344,7 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">مفتاح API</label>
                 <input type="password" value={agentDraft.apiKey || ''} onChange={e => setAgentDraft(p => ({ ...p, apiKey: e.target.value }))}
-                  placeholder="AIza... / sk-... / sk-ant-..."
+                  placeholder={savedSecretPlaceholder(agentDraft.__savedSecrets, 'apiKey', 'AIza... / sk-... / sk-ant-...')}
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400" dir="ltr" />
               </div>
               <div className="sm:col-span-2">

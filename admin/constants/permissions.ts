@@ -54,6 +54,9 @@ export const ROLE_LABELS: Record<RoleKey, string> = {
 };
 
 // ── 3. PERMISSIONS ────────────────────────────────────────────────────────────
+/** The jobs that get the lecturer's portal (mirrors api/lib/lecturerPortal.js LECTURER_ROLES): where they land after signing in. */
+export const LECTURER_ROLES: readonly string[] = ['instructor', 'trainer', 'consultant', 'expert'];
+
 export const PERMISSIONS = {
   VIEW_DASHBOARD:           'view_dashboard',
   VIEW_LEADS:               'view_leads',
@@ -73,6 +76,7 @@ export const PERMISSIONS = {
   MANAGE_DISCOUNTS:         'manage_discounts',
   VIEW_CONSULTATIONS:       'view_consultations',
   MANAGE_CONSULTATIONS:     'manage_consultations',
+  USE_LECTURER_PORTAL:      'use_lecturer_portal',
   VIEW_COMMUNITY:           'view_community',
   MANAGE_COMMUNITY:         'manage_community',
   VIEW_STAFF:               'view_staff',
@@ -141,6 +145,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_discounts:        'إدارة الخصومات',
   view_consultations:      'عرض الاستشارات',
   manage_consultations:    'إدارة الاستشارات',
+  use_lecturer_portal:     'بوابة المحاضر (لايفاتي ومواعيدي وأرباحي)',
   view_community:          'عرض المجتمع',
   manage_community:        'إدارة المجتمع',
   view_staff:              'عرض فريق العمل',
@@ -204,7 +209,7 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
   },
   {
     label: 'الاستشارات والمجتمع',
-    perms: ['view_consultations', 'manage_consultations', 'view_community', 'manage_community'],
+    perms: ['view_consultations', 'manage_consultations', 'use_lecturer_portal', 'view_community', 'manage_community'],
   },
   {
     label: 'التقارير والتحليلات',
@@ -380,8 +385,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   ],
 
   consultant: [
-    'view_dashboard',
-    'manage_payments',
+    'view_dashboard', 'use_lecturer_portal',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
     'view_leads',
@@ -389,16 +393,12 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   ],
 
   trainer: [
-    'view_dashboard',
-    'manage_payments',
-    'view_courses', 'manage_lectures',
+    'view_dashboard', 'use_lecturer_portal',
     'view_consultations', 'manage_consultations',
   ],
 
   expert: [
-    'view_dashboard',
-    'manage_payments',
-    'view_courses',
+    'view_dashboard', 'use_lecturer_portal',
     'view_consultations',
     // No view_subscribers — mirrors api/constants/permissions.js. The role's
     // data scope is 'none', so it returned nothing and only put an empty
@@ -407,9 +407,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   ],
 
   instructor: [
-    'view_dashboard',
-    'manage_payments',
-    'view_courses', 'manage_lectures',
+    'view_dashboard', 'use_lecturer_portal',
     'view_consultations', 'manage_consultations',
   ],
 

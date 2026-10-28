@@ -57,7 +57,43 @@ async function upsertThread(db, {
   const [[thread]] = await db.query(
     'SELECT id, assigned_staff_id FROM inbox_threads WHERE tenant_id=? AND platform=? AND contact_key=? LIMIT 1',
     [tenantId, platform, key]);
+  // With the automatic distribution on («own» visibility needs it), a conversation nobody owns is given to a rep now, by the lead round-robin.
+  if (thread && !thread.assigned_staff_id) {
+    const settings = await require('./teamInboxSettings').teamInboxSettings(tenantId, db).catch(() => null);
+    if (settings?.autoAssign) {
+      const rep = await assignUnowned(db, tenantId, thread.id);
+      if (rep) {
+        thread.assigned_staff_id = rep.id;
+        require('./notification').createNotification('inbox', 'محادثة جديدة ليكي', `محادثة جديدة على ${PLATFORM_LABEL[platform] || platform}`, { threadId: thread.id }, tenantId, rep.id).catch(() => {});
+      }
+    }
+  }
   return thread;
+}
+
+const PLATFORM_LABEL = { whatsapp: 'واتساب', messenger: 'ماسنجر', instagram: 'انستجرام' };
+
+/** Give a conversation nobody has to a rep, by the same round-robin that distributes leads. Null when there is no rep to give it to. */
+async function assignUnowned(db, tenantId, threadId) {
+  const rep = await require('./leadAssignment').getNextSalesRep(tenantId, db, { lead: { source: 'inbox', courseIds: [] } }).catch(() => null);
+  if (!rep) return null;
+  const [taken] = await db.query(
+    'UPDATE inbox_threads SET assigned_staff_id=?, assigned_at=NOW() WHERE tenant_id=? AND id=? AND assigned_staff_id IS NULL',
+    [rep.id, tenantId, threadId]);
+  return taken.affectedRows ? rep : null;
+}
+
+/** The open conversations nobody owns, given out now — when the automatic distribution is switched on. */
+async function distributeWaiting(db, tenantId, limit = 500) {
+  const [rows] = await db.query(
+    "SELECT id FROM inbox_threads WHERE tenant_id=? AND status='open' AND assigned_staff_id IS NULL ORDER BY last_message_at DESC LIMIT ?",
+    [tenantId, limit]);
+  let given = 0;
+  for (const row of rows) {
+    if (!await assignUnowned(db, tenantId, row.id)) break;
+    given += 1;
+  }
+  return given;
 }
 
 /**
@@ -83,4 +119,4 @@ async function recordOnThread(db, { tenantId, threadId, communicationId, directi
   }
 }
 
-module.exports = { PLATFORMS, REPLY_WINDOW_MS, isWindowOpen, upsertThread, recordOnThread };
+module.exports = { PLATFORMS, REPLY_WINDOW_MS, isWindowOpen, upsertThread, recordOnThread, assignUnowned, distributeWaiting };

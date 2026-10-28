@@ -114,6 +114,12 @@ router.get('/api/admin/system/secret-rotation', requireAuth, requireAdmin, (_req
   res.json(require('../lib/productionConfig').secretRotationStatus());
 });
 
+// What the watchdog last found, and how it is set (lib/opsWatchdog.js) — the owner's answer to «هل في حاجة غلط دلوقتي؟».
+router.get('/api/admin/system/watchdog', requireAuth, requireAdmin, (_req, res) => {
+  const watchdog = require('../lib/opsWatchdog');
+  res.json({ ...watchdog.status(), liveNow: watchdog.trafficFindings().map(({ key, title, body }) => ({ key, title, body })) });
+});
+
 router.post('/api/admin/backup-now', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Count rows to give a meaningful snapshot summary

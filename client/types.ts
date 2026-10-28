@@ -46,7 +46,10 @@ export interface TherapistConsultationSettings {
   autoCreateMeetingLink: boolean;
   intakeFormUrl?: string;
   bookingNotes?: string;
+  /** Weekly hours: they repeat every week. */
   availableSlots: TherapistAvailabilitySlot[];
+  /** Days ('YYYY-MM-DD') the lecturer is away — none of the weekly hours can be booked on them. */
+  blockedDates?: string[];
   portal: TherapistPortalCredentials;
 }
 

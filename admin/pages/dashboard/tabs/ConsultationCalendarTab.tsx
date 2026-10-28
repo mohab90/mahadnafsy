@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ConsultationTimingBadge } from '../../../components/ConsultationTimingBadge';
 import { useCrmData } from '../../../context/siteDataSlices';
 import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../shared/cairoDate';
 
@@ -176,11 +177,7 @@ export default function ConsultationCalendarTab() {
                         <div className="text-sm font-semibold text-gray-800 truncate">{c.clientName || c.name || '—'}</div>
                         {c.phone && <div className="text-xs text-gray-400 font-mono">{c.phone}</div>}
                         {staff && <div className="text-xs text-purple-600">{staff.name}</div>}
-                        {consultDay(c) && (
-                          <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                            <Clock size={10} />{consultDay(c).slice(0, 16).replace('T', ' ')}
-                          </div>
-                        )}
+                        <div className="mt-0.5"><ConsultationTimingBadge item={c} /></div>
                         {c.notes && <div className="text-xs text-gray-500 mt-1 truncate">{c.notes}</div>}
                       </div>
                     </div>

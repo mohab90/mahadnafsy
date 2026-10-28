@@ -31,8 +31,7 @@ const { getClientIp } = require('./clientContext');
 // test reads both, so the two cannot drift apart. It is this institute's alone:
 // another tenant gets no pixel unless it names its own.
 const SITE_PIXEL_ID = '1879086466096343';
-const GRAPH_VERSION = /^v\d+\.\d+$/.test(String(process.env.META_GRAPH_VERSION || ''))
-  ? process.env.META_GRAPH_VERSION : 'v23.0';
+const { GRAPH_VERSION } = require('./metaGraph');
 const TIMEOUT_MS = 4000;
 const CONFIG_TTL_MS = 60 * 1000;
 const EVENT_ID = /^[A-Za-z0-9_.:~-]{6,100}$/;

@@ -5,6 +5,7 @@ import {
   CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square, Trash2,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import { mysqlAdmin, type RegistrationItem } from '../../../lib/mysqlapi';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
@@ -102,7 +103,7 @@ const SUB_TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
-  const { subscribers, leads, courses, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin, authUser } = useSiteData();
+  const { subscribers, leads, courses, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin, authUser, currentStaff } = useSiteData();
   // The table draws the loaded page of clients and leads — the same for the administration and for an employee (the
   // server scopes it to the employee's own) — and «البحث في قاعدة البيانات كاملة» below it searches the rest on the server.
   const effectiveSubs = subscribers;
@@ -151,7 +152,9 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const [regBusy, setRegBusy] = useState<string | null>(null);
   const loadRegistrations = () =>
     mysqlAdmin.listRegistrations().then(setRegistrations).catch(() => setRegistrations([]));
-  useEffect(() => { void loadRegistrations(); }, []);
+  // The list needs view_leads; an account without it (customer support) asked anyway and collected a 403 on every visit.
+  const canSeeRegistrations = isAdmin || (currentStaff ? hasPermission(currentStaff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'view_leads') : false);
+  useEffect(() => { if (canSeeRegistrations) void loadRegistrations(); }, [canSeeRegistrations]);
 
   const convertRegistration = async (id: string, to: 'online' | 'lead', name: string) => {
     setRegBusy(id);

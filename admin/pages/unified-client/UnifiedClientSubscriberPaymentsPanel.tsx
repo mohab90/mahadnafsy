@@ -10,6 +10,7 @@ import { UnifiedClientPaymentSummaryPanel } from './UnifiedClientPaymentSummaryP
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { useBranches } from '../../hooks/useBranches';
 import { useCanDelete } from '../../hooks/useCanDelete';
+import { TransferProofLink } from '../../components/TransferProofLink';
 import { cairoDay } from '../../../shared/cairoDate';
 
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
@@ -281,7 +282,8 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     {pr.status === 'APPROVED' ? '✅ مُعتمد' : pr.status === 'REJECTED' ? '❌ مرفوض' : '⏳ قيد المراجعة'}
                   </span>
                 </div>
-                {pr.status === 'PENDING' && !proofImageUrl[pr.id] && (
+                <TransferProofLink url={pr.proof_url} />
+                {pr.status === 'PENDING' && !proofImageUrl[pr.id] && !pr.proof_url && (
                   <button onClick={() => loadProofImage(pr.id)} className="text-xs text-primary-600 hover:underline">عرض الصورة</button>
                 )}
                 {proofImageUrl[pr.id] && (

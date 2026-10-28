@@ -12,9 +12,9 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
  * rate than one messaging from their own number, which is the whole point of
  * this screen.
  *
- * Credentials are write-only by design: they go up, and the API answers with
- * hasCredentials rather than the values. So the fields are always blank on load
- * and an empty submit means "leave what is stored alone" — never "clear it".
+ * Secrets are write-only by design: the token goes up and never comes back — only its last four characters. The identifiers saved beside
+ * it (instance, Phone Number ID) do come back and are filled in, so saving does not look like it lost them; an empty token box means
+ * "leave what is stored alone", never "clear it". The server merges what was typed into what is saved.
  */
 export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
   const [channel, setChannel] = useState<MessagingChannel | null>(null);
@@ -45,6 +45,8 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
       if (mine) {
         setProvider(mine.provider === 'meta' ? 'meta' : mine.provider === 'wapilot' ? 'wapilot' : 'green-api');
         setDisplayNumber(mine.display_number || '');
+        const hints = mine.credentialHints || {};
+        setInstanceId(hints.instanceId || ''); setWapilotInstance(hints.instance || ''); setMetaPhoneId(hints.metaPhoneId || '');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -60,23 +62,28 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
     if (provider === 'wapilot') return { apiKey: wapilotKey.trim(), instance: wapilotInstance.trim() };
     return { instanceId: instanceId.trim(), apiToken: apiToken.trim() };
   };
+  const hints = channel?.credentialHints || {};
+  const savedSecret = channel?.hasCredentials ? `محفوظ${hints.secretTail ? ` (••••${hints.secretTail})` : ''} — سيبه فاضي لو مش هتغيّره` : '';
 
   const save = async () => {
     const credentials = credentialsFromForm();
     const filled = Object.values(credentials).filter(Boolean).length;
+    // A first connection needs both halves; once one is saved, a new token alone (or a changed ID alone) is enough — it is merged.
+    const reconnecting = Boolean(channel?.hasCredentials);
     if (filled === 0) { notify('error', 'أدخل بيانات الاتصال من مزوّد الخدمة'); return; }
-    if (filled < 2) { notify('error', 'أكمل الحقلين معاً — بيانات ناقصة لن تعمل'); return; }
+    if (filled < 2 && !reconnecting) { notify('error', 'أكمل الحقلين معاً — بيانات ناقصة لن تعمل'); return; }
     setSaving(true);
     try {
       const saved = await mysqlAdmin.saveMyWhatsappChannel({
-        provider, displayNumber: displayNumber.trim() || undefined, credentials,
+        provider, displayNumber: displayNumber.trim() || undefined, credentials, mergeCredentials: reconnecting,
       });
       setChannel(saved);
-      // Cleared on purpose: nothing that can send as this person stays in the DOM.
-      setInstanceId(''); setApiToken(''); setMetaPhoneId(''); setMetaToken('');
-      setWapilotKey(''); setWapilotInstance('');
-      notify('success', 'تم الحفظ — ابعت رسالة اختبار عشان نتأكد إنها شغالة');
-    } catch { notify('error', 'فشل الحفظ'); }
+      // The token is cleared on purpose: nothing that can send as this person stays in the DOM. The identifiers stay, as saved.
+      setApiToken(''); setMetaToken(''); setWapilotKey('');
+      const savedHints = saved.credentialHints || {};
+      setInstanceId(savedHints.instanceId || ''); setWapilotInstance(savedHints.instance || ''); setMetaPhoneId(savedHints.metaPhoneId || '');
+      notify('success', saved.isConnected ? 'اتحفظ والقناة متصلة ✅' : 'اتحفظ — لو الحالة مش «متصلة» شوف سبب الخطأ تحت وجرّب الاختبار');
+    } catch (error) { notify('error', error instanceof Error && error.message ? `فشل الحفظ: ${error.message}` : 'فشل الحفظ'); }
     finally { setSaving(false); }
   };
 
@@ -102,7 +109,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
       await mysqlAdmin.deleteMyWhatsappChannel();
       setChannel(null);
       notify('info', 'تم فصل القناة — رسايلك هتخرج من رقم الشركة');
-    } catch { notify('error', 'تعذر فصل القناة'); }
+    } catch (error) { notify('error', error instanceof Error && error.message ? `تعذر فصل القناة: ${error.message}` : 'تعذر فصل القناة'); }
     finally { setSaving(false); }
   };
 
@@ -218,7 +225,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">API Key</label>
                     <input
                       type="password" value={wapilotKey} onChange={e => setWapilotKey(e.target.value)}
-                      placeholder={channel?.hasCredentials ? '•••••• (محفوظ)' : ''}
+                      placeholder={savedSecret}
                       className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
                     />
                   </div>
@@ -237,7 +244,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Instance ID</label>
                     <input
                       value={instanceId} onChange={e => setInstanceId(e.target.value)}
-                      placeholder={channel?.hasCredentials ? '•••••• (محفوظ)' : ''}
+                      placeholder={savedSecret}
                       className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
                     />
                   </div>
@@ -245,7 +252,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">API Token</label>
                     <input
                       type="password" value={apiToken} onChange={e => setApiToken(e.target.value)}
-                      placeholder={channel?.hasCredentials ? '•••••• (محفوظ)' : ''}
+                      placeholder={savedSecret}
                       className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
                     />
                   </div>
@@ -256,7 +263,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Phone Number ID</label>
                     <input
                       value={metaPhoneId} onChange={e => setMetaPhoneId(e.target.value)}
-                      placeholder={channel?.hasCredentials ? '•••••• (محفوظ)' : ''}
+                      placeholder={savedSecret}
                       className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
                     />
                   </div>
@@ -264,7 +271,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Access Token</label>
                     <input
                       type="password" value={metaToken} onChange={e => setMetaToken(e.target.value)}
-                      placeholder={channel?.hasCredentials ? '•••••• (محفوظ)' : ''}
+                      placeholder={savedSecret}
                       className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
                     />
                   </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BadgeCheck, Clock3, Fingerprint, GraduationCap, Hourglass, Landmark, Search, ShieldAlert, ShieldX, Sparkles } from 'lucide-react';
+import { BadgeCheck, Clock3, Fingerprint, GraduationCap, Hourglass, Landmark, Printer, Search, ShieldAlert, ShieldX, Sparkles } from 'lucide-react';
 import QRCode from 'qrcode';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { setCanonical } from '../lib/useSeo';
@@ -84,6 +84,33 @@ function Field({ label, value, sub, ltr }: { label: string; value: string; sub?:
   );
 }
 
+// «لما نكتب كود الشهادة تظهر الشهادة بالتصميم الأصلي وجنبها زرين: طباعة كاملة وطباعة المعهد» (25 Oct 2026).
+// The design is the institute's own printable page (api/routes/public.js), shown as it will print; «طباعة كاملة»
+// prints it whole, «طباعة المعهد» prints only the name and the course on the institute's pre-printed paper.
+function CertificateDesign({ code }: { code: string }) {
+  const page = `${API_BASE}/completions/${encodeURIComponent(code)}/certificate`;
+  const open = (query: string) => window.open(`${page}?${query}`, '_blank', 'noopener,noreferrer');
+  const button = 'inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition';
+  return (
+    <div className="mt-5 rounded-[20px] border border-line bg-paper p-3 sm:p-4">
+      <div className="flex flex-col items-center gap-4 md:flex-row md:items-start">
+        <div className="w-full max-w-[600px] overflow-hidden rounded-xl border border-line bg-white shadow-sm" style={{ aspectRatio: '600 / 849' }}>
+          <iframe title="الشهادة" src={`${page}?embed=1`} className="h-full w-full border-0" loading="lazy" />
+        </div>
+        <div className="flex w-full flex-col gap-2 md:w-44 md:shrink-0">
+          <button type="button" onClick={() => open('print=1')} className={`${button} bg-primary-700 text-white hover:bg-primary-800`}>
+            <Printer size={16} /> طباعة كاملة
+          </button>
+          <button type="button" onClick={() => open('mode=form&print=1')} className={`${button} border-[1.5px] border-ink/15 bg-white text-ink hover:border-ink/40`}>
+            <Printer size={16} /> طباعة المعهد
+          </button>
+          <p className="text-[11px] leading-relaxed text-muted">«طباعة المعهد» بتطبع الاسم والكورس بس على ورق المعهد الجاهز.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CertificateCard({ cert }: { cert: Verified }) {
   const tone = TONES[cert.state];
   const [qr, setQr] = useState('');
@@ -97,7 +124,7 @@ function CertificateCard({ cert }: { cert: Verified }) {
   const KindIcon = cert.kind === 'course' ? GraduationCap : Landmark;
 
   return (
-    <div className="cv-card mx-auto w-full max-w-2xl">
+    <div className={`cv-card mx-auto w-full ${cert.kind === 'course' && cert.state === 'valid' ? 'max-w-4xl' : 'max-w-2xl'}`}>
       <div className="overflow-hidden rounded-[32px] bg-white shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line">
         {/* The state, at a glance, before anything is read. */}
         <div className={`h-1.5 ${tone.bar}`} />
@@ -149,6 +176,7 @@ function CertificateCard({ cert }: { cert: Verified }) {
                 <p className="mt-1 text-[11px] leading-relaxed text-white/65">امسح الـQR أو اكتب الكود في «التحقق من شهادة» لتتأكد في أي وقت.</p>
               </div>
             </div>
+            {cert.kind === 'course' && cert.state === 'valid' && <CertificateDesign code={cert.code} />}
           </div>
         </div>
       </div>

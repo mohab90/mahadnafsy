@@ -58,7 +58,7 @@ const sheetDate = value => (/^\d{4}-\d{2}-\d{2}$/.test(cell(value)) && cell(valu
 // One new client, in one transaction: the row, the course the sheet names (as
 // the old-data import always enrolled it) and the lead they came from, if any.
 async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch, source, row, email, phone, otherPhones = [], courseId, actor }) {
-  const branch = chosenBranch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT');
+  const branch = chosenBranch || (kind === 'old_intl' ? 'ONLINE_SAUDI' : 'ONLINE_EGYPT');
   const branchId = branchIdForBranch(branch);
   const paid = amount(row._paid);
   const expected = amount(row._expected);
@@ -207,7 +207,7 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
         // The old-data screens hand a new client to collection by the
         // distribution rules, as a client added by hand is.
         const officer = staff || (autoAssign
-          ? await nextOfficer(subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT') }))
+          ? await nextOfficer(subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_SAUDI' : 'ONLINE_EGYPT') }))
           : null);
         const { id, problems } = await createClient(conn, {
           tenantId, staff: officer, kind, branch, source, row, email, phone: phonesAll[0] || null, otherPhones: phonesAll.slice(1), courseId, actor,

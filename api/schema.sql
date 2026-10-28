@@ -5804,6 +5804,127 @@ CREATE TABLE `therapist_slots` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `therapist_blocked_dates` (migration 303: days a lecturer is away from their weekly hours)
+--
+
+CREATE TABLE `therapist_blocked_dates` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `therapist_id` varchar(36) NOT NULL,
+  `blocked_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_therapist_blocked_day` (`tenant_id`,`therapist_id`,`blocked_date`),
+  KEY `idx_therapist_blocked_date` (`tenant_id`,`blocked_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `consultation_ratings` (migration 304: the client's stars for a completed consultation)
+--
+
+CREATE TABLE `consultation_ratings` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `consultation_id` varchar(36) NOT NULL,
+  `therapist_id` varchar(36) DEFAULT NULL,
+  `rating` tinyint(3) unsigned NOT NULL,
+  `comment` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_consultation_rating` (`tenant_id`,`consultation_id`),
+  KEY `idx_consultation_rating_therapist` (`tenant_id`,`therapist_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `consultation_reschedules` (migration 306: a proposal to move a consultation)
+--
+
+CREATE TABLE `consultation_reschedules` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `consultation_id` varchar(36) NOT NULL,
+  `proposed_by` enum('lecturer','client') NOT NULL,
+  `old_session_at` datetime NOT NULL,
+  `new_session_at` datetime NOT NULL,
+  `new_slot_id` varchar(36) DEFAULT NULL,
+  `reason` varchar(500) DEFAULT NULL,
+  `status` enum('pending','accepted','declined','cancelled') NOT NULL DEFAULT 'pending',
+  `decision_note` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `decided_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_consultation_reschedules` (`tenant_id`,`consultation_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `box_balances` and `box_balance_events` (migration 305: the cash boxes' current balances)
+--
+
+CREATE TABLE `box_balances` (
+  `tenant_id` varchar(64) NOT NULL,
+  `method` varchar(191) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `opening_amount` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `baseline_at` datetime DEFAULT NULL,
+  `updated_by` varchar(255) DEFAULT NULL,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`method`,`currency`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `box_balance_events` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `method` varchar(191) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `kind` enum('reset','set_balance','set_total','reset_all','withdraw','transfer','merge','void_withdrawal') NOT NULL,
+  `balance_before` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `balance_after` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `note` varchar(500) DEFAULT NULL,
+  `actor` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_box_balance_events` (`tenant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `box_withdrawals` and `box_aliases` (migration 309: withdrawals from a cash box, and boxes merged into one)
+--
+
+CREATE TABLE `box_withdrawals` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `method` varchar(191) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `amount` decimal(14,2) NOT NULL,
+  `kind` enum('partner','expense','transfer','other') NOT NULL,
+  `partner` varchar(32) DEFAULT NULL,
+  `to_method` varchar(191) DEFAULT NULL,
+  `account_code` varchar(32) DEFAULT NULL,
+  `account_name` varchar(255) DEFAULT NULL,
+  `journal_entry_id` varchar(36) DEFAULT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `withdrawn_on` date NOT NULL,
+  `actor` varchar(255) DEFAULT NULL,
+  `voided_at` datetime DEFAULT NULL,
+  `voided_by` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_box_withdrawals` (`tenant_id`,`created_at`),
+  KEY `idx_box_withdrawals_partner` (`tenant_id`,`partner`,`withdrawn_on`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `box_aliases` (
+  `tenant_id` varchar(64) NOT NULL,
+  `alias` varchar(191) NOT NULL,
+  `target` varchar(191) NOT NULL,
+  `created_by` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`alias`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
 -- Table structure for table `therapists`
 --
 

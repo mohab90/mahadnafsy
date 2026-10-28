@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { NewTemplateForm } from './NewTemplateForm';
 
 /**
  * The approved Meta template a promotional campaign sends. Outside a
@@ -23,10 +24,9 @@ export const templatePreview = (choice: NonNullable<TemplateChoice>) =>
 
 export function CampaignTemplatePicker({ value, onChange }: { value: TemplateChoice; onChange: (next: TemplateChoice) => void }) {
   const [state, setState] = useState<{ templates: MetaTemplate[]; error?: string } | null>(null);
-  useEffect(() => {
-    mysqlAdmin.adminGet<{ templates: MetaTemplate[]; error?: string }>('/admin/whatsapp-campaigns/templates')
-      .then(setState, error => setState({ templates: [], error: error instanceof Error ? error.message : 'تعذر تحميل القوالب' }));
-  }, []);
+  const load = () => mysqlAdmin.adminGet<{ templates: MetaTemplate[]; error?: string }>('/admin/whatsapp-campaigns/templates')
+    .then(setState, error => setState({ templates: [], error: error instanceof Error ? error.message : 'تعذر تحميل القوالب' }));
+  useEffect(() => { void load(); }, []);
 
   if (!state) return <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 size={14} className="animate-spin" /> بيحمّل القوالب من ميتا…</div>;
   const marketing = state.templates.filter(t => t.usable);
@@ -58,8 +58,9 @@ export function CampaignTemplatePicker({ value, onChange }: { value: TemplateCho
         </div>
       ))}
       {value && <div className="whitespace-pre-wrap rounded-xl bg-emerald-50 px-3 py-2 text-sm text-gray-700">{templatePreview(value)}</div>}
+      <NewTemplateForm onSubmitted={() => { void load(); }} />
       <p className="text-[11px] text-gray-500">
-        القوالب بتتعمل وتتوافق عليها من WhatsApp Manager عند ميتا. القالب التسويقي بيبقى فيه زرار «إيقاف الرسائل»، وأي حد يدوس عليه أو يكتب «إلغاء» بيتشال من الحملات الجاية تلقائياً.
+        القوالب بتتعمل من هنا (أو من WhatsApp Manager) وبتتوافق عليها ميتا. القالب التسويقي بيبقى فيه زرار «إيقاف الرسائل»، وأي حد يدوس عليه أو يكتب «إلغاء» بيتشال من الحملات الجاية تلقائياً.
       </p>
     </div>
   );

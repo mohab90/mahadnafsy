@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, CheckCircle, Clock, Eye, Receipt, RefreshCw, XCircle } from 'lucide-react';
 import type { PaymentProof } from '../../../../types';
 import { paymentMethodLabel } from '../../../../../shared/paymentMethods';
+import { TransferProofLink } from '../../../../components/TransferProofLink';
 
 type ProofFilter = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
 
@@ -173,7 +174,8 @@ export function PaymentProofsPanel({
                         </td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
-                            {!proofImages[proof.id] && (
+                            <TransferProofLink url={proof.proof_url} />
+                            {!proofImages[proof.id] && !proof.proof_url && (
                               <button type="button" onClick={() => loadProofImg(proof.id)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-primary-700 hover:bg-primary-50">
                                 <Eye size={13} /> عرض
                               </button>
@@ -191,13 +193,13 @@ export function PaymentProofsPanel({
                           </div>
                         </td>
                       </tr>
-                      {(proofImages[proof.id] || proof.reviewer_note || isReviewing) && (
+                      {(proofImages[proof.id] || proof.proof_url || proof.reviewer_note || isReviewing) && (
                         <tr>
                           <td colSpan={7} className="bg-gray-50 p-3">
                             <div className="grid gap-3 md:grid-cols-[240px_1fr]">
                               {proofImages[proof.id] ? (
                                 <img src={proofImages[proof.id]} alt="receipt" className="max-h-56 w-full rounded-lg border border-gray-200 object-contain" />
-                              ) : <div />}
+                              ) : <div>{proof.proof_url ? <TransferProofLink url={proof.proof_url} className="px-3 py-2 text-xs" /> : null}</div>}
                               <div className="space-y-2">
                                 {proof.reviewer_note && <p className="rounded-lg bg-white px-3 py-2 text-xs text-gray-600">ملاحظة المراجع: {proof.reviewer_note}</p>}
                                 {proof.first_review_note && <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700">ملاحظة الاعتماد الأول: {proof.first_review_note}</p>}

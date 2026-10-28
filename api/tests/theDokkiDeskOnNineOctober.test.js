@@ -46,7 +46,7 @@ test('two letters find the people with them, not the first eight on the list', {
   assert.match(modal, /<ClientLookupList query=\{q\} onPay=\{pay\} onOpen=\{openFile\} \/>/, 'every account finds everyone, in one list, not only view_client_db');
 });
 
-// «ممنوع تسكين عميل في روند من غير دفعة متسجلة» · «كل عملاء روند هيبقوا تبع نفس الرسيبشن».
+// «كل عملاء روند هيبقوا تبع نفس الرسيبشن».
 function housingDb({ payment = false, priorPaid = null, inTrack = false }) {
   const writes = [];
   return {
@@ -68,15 +68,17 @@ const auditFile = require.resolve('../lib/auditTrail');
 require.cache[auditFile] = { id: auditFile, filename: auditFile, loaded: true, exports: { writeAuditEvent: async () => {} } };
 const { seatSubscriberInRound } = require('../lib/daqqiHousing');
 
-test('a client with no recorded payment for the course is not housed', async () => {
+test('a client who booked the course is housed even with no payment recorded — the money is reviewed afterwards', async () => {
   const db = housingDb({});
   const seat = await seatSubscriberInRound(db, { tenantId: 't', roundId: 'r-1', subscriberId: 's-1' });
-  assert.equal(seat.status, 'unpaid');
-  assert.equal(db.writes.length, 0);
-  assert.match(read('api/routes/daqqi-rounds.js'), /if \(seat\.status === 'unpaid'\) return res\.status\(409\)\.json\(\{ error: UNPAID_SEAT, code: 'DAQQI_UNPAID' \}\);/);
+  assert.equal(seat.status, 'seated');
+  assert.ok(db.writes.some(w => /^INSERT INTO daqqi_attendees/.test(w.sql)), 'the seat is written');
+  const rounds = read('api/routes/daqqi-rounds.js');
+  assert.doesNotMatch(rounds, /UNPAID_SEAT|DAQQI_UNPAID|hasRecordedPayment/, 'no route refuses a seat for want of a payment');
+  assert.doesNotMatch(read('api/lib/daqqiHousing.js'), /unpaid|hasRecordedPayment/, 'the housing lib has no payment precondition');
 });
 
-test('a payment, or money paid before the system for the course or its track, houses them — under the round\'s reception', async () => {
+test('a housed client follows the reception of the round, with a payment, money paid before the system for the course or its track, or none', async () => {
   for (const setup of [{ payment: true }, { priorPaid: { 'c-1': 1500 } }, { priorPaid: { 'bundle:b-1': 3000 }, inTrack: true }]) {
     const db = housingDb(setup);
     const seat = await seatSubscriberInRound(db, { tenantId: 't', roundId: 'r-1', subscriberId: 's-1' });

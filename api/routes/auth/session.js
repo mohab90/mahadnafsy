@@ -227,7 +227,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // Unenrolled users will see the "حسابك قيد المراجعة" screen after login — this is intentional.
     setAuthCookie(res, token);
     await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'success' });
-    // Runs AFTER the attempt is recorded so the current IP counts. If this login
+    // Runs AFTER the attempt is recorded so the current device counts. If this login
     // pushes the account past the allowance it is suspended and the session just
     // issued is revoked, so the token above stops working on the next request.
     const sharing = await enforceSharingLimit({
@@ -237,7 +237,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       // The row above says «نجح» — the password was right — but this sign-in is refused: the log says so too.
       await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'sharing_limit_locked' });
       return res.status(423).json({
-        error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctIps} شبكات مختلفة. تواصل مع الدعم.`,
+        error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctDevices} أجهزة مختلفة. تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
       });
     }

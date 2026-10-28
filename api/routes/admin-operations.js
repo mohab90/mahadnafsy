@@ -423,6 +423,26 @@ router.get('/api/admin/join-us/counts', requireAuth, requireAdminOrStaff, requir
 // The Dokki manager reaches the applications for Dokki — «اتاكد ان طلبات الانضمام
 // للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct 2026); lib/branchHr.js.
 // ?limit (≤ 1000, default 500) and ?offset page it: the screens read every page.
+// «زحمة الطلبات»: GET /api/admin/join-us was 554,000 requests in two months — 13% of all the API's traffic — because every open admin tab
+// downloaded the whole list again every two minutes. This answers in one cheap query whether anything in the caller's scope changed (how many,
+// and a checksum of what a person can change on an application), so the tab downloads the list only when it did.
+router.get('/api/admin/join-us/fingerprint', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
+  try {
+    const { where, params } = joinUsWhere(req);
+    const [[row]] = await pool.query(
+      `SELECT COUNT(*) AS n,
+              COALESCE(SUM(CRC32(CONCAT_WS('|', j.status, IFNULL(j.assigned_to, ''), IFNULL(j.reviewed_at, ''), IFNULL(j.contacted_at, ''),
+                IFNULL(j.first_call_at, ''), IFNULL(j.interview_at, ''), IFNULL(j.converted_applicant_id, ''), IFNULL(a.stage, ''),
+                IFNULL(a.hired_staff_id, ''), CHAR_LENGTH(IFNULL(j.admin_note, ''))))), 0) AS h
+         ${JOIN_US_FROM} ${where}`, params);
+    res.set('Cache-Control', 'no-store');
+    res.json({ fingerprint: `${Number(row.n) || 0}:${row.h}` });
+  } catch (error) {
+    logger.error('[join-us/fingerprint]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
   try {
     const { where, params } = joinUsWhere(req);

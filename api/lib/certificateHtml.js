@@ -32,6 +32,16 @@ function formOffsets({ nameTop, courseTop } = {}) {
   return { nameTop: clampCm(nameTop, FORM_DEFAULTS.nameTop), courseTop: clampCm(courseTop, FORM_DEFAULTS.courseTop) };
 }
 
+/**
+ * All four distances from the top (cm), for the layout the desk fixed (tenant setting `certificate_form_layout`): the name, the course, the
+ * training hours under it and the certificate's code. Unset hours sit 1.25 cm under the course and the code 0.8 cm under the hours.
+ */
+function formLayout({ nameTop, courseTop, hoursTop, codeTop } = {}) {
+  const base = formOffsets({ nameTop, courseTop });
+  const hours = clampCm(hoursTop, Math.round((base.courseTop + 1.25) * 100) / 100);
+  return { ...base, hoursTop: hours, codeTop: clampCm(codeTop, Math.round((hours + 0.8) * 100) / 100) };
+}
+
 // Bold capitals run about 0.74 em each: the name stays on one line, as large as fits.
 const fitSize = (text, widthPx, maxPx, minPx) => Math.max(minPx, Math.min(maxPx, Math.floor(widthPx / (String(text).length * 0.74))));
 
@@ -87,8 +97,8 @@ ${lines}
  * duration, in centimetres from the top of an A4 sheet. On screen the picture shows
  * faintly behind them so the desk can see where they will land; it is not printed.
  */
-function certificateFormHtml({ studentName, courseName, duration, nameTop, courseTop, certCode, year }) {
-  const at = formOffsets({ nameTop, courseTop });
+function certificateFormHtml({ studentName, courseName, duration, nameTop, courseTop, hoursTop, codeTop, certCode, year }) {
+  const at = formLayout({ nameTop, courseTop, hoursTop, codeTop });
   // The sheet is 21 cm = 595 pt wide; the name may use 17 cm of it.
   const namePt = Math.max(15, Math.min(32, Math.floor(482 / (studentName.length * 0.74))));
   const coursePt = Math.max(15, Math.min(30, Math.floor(482 / (courseName.length * 0.68))));
@@ -100,9 +110,9 @@ function certificateFormHtml({ studentName, courseName, duration, nameTop, cours
 <img class="guide" src="${TEMPLATE_URL}" alt="" style="position:absolute;left:0;top:0;width:21cm;height:29.7cm;opacity:.32"/>
 ${band(at.nameTop, 1.6, `<span style="font-family:${SERIF};font-size:${namePt}pt;font-weight:900;letter-spacing:.06em;color:#000">${escapeHtml(studentName)}</span>`)}
 ${band(at.courseTop, 1.6, `<span style="font-family:${SERIF};font-size:${coursePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${escapeHtml(courseName)}</span>`)}
-${line ? band(at.courseTop + 1.25, 1, `<span style="font-family:${SERIF};font-size:${linePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${line}</span>`) : ''}
-${certCode ? band(at.courseTop + (line ? 2.05 : 1.25), 0.7, `<span style="font-family:monospace;font-size:8.5pt;font-weight:700;letter-spacing:.08em;color:#333">${escapeHtml(certCode)}</span>`) : ''}
+${line ? band(at.hoursTop, 1, `<span style="font-family:${SERIF};font-size:${linePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${line}</span>`) : ''}
+${certCode ? band(line ? at.codeTop : at.courseTop + 1.25, 0.7, `<span style="font-family:monospace;font-size:8.5pt;font-weight:700;letter-spacing:.08em;color:#333">${escapeHtml(certCode)}</span>`) : ''}
 </div>`;
 }
 
-module.exports = { certificateHtml, certificateFormHtml, formOffsets, trainingLine, FORM_DEFAULTS, TEMPLATE_URL };
+module.exports = { certificateHtml, certificateFormHtml, formLayout, formOffsets, trainingLine, FORM_DEFAULTS, TEMPLATE_URL };

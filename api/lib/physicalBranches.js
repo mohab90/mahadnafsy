@@ -23,7 +23,6 @@ const ROLE_BRANCH = Object.freeze(Object.fromEntries(Object.values(PHYSICAL_BRAN
 /** Every branch-bound role, upper case: DAQQI_MANAGER, RECEPTION_DAQQI, TAGAMOA_MANAGER, … */
 const BRANCH_ROLES = Object.freeze(Object.keys(ROLE_BRANCH));
 const MANAGER_ROLES = Object.freeze(Object.values(PHYSICAL_BRANCHES).map(branch => branch.managerRole));
-const RECEPTION_ROLES = Object.freeze(Object.values(PHYSICAL_BRANCHES).map(branch => branch.receptionRole));
 
 const isPhysicalBranch = value => PHYSICAL_BRANCH_KEYS.includes(String(value || '').toUpperCase());
 
@@ -84,7 +83,6 @@ module.exports = {
   PHYSICAL_BRANCH_KEYS,
   BRANCH_ROLES,
   MANAGER_ROLES,
-  RECEPTION_ROLES,
   isPhysicalBranch,
   normalizePhysicalBranch,
   boundBranchOf,

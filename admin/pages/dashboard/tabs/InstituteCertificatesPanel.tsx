@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, ExternalLink, FileText, Pencil, Printer, RefreshCw, Search, Share2 } from 'lucide-react';
+import { Download, ExternalLink, FileText, Pencil, Plus, Printer, RefreshCw, Ruler, Search, Share2 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { waLink } from '../../../lib/whatsappLink';
 import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
@@ -8,7 +8,9 @@ import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import { exportToExcel, type ExportColumn } from '../../../lib/exportUtils';
 import { SelectionExportBar, useRowPicker } from './SelectionExportBar';
 import { CertificateEditModal } from './CertificateEditModal';
-import { formPrintUrl, loadFormOffsets } from '../../../lib/certificateForm';
+import { SITE, certificateUrl, formPrintUrl } from '../../../lib/certificateForm';
+import { FormLayoutModal } from './FormLayoutModal';
+import { AddInstituteCertificateModal } from './AddInstituteCertificateModal';
 
 // «تاب في صفحه الشهادات اسمه شهادات المعهد ودا بيكون اتوماتك ومجاني لاي عميل خلص
 // فلوسه او 90 % من فلوسه … نقدر نطلع منها نسخه pdf ونعملها شير للعميل او نعملها
@@ -19,7 +21,9 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Stage = 'READY' | 'PRINTED' | 'AT_BRANCH' | 'SHIPPED' | 'DELIVERED' | 'RETURNED';
 type Row = {
   id: string; code: string; issuedAt: string; status: Stage; statusAt: string | null; statusBy: string | null;
-  downloadedAt: string | null; downloads: number; subscriberId: string; subscriberName: string; nameEn: string | null;
+  downloadedAt: string | null; downloads: number;
+  /** Printed at the institute: when, by whom, how many times; and whether this is a track's certificate. */
+  printedAt: string | null; printedBy: string | null; printCount: number; isTrack: boolean; subscriberId: string; subscriberName: string; nameEn: string | null;
   phone: string; clientCode: string | null; branch: string | null; courseTitle: string;
   nationalId: string | null; personalPhotoUrl: string | null; idPhotoUrl: string | null;
   /** The course's title in English, and what the English-only certificate still lacks. */
@@ -37,10 +41,6 @@ const STAGES: Record<Stage, { label: string; cls: string }> = {
   DELIVERED: { label: 'العميل استلم', cls: 'bg-emerald-100 text-emerald-800' },
   RETURNED: { label: 'مرتجع', cls: 'bg-rose-100 text-rose-800' },
 };
-// The site serves the printable certificate; the desk's own opens are marked so
-// they are not read as the client downloading it.
-const SITE = 'https://mahadnafsy.com';
-const certificateUrl = (code: string, staff = false) => `${SITE}/api/completions/${encodeURIComponent(code)}/certificate${staff ? '?staff=1' : ''}`;
 // The download: the client's whole row, ending with the Drive links of the pictures on file.
 const EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'اسم العميل', key: 'client', width: 26 },
@@ -77,6 +77,9 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
   const [branch, setBranch] = useState('');
   const [downloaded, setDownloaded] = useState('');
   const [editing, setEditing] = useState<Row | null>(null);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [printed, setPrinted] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,17 +113,29 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
     } finally { setBusy(''); }
   };
 
+  // «أي شهادة اتطبعت في المعهد لازم يظهر عليها علامة»: every print from here is recorded (and READY moves to «اتطبعت»).
+  const markPrinted = async (row: Row, mode: 'full' | 'form') => {
+    try {
+      await mysqlAdmin.adminPost(`/admin/institute-certificates/${encodeURIComponent(row.id)}/printed`, { mode });
+      const now = new Date().toISOString();
+      setRows(current => current.map(item => (item.id === row.id ? {
+        ...item, printedAt: now, printCount: (item.printCount || 0) + 1, status: item.status === 'READY' ? 'PRINTED' : item.status,
+      } : item)));
+    } catch { /* the print is already open; the mark can be missed, the paper cannot */ }
+  };
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter(row => {
       if (stage && row.status !== stage) return false;
       if (branch && normBranchKey(row.branch || '') !== branch) return false;
+      if (printed === 'yes' ? !row.printedAt : printed === 'no' ? !!row.printedAt : false) return false;
       if (downloaded === 'yes' ? !row.downloadedAt : downloaded === 'no' ? !!row.downloadedAt : false) return false;
       if (!q) return true;
       return [row.subscriberName, row.nameEn, row.phone, row.clientCode, row.courseTitle, row.code]
         .some(value => String(value || '').toLowerCase().includes(q));
     });
-  }, [rows, query, stage, branch, downloaded]);
+  }, [rows, query, stage, branch, downloaded, printed]);
   const picker = useRowPicker(shown);
   const downloadExcel = async () => {
     const chosen = picker.chosen.length ? picker.chosen : shown;
@@ -129,7 +144,7 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
     notify('success', `تم تنزيل ${chosen.length} شهادة في ملف Excel${picker.chosen.length ? ' (المحدد فقط)' : ' (كل المعروض)'}.`);
   };
   const counts = useMemo(() => {
-    const out: Record<string, number> = { all: rows.length, downloaded: rows.filter(row => row.downloadedAt).length };
+    const out: Record<string, number> = { all: rows.length, downloaded: rows.filter(row => row.downloadedAt).length, printed: rows.filter(row => row.printedAt).length };
     rows.forEach(row => { out[row.status] = (out[row.status] || 0) + 1; });
     return out;
   }, [rows]);
@@ -157,12 +172,23 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
           <option value="yes">العميل حمّلها ({counts.downloaded || 0})</option>
           <option value="no">لسه محمّلهاش</option>
         </select>
+        <select value={printed} onChange={event => setPrinted(event.target.value)} className={selectCls} aria-label="الطباعة">
+          <option value="">الطباعة في المعهد</option>
+          <option value="yes">اتطبعت ({counts.printed || 0})</option>
+          <option value="no">لسه ما اتطبعتش</option>
+        </select>
         <select value={branch} onChange={event => setBranch(event.target.value)} className={selectCls} aria-label="الفرع">
           <option value="">كل الفروع</option>
           {branches.map(key => <option key={key} value={key}>{branchLabels[key] || key}</option>)}
         </select>
         <button onClick={() => void sync()} disabled={syncing} className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50">
           <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} /> تحديث القائمة
+        </button>
+        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">
+          <Plus size={12} /> إضافة شهادة
+        </button>
+        <button onClick={() => setLayoutOpen(true)} className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100">
+          <Ruler size={12} /> مقاسات النموذج
         </button>
       </div>
 
@@ -210,7 +236,7 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                       <div className="text-[10px] text-gray-400">{row.branch ? branchLabels[normBranchKey(row.branch)] || row.branch : ''}</div>
                     </td>
                     <td className="px-2 py-2">
-                      <div className="break-words text-[11px] font-bold leading-snug text-indigo-700">{row.courseTitle}</div>
+                      <div className="break-words text-[11px] font-bold leading-snug text-indigo-700">{row.isTrack ? '🧭 مسار: ' : ''}{row.courseTitle}</div>
                       {row.printed?.name ? <div dir="ltr" className="break-words text-right font-bold text-gray-800">{row.printed.name}</div> : null}
                       {row.courseTitleEn && (
                         <div dir="ltr" className="break-words text-right text-[11px] text-gray-500">{row.courseTitleEn}{row.printed?.duration ? ` · ${row.printed.duration}` : ''}</div>
@@ -231,7 +257,10 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                         {(Object.keys(STAGES) as Stage[]).map(key => <option key={key} value={key}>{STAGES[key].label}</option>)}
                       </select>
                       {row.statusBy && <div className="mt-0.5 text-[10px] text-gray-400">{row.statusBy}{row.statusAt ? ` · ${cairoDay(row.statusAt)}` : ''}</div>}
-                      <div className="mt-1">
+                      <div className="mt-1 space-y-0.5">
+                        {row.printedAt
+                          ? <span className="block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"><Printer size={10} className="inline" /> اتطبعت {cairoDay(row.printedAt)}{row.printCount > 1 ? ` · ${row.printCount}×` : ''}{row.printedBy ? ` · ${row.printedBy}` : ''}</span>
+                          : <span className="block text-[10px] text-gray-300">لسه ما اتطبعتش</span>}
                         {row.downloadedAt
                           ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"><Download size={10} className="inline" /> حمّلها {cairoDay(row.downloadedAt)}{row.downloads > 1 ? ` · ${row.downloads}×` : ''}</span>
                           : <span className="text-[10px] text-gray-300">لسه محمّلهاش</span>}
@@ -242,14 +271,14 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                           opens the edit dialog instead of doing nothing. */}
                       <div className="flex flex-nowrap items-center justify-center gap-1">
                         {ready ? (
-                          <a href={formPrintUrl(SITE, row.code, loadFormOffsets(), true)} target="_blank" rel="noreferrer"
+                          <a href={formPrintUrl(SITE, row.code, true)} target="_blank" rel="noreferrer" onClick={() => void markPrinted(row, 'form')}
                             title="طباعة على النموذج الجاهز — اسم العميل والكورس والمدة فقط"
                             className={`${iconBtn} bg-indigo-600 text-white hover:bg-indigo-700`}><Printer size={13} /></a>
                         ) : (
                           <button onClick={() => setEditing(row)} title={`ناقص: ${row.missing.join('، ')} — كمّله الأول`} className={`${iconBtn} bg-gray-200 text-gray-500`}><Printer size={13} /></button>
                         )}
                         {ready ? (
-                          <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة بالتصميم الكامل — PDF أو طباعة"
+                          <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" onClick={() => void markPrinted(row, 'full')} title="الشهادة بالتصميم الكامل — PDF أو طباعة"
                             className={`${iconBtn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={13} /></a>
                         ) : (
                           <button onClick={() => setEditing(row)} title={`ناقص: ${row.missing.join('، ')} — كمّله الأول`} className={`${iconBtn} bg-gray-200 text-gray-500`}><FileText size={13} /></button>
@@ -271,6 +300,8 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
           </table>
         </div>
       )}
+      {layoutOpen && <FormLayoutModal sampleCode={rows.find(row => !row.missing?.length)?.code} notify={notify} onClose={() => setLayoutOpen(false)} />}
+      {adding && <AddInstituteCertificateModal notify={notify} onClose={() => setAdding(false)} onChanged={() => void load()} />}
       {editing && (
         <CertificateEditModal row={{ ...editing, courseTitle: editing.courseTitle }} notify={notify} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); void load(); }} />

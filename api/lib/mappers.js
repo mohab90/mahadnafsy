@@ -228,6 +228,8 @@ function mapBundle(r, allCourses = []) {
     seo_title: r.seo_title || undefined,
     seo_description: r.seo_description || undefined,
     seo_keywords: r.seo_keywords || undefined,
+    // The training hours the track's certificate prints (bundles.hours), as a course's do.
+    hours: r.hours != null && Number(r.hours) > 0 ? Number(r.hours) : undefined,
     courses,
   };
 }
@@ -278,6 +280,8 @@ function mapTherapist(r, includeMeetingLinks = false) {
       //
       // The booking pages only ever needed the day, the time and the id. The
       // admin editor and the therapist's own portal ask for it explicitly.
+      // Days the lecturer is away: the weekly hours repeat, these do not (lib/therapistAvailability.js).
+      blockedDates: r.blocked_dates || [],
       availableSlots: (r.slots || []).map(s => ({
         id: s.id, day: s.day, startTime: s.start_time, endTime: s.end_time,
         timezone: s.timezone || '', label: s.label || '',
@@ -341,6 +345,7 @@ function mapSubscriber(r) {
       staffName: p.staff_name || p.staffName || null,
       fromAccountNumber: p.from_account || p.fromAccountNumber || null,
       senderName: p.sender_name || p.senderName || null,
+      proofUrl: p.proof_url || p.proofUrl || null,
       source: p.source || null,
       itemTitle: p.item_title || p.itemTitle || null,
       certType: p.cert_type || p.certType || null,

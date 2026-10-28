@@ -161,6 +161,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { title: 'مساعد الموقع AI', desc: 'المساعد اللي بيرد على زوار الموقع وصفحات الطالب.', href: '/dashboard/integrations/agent', tab: 'integrations', permission: 'manage_channel_settings' },
       { title: 'إعدادات AI', desc: 'المزوّد (Claude / OpenAI / Gemini) ومفتاحه.', href: '/dashboard/integrations/ai', tab: 'integrations', permission: 'manage_ai_settings', keywords: 'claude openai gemini' },
       { title: 'النمو والأتمتة', desc: 'المهام الدورية: تذكيرات، متابعة، وتقارير يومية.', href: S('growth'), tab: 'system_settings' },
+      { title: 'الربط بـ Zoom / Google Meet', desc: 'حساب الفيديو الأساسي للمعهد: السيستم بيعمل غرفة كل لايف وكل استشارة.', href: S('meetings'), tab: 'system_settings', keywords: 'زوم ميت اجتماع لايف zoom meet' },
       { title: 'Webhooks', desc: 'ربط أنظمة خارجية بأحداث النظام.', href: '/dashboard/integrations/webhooks', tab: 'integrations', permission: 'manage_settings' },
     ],
   },

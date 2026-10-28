@@ -19,6 +19,7 @@ const logger = require('./logger');
 // asking "is WhatsApp configured?" has to look at both, or it will report on a
 // channel no message actually travels through.
 const { getTenantSetting } = require('./tenantSettings');
+const { GRAPH } = require('./metaGraph');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { resolveSecret } = require('./secretResolver');
 const { toDialable } = require('./phoneNumber');
@@ -242,7 +243,7 @@ async function _sendMetaPayload(normalized, content, cfg) {
     logger.warn('[WhatsApp] Meta not configured — skipping notification');
     return { ok: false, provider: 'meta', reason: 'not_configured' };
   }
-  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
+  const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to: normalized, ...content }),
@@ -520,16 +521,50 @@ async function sendQueuedWhatsApp(phone, { message, template, tenantId, channelI
  *
  * @returns {Promise<{ok: boolean, templates?: object[], reason?: string}>}
  */
-async function listMetaTemplates(tenantId) {
+/** The company number's official-API credentials for managing templates: { token, wabaId }, or { reason }. */
+async function metaTemplateAccess(tenantId) {
   const channels = require('./messagingChannels');
   const resolved = await channels.getSendableChannel({ tenantId, kind: 'whatsapp' }).catch(() => null);
   const cfg = resolved?.row.provider === 'meta' ? forTenant(resolved.credentials, tenantId) : (resolved ? null : await getWaCfg(tenantId));
-  if (!cfg) return { ok: false, reason: 'templates_need_meta' };
+  if (!cfg) return { reason: 'templates_need_meta' };
   const token = cfg.metaToken || platformSecret(cfg, 'WHATSAPP_TOKEN');
   const wabaId = cfg.metaWabaId || platformEnv(cfg, 'WHATSAPP_WABA_ID');
-  if (!token || !wabaId) return { ok: false, reason: 'waba_missing' };
+  if (!token || !wabaId) return { reason: 'waba_missing' };
+  return { token, wabaId };
+}
+
+/**
+ * Whether an official-API channel is live, without messaging anyone: Meta says who the Phone Number ID and the token belong to. The old
+ * test sent a message from the channel to its own number under the category channel_test, which is closed by default, so every official
+ * channel answered «لم يتم الإرسال» and stayed «لم تُختبر» however right its token was.
+ *
+ * @returns {Promise<{ok: boolean, number?: string, name?: string, quality?: string, nameStatus?: string, reason?: string}>}
+ */
+async function verifyMetaCredentials(credentials = {}) {
+  const token = String(credentials.metaToken || '').trim();
+  const phoneId = String(credentials.metaPhoneId || '').trim();
+  if (!token || !phoneId) return { ok: false, reason: 'not_configured' };
+  try {
+    const res = await fetch(
+      `${GRAPH}/${encodeURIComponent(phoneId)}?fields=id,display_phone_number,verified_name,quality_rating,name_status`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.id) return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
+    return {
+      ok: true, number: data.display_phone_number || undefined, name: data.verified_name || undefined,
+      quality: data.quality_rating || undefined, nameStatus: data.name_status || undefined,
+    };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+async function listMetaTemplates(tenantId) {
+  const access = await metaTemplateAccess(tenantId);
+  if (access.reason) return { ok: false, reason: access.reason };
+  const { token, wabaId } = access;
   const res = await fetch(
-    `https://graph.facebook.com/v19.0/${encodeURIComponent(wabaId)}/message_templates?fields=name,language,status,category,components&limit=200`,
+    `${GRAPH}/${encodeURIComponent(wabaId)}/message_templates?fields=name,language,status,category,components&limit=200`,
     { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
@@ -592,7 +627,7 @@ function isTransientSendFailure(reason) {
 
 module.exports = {
   describeReason, getWaCfg, invalidateOutbound, invalidateWaCfg, isCategoryOpen, isTransientSendFailure,
-  forTenant, outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
+  forTenant, metaTemplateAccess, verifyMetaCredentials, outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
   sendWhatsAppTemplate, sendQueuedWhatsApp, listMetaTemplates, describeTemplate, buildTemplatePayload,
   categoryTemplates, cleanTemplateMap, templateForCategory, MARKETING_CATEGORIES, TEMPLATE_SETTING,
 };

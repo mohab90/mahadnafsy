@@ -15,6 +15,9 @@ const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../l
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
 const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClientCourse } = require('../../lib/clientCourseActions');
 const { actorName } = require('../../lib/clientHistory');
+const { changeClientCurrency } = require('../../lib/clientCurrency');
+const { getFxSnapshot } = require('../../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../../lib/fxRefresh');
 const { uuidv4 } = require('../../lib/id');
 
 // The same row-level rule the money screens use: the managers see everyone,
@@ -244,6 +247,42 @@ router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrS
     await conn.rollback().catch(() => {});
     logger.error('[item-money]', e.message);
     res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
+  } finally { conn.release(); }
+});
+
+// POST /api/admin/subscribers/:id/currency — move an online client to جنيه، ريال or دولار and, with `convert`, turn
+// their agreed prices and «مدفوع قبل السيستم» into it at the system's rate (lib/clientCurrency.js). `dryRun` answers
+// with what would change and writes nothing, for the panel to ask before it does. Money, so item-money's gate.
+router.post('/api/admin/subscribers/:id/currency', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (refuseCollection(req, res, 'عملة العميل بتتغير من الحسابات أو الإدارة بس')) return;
+  const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+  const scoped = await scopedSubscriber(req, req.params.id, tenantId).catch(() => ({ status: 500, error: 'Internal server error' }));
+  if (!scoped.subscriber) return res.status(scoped.status).json({ error: scoped.error });
+  const conn = await pool.getConnection();
+  try {
+    const convert = req.body?.convert !== false;
+    // The rate of each foreign currency involved must be usable — configured and not older than FX_MAX_AGE_HOURS, as for
+    // a payment (lib/fxRefresh.js); one gone stale is fetched afresh first. Converting a client's money by a guess
+    // or by an old rate is refused, not done quietly.
+    const rates = convert ? async currencies => {
+      let snapshot = null;
+      for (const currency of currencies.filter(code => code !== 'EGP')) {
+        const fresh = await ensureFreshFx(tenantId, currency);
+        if (!fresh.usable) throw fxStaleError(currency, fresh.snapshot);
+        snapshot = fresh.snapshot;
+      }
+      return (snapshot || await getFxSnapshot(tenantId)).rates;
+    } : null;
+    await conn.beginTransaction();
+    const result = await changeClientCurrency(conn, {
+      tenantId, subscriberId: req.params.id, currency: req.body?.currency, convert, dryRun: req.body?.dryRun === true, rates, actor: actorName(req),
+    });
+    if (req.body?.dryRun === true) await conn.rollback(); else await conn.commit();
+    res.json({ ok: true, dryRun: req.body?.dryRun === true, ...result });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[client-currency]', e.message);
+    res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error', ...(e?.code ? { code: e.code } : {}) });
   } finally { conn.release(); }
 });
 

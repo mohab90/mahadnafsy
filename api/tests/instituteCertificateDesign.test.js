@@ -94,7 +94,7 @@ test('a long name shrinks to stay on one line', () => {
 test('the page serves the form copy, the picture, and never counts the desk as a download', () => {
   const route = read('api/routes/public.js');
   assert.match(route, /const formMode = String\(req\.query\.mode \|\| ''\) === 'form';/);
-  assert.match(route, /if \(!formMode && String\(req\.query\.staff \|\| ''\) !== '1'\) \{/);
+  assert.match(route, /if \(!formMode && !embedded && String\(req\.query\.staff \|\| ''\) !== '1'\) \{/);
   assert.match(route, /router\.get\('\/api\/certificate-template\.jpg'/);
   assert.match(route, /@page \{ size: A4 portrait; margin: 0; \}/);
 });
@@ -107,7 +107,9 @@ test('the desk can edit, and print on the form, from the certificates list', () 
   const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');
   assert.match(panel, /طباعة على النموذج/);
   assert.match(panel, /<CertificateEditModal /);
-  assert.match(read('admin/lib/certificateForm.ts'), /nameTop: 16, courseTop: 22\.6/);
+  // The measurements are the institute's, saved once on the server (certificate_form_layout); these are the ones it starts from.
+  assert.match(read('api/lib/certificateHtml.js'), /FORM_DEFAULTS = \{ nameTop: 16, courseTop: 22\.6 \}/);
+  assert.match(panel, /<FormLayoutModal /);
 });
 
 test("the client's viewer writes the same lines on the same picture", () => {

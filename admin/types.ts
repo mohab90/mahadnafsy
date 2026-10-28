@@ -54,7 +54,10 @@ export interface TherapistConsultationSettings {
   autoCreateMeetingLink: boolean;
   intakeFormUrl?: string;
   bookingNotes?: string;
+  /** Weekly hours: they repeat every week. */
   availableSlots: TherapistAvailabilitySlot[];
+  /** Days ('YYYY-MM-DD') the lecturer is away — none of the weekly hours can be booked on them. */
+  blockedDates?: string[];
   portal: TherapistPortalCredentials;
 }
 
@@ -110,6 +113,8 @@ export interface Bundle {
   id: string;
   title: string;
   titleEn?: string;
+  /** Training hours the track's certificate prints. */
+  hours?: number;
   slug?: string;
   videoUrl?: string;
   thumbnail?: string;
@@ -216,6 +221,16 @@ export interface SubscriberCertificate {
   revokedAt?: string;
   revokeReason?: string;
   note?: string;
+  /** The course's (or track's) title, and whether this is a track's certificate. */
+  title?: string;
+  isTrack?: boolean;
+  /** Printed at the institute: when, by whom, how many times. */
+  printedAt?: string;
+  printedBy?: string;
+  printCount?: number;
+  /** The client opened / downloaded it from their own account. */
+  downloadedAt?: string;
+  downloadCount?: number;
 }
 
 // A code from «تسعير الشهادات» (content extra_cert_pricing): the eight it
@@ -333,6 +348,7 @@ export type StaffPermission =
   // Consultations
   | 'view_consultations'
   | 'manage_consultations'
+  | 'use_lecturer_portal'
   // Community
   | 'view_community'
   | 'manage_community'
@@ -450,6 +466,7 @@ export interface PaymentHistoryEntry {
   paymentMethod?: string;       // e.g. خزنة الفرع، فودافون كاش، انستا باي …
   fromAccountNumber?: string;   // Bank account / wallet number the transfer was made FROM
   senderName?: string;          // Name of whoever sent the transfer
+  proofUrl?: string;            // Google Drive link of the transfer screenshot the client uploaded
   transactionId?: string;       // Payment transaction / operation reference number
   isInstallment?: boolean;      // false/undefined = new booking, true = installment
   courseId?: string;            // Which course this payment applies to
@@ -714,6 +731,8 @@ export interface OrderItem {
   /** The transfer behind a desk payment: who sent it, and from which number or account. */
   senderName?: string;
   fromAccountNumber?: string;
+  /** The client's transfer screenshot on Google Drive. */
+  proofUrl?: string;
   status: 'paid' | 'failed' | 'refunded' | 'pending';
   createdAt: string;
   transactionId?: string;
@@ -938,6 +957,7 @@ export interface PaymentProof {
   currency: 'EGP' | 'SAR' | 'USD';
   payment_method: PaymentProofMethod | string;
   proof_image?: string | null;  // base64 data URL
+  proof_url?: string | null;    // Google Drive link of the screenshot, when Drive took it
   note?: string | null;
   status: PaymentProofStatus;
   reviewer_id?: string | null;
@@ -1082,6 +1102,8 @@ export interface AiKnowledgeEntry {
 }
 
 export interface AdminAiConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   provider: string;
   apiKey: string;
   model: string;
@@ -1091,6 +1113,8 @@ export interface AdminAiConfig {
 }
 
 export interface AiAgentConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   id: string;
   name: string;
   provider: AiProvider;
@@ -1110,6 +1134,8 @@ export interface AiAgentConfig {
 export type MessagingChannel = 'whatsapp' | 'messenger' | 'instagram' | 'webchat';
 
 export interface WhatsAppChannelConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   enabled: boolean;
   phoneNumberId: string;
   whatsappBusinessAccountId: string;
@@ -1123,6 +1149,8 @@ export interface WhatsAppChannelConfig {
 }
 
 export interface MessengerChannelConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   enabled: boolean;
   pageId: string;
   pageAccessToken: string;
@@ -1134,6 +1162,8 @@ export interface MessengerChannelConfig {
 }
 
 export interface InstagramChannelConfig {
+  /** Which secrets are saved on the server (it never sends them back): the last four characters, or true. */
+  __savedSecrets?: Record<string, string | true>;
   enabled: boolean;
   instagramAccountId: string;
   accessToken: string;
