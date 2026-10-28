@@ -18,6 +18,9 @@ const path = require('node:path');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8').replace(/\r\n/g, '\n');
 
+// A reference already used is refused by name (and never with another
+// institute's client's name): tests/integration/deskPaymentsAndOrders.integration.test.js.
+
 test('the client page lists every recorded payment, marks the ones awaiting approval, and shows the transaction number', () => {
   const panel = read('admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx');
   const log = panel.slice(panel.indexOf('Transaction History'), panel.indexOf('Payment Proofs'));
@@ -59,11 +62,6 @@ test('the transaction number typed in the payment dialog is sent as the payment\
   assert.ok(!/const noteParts = \[subPayDraft\.note, subPayDraft\.transactionId/.test(handler), 'the number and the transferring account are not note text');
   assert.ok(handler.includes('...(itemIndex === 0 ? txnFields : { fromAccountNumber: txnFields.fromAccountNumber, senderName: txnFields.senderName }),'), 'the first of several courses carries it');
   assert.ok(handler.includes('...txnFields,'), 'a single payment carries it');
-});
-
-test('a reference already used on another payment is refused with its own message', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.ok(route.includes('TRANSACTION_REFERENCE_IN_USE'));
 });
 
 test('the Dokki desk and the finance tab also send the transaction number as a field', () => {

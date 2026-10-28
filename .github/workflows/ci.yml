@@ -74,7 +74,11 @@ jobs:
         timeout-minutes: 20
         shell: bash
         run: set -o pipefail; env -u DB_HOST -u DB_USER -u DB_PASSWORD -u DB_NAME -u DB_PORT npm --prefix api run test:unit 2>&1 | tee "$RUNNER_TEMP/unit.tap"
-      - name: Integration tests (real MySQL — schema/ledger invariants)
+      # Each file runs on its own copy of a template built from schema.sql and
+      # the migrations (api/tests/integration/support/isolatedDb.mjs), dropped
+      # when the file ends: mahad_ci stays as migrated for the API below, and
+      # no file depends on what another left behind.
+      - name: Integration tests (real MariaDB, one throwaway database per file)
         timeout-minutes: 30
         shell: bash
         run: set -o pipefail; npm --prefix api run test:integration 2>&1 | tee "$RUNNER_TEMP/integration.tap"
@@ -125,9 +129,8 @@ jobs:
           npx playwright test --list
       # The specs that need only the API run against the one started above:
       # the auth boundary on the admin, finance and money endpoints, and the
-      # public API checks of the smoke spec. They open no browser. The page
-      # specs need the built sites served and the payment flow a seeded
-      # student, so they stay with the staging gate (deploy/release-all.sh).
+      # public API checks of the smoke spec. They open no browser; the page
+      # specs run in the browser-e2e job below.
       - name: E2E API specs against the started API
         working-directory: e2e
         env:
@@ -193,6 +196,104 @@ jobs:
           test "$want" = "$got"
           mysql -h127.0.0.1 -P3306 -uroot -N -B mahad_fresh -e "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='mahad_fresh' AND table_name='payroll_runs' AND index_name='uniq_payroll_run_scope'" | grep -qv '^0$'
 
+  browser-e2e:
+    name: Browser E2E (built site + admin on a seeded API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The site and the admin as built for production, served by vite preview
+    # with /api proxied to the real API on a fresh database, and driven by
+    # Chromium: the public pages, a course page, checkout up to the hand-off to
+    # Paymob (the call that would reach Paymob is answered by the spec), a paid
+    # student opening a paid lecture, and an administrator's leads list. The
+    # rows come from api/tools/e2e-seed.cjs. Built here rather than taken from
+    # the admin and client jobs so this job starts at once instead of after
+    # them; the two builds run side by side.
+    services:
+      mysql:
+        image: mariadb:10.11
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 'yes'
+          MARIADB_DATABASE: mahad_e2e_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ''
+      DB_NAME: mahad_e2e_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            admin/package-lock.json
+            client/package-lock.json
+            e2e/package-lock.json
+      - name: Install dependencies (api, client, admin, e2e)
+        run: |
+          npm --prefix api ci
+          npm --prefix client ci
+          npm --prefix admin ci
+          npm --prefix e2e ci
+      - name: Build the site and the admin
+        shell: bash
+        run: |
+          npm --prefix client run build > "$RUNNER_TEMP/client-build.log" 2>&1 & client=$!
+          npm --prefix admin run build > "$RUNNER_TEMP/admin-build.log" 2>&1 & admin=$!
+          wait $client || { tail -n 60 "$RUNNER_TEMP/client-build.log"; exit 1; }
+          wait $admin || { tail -n 60 "$RUNNER_TEMP/admin-build.log"; exit 1; }
+      - name: Chromium for Playwright
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Migrate an empty database and seed the E2E rows
+        run: |
+          npm run migrate
+          node api/tools/e2e-seed.cjs
+      # server.js refuses to start without DB_PASSWORD, and this container's
+      # root has none. Two customer devices is the product's limit
+      # (lib/customerDevices.js); every Playwright test is a new browser.
+      - name: Start the API (3105), the site (3000) and the admin (4000)
+        shell: bash
+        run: |
+          mysql -h127.0.0.1 -P3306 -uroot -e "CREATE USER IF NOT EXISTS 'mahad_e2e'@'%' IDENTIFIED BY 'e2e-pass'; GRANT ALL ON mahad_e2e_ci.* TO 'mahad_e2e'@'%';"
+          DB_USER=mahad_e2e DB_PASSWORD=e2e-pass PORT=3105 \
+          JWT_SECRET=ci-e2e-jwt-secret-0123456789abcdef0123456789 \
+          RUN_MIGRATIONS_ON_STARTUP=false WA_WEB_DISABLED=1 CUSTOMER_MAX_DEVICES=50 \
+            nohup node api/server.js > "$RUNNER_TEMP/api.log" 2>&1 &
+          (cd client && VITE_API_PROXY_TARGET=http://127.0.0.1:3105 nohup npx vite preview --host 127.0.0.1 --port 3000 --strictPort > "$RUNNER_TEMP/client.log" 2>&1 &)
+          (cd admin && VITE_API_PROXY_TARGET=http://127.0.0.1:3105 nohup npx vite preview --host 127.0.0.1 --port 4000 --strictPort > "$RUNNER_TEMP/admin.log" 2>&1 &)
+          for url in http://127.0.0.1:3105/api/health/live http://127.0.0.1:3000/api/health/live http://127.0.0.1:4000/; do
+            for i in $(seq 1 60); do curl -fsS "$url" >/dev/null 2>&1 && break; sleep 1; done
+            curl -fsS "$url" >/dev/null || { echo "$url did not come up"; tail -n 60 "$RUNNER_TEMP"/*.log; exit 1; }
+          done
+      - name: Page specs (public smoke, course, checkout, student lecture, admin leads)
+        working-directory: e2e
+        env:
+          BASE_URL: http://127.0.0.1:3000
+          ADMIN_BASE_URL: http://127.0.0.1:4000
+          API_BASE_URL: http://127.0.0.1:3105
+          E2E_SEEDED: '1'
+        run: npx playwright test tests/public-smoke.spec.ts tests/admin-login.spec.ts tests/payment-flow.spec.ts tests/ci-journeys.spec.ts
+      - name: Server logs
+        if: failure()
+        shell: bash
+        run: tail -n 80 "$RUNNER_TEMP"/api.log "$RUNNER_TEMP"/client.log "$RUNNER_TEMP"/admin.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results-${{ github.sha }}
+          path: e2e/test-results/
+          retention-days: 7
+
   admin:
     name: Admin — type-check + build
     runs-on: ubuntu-latest
@@ -234,7 +335,7 @@ jobs:
   release-artifact:
     name: Immutable release artifacts
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-    needs: [static-checks, admin, client]
+    needs: [static-checks, browser-e2e, admin, client]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

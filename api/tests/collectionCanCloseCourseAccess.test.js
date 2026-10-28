@@ -27,41 +27,17 @@ const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const ROUTE = 'api/routes/core/content.js';
 const PANEL = 'admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx';
 
+// Closing needs a reason, only close and open exist, reopening restores the
+// same grant, a desk outside the client's reach is refused and the lock is
+// written to the client's record: over HTTP in
+// tests/integration/learningAccess.integration.test.js.
+
 test('the route is open to the two desks that use it', () => {
   const source = read(ROUTE);
   assert.match(
     source,
     /router\.post\('\/api\/admin\/subscribers\/:id\/course-access',[^\n]*requirePermission\('manage_subscribers'\)/,
     'collection and customer service both hold manage_subscribers, and only they and the managers do');
-});
-
-test('it closes and reopens through the shared entitlement library', () => {
-  const handler = read(ROUTE).slice(read(ROUTE).indexOf("router.post('/api/admin/subscribers/:id/course-access'"));
-  assert.ok(handler.includes('revokeCourseEntitlement'), 'closing goes through the library');
-  assert.ok(handler.includes('grantCourseEntitlement'), 'and opening again through the same one');
-  assert.match(handler, /action !== 'close' && action !== 'open'/, 'those are the only two things it does');
-  assert.match(handler, /action === 'close' && !reason/, 'a lock has to say what it is for');
-});
-
-test('reopening gives back what was taken, not a recomputed smaller number', () => {
-  const handler = read(ROUTE).slice(read(ROUTE).indexOf("router.post('/api/admin/subscribers/:id/course-access'"));
-  const reopen = handler.slice(handler.indexOf('} else {'), handler.indexOf('entitlement_events already holds'));
-  assert.match(reopen, /enrolment\.access_type/, 'the access type it was closed on');
-  assert.match(reopen, /enrolment\.lecture_limit/, 'and the lecture count with it');
-  assert.match(reopen, /lectureLimit:/,
-    'named explicitly — left null, the proportional arithmetic would recompute a smaller share');
-});
-
-test('a client outside your scope cannot be touched', () => {
-  const handler = read(ROUTE).slice(read(ROUTE).indexOf("router.post('/api/admin/subscribers/:id/course-access'"));
-  assert.match(handler, /resolveFinancialScope/, 'the same row-level rule the money screens use');
-  assert.match(handler, /financialRecordMatches/, 'checked against this client, not just resolved');
-});
-
-test("the client's own record keeps the trail", () => {
-  const handler = read(ROUTE).slice(read(ROUTE).indexOf("router.post('/api/admin/subscribers/:id/course-access'"));
-  assert.match(handler, /logLeadEvent/,
-    'a lock somebody applied by hand is a fact about the customer, not a silent flag');
 });
 
 test('the desk can reach it from the client screen', () => {

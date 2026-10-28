@@ -28,7 +28,7 @@ const { planRetake } = require('../lib/courseRetake');
 const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
-const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { FinancialScopeError, financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
@@ -1162,10 +1162,13 @@ async function recordSubscriberPayment(req, res) {
     if (e?.code === 'ER_DUP_ENTRY') {
       const reference = cleanReference(sanitize(req.body?.payment?.transactionId || req.body?.payment?.transaction_id || '', 191));
       if (reference) {
+        // This institute's payment only. The reference is unique across every
+        // institute, so the row it collided with may be another's — whose
+        // client's name, amount and date are not this desk's to read.
         const [[owner]] = await pool.query(
           `SELECT p.date, p.amount, p.currency, s.name
              FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-            WHERE p.transaction_id = ? LIMIT 1`, [reference]).catch(() => [[null]]);
+            WHERE p.transaction_id = ? AND p.tenant_id = ? LIMIT 1`, [reference, req.tenantId]).catch(() => [[null]]);
         const when = owner ? String(safeDateOnly(owner.date) || '') : '';
         return res.status(409).json({
           code: 'TRANSACTION_REFERENCE_IN_USE',
@@ -1177,7 +1180,13 @@ async function recordSubscriberPayment(req, res) {
       }
       return res.status(409).json({ error: 'الدفعة دي متسجلة بالفعل.', code: 'PAYMENT_ALREADY_EXISTS' });
     }
-    res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
+    // resolveFinancialScope refuses with .status, not .statusCode: a branch
+    // that does not exist (400) or one outside this account's reach (403) was
+    // answered as a 500 «Internal server error».
+    const status = e?.statusCode || (e instanceof FinancialScopeError ? e.status : null);
+    res.status(status || 500).json(status
+      ? { error: e.message, ...(e instanceof FinancialScopeError ? { code: e.code } : {}) }
+      : { error: 'Internal server error' });
   }
 }
 

@@ -13,16 +13,9 @@ const path = require('path');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 
-test('confirming a payment against a transfer takes it from the ledger, once', () => {
-  const orders = read('api/routes/orders.js');
-  const confirm = orders.slice(orders.indexOf("router.post('/api/admin/orders/:id/confirm-payment'"), orders.indexOf('// PATCH /api/admin/orders/:id'));
-  assert.match(confirm, /FROM incoming_transfers WHERE id=\? AND tenant_id=\? LIMIT 1 FOR UPDATE/);
-  assert.match(confirm, /if \(row\.payment_id\) \{ await conn\.rollback\(\); return res\.status\(409\)/, 'a transfer confirms one payment');
-  assert.match(confirm, /if \(transfer\) await linkTransfer\(conn, \{ tenantId: req\.tenantId, paymentId, link: \{ transferId: transfer\.id \} \}\);\s+await conn\.commit\(\);/);
-  assert.doesNotMatch(confirm, /type='transfer'/);
-  // A refusal reaches the screen in words, not as «Internal server error».
-  assert.match(confirm, /if \(refused >= 400 && refused < 500\) return res\.status\(refused\)\.json\(\{ error: e\.message \}\);/);
-});
+// Confirming against a transfer that already pays a payment is refused, a
+// non-cash order needs its transfer, and an order is confirmed once — over HTTP
+// in tests/integration/deskPaymentsAndOrders.integration.test.js.
 
 test('the accounts screen lists and records transfers on the ledger', () => {
   const tab = ordersScreenSource();
