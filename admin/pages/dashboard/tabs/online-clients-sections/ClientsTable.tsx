@@ -385,7 +385,7 @@ export function ClientsTable({
                   <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                 </td>
                 {vc.branch && !isDaqqiClientsTab && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
-                {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.createdAt)||'—'}</td>}
+                {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.latestSubscriptionAt || row.createdAt)||'—'}</td>}
                 {vc.courses    && <td className="px-3 py-2 border border-gray-200 text-xs text-gray-400">لا يوجد</td>}
                 {vc.value      && <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>}
                 {vc.paid       && <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>}
@@ -456,7 +456,7 @@ export function ClientsTable({
                     </td>
                   )}
                   {vc.branch && !isDaqqiClientsTab && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
-                  {vc.createdAt && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{crFirstPayDate||'—'}</td>}
+                  {vc.createdAt && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.latestSubscriptionAt)||crFirstPayDate||'—'}</td>}
                   {vc.courses && <td className="px-2 py-2 border border-gray-200 text-[11px] text-gray-700 max-w-[160px] truncate" title={cr.label}>{cr.label}</td>}
                   {/* Paid above the recorded value is not an accounting error,
                       it means the recorded value is not trustworthy — usually a

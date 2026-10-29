@@ -668,6 +668,13 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
 
   const enrollmentProjection = await loadEnrollmentProjection(tenantId, ids);
   const completionProjection = await loadCompletionProjection(tenantId, ids);
+  // the day of the client's newest subscription: what the lists are ordered by and what their date column shows
+  const [subscriptionDays] = await pool.query(
+    `SELECT subscriber_id, MAX(enrolled_at) AS latest FROM enrollments
+      WHERE tenant_id=? AND status<>'removed' AND subscriber_id IN (${ids.map(() => '?').join(',')}) GROUP BY subscriber_id`,
+    [tenantId, ...ids]
+  );
+  const latestSubscription = new Map(subscriptionDays.map(row => [row.subscriber_id, row.latest]));
 
   const [staffCertificateRows] = lite ? [[]] : await pool.query(
     `SELECT id, subscriber_id, course_id, type, custom_name, name_ar, name_en,
@@ -711,7 +718,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
     return {
       id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
       firebaseUid: r.firebase_uid, isActive: !!r.is_active,
-      notes: r.notes, createdAt: r.created_at,
+      notes: r.notes, createdAt: r.created_at, latestSubscriptionAt: latestSubscription.get(r.id) || r.created_at,
       ...crm, coursePlacements: placementsBySub.get(r.id) || {},
       enrolledCourseIds,
       enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
@@ -735,7 +742,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
 /**
  * GET /api/staff/subscribers?paged=1 — «عملائي» a page at a time: { rows, total, tabCounts, followCounts, figures }.
  *
- *   view     active | real-local | real-saudi | real-intl | finished | paused | refunded | old_local | old_intl
+ *   view     active | real-local | real-saudi | real-intl | finished | paused | refunded | old_local
  *   q, from, to, course, collector (a staff id, or __none__), status, cert, remaining, follow — the screen's filters
  *   limit, offset
  *

@@ -10,7 +10,7 @@ import { isCollected } from '../../../../lib/money';
 import { downloadCsv } from '../../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
+type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'booked2024'|'booked2025';
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 type Market = 'local' | 'saudi' | 'intl';
 
@@ -147,16 +147,15 @@ export function ViewTabsBar({
               { key: 'old_data'  as const, label: 'عملاء قبل 24',  color: 'slate'  },
             ] : [
               { key: 'old_local' as const, label: '🏠 محلي قديم',  color: 'indigo' },
-              { key: 'old_intl'  as const, label: '🇸🇦 سعودي قديم',  color: 'violet' },
             ]),
           ] as {key:ViewTabKey;label:string;color:string}[]).filter(vt => !isDaqqiClientsTab || !MARKET_TAB[vt.key]).map(vt => {
             const market = MARKET_TAB[vt.key];
-            const base = vt.key === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) : vt.key === 'old_intl' ? allCombined.filter(isIntlSub) : allCombined;
+            const base = vt.key === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) : allCombined;
             const cnt = tabCounts ? (tabCounts[vt.key] ?? 0) : vt.key === 'active'
               ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && !['old_data', 'daqqi_old_local', 'daqqi_old_intl', ...(isDaqqiClientsTab ? [] : ['old_local', 'old_intl'])].includes(s.clientStatus || '')).length
               : market
-              ? allCombined.filter(s => marketOf(s) === market && s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0).length
-              : (vt.key === 'old_local' || vt.key === 'old_intl') ? base.filter(s => s.clientStatus === vt.key).length
+              ? allCombined.filter(s => marketOf(s) === market && s.isActive !== false && (market === 'local' ? !TERMINAL.includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0 : !['refunded', 'refund_pending'].includes(s.clientStatus||''))).length
+              : vt.key === 'old_local' ? base.filter(s => s.clientStatus === 'old_local' || s.clientStatus === 'old_intl').length
               : vt.key === 'refunded' ? allCombined.filter(s => s.clientStatus === 'refunded' || s.clientStatus === 'refund_pending').length
               : allCombined.filter(s => s.clientStatus === vt.key).length;
             const active = !customTabOpen && collOnlineViewTab === vt.key;

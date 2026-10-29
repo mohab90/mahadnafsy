@@ -5,7 +5,7 @@ import OldDataImportPanel from '../online/OldDataImportPanel';
 import type { SheetClientRow } from '../../../../../shared/sheetImport';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
+type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'booked2024'|'booked2025';
 type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number; flagged?: number };
 
 interface Props {
@@ -65,7 +65,7 @@ export function OldDataImportSection({
     );
   }
 
-  if ((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') && !isDaqqiClientsTab) {
+  if (collOnlineViewTab === 'old_local' && !isDaqqiClientsTab) {
     return (
       <details className="mb-4 group">
         <summary className="cursor-pointer flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-100 transition select-none list-none">

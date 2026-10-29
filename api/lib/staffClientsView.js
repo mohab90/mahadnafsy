@@ -19,7 +19,7 @@ const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
 const FX = { EGP: 1, SAR: 13, USD: 48 };
 const NO_COLLECTOR = '__none__';
 const FOLLOW_FILTERS = ['due', 'overdue', 'today', 'tomorrow', 'week', 'none'];
-const VIEWS = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_local', 'old_intl'];
+const VIEWS = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_local'];
 const MARKET_VIEWS = { 'real-local': 'local', 'real-saudi': 'saudi', 'real-intl': 'intl' };
 // «عملاء الدقي» has its own tabs (OnlineClientsTab / ViewTabsBar): the lifecycle ones, the two booking years and the imports.
 const DOKKI_VIEWS = ['active', 'finished', 'paused', 'refunded', 'booked2024', 'booked2025', 'old_data'];
@@ -323,6 +323,9 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
 
   const live = client => client.isActive !== false && !factsOf(client).terminal;
   const marketTab = (client, market) => factsOf(client).online && factsOf(client).market === market;
+  // A Saudi or international client lives in the tab of their market, old or new, finished or not (refunded ones stay with the refunds)
+  const foreign = client => factsOf(client).online && factsOf(client).market !== 'local';
+  const foreignTab = client => client.isActive !== false && !['refunded', 'refund_pending'].includes(factsOf(client).status);
   // «النشطين» at Dokki is the current clients: the ones before 2024 have their own tab and are not counted twice
   const tabCounts = dokki ? {
     active: all.filter(client => live(client) && !OLD_DATA_STATUSES.includes(factsOf(client).status)).length,
@@ -333,18 +336,19 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     booked2025: all.filter(client => bookedIn(client, 2025)).length,
     old_data: all.filter(client => OLD_DATA_STATUSES.includes(factsOf(client).status)).length,
   } : {
-    // the clients with a tab of their own for their age (محلي قديم / سعودي قديم) are not counted twice
+    // the clients with a tab of their own for their age (محلي قديم) are not counted twice, nor the Saudi and international ones in the other tabs
     active: all.filter(client => live(client) && !['old_local', 'old_intl'].includes(factsOf(client).status)).length,
     'real-local': 0, 'real-saudi': 0, 'real-intl': 0,
-    finished: all.filter(client => factsOf(client).status === 'finished').length,
-    paused: all.filter(client => factsOf(client).status === 'paused').length,
+    finished: all.filter(client => factsOf(client).status === 'finished' && !foreign(client)).length,
+    paused: all.filter(client => factsOf(client).status === 'paused' && !foreign(client)).length,
     refunded: all.filter(client => ['refunded', 'refund_pending'].includes(factsOf(client).status)).length,
-    old_local: all.filter(client => !factsOf(client).international && factsOf(client).status === 'old_local').length,
-    old_intl: all.filter(client => factsOf(client).international && factsOf(client).status === 'old_intl').length,
+    old_local: all.filter(client => !foreign(client) && ['old_local', 'old_intl'].includes(factsOf(client).status)).length,
   };
   if (!dokki) for (const [tab, market] of Object.entries(MARKET_VIEWS)) {
-    // The count on the tab asks for an open course; the list below also takes a booking that waits for approval.
-    tabCounts[tab] = all.filter(client => marketTab(client, market) && live(client) && (client.enrolledCourseIds || []).length > 0).length;
+    // The local tab counts the clients with an open course; the list below also takes a booking that waits for approval.
+    tabCounts[tab] = market === 'local'
+      ? all.filter(client => marketTab(client, market) && live(client) && (client.enrolledCourseIds || []).length > 0).length
+      : all.filter(client => marketTab(client, market) && foreignTab(client)).length;
   }
 
   const inView = client => {
@@ -360,13 +364,13 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     }
     switch (filters.view) {
       case 'active': return client.isActive !== false && !terminal && !['old_local', 'old_intl'].includes(status);
-      case 'real-local': case 'real-saudi': case 'real-intl':
-        return marketTab(client, MARKET_VIEWS[filters.view]) && client.isActive !== false && !terminal
+      case 'real-saudi': case 'real-intl': return marketTab(client, MARKET_VIEWS[filters.view]) && foreignTab(client);
+      case 'real-local':
+        return marketTab(client, 'local') && client.isActive !== false && !terminal
           && ((client.enrolledCourseIds || []).length > 0 || hasBooking(client));
       case 'refunded': return status === 'refunded' || status === 'refund_pending';
-      case 'old_local': return !factsOf(client).international && status === 'old_local';
-      case 'old_intl': return factsOf(client).international && status === 'old_intl';
-      default: return status === filters.view;
+      case 'old_local': return !foreign(client) && (status === 'old_local' || status === 'old_intl');
+      default: return status === filters.view && !foreign(client);
     }
   };
   const matchesOthers = client => {

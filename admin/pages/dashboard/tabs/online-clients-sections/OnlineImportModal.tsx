@@ -11,7 +11,7 @@ type Destination = 'active' | 'old_local' | 'old_intl';
 type Market = 'local' | 'saudi' | 'intl';
 type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number; flagged?: number };
 
-const DESTINATIONS: [Destination, string][] = [['active', 'النشطين'], ['old_local', '🏠 محلي قديم'], ['old_intl', '🇸🇦 سعودي قديم']];
+const DESTINATIONS: [Destination, string][] = [['active', 'النشطين'], ['old_local', '🏠 محلي قديم'], ['old_intl', '🇸🇦 سعودي']];
 const MARKETS: [Market, string][] = [['local', '🇪🇬 محلي'], ['saudi', '🇸🇦 سعودي'], ['intl', '🌍 دولي']];
 
 /**

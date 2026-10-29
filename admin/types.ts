@@ -491,6 +491,7 @@ export interface PaymentHistoryEntry {
 
 export interface SubscriberItem {
   id: string;
+  latestSubscriptionAt?: string; // the newest subscription's day: what the client lists are ordered by
   clientCode?: string;   // Stable unified client URL code, preserved from lead if converted
   leadId?: string;
   firebaseUid?: string;  // Firebase Auth UID — auto-linked on first login

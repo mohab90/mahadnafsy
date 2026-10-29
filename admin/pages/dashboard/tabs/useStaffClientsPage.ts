@@ -26,7 +26,7 @@ export interface StaffClientsPage extends Omit<Answer, 'rows'> { rows: Subscribe
 
 /** The server's views; the tabs the other screen has (booking years, imports) read as «النشطين» on this one. */
 const SERVER_VIEWS: Record<StaffClientsSource, string[]> = {
-  staff: ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_local', 'old_intl'],
+  staff: ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_local'],
   dokki: ['active', 'finished', 'paused', 'refunded', 'booked2024', 'booked2025', 'old_data'],
 };
 

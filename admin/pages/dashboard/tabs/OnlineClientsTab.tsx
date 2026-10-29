@@ -26,8 +26,8 @@ import { useSiteData } from '../../../context/SiteDataContext';
 // Kept beside the component so the URL parser and the tab strip agree on what
 // a valid view is; an unknown ?view= falls back to 'active' rather than
 // rendering an empty table.
-type OnlineViewTab = 'active' | 'real-local' | 'real-saudi' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'old_intl' | 'booked2024' | 'booked2025';
-const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl', 'booked2024', 'booked2025'];
+type OnlineViewTab = 'active' | 'real-local' | 'real-saudi' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'booked2024' | 'booked2025';
+const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'booked2024', 'booked2025'];
 // «محلي / سعودي / دولي» — by what the client pays in (onlineClientsUtils).
 const MARKET_TABS: Partial<Record<OnlineViewTab, ClientMarket>> = { 'real-local': 'local', 'real-saudi': 'saudi', 'real-intl': 'intl' };
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
@@ -449,10 +449,11 @@ export default function OnlineClientsTab({
               };
               // For local/intl real tabs, always draw from allCombined
               const viewMarket = MARKET_TABS[collOnlineViewTab];
+              // a Saudi or international client lives in the tab of their market, old or new, finished or not
+              const isForeignSub = (s: SubscriberItem) => isOnlineClient(s) && subscriberMarket(s) !== 'local';
               const tabFiltered =
                 viewMarket ? allCombined.filter(s => isOnlineClient(s) && subscriberMarket(s) === viewMarket) :
-                collOnlineViewTab === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) :
-                collOnlineViewTab === 'old_intl'  ? allCombined.filter(isIntlSub) :
+                collOnlineViewTab === 'old_local' ? allCombined.filter(s => !isForeignSub(s)) :
                 // The collOnlineSubTab branches that used to sit here (local /
                 // intl / mine) were unreachable: nothing in the UI ever called
                 // its setter, so the value stayed 'all' and only this last arm
@@ -465,8 +466,11 @@ export default function OnlineClientsTab({
                 if (collOnlineViewTab === 'active') {
                   if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
-                  // what is older has its own tab: at Dokki before 2024, online محلي قديم / سعودي قديم
+                  // what is older has its own tab: at Dokki before 2024, online محلي قديم
                   if (['old_data', 'daqqi_old_local', 'daqqi_old_intl', ...(isDaqqiClientsTab ? [] : ['old_local', 'old_intl'])].includes(clientSt)) return false;
+                } else if (viewMarket && viewMarket !== 'local') {
+                  if (s.isActive === false) return false;
+                  if (['refunded','refund_pending'].includes(clientSt)) return false;
                 } else if (viewMarket) {
                   // فعلي = active + has at least one enrolled course
                   if (s.isActive === false) return false;
@@ -477,8 +481,11 @@ export default function OnlineClientsTab({
                 } else {
                   if (collOnlineViewTab === 'refunded') {
                     if (clientSt !== 'refunded' && clientSt !== 'refund_pending') return false;
+                  } else if (collOnlineViewTab === 'old_local') {
+                    if (clientSt !== 'old_local' && clientSt !== 'old_intl') return false;
                   } else {
                     if (clientSt !== collOnlineViewTab) return false;
+                    if (!isDaqqiClientsTab && isForeignSub(s)) return false;
                   }
                 }
                 // The same search as every other list (lib/clientSearch.ts) — the code included.
@@ -683,8 +690,8 @@ export default function OnlineClientsTab({
                     notify={notify}
                   />
                   {/* Table (hidden when old_data tab is active) */}
-                  {/* ── Distribution panel for محلي قديم / سعودي قديم ── */}
-                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (isAdmin || isDaqqiClientsTab) && (
+                  {/* ── Distribution panel for محلي قديم ── */}
+                  {((collOnlineViewTab === 'old_local') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (isAdmin || isDaqqiClientsTab) && (
                     <div className="mb-4 bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <span className="text-base">📊</span>
