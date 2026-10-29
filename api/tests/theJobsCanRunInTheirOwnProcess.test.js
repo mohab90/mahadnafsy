@@ -18,6 +18,8 @@ const childEnv = extra => ({
   // A port nothing listens on: the process must come up without a database.
   DB_HOST: '127.0.0.1', DB_PORT: '1', DB_USER: 'u', DB_PASSWORD: 'p', DB_NAME: 'n',
   JWT_SECRET: 'x'.repeat(64),
+  // server.js and worker.js load api/.env themselves; a machine whose .env asks for a CA file must not decide this test
+  DB_SSL_MODE: 'disabled',
   ...extra,
 });
 
