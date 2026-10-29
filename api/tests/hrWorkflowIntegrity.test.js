@@ -36,7 +36,7 @@ const hrLeavesPanel = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sect
 
 test('disabled users are rejected by every authenticated request and cache can be invalidated immediately', () => {
   assert.match(auth, /async function activeIdentity/);
-  assert.match(auth, /const columns = 'is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name,mfa_grace_started_at,email_unverified'/);
+  assert.match(auth, /const columns = 'is_active,session_version,active_session_id,active_session_ip_hash,name,email_unverified'/);
   assert.match(auth, /SELECT \$\{columns\} FROM users WHERE tenant_id=\? AND id=\? LIMIT 1/);
   assert.match(auth, /Account disabled or unavailable/);
   assert.match(auth, /function invalidateIdentity/);
@@ -48,7 +48,7 @@ test('offboarding is atomic, requires completed checklist, transfers open work, 
   for (const table of ['tasks', 'leads', 'subscribers', 'consultations', 'support_tickets', 'inbox_conversations', 'courses']) {
     assert.match(offboarding, new RegExp(`UPDATE ${table}`));
   }
-  assert.match(offboarding, /UPDATE staff[\s\S]*is_active=0[\s\S]*totp_secret=NULL/);
+  assert.match(offboarding, /UPDATE staff[\s\S]*is_active=0[\s\S]*termination_date/);
   assert.match(offboarding, /UPDATE users[\s\S]*is_active=0[\s\S]*session_version=session_version\+1/);
   assert.match(offboarding, /UPDATE therapists[\s\S]*is_consultation_enabled=0/);
   assert.match(offboarding, /SUCCESSOR_ROLE_MISMATCH/);

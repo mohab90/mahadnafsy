@@ -8,17 +8,12 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { branchIdForBranch } = require('../lib/branches');
 const { saveMfaPolicy } = require('../lib/mfaPolicy');
-const { generate } = require('otplib');
 
 const API = (process.env.API_BASE_URL || 'http://127.0.0.1:3101').replace(/\/$/, '');
 const PASSWORD = process.env.UAT_PASSWORD || 'MahadUat#2026';
 const TENANT_ID = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 const TENANT_B_ID = 'tenant-uat-b';
-const MFA_ENABLED = process.env.UAT_MFA_ENABLED === 'true';
-const TOTP_SECRET = String(process.env.UAT_TOTP_SECRET || '');
-if (MFA_ENABLED && TOTP_SECRET.length < 16) {
-  throw new Error('UAT_TOTP_SECRET is required when UAT_MFA_ENABLED=true');
-}
+// The emailed sign-in code needs a mailbox, so the UAT tenants run with the security policy off.
 
 const results = [];
 const ctx = {
@@ -122,25 +117,21 @@ async function seedAccounts() {
     const staffId = `uat-staff-${key}`.slice(0, 36);
     await pool.query(
       `INSERT INTO users
-         (id, tenant_id, firebase_uid, email, password_hash, name, role, is_active, totp_secret, totp_enabled)
-       VALUES (?,?,?,?,?,?,?,1,?,?)
+         (id, tenant_id, firebase_uid, email, password_hash, name, role, is_active)
+       VALUES (?,?,?,?,?,?,?,1)
        ON DUPLICATE KEY UPDATE tenant_id=VALUES(tenant_id), password_hash=VALUES(password_hash),
-         name=VALUES(name), role=VALUES(role), is_active=1,
-         totp_secret=VALUES(totp_secret), totp_enabled=VALUES(totp_enabled)`,
-      [userId, TENANT_ID, userId, email, hash, name, role.toLowerCase(),
-        MFA_ENABLED ? TOTP_SECRET : null, MFA_ENABLED ? 1 : 0]
+         name=VALUES(name), role=VALUES(role), is_active=1`,
+      [userId, TENANT_ID, userId, email, hash, name, role.toLowerCase()]
     );
     await pool.query(
       `INSERT INTO staff
          (id, firebase_uid, name, email, phone, role, joined_at, is_active, tenant_id,
-          totp_secret, totp_enabled, permissions_json)
-       VALUES (?,?,?,?,?,?,NOW(),1,?,?,?,NULL)
+          permissions_json)
+       VALUES (?,?,?,?,?,?,NOW(),1,?,NULL)
        ON DUPLICATE KEY UPDATE
          firebase_uid=VALUES(firebase_uid), name=VALUES(name), phone=VALUES(phone),
-         role=VALUES(role), is_active=1, tenant_id=VALUES(tenant_id),
-         totp_secret=VALUES(totp_secret), totp_enabled=VALUES(totp_enabled), permissions_json=NULL`,
-      [staffId, userId, name, email, '01000000000', role, TENANT_ID,
-        MFA_ENABLED ? TOTP_SECRET : null, MFA_ENABLED ? 1 : 0]
+         role=VALUES(role), is_active=1, tenant_id=VALUES(tenant_id), permissions_json=NULL`,
+      [staffId, userId, name, email, '01000000000', role, TENANT_ID]
     );
     ctx.accounts[key] = { email, role, name, userId, staffId };
   }
@@ -183,7 +174,7 @@ async function seedAccounts() {
     ]
   );
   ctx.accounts.student = { email: studentEmail, role: 'user', name: 'UAT Student', userId: studentId, subscriberId: studentId };
-  await saveMfaPolicy(TENANT_ID, { enabled: MFA_ENABLED }, 'uat-full-smoke');
+  await saveMfaPolicy(TENANT_ID, { enabled: false }, 'uat-full-smoke');
 }
 
 async function loginAccount(account, headers = {}) {
@@ -192,14 +183,8 @@ async function loginAccount(account, headers = {}) {
     headers,
     body: { email: account.email, password: PASSWORD },
   });
-  if (!data?.totpRequired) return { ...data, token: data?.token || authToken };
-  if (!MFA_ENABLED) throw new Error(`unexpected MFA challenge for ${account.email}`);
-  const verified = await api('/api/auth/2fa/verify', {
-    method: 'POST',
-    headers,
-    body: { pendingToken: data.pendingToken, token: await generate({ secret: TOTP_SECRET }) },
-  });
-  return { ...verified.data, token: verified.data?.token || verified.authToken };
+  if (data?.emailCodeRequired) throw new Error(`unexpected emailed-code challenge for ${account.email}`);
+  return { ...data, token: data?.token || authToken };
 }
 
 async function loginAll() {
@@ -240,25 +225,21 @@ async function checkTenantIsolation() {
   );
   await pool.query(
     `INSERT INTO users
-       (id, tenant_id, firebase_uid, email, password_hash, name, role, is_active, totp_secret, totp_enabled)
-     VALUES (?,?,?,?,?,?,'admin',1,?,?)
+       (id, tenant_id, firebase_uid, email, password_hash, name, role, is_active)
+     VALUES (?,?,?,?,?,?,'admin',1)
      ON DUPLICATE KEY UPDATE tenant_id=VALUES(tenant_id), password_hash=VALUES(password_hash),
-       name=VALUES(name), role='admin', is_active=1,
-       totp_secret=VALUES(totp_secret), totp_enabled=VALUES(totp_enabled)`,
-    [userId, TENANT_B_ID, userId, email, hash, 'UAT Tenant B Admin',
-      MFA_ENABLED ? TOTP_SECRET : null, MFA_ENABLED ? 1 : 0]
+       name=VALUES(name), role='admin', is_active=1`,
+    [userId, TENANT_B_ID, userId, email, hash, 'UAT Tenant B Admin']
   );
   await pool.query(
     `INSERT INTO staff
-       (id, firebase_uid, name, email, phone, role, joined_at, is_active, tenant_id, totp_secret, totp_enabled)
-     VALUES (?,?,?,?,'01000000000','ADMIN',NOW(),1,?,?,?)
+       (id, firebase_uid, name, email, phone, role, joined_at, is_active, tenant_id)
+     VALUES (?,?,?,?,'01000000000','ADMIN',NOW(),1,?)
      ON DUPLICATE KEY UPDATE tenant_id=VALUES(tenant_id), firebase_uid=VALUES(firebase_uid),
-       name=VALUES(name), role='ADMIN', is_active=1,
-       totp_secret=VALUES(totp_secret), totp_enabled=VALUES(totp_enabled)`,
-    [staffId, userId, 'UAT Tenant B Admin', email, TENANT_B_ID,
-      MFA_ENABLED ? TOTP_SECRET : null, MFA_ENABLED ? 1 : 0]
+       name=VALUES(name), role='ADMIN', is_active=1`,
+    [staffId, userId, 'UAT Tenant B Admin', email, TENANT_B_ID]
   );
-  await saveMfaPolicy(TENANT_B_ID, { enabled: MFA_ENABLED }, 'uat-full-smoke');
+  await saveMfaPolicy(TENANT_B_ID, { enabled: false }, 'uat-full-smoke');
 
   const loginB = await loginAccount(
     { email },

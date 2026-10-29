@@ -16,7 +16,7 @@ const flat = sql => String(sql).replace(/\s+/g, ' ').trim();
 const boxes = require('../lib/boxBalances');
 
 // A tiny stand-in for the three tables the balances read and write, with a clock the test moves.
-function boxDb({ payments }) {
+function boxDb({ payments, expenses = [] }) {
   const state = { balances: new Map(), events: [], clock: 1000 };
   const keyOf = (method, currency) => `${method}|${currency}`;
   return {
@@ -37,6 +37,15 @@ function boxDb({ payments }) {
       }
       if (/^SELECT alias, target FROM box_aliases/.test(text)) return [[]];
       if (/FROM box_withdrawals/.test(text)) return [[]];
+      if (/^SELECT box_method AS method, currency, SUM\(amount\) AS total FROM expenses/.test(text)) {
+        const since = /created_at > \?/.test(text) ? params[1] : null;
+        const sums = new Map();
+        for (const expense of expenses.filter(row => since === null || row.at > since)) {
+          const key = `${expense.method}|${expense.currency}`;
+          sums.set(key, (sums.get(key) || 0) + expense.amount);
+        }
+        return [[...sums].map(([key, total]) => ({ method: key.split('|')[0], currency: key.split('|')[1], total }))];
+      }
       if (/^INSERT INTO box_balances/.test(text)) {
         const [, method, currency, opening] = params;
         const previous = state.balances.get(keyOf(method, currency));
@@ -51,6 +60,19 @@ function boxDb({ payments }) {
 
 const spend = (method, amount, at, currency = 'EGP') => ({ method, currency, amount, at });
 const balanceOf = async (db, method, currency = 'EGP') => (await boxes.currentBalances(db, { tenantId: 't1' })).get(`${method}|${currency}`)?.balance;
+
+test('an expense recorded against a box comes out of that box, however the box name was typed, and only after a reset if it is after it', async () => {
+  const db = boxDb({
+    payments: [spend('فودافون كاش 7722', 1000, 1), spend('كاش', 400, 2)],
+    expenses: [spend('فودافون كاش  7722', 250, 5), spend('كاش', 100, 6, 'SAR')],
+  });
+  assert.equal(await balanceOf(db, 'فودافون كاش 7722'), 750, 'a payment of 1000 less an expense of 250 typed with a double space');
+  assert.equal(await balanceOf(db, 'خزنة الدقي - كاش'), 400, 'an expense in another currency does not touch the pound box');
+  assert.equal(await balanceOf(db, 'خزنة الدقي - كاش', 'SAR'), -100, 'it is that currency\'s box going negative, said as it is');
+  await boxes.resetBox(db, { tenantId: 't1', method: 'فودافون كاش 7722', currency: 'EGP' });
+  db.state.clock = 7;
+  assert.equal(await balanceOf(db, 'فودافون كاش 7722'), 0, 'a reset starts the box again');
+});
 
 test('a box is one box however its name was typed, and its balance counts everything until it is reset', async () => {
   const db = boxDb({ payments: [spend('فودافون كاش 7722', 500, 1), spend('فودافون كاش  7722', 250, 2), spend('فودافون كاش 7722', -100, 3), spend('كاش', 300, 4)] });

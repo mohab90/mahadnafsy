@@ -12,11 +12,11 @@ const adminConfig = read('routes', 'misc', 'admincfg.js');
 const securityUi = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'SecurityDashboardTab.tsx');
 const ipUi = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'IpWhitelistTab.tsx');
 
-test('MFA factors are owned by auth users and successful TOTP produces an MFA-authenticated JWT', () => {
+test('the sign-in lookup resolves staff, so the issued token carries the concurrent-device flag without the middleware querying staff', () => {
   // The login lookup also resolves whether the account is staff, so the issued
   // token can carry the concurrent-device flag without the auth middleware ever
   // querying `staff` itself (authTenantIsolation pins that separately).
-  assert.match(authRoute, /SELECT u\.id, u\.email, u\.name, u\.password_hash, u\.session_version, u\.totp_enabled/);
+  assert.match(authRoute, /SELECT u\.id, u\.email, u\.name, u\.password_hash, u\.session_version, u\.email_unverified/);
   assert.match(authRoute, /AS is_staff/);
   // The claim is no longer the staff row alone: an owner configured through
   // ADMIN_EMAILS/ADMIN_UIDS may have no staff row, and reading it from that
@@ -33,39 +33,22 @@ test('MFA factors are owned by auth users and successful TOTP produces an MFA-au
     /sessionId: session\.sessionId, mfaVerified: (true|false),\n\s*\}\);/,
     'a token is being signed without an isStaff claim'
   );
-  assert.match(authRoute, /UPDATE users SET totp_enabled=1 WHERE id=\? AND tenant_id=\?/);
+});
+
+test('the emailed code is what makes a session MFA-verified, and the middleware reads that claim', () => {
   assert.match(authRoute, /rotateSingleSession\(pool/);
   assert.match(authRoute, /mfaVerified: true/);
   assert.match(authMiddleware, /mfa_verified: payload\.mfa === true/);
-  assert.match(authRoute, /const \{ valid \} = await verify/);
-  assert.doesNotMatch(authRoute, /\bauthenticator\./);
+  assert.doesNotMatch(read('routes', 'auth', 'refreshAndEmailCode.js'), /\bauthenticator\.|otplib|totp/i);
 });
 
-test('installed otplib runtime generates and verifies the same RFC 6238 factor used by auth routes', async () => {
-  const { generate, generateSecret, generateURI, verify } = require('otplib');
-  const secret = generateSecret();
-  const token = await generate({ secret });
-  const result = await verify({ secret, token });
-  assert.equal(result.valid, true);
-  const previousToken = await generate({
-    secret,
-    epoch: Math.floor(Date.now() / 1000) - 30,
-  });
-  assert.equal((await verify({ secret, token: previousToken, epochTolerance: 30 })).valid, true);
-  assert.match(generateURI({ issuer: 'Mahad', label: 'uat@mahad.test', secret }), /^otpauth:\/\/totp\//);
-});
-
-test('tenant policy enforces MFA on upper administration and configured sensitive permissions', () => {
+test('tenant policy enforces the emailed code on upper administration and configured sensitive permissions', () => {
   assert.match(authMiddleware, /getMfaPolicy\(req\.tenantId\)/);
   assert.match(authMiddleware, /policyRequiresStaff\(policy, staff, requestedPermissions\)/);
-  assert.match(authMiddleware, /MFA_ENROLLMENT_REQUIRED/);
+  assert.match(authMiddleware, /MFA_REQUIRED/);
+  assert.doesNotMatch(authMiddleware, /MFA_ENROLLMENT_REQUIRED|enrolmentGraceEndsAt/);
   assert.match(adminConfig, /\/api\/admin\/security\/mfa-policy/);
   assert.match(adminConfig, /requirePermission\('manage_security'\)/);
-});
-
-test('MFA cannot be disabled while tenant policy requires it', () => {
-  assert.match(authRoute, /policy\.enabled && \(forcedAdmin \|\| policyRequiresStaff\(policy, staff\)\)/);
-  assert.match(authRoute, /code: 'MFA_POLICY_ENFORCED'/);
 });
 
 test('security UI persists MFA policy and IP rules through server APIs, never local storage', () => {

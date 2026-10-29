@@ -1,9 +1,8 @@
 'use strict';
 /**
- * Against a real MariaDB: the mandatory-2FA grace period is started and kept in
- * users.mfa_grace_started_at, a privileged account is let in during it and
- * refused after it while the enrolment routes still answer; and an account can
- * list its sign-ins and sign the other devices out.
+ * Against a real MariaDB: a privileged account whose session did not come through
+ * the code sent to its email is refused, one that did is let in; and an account
+ * can list its sign-ins and sign the other devices out.
  * Runs only with DB_* (or TEST_DB_*).
  */
 const { test, before, after } = require('node:test');
@@ -56,13 +55,13 @@ async function clean() {
   await pool.query('DELETE FROM tenants WHERE id=?', [TENANT]).catch(() => {});
 }
 
-async function signIn() {
+async function signIn(mfaVerified = false) {
   const session = await singleSession.rotateSingleSession(pool, {
     userId: 'u-sec2-acc', tenantId: TENANT, req: makeReq(''), allowConcurrent: true,
   });
   return token.signAccessToken({
     uid: 'u-sec2-acc', email: 'acc-sec2@example.test', tenantId: TENANT,
-    sessionVersion: session.sessionVersion, sessionId: session.sessionId, isStaff: true,
+    sessionVersion: session.sessionVersion, sessionId: session.sessionId, isStaff: true, mfaVerified,
   });
 }
 
@@ -84,49 +83,13 @@ before(async () => {
 });
 after(async () => { if (ENABLED) { await clean(); await pool.end(); } });
 
-test('first sign-in of a privileged account without 2FA starts its grace period and lets it in, told', { skip }, async () => {
-  const bearer = await signIn();
-  const { res, reached } = await run(makeReq(bearer), auth.requireAuth, auth.requireAdminOrStaff);
-  assert.equal(reached, true);
-  assert.ok(res.headers['x-mfa-enrolment-due'], 'told until when');
-  const [[row]] = await pool.query("SELECT mfa_grace_started_at FROM users WHERE id='u-sec2-acc'");
-  assert.ok(row.mfa_grace_started_at, 'the start is kept');
-  const [[policy]] = await pool.query("SELECT config_json FROM tenant_settings WHERE tenant_id=? AND section='security_mfa_policy'", [TENANT]);
-  assert.ok(asJson(policy.config_json).enforced_from, 'the rollout is written down once');
-
-  const status = makeRes();
-  const req = makeReq(bearer);
-  await run(req, auth.requireAuth);
-  await handlerOf('/api/auth/2fa/requirement', 'get')(req, status);
-  assert.equal(status.body.required, true);
-  assert.equal(status.body.blocked, false);
-  assert.ok(Date.parse(status.body.graceEndsAt) > Date.now());
-});
-
-test('after the grace period only the enrolment routes answer', { skip }, async () => {
-  await pool.query("UPDATE users SET mfa_grace_started_at = NOW() - INTERVAL 10 DAY WHERE id='u-sec2-acc'");
-  // The policy was enforced from just now in the first test; push the rollout back too.
-  const [[policyRow]] = await pool.query("SELECT config_json FROM tenant_settings WHERE tenant_id=? AND section='security_mfa_policy'", [TENANT]);
-  const policy = asJson(policyRow.config_json);
-  policy.enforced_from = new Date(Date.now() - 20 * 86400000).toISOString();
-  await pool.query("UPDATE tenant_settings SET config_json=? WHERE tenant_id=? AND section='security_mfa_policy'", [JSON.stringify(policy), TENANT]);
-  await require('../../lib/mfaPolicy').getMfaPolicy(TENANT, { fresh: true });
-
-  const bearer = await signIn();
-  const refused = await run(makeReq(bearer), auth.requireAuth, auth.requireAdminOrStaff);
-  assert.equal(refused.reached, false);
-  assert.equal(refused.res.statusCode, 403);
-  assert.equal(refused.res.body.code, 'MFA_ENROLLMENT_REQUIRED');
-
-  const req = makeReq(bearer);
-  assert.equal((await run(req, auth.requireAuth)).reached, true, 'a session is still a session');
-  const setup = makeRes();
-  await handlerOf('/api/auth/2fa/setup', 'post')(req, setup);
-  assert.equal(setup.statusCode, 200);
-  assert.ok(setup.body.qrDataUrl, 'the enrolment answers');
-  const status = makeRes();
-  await handlerOf('/api/auth/2fa/requirement', 'get')(req, status);
-  assert.equal(status.body.blocked, true);
+test('a privileged account whose session did not come through the emailed code is refused; one that did is let in', { skip }, async () => {
+  const unverified = await run(makeReq(await signIn(false)), auth.requireAuth, auth.requireAdminOrStaff);
+  assert.equal(unverified.reached, false);
+  assert.equal(unverified.res.statusCode, 403);
+  assert.equal(unverified.res.body.code, 'MFA_REQUIRED');
+  const verified = await run(makeReq(await signIn(true)), auth.requireAuth, auth.requireAdminOrStaff);
+  assert.equal(verified.reached, true);
 });
 
 test('an account sees its sign-ins and can sign the other devices out', { skip }, async () => {

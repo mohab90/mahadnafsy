@@ -130,7 +130,8 @@ test('only the codes are tagged otp — nothing else rides the exemption', () =>
   // may carry it.
   // lib/emailVerification.js sends the link and code that prove a sign-up's
   // email — a code like the other two, and one a customer waits for.
-  assert.deepEqual(otpBearing.sort(), ['lib/emailVerification.js', 'lib/whatsappOtp.js', 'routes/auth/passwordReset.js'],
+  // lib/loginEmailCode.js sends the code an important account signs in with.
+  assert.deepEqual(otpBearing.sort(), ['lib/emailVerification.js', 'lib/loginEmailCode.js', 'lib/whatsappOtp.js', 'routes/auth/passwordReset.js'],
     'otp is the one category that sends while everything else is stopped; '
     + 'only the sign-in code, the password-reset code and the email-verification code may carry it');
 });

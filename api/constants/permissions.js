@@ -527,10 +527,14 @@ function hasPermission(staffRecord, permission) {
 // مسئول التحصيل يظهرله واتسابي فقط انما صندوق البريد لا». Three reps' own grids
 // (Donia Wael, Rawan Tamer, Shimaa Abid on 7 Oct) had lost manage_inbox, and
 // both screens refused them. Everyone else still needs manage_inbox.
+// The Dokki desk and its manager have «واتسابي» too (29 Oct 2026: «في رسيبشن الدقي ومدير الدقي محتاج يظهرلهم تاب واتسابي»): their own number, in the
+// system, like the sales and collection reps. The shared inbox stays on manage_inbox.
+const DOKKI_WHATSAPP_ROLES = ['reception_daqqi', 'daqqi_manager'];
 function canUseChannel(staffRecord, channel) {
   const role = String(staffRecord?.role || '').toLowerCase();
   if (role === 'sales') return true;
   if (role === 'collection') return channel === 'whatsapp';
+  if (channel === 'whatsapp' && DOKKI_WHATSAPP_ROLES.includes(role)) return true;
   return hasPermission(staffRecord, 'manage_inbox');
 }
 

@@ -45,14 +45,15 @@ test('every credential mutation invalidates all older user sessions', () => {
 });
 
 test('refresh revokes the old jti durably before issuing the replacement token', () => {
-  const refresh = auth.slice(auth.indexOf("router.post('/api/auth/refresh'"), auth.indexOf('// TOTP 2FA'));
+  const refresh = auth.slice(auth.indexOf("router.post('/api/auth/refresh'"), auth.indexOf('// The code sent to the email'));
   assert.match(refresh, /await revokeToken\(oldJti, tokenExpiryMs\(req\.user\)\)/);
   assert.ok(refresh.indexOf('await revokeToken') < refresh.indexOf('signAccessToken'));
 });
 
-test('dead legacy OTP 2FA endpoint is removed and the active TOTP endpoint remains', () => {
+test('the dead legacy OTP 2FA endpoint and the authenticator endpoints are gone; the emailed code verifies', () => {
   assert.doesNotMatch(auth, /router\.post\('\/api\/auth\/verify-2fa'/);
-  assert.match(auth, /router\.post\('\/api\/auth\/2fa\/verify'/);
+  assert.doesNotMatch(auth, /router\.post\('\/api\/auth\/2fa\//);
+  assert.match(auth, /router\.post\('\/api\/auth\/login\/email-code\/verify'/);
 });
 
 test('central token issuer creates verifiable session-versioned JWTs', () => {

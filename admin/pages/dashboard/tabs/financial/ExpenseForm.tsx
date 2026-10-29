@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2, Receipt } from 'lucide-react';
 import type { BranchType, ExpenseItem } from '../../../../types';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { BRANCH_LABELS_AR, BRANCHES, normalizeBranch } from '../../../../constants/branches';
+import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+
+interface BoxOption { method: string; currency: 'EGP' | 'SAR' | 'USD'; balance: number }
 
 const branchName = (value?: string | null) => { const key = normalizeBranch(value); return key ? BRANCH_LABELS_AR[key] : ''; };
 
@@ -33,7 +36,23 @@ export function ExpenseForm({
 }: ExpenseFormProps) {
   const set = <K extends keyof typeof expenseDraft>(key: K, value: (typeof expenseDraft)[K]) =>
     setExpenseDraft(draft => ({ ...draft, [key]: value }));
-  const ready = expenseDraft.description.trim().length > 0 && expenseDraft.amount > 0 && !!expenseDraft.date;
+  // «لازم يكون اختيار الخزنة اللى هصرف منها الفلوس»: every box there is, with what is in it.
+  const [boxes, setBoxes] = useState<BoxOption[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/admin/finance/box-options', { credentials: 'include', headers: adminAuthHeaders() })
+      .then(response => (response.ok ? response.json() : []))
+      .then((rows: BoxOption[]) => { if (alive) setBoxes(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (alive) setBoxes([]); });
+    return () => { alive = false; };
+  }, []);
+  const boxKey = (box: Pick<BoxOption, 'method' | 'currency'>) => `${box.method}|${box.currency}`;
+  const chosenBox = boxes?.find(box => box.method === expenseDraft.boxMethod && box.currency === expenseDraft.currency)
+    || boxes?.find(box => box.method === expenseDraft.boxMethod);
+  // An expense recorded before boxes were asked for has none, and may be saved without one.
+  const needsBox = !editingExpenseId || !!expenseDraft.boxMethod;
+  const ready = expenseDraft.description.trim().length > 0 && expenseDraft.amount > 0 && !!expenseDraft.date
+    && (!needsBox || !!expenseDraft.boxMethod);
   const categories = expenseCategories.includes(expenseDraft.category) ? expenseCategories : [expenseDraft.category, ...expenseCategories].filter(Boolean);
 
   return (
@@ -77,6 +96,21 @@ export function ExpenseForm({
             </select>
           </label>
         </div>
+        <label className="space-y-1 text-xs font-bold text-gray-600 sm:col-span-2">الخزنة اللي هتصرف منها *
+          <select className={`${field} ${expenseDraft.boxMethod ? '' : 'border-red-300'}`} value={chosenBox ? boxKey(chosenBox) : ''}
+            onChange={event => {
+              const box = boxes?.find(option => boxKey(option) === event.target.value);
+              if (box) setExpenseDraft(draft => ({ ...draft, boxMethod: box.method, currency: box.currency }));
+            }}>
+            <option value="">{boxes === null ? 'بنحمّل الخزن…' : '— اختار الخزنة —'}</option>
+            {(boxes || []).map(box => (
+              <option key={boxKey(box)} value={boxKey(box)}>{box.method} ({box.currency}) — الرصيد {box.balance.toLocaleString('ar-EG-u-nu-latn')}</option>
+            ))}
+          </select>
+          {chosenBox && Number(expenseDraft.amount) > chosenBox.balance && (
+            <span className="block text-[11px] font-bold text-amber-700">المبلغ أكبر من رصيد الخزنة الحالي ({chosenBox.balance.toLocaleString('ar-EG-u-nu-latn')} {chosenBox.currency}).</span>
+          )}
+        </label>
         <label className="space-y-1 text-xs font-bold text-gray-600">التاريخ
           <input type="date" className={field} value={expenseDraft.date} onChange={e => set('date', e.target.value)} />
         </label>

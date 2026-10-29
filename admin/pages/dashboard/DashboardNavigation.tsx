@@ -561,6 +561,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_schedule', label: `جدول ${staffBranchLabel}`, icon: CalendarDays },
                   { key: 'daqqi_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
+                  { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'ratings', label: 'التقييمات', icon: Star },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
@@ -612,6 +613,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_schedule', label: `جدول ${staffBranchLabel}`, icon: CalendarDays },
                   { key: 'daqqi_clients', label: `عملاء ${staffBranchLabel}`, icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
+                  { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                   { group: 'branch', label: `إدارة ${staffBranchLabel}`, icon: Wallet, items: [
                     { key: 'daqqi_accounting', label: `حسابات ${staffBranchLabel}`, icon: Wallet },

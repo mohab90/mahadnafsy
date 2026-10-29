@@ -15,10 +15,11 @@ const {
   logFinancialAudit,
   logger,
 } = require('./_shared');
+const { requireAnyPermission } = require('../../middleware/auth');
 const { loadExpenseCategories, expenseCategoryLabel } = require('../../lib/expenseCategories');
 const { canonicalChannel } = require('../../lib/paymentChannels');
 const { hasPermission } = require('../../constants/permissions');
-const { GENERAL, currentBalances, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
+const { GENERAL, configuredBoxes, currencyOfName, currentBalances, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
 const { PARTNERS, listWithdrawals, voidWithdrawal, withdraw } = require('../../lib/boxWithdrawals');
 const { applyAlias, loadBoxAliases } = require('../../lib/boxAliases');
 
@@ -203,10 +204,17 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
     if (!scope.branchId) {
       const current = await currentBalances(pool, { tenantId: req.tenantId });
       const currencyOf = key => key.slice(key.lastIndexOf('|') + 1);
+      // Every box there is, at zero or not: one that has balance history, and one the settings list names.
       for (const [key, value] of current) {
         if (key.startsWith(`${GENERAL}|`)) continue;
-        if (!merged.has(key) && value.balance !== 0) merged.set(key, emptyBox(key.slice(0, key.lastIndexOf('|')), currencyOf(key)));
-        if (merged.has(key)) merged.get(key).balance = value.balance;
+        if (!merged.has(key)) merged.set(key, emptyBox(key.slice(0, key.lastIndexOf('|')), currencyOf(key)));
+        merged.get(key).balance = value.balance;
+      }
+      const shown = new Set([...merged.values()].map(box => box.method));
+      for (const name of await configuredBoxes(pool, req.tenantId)) {
+        if (shown.has(name)) continue;
+        const currency = currencyOfName(name);
+        merged.set(`${name}|${currency}`, { ...emptyBox(name, currency), balance: 0 });
       }
       const currencies = [...new Set([...merged.values()].map(box => box.currency).concat([...current.keys()].map(currencyOf)))];
       balances = {
@@ -227,6 +235,28 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
   } catch (e) {
     logger.error('[finance/boxes]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
+
+// «عند اضافه مصروف لازم يكون اختيار الخزنة اللى هصرف منها الفلوس»: the boxes an expense can be taken from — every box on the boxes screen, with its
+// balance and currency. Asked by whoever records an expense (manage_financial), who may not hold view_financial's balances screen.
+router.get('/api/admin/finance/box-options', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'manage_financial'), async (req, res) => {
+  try {
+    const current = await currentBalances(pool, { tenantId: req.tenantId });
+    const options = new Map();
+    for (const [key, value] of current) {
+      if (key.startsWith(`${GENERAL}|`)) continue;
+      const cut = key.lastIndexOf('|');
+      options.set(key, { method: key.slice(0, cut), currency: key.slice(cut + 1), balance: value.balance });
+    }
+    const named = new Set([...options.values()].map(option => option.method));
+    for (const name of await configuredBoxes(pool, req.tenantId)) {
+      if (!named.has(name)) options.set(`${name}|${currencyOfName(name)}`, { method: name, currency: currencyOfName(name), balance: 0 });
+    }
+    res.json([...options.values()].sort((a, b) => a.method.localeCompare(b.method, 'ar') || a.currency.localeCompare(b.currency)));
+  } catch (e) {
+    logger.error('[finance/box-options]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

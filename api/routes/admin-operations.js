@@ -21,6 +21,8 @@ const { addDaysToDateOnly, cairoDayStartUtc, safeDateOnly, cairoToday } = requir
 const { SYSTEM_ACTORS, departmentOf, describeLabel } = require('../lib/activityDescribe');
 const { listEnv } = require('../lib/platformAccess');
 const { loadExpenseCategories, expenseCategory, expenseCategoryLabel } = require('../lib/expenseCategories');
+const { canonicalChannel } = require('../lib/paymentChannels');
+const { applyAlias, loadBoxAliases } = require('../lib/boxAliases');
 const { advanceToInterview, convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
 const { requireRecruiting, joinUsReachSql, joinUsInReach, outOfRecruitReach } = require('../lib/branchHr');
@@ -61,6 +63,12 @@ function expenseDate(value) {
     : null;
 }
 
+// The box an expense was paid out of, named the way the boxes screen names it (lib/boxBalances.js); '' when none was given.
+async function expenseBox(db, tenantId, raw) {
+  const name = String(raw || '').trim().slice(0, 191);
+  return name ? applyAlias(canonicalChannel(name), await loadBoxAliases(db, tenantId)) : '';
+}
+
 router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
@@ -78,7 +86,7 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
     const limit = parseLimit(req.query.limit, 5000, 5000);
     const [[rows], categories] = await Promise.all([pool.query(
       `SELECT e.id, e.description, e.amount, e.currency, e.fx_rate_to_egp, e.amount_egp, e.fx_source,
-       e.category, e.date, e.receipt_url, e.note, e.staff_id, e.branch_id,
+       e.category, e.date, e.receipt_url, e.note, e.staff_id, e.branch_id, e.box_method,
        e.vat_rate, e.vat_amount, e.amount_before_vat, e.created_at, e.expense_no,
        COALESCE(e.created_by_name, st.name) AS staff_name
        FROM expenses e LEFT JOIN staff st ON st.id=e.staff_id AND st.tenant_id=e.tenant_id
@@ -92,6 +100,7 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
       categoryCode: row.category,
       date: safeDateOnly(row.date),
       receiptUrl: row.receipt_url || '',
+      boxMethod: row.box_method || '',
       branchType: branchForId(row.branch_id),
       // «رقم العملية» of a branch's expense: 1, 2, 3 … per branch (null for an online one).
       expenseNo: row.expense_no != null ? Number(row.expense_no) : null,
@@ -132,6 +141,9 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return res.status(400).json({ error: 'Expense amount must be positive' });
     if (!VALID_EXPENSE_CURRENCIES.has(currency)) return res.status(400).json({ error: 'Invalid expense currency' });
     const category = expenseCategory(e2.category, await loadExpenseCategories(tenantId));
+    // «لازم يكون اختيار الخزنة اللى هصرف منها الفلوس»: an expense with no box would leave every balance as it was.
+    const boxMethod = await expenseBox(pool, tenantId, e2.boxMethod ?? e2.box_method);
+    if (!boxMethod) return res.status(400).json({ error: 'اختار الخزنة اللي هتصرف منها المصروف', code: 'EXPENSE_BOX_REQUIRED' });
     const actorName = req.staffRecord?.name || req.user?.name || 'المدير';
     await conn.beginTransaction();
     transactionStarted = true;
@@ -142,11 +154,11 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     // (confirmed: expenses table was empty in prod). Accept either field name.
     await conn.query(
       `INSERT INTO expenses
-         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, expense_no, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, expense_no, box_method, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [id, tenantId, branchId, expDate, String(e2.description || '').trim().slice(0, 2000),
        amount, currency, category, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null, e2.note ?? e2.notes ?? null,
-       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150), expenseNo]
+       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150), expenseNo, boxMethod]
     );
     const journalId = await postExpenseJournal(
       { id, tenant_id: tenantId, branch_id: branchId, date: expDate, description: e2.description, amount, currency, category },
@@ -176,7 +188,7 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requir
     transactionStarted = true;
     // Fetch the old row (in tenant scope) so its ledger entry can be reversed.
     const [[oldExp]] = await conn.query(
-      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category, receipt_url, note, expense_no
+      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category, receipt_url, note, expense_no, box_method
        FROM expenses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       [req.params.id, tenantId]
     );
@@ -205,11 +217,12 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requir
     const expenseNo = targetBranchId === oldExp.branch_id ? oldExp.expense_no : await nextExpenseNo(conn, { tenantId, branchId: targetBranchId });
     await conn.query(
       `UPDATE expenses
-          SET description=?, amount=?, currency=?, category=?, date=?, receipt_url=?, note=?, branch_id=?, expense_no=?
+          SET description=?, amount=?, currency=?, category=?, date=?, receipt_url=?, note=?, branch_id=?, expense_no=?, box_method=?
         WHERE id=? AND tenant_id=?`,
       [String(e2.description || '').trim().slice(0, 2000), amount, currency, category,
        newDate, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null,
-       e2.note ?? e2.notes ?? oldExp.note ?? null, targetBranchId, expenseNo, req.params.id, tenantId]
+       e2.note ?? e2.notes ?? oldExp.note ?? null, targetBranchId, expenseNo,
+       (await expenseBox(conn, tenantId, e2.boxMethod ?? e2.box_method)) || oldExp.box_method || null, req.params.id, tenantId]
     );
     const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
     const journalId = await postExpenseJournal(
@@ -304,15 +317,25 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
     const section = String(req.query.section || '');
     const actor = String(req.query.actor || '').trim();
     if (actor) { where.push('COALESCE(a.actor_name, st.name, a.actor) = ?'); params.push(actor); }
+    // The page is cut from the log first and only then joined to the staff. The join's `email = actor OR id = actor`
+    // cannot use an index, and with it in the same statement as the ORDER BY the optimizer read 127,000 of the log's
+    // 250,000 rows into a temporary table to sort them (2.5 s on the lab; the page alone is 0.07 s). A search or an
+    // actor filter does need the staff's name, so those keep the single statement.
+    const joinedColumns = `COALESCE(a.actor_name, st.name) AS actor_name, COALESCE(a.department, d.name) AS department, st.role AS actor_role`;
+    const joins = `LEFT JOIN staff st ON st.tenant_id=a.tenant_id AND (st.email=a.actor OR st.id=a.actor)
+         LEFT JOIN hr_departments d ON d.id=st.department_id AND d.tenant_id=st.tenant_id`;
+    const searchesStaff = Boolean(q || actor);
     const [rows] = await pool.query(
-      `SELECT a.id, a.action, a.entity, a.entity_id, a.label, a.actor, a.at, a.details,
-              COALESCE(a.actor_name, st.name) AS actor_name, COALESCE(a.department, d.name) AS department,
-              st.role AS actor_role
-         FROM activity_logs a
-         LEFT JOIN staff st ON st.tenant_id=a.tenant_id AND (st.email=a.actor OR st.id=a.actor)
-         LEFT JOIN hr_departments d ON d.id=st.department_id AND d.tenant_id=st.tenant_id
-        WHERE ${where.join(' AND ')}
-        ORDER BY a.at DESC LIMIT ? OFFSET ?`,
+      searchesStaff
+        ? `SELECT a.id, a.action, a.entity, a.entity_id, a.label, a.actor, a.at, a.details, ${joinedColumns}
+             FROM activity_logs a
+             ${joins}
+            WHERE ${where.join(' AND ')}
+            ORDER BY a.at DESC LIMIT ? OFFSET ?`
+        : `SELECT a.id, a.action, a.entity, a.entity_id, a.label, a.actor, a.at, a.details, ${joinedColumns}
+             FROM (SELECT * FROM activity_logs a WHERE ${where.join(' AND ')} ORDER BY a.at DESC LIMIT ? OFFSET ?) a
+             ${joins}
+            ORDER BY a.at DESC`,
       // A department or a part of the system is resolved per row (old rows
       // carry neither), so those filters read a wider page and keep `limit`.
       [...params, department || section ? Math.min(limit * 6, 3000) : limit, offset]);

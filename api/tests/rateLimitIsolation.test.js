@@ -39,17 +39,17 @@ test('resource ids cannot create fresh action buckets', () => {
   );
 });
 
-test('TOTP challenges are rate-limited per pending account instead of one shared anonymous bucket', () => {
+test('Emailed-code challenges are rate-limited per pending account instead of one shared anonymous bucket', () => {
   const key = keyBy('user');
   const tokenA = jwt.sign(
-    { uid: 'user-a', purpose: 'totp_pending' },
+    { uid: 'user-a', purpose: 'login_email_code' },
     process.env.JWT_SECRET,
   );
   const tokenB = jwt.sign(
-    { uid: 'user-b', purpose: 'totp_pending' },
+    { uid: 'user-b', purpose: 'login_email_code' },
     process.env.JWT_SECRET,
   );
-  const anonymous = { user: null, body: {}, path: '/api/auth/2fa/verify' };
+  const anonymous = { user: null, body: {}, path: '/api/auth/login/email-code/verify' };
   const pendingA = { ...anonymous, body: { pendingToken: tokenA } };
   const pendingB = { ...anonymous, body: { pendingToken: tokenB } };
   assert.notEqual(key(request(pendingA)), key(request(pendingB)));

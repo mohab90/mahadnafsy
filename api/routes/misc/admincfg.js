@@ -277,15 +277,10 @@ router.put(
       ) {
         return res.status(400).json({ error: 'Invalid MFA policy roles or permissions' });
       }
-      const graceDays = req.body?.grace_days;
-      if (graceDays !== undefined && (!Number.isInteger(Number(graceDays)) || Number(graceDays) < 0 || Number(graceDays) > 30)) {
-        return res.status(400).json({ error: 'grace_days must be a whole number of days from 0 to 30' });
-      }
       const policy = await saveMfaPolicy(req.tenantId, {
         enabled: req.body?.enabled === true,
         required_roles: roles,
         required_permissions: permissions,
-        grace_days: graceDays,
       }, req.user?.uid || req.user?.email);
       await publishConfigEvent(req, 'security_mfa_policy');
       res.json({ ok: true, policy });

@@ -171,7 +171,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     blurb: 'الدخول، النسخ الاحتياطي، وحالة السيرفر.',
     tone: 'bg-slate-500',
     entries: [
-      { title: 'التحقق بخطوتين', desc: 'تفعيل 2FA لحسابات الإدارة.', href: S('security'), tab: 'system_settings', keywords: '2FA' },
+      { title: 'كود الدخول على الإيميل', desc: 'الحسابات المهمة بتدخل بكود بيوصلها على الإيميل.', href: S('security'), tab: 'system_settings', keywords: '2FA كود الدخول' },
       { title: 'لوحة الأمان وقائمة IP', desc: 'محاولات الدخول، والعناوين المسموح لها تفتح لوحة الإدارة.', href: '/dashboard/security_center/dashboard', tab: 'security_center', permission: 'view_security', links: [{ label: 'لوحة الأمان', href: '/dashboard/security_center/dashboard' }, { label: 'قائمة IP', href: '/dashboard/security_center/ip' }] },
       { title: 'النسخ الاحتياطية', desc: 'آخر نسخة احتياطية لقاعدة البيانات وتشغيل نسخة جديدة.', href: S('backups'), tab: 'system_settings', keywords: 'باك اب backup' },
       { title: 'مراقبة السيرفر', desc: 'حالة التشغيل والذاكرة وإعادة التشغيل.', href: '/dashboard/security_center/server', tab: 'security_center', permission: 'view_security' },

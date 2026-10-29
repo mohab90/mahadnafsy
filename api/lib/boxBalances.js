@@ -25,7 +25,8 @@ const PAID = "(p.status = 'paid' OR p.status IS NULL)";
 
 /**
  * What is in a box beyond its opening, by (box, currency): the paid payments merged from their raw spellings and read through the box aliases,
- * less what was withdrawn from it and plus what was transferred in (lib/boxWithdrawals.js). `since` limits all of it to what was entered after it.
+ * less what was withdrawn from it and the expenses recorded against it, and plus what was transferred in (lib/boxWithdrawals.js). `since` limits all of it
+ * to what was entered after it.
  */
 async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
   const names = aliases || await loadBoxAliases(db, tenantId);
@@ -52,6 +53,16 @@ async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
       const into = `${applyAlias(row.to_method, names)}|${row.currency}`;
       sums.set(into, round2((sums.get(into) || 0) + Number(row.total)));
     }
+  }
+  // An expense leaves the box it was recorded against (expenses.box_method); a deleted one has already given it back.
+  const [spent] = await db.query(
+    `SELECT box_method AS method, currency, SUM(amount) AS total FROM expenses
+      WHERE tenant_id = ? AND deleted_at IS NULL AND box_method IS NOT NULL AND box_method <> ''${since ? ' AND created_at > ?' : ''}
+      GROUP BY box_method, currency`,
+    since ? [tenantId, since] : [tenantId]);
+  for (const row of spent) {
+    const key = `${applyAlias(canonicalChannel(row.method), names)}|${row.currency || 'EGP'}`;
+    sums.set(key, round2((sums.get(key) || 0) - Number(row.total)));
   }
   return sums;
 }
@@ -83,6 +94,21 @@ async function currentBalances(db, { tenantId, lock = false }) {
   }
   return balances;
 }
+
+/**
+ * The boxes the institute listed in الإعدادات ← وسائل الدفع (content['finance.payment_methods']), named as the boxes screen names them. They are boxes
+ * whether or not money ever came into them: «في كذا خزنه مش ظاهره زي احمد السعودية» — the screen only knew the boxes with a payment in the last 30
+ * days or a balance, so a box at zero vanished. The list carries no currency; one with none on record is shown in the one its name says.
+ */
+async function configuredBoxes(db, tenantId) {
+  const { getTenantSetting } = require('./tenantSettings');
+  const content = await getTenantSetting('content', { tenantId, fallback: {}, db }).catch(() => ({}));
+  const names = await loadBoxAliases(db, tenantId);
+  const listed = String(content?.['finance.payment_methods'] || '').split('||').map(name => name.trim()).filter(Boolean);
+  return [...new Set(listed.map(name => applyAlias(canonicalChannel(name), names)))];
+}
+
+const currencyOfName = name => (/سعود|ريال|sar/i.test(name) ? 'SAR' : /دولار|usd/i.test(name) ? 'USD' : 'EGP');
 
 const totalOf = (balances, currency) => round2([...balances].filter(([key]) => key.endsWith(`|${currency}`)).reduce((sum, [, value]) => sum + value.balance, 0));
 
@@ -193,4 +219,4 @@ async function recentEvents(db, { tenantId, limit = 30 }) {
   }));
 }
 
-module.exports = { GENERAL, currentBalances, logEvent, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, sumsByBox, totalOf, writeBox };
+module.exports = { GENERAL, configuredBoxes, currencyOfName, currentBalances, logEvent, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, sumsByBox, totalOf, writeBox };

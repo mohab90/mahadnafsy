@@ -5,11 +5,8 @@ const { Router } = require('express');
 const {
   logger,
   bcrypt,
-  jwt,
-  uuidv4,
   pool,
   requireDb,
-  JWT_SECRET,
   signAccessToken,
   setAuthCookie,
   clearAuthCookie,
@@ -26,8 +23,6 @@ const {
   logLoginAttempt,
   FULL_ACCESS_ROLES,
   resolvePermissions,
-  getClientIp,
-  hashClientIp,
   rotateSingleSession,
   closeSingleSession,
   getSharingLock,
@@ -39,6 +34,7 @@ const {
 
 const deleteRights = require('../../lib/deleteRights');
 const { rememberKnownLogin } = require('../../lib/knownLogin');
+const { accountNeedsEmailCode, startEmailCodeStep } = require('../../lib/loginEmailCode');
 
 // The one refusal for a wrong identifier, a wrong password and an account with
 // no password yet: anything more specific says which numbers and addresses
@@ -73,7 +69,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     conn = await pool.getConnection();
     const [rows] = identifierIsEmail
       ? await conn.execute(
-          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled, u.email_unverified,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.email_unverified,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
            FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1
@@ -96,7 +92,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         const spellings = identitySpellings(rawIdentifier);
         if (!spellings.length) return [[]];
         return conn.execute(
-          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled, u.email_unverified,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.email_unverified,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
            FROM users u
@@ -167,21 +163,15 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         code: 'ACCOUNT_SHARING_LOCKED',
       });
     }
-    // ── Admin 2FA: check if this user is a staff member with TOTP enabled ──
-    if (user.totp_enabled) {
-      // Issue a short-lived "pending" token — full session not granted until TOTP verified
-      const loginIp = getClientIp(req);
-      const pendingToken = jwt.sign(
-        {
-          uid: user.id, email: user.email, tid: req.tenantId || 'tenant-default',
-          sv: Number(user.session_version), iph: hashClientIp(loginIp),
-          purpose: 'totp_pending', jti: uuidv4(),
-        },
-        JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      await logLoginAttempt({ userId: user.id, email: user.email, req, status: '2fa_pending' });
-      return res.json({ ok: false, totpRequired: true, pendingToken });
+    // ── An important account (lib/mfaPolicy.js) owes the code sent to its email before it gets a session ──
+    if (await accountNeedsEmailCode({ tenantId: req.tenantId || 'tenant-default', user })) {
+      try {
+        return res.json(await startEmailCodeStep(req, { user, tenantId: req.tenantId || 'tenant-default', via: 'password' }));
+      } catch (error) {
+        if (!error.statusCode) throw error;
+        await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: String(error.code || 'email_code').toLowerCase() });
+        return res.status(error.statusCode).json({ error: error.message, code: error.code });
+      }
     }
     // Configured administrators count as staff for the concurrent-device rule.
     // is_staff is derived purely from the `staff` table, but an owner listed in

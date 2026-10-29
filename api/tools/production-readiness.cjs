@@ -11,7 +11,7 @@ const jobQueue = require('../lib/jobQueue');
 const passwordHash = require('../lib/passwordHash');
 const errorMonitor = require('../lib/errorMonitor');
 const { getFxSnapshot } = require('../lib/finance');
-const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
+const { getMfaPolicy } = require('../lib/mfaPolicy');
 const { closeRedis, isDistributedEnabled, redisHealth } = require('../lib/rateLimitStore');
 const { resolveSecret } = require('../lib/secretResolver');
 const {
@@ -263,44 +263,12 @@ async function main() {
     check(
       'mfa-policy',
       mfaPolicies.length > 0 && mfaPolicies.every(({ policy }) => policy.enabled),
-      'MFA policy must be enabled for every active tenant',
+      'The emailed sign-in code policy must be enabled for every active tenant',
       JSON.stringify(mfaPolicies.map(({ tenantId, policy }) => ({
         tenantId,
         enabled: policy.enabled,
         requiredRoles: policy.required_roles,
       })))
-    );
-    const [staffRows] = await pool.query(
-      `SELECT s.id,s.tenant_id,s.email,s.role,s.permissions_json,
-              COALESCE(u.totp_enabled,0) AS totp_enabled
-         FROM staff s
-         LEFT JOIN users u
-           ON u.tenant_id=s.tenant_id AND LOWER(TRIM(u.email))=LOWER(TRIM(s.email))
-          AND u.is_active=1
-        WHERE s.is_active=1 AND s.deleted_at IS NULL`
-    );
-    const policyByTenant = new Map(mfaPolicies.map(({ tenantId, policy }) => [String(tenantId), policy]));
-    const mfaRequired = staffRows.filter(staff => {
-      const policy = policyByTenant.get(String(staff.tenant_id));
-      if (!policy) return false;
-      if (typeof staff.permissions_json === 'string' && staff.permissions_json.trim()) {
-        try { staff.permissionsArr = JSON.parse(staff.permissions_json); } catch { staff.permissionsArr = []; }
-      }
-      return policyRequiresStaff({ ...policy, enabled: true }, staff, policy.required_permissions);
-    });
-    const missingMfa = mfaRequired.filter(staff => !staff.totp_enabled);
-    check(
-      'mfa-enrollment',
-      mfaRequired.length > 0 && missingMfa.length === 0,
-      'Every active staff account covered by the MFA policy must be enrolled',
-      JSON.stringify({
-        required: mfaRequired.length,
-        missing: missingMfa.map(staff => ({
-          tenantId: staff.tenant_id,
-          staffId: staff.id,
-          role: staff.role,
-        })),
-      })
     );
     const fxResults = await Promise.all(tenants.map(async ({ id }) => {
       const snapshot = await getFxSnapshot(id);
@@ -327,7 +295,6 @@ async function main() {
     check('latest-integrity-migrations', false, 'Integrity migrations could not be verified', e.message);
     check('localized-catalog-prices', false, 'Localized catalog price coverage could not be verified', e.message);
     check('mfa-policy', false, 'MFA policy readiness could not be verified', e.message);
-    check('mfa-enrollment', false, 'MFA enrollment coverage could not be verified', e.message);
   }
 
   try {

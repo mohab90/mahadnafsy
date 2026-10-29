@@ -38,21 +38,7 @@ async function main() {
   if (!login.ok) throw new Error(`login -> ${login.status}`);
   const loginData = await login.json();
   let { token } = loginData;
-  if (loginData?.totpRequired) {
-    const secret = String(process.env.UAT_TOTP_SECRET || '');
-    if (secret.length < 16) throw new Error('MFA challenge received without UAT_TOTP_SECRET');
-    const { generate } = require('otplib');
-    const verification = await fetch(`${API}/api/auth/2fa/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pendingToken: loginData.pendingToken,
-        token: await generate({ secret }),
-      }),
-    });
-    if (!verification.ok) throw new Error(`2fa verify -> ${verification.status}`);
-    ({ token } = await verification.json());
-  }
+  if (loginData?.emailCodeRequired) throw new Error('the account is asked for an emailed code — the email-code step needs a mailbox, so a test environment runs with the security policy off (الأمان ← سياسة MFA)');
   if (!token) throw new Error('login returned no token');
 
   const deadline = Date.now() + DURATION_MS;

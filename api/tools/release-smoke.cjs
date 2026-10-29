@@ -50,7 +50,7 @@ async function call(path, { method = 'GET', token, body } = {}) {
 
 async function login(email) {
   const r = await call('/api/auth/login', { method: 'POST', body: { email, password: PASSWORD } });
-  if (r.json?.totpRequired) throw new Error(`${email} requires TOTP — set UAT_TOTP_SECRET or use an account without MFA`);
+  if (r.json?.emailCodeRequired) throw new Error(`${email} is asked for an emailed code — the email-code step needs a mailbox, so a test environment runs with the security policy off (الأمان ← سياسة MFA)`);
   const token = r.json?.token || (/authToken=([^;]+)/.exec(r.cookie) || [])[1];
   if (!token) throw new Error(`${email} login failed: ${r.status} ${r.text.slice(0, 120)}`);
   return decodeURIComponent(token);

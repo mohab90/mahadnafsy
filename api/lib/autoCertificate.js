@@ -55,6 +55,7 @@ const CANDIDATES_SQL = `
          (SELECT COALESCE(SUM(p.amount_egp), 0) FROM payments p
            WHERE p.subscriber_id = e.subscriber_id AND p.tenant_id = e.tenant_id
              AND p.course_id = e.course_id AND p.status = 'paid'
+             AND (p.payment_type IS NULL OR p.payment_type IN ('COURSE','BUNDLE','OTHER'))
              AND p.deleted_at IS NULL) AS paid_egp,
          -- A required quiz not passed holds the certificate, as it does for a
          -- certificate issued by hand.

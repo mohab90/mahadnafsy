@@ -18,6 +18,7 @@ const {
   verifyLoginCode,
   WA_CODE_TTL_MINUTES,
 } = require('./_shared');
+const { accountNeedsEmailCode, startEmailCodeStep } = require('../../lib/loginEmailCode');
 
 const router = Router();
 
@@ -62,7 +63,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     // employee signing in by WhatsApp fell under the one-device rule and lost
     // the panel open on their desktop (user.is_staff was always undefined here).
     const [[user]] = await pool.query(
-      `SELECT u.id, u.email, u.name,
+      `SELECT u.id, u.email, u.name, u.session_version,
               EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                       AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
          FROM users u WHERE u.id=? AND u.tenant_id=? AND u.is_active=1 LIMIT 1`,
@@ -79,6 +80,16 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
         error: `الحساب موقوف مؤقتاً (${activeLock.reason || 'مشاركة الحساب'}). حاول لاحقاً أو تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
       });
+    }
+
+    // An important account (lib/mfaPolicy.js) owes the code sent to its email as well: the number alone is not the second step for it.
+    if (await accountNeedsEmailCode({ tenantId, user })) {
+      try {
+        return res.json(await startEmailCodeStep(req, { user, tenantId, via: 'whatsapp' }));
+      } catch (error) {
+        if (!error.statusCode) throw error;
+        return res.status(error.statusCode).json({ error: error.message, code: error.code });
+      }
     }
 
     // Identical session issuance to the password path — which this comment

@@ -78,16 +78,16 @@ test('the tenant resolver takes no tenant from a token under another algorithm',
   assert.equal(extractSignedTenant(reqWith(jwt.sign(claims, SECRET, { algorithm: 'HS256' }))), 'tenant-x');
 });
 
-test('a 2FA pending token is honoured only when signed HS256', async () => {
-  const pending = { ...claims, purpose: 'totp_pending' };
+test('an emailed-code pending token is honoured only when signed HS256', async () => {
+  const pending = { ...claims, purpose: 'login_email_code' };
   assert.equal(pendingTokenIdentity(hs512(pending)), null);
   assert.equal(pendingTokenIdentity(jwt.sign(pending, SECRET, { algorithm: 'HS256' })), 'u-1');
   const out = res();
-  await handlerOf('/api/auth/2fa/verify')(reqWith('', { body: { pendingToken: hs512(pending), token: '123456' } }), out);
+  await handlerOf('/api/auth/login/email-code/verify')(reqWith('', { body: { pendingToken: hs512(pending), code: '123456' } }), out);
   assert.equal(out.statusCode, 401);
-  // Refused as an expired token — not let through to the address check behind it.
-  assert.equal(out.body.code, undefined);
-  assert.match(out.body.error, /انتهت صلاحيته/);
+  // Refused as an expired step — not let through to the code check behind it.
+  assert.equal(out.body.code, 'EMAIL_CODE_PENDING_EXPIRED');
+  assert.match(out.body.error, /انتهت مهلة/);
 });
 
 test('a password-reset token under another algorithm sets no password', async () => {

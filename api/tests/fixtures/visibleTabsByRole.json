@@ -596,7 +596,8 @@
    "leads",
    "lecturer_applications",
    "orders",
-   "ratings"
+   "ratings",
+   "whatsapp_web"
   ]
  },
  "sales_collection_manager": {
@@ -955,7 +956,8 @@
    "leads",
    "orders",
    "ratings",
-   "staff_performance"
+   "staff_performance",
+   "whatsapp_web"
   ]
  },
  "hr": {
@@ -1237,7 +1239,8 @@
    "leads",
    "lecturer_applications",
    "orders",
-   "ratings"
+   "ratings",
+   "whatsapp_web"
   ]
  },
  "reception_tagamoa": {
@@ -1306,7 +1309,8 @@
    "leads",
    "orders",
    "ratings",
-   "staff_performance"
+   "staff_performance",
+   "whatsapp_web"
   ]
  }
 }

@@ -1,5 +1,4 @@
 import type { Page } from '@playwright/test';
-import { generate } from 'otplib';
 
 // The messages admin/pages/Auth.tsx actually renders when a sign-in does not go
 // through. The previous pattern — تعذر|خطأ|فشل|invalid|failed|unauthorized —
@@ -11,7 +10,7 @@ const LOGIN_REFUSED = [
   'غير صحيحة',      // البريد الإلكتروني أو كلمة المرور غير صحيحة
   'محاولات كثيرة',  // rate limiter: 15 per account / 50 per network per 15 min
   'غير متاح',       // الخادم غير متاح حالياً
-  'منتهي الصلاحية', // رمز/كود غير صحيح أو منتهي الصلاحية
+  'منتهي الصلاحية', // كود غير صحيح أو منتهي الصلاحية
   'تعذر', 'خطأ', 'فشل',
   'invalid', 'failed', 'unauthorized',
 ];
@@ -19,15 +18,15 @@ const refusalIn = (text: string) =>
   LOGIN_REFUSED.find(needle => text.toLowerCase().includes(needle.toLowerCase()));
 
 /**
- * A privileged account that has not enrolled in two-factor yet is shown the
- * enrolment screen (admin/components/MfaEnrolmentGate.tsx) while its grace
- * period runs. «لاحقاً» lets it go on working for this tab, which is what a
- * test signing in a fresh account does. After the grace period there is no
- * «لاحقاً», and the test fails on the enrolment screen, as it should.
+ * An important account is sent a code by email after the password (api/lib/loginEmailCode.js; shared/ui/EmailCodeStep.tsx). A test cannot
+ * read a mailbox, so the environment it signs in to runs with the security policy off (الأمان ← سياسة MFA) and this stops with that
+ * message instead of waiting for a code that no test can type.
  */
-async function passTwoFactorReminder(page: Page) {
-  const later = page.getByRole('button', { name: 'لاحقاً' }).first();
-  if (await later.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)) await later.click();
+async function failOnEmailCodeStep(page: Page, email: string) {
+  const code = page.locator('input[autocomplete="one-time-code"]').first();
+  if (await code.isVisible().catch(() => false)) {
+    throw new Error(`${email} is asked for an emailed code — a test environment runs with the security policy off (الأمان ← سياسة MFA)`);
+  }
 }
 
 export async function loginAdmin(page: Page, baseUrl: string, email: string, password: string) {
@@ -47,26 +46,8 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
   await page.getByRole('button', { name: /دخول|تسجيل|login|sign/i }).first().click();
 
   const deadline = Date.now() + 75_000;
-  let mfaAttempts = 0;
   while (Date.now() < deadline) {
-    const otp = page.locator('input[placeholder="000000"]').first();
-    const invalidOtp = page.getByText(/غير صحيح|منتهي الصلاحية|invalid|expired/i).first();
-    const invalidOtpVisible = await invalidOtp.isVisible().catch(() => false);
-    if (await otp.isVisible().catch(() => false)
-      && mfaAttempts < 2
-      && (mfaAttempts === 0 || invalidOtpVisible)) {
-      const secret = String(process.env.UAT_TOTP_SECRET || '');
-      if (secret.length < 16) throw new Error(`MFA challenge received for ${email} without UAT_TOTP_SECRET`);
-      if (mfaAttempts > 0) {
-        const untilNextStep = 30_000 - (Date.now() % 30_000) + 500;
-        await page.waitForTimeout(untilNextStep);
-      }
-      await otp.fill(await generate({ secret }));
-      await page.getByRole('button', { name: /تأكيد الدخول|verify|confirm/i }).first().click();
-      mfaAttempts++;
-      await page.waitForTimeout(300);
-      if (await invalidOtp.isVisible().catch(() => false)) continue;
-    }
+    await failOnEmailCodeStep(page, email);
     const emailVisible = await page.locator('input[type="email"], input[name="email"]').first()
       .isVisible().catch(() => false);
     const bodyText = ((await page.locator('body').innerText().catch(() => '')) || '').trim();
@@ -75,10 +56,7 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
     // report success. Ask the context for the cookie instead.
     const cookies = await page.context().cookies().catch(() => []);
     const signedIn = cookies.some(c => c.name === 'authToken' && Boolean(c.value));
-    if (signedIn && !emailVisible && !await otp.isVisible().catch(() => false) && bodyText.length > 80) {
-      await passTwoFactorReminder(page);
-      return;
-    }
+    if (signedIn && !emailVisible && bodyText.length > 80) return;
     const refusal = refusalIn(bodyText);
     if (refusal) {
       throw new Error(`login refused for ${email} (matched "${refusal}"): ${bodyText.slice(0, 240)}`);
@@ -87,7 +65,6 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
   }
   // Say what was actually on screen. "dashboard did not render" on its own sent
   // every diagnosis back to guessing at the network.
-  const otpVisible = await page.locator('input[placeholder="000000"]').first().isVisible().catch(() => false);
   const emailStillVisible = await page.locator('input[type="email"], input[name="email"]').first()
     .isVisible().catch(() => false);
   const hasToken = (await page.context().cookies().catch(() => []))
@@ -95,8 +72,7 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
   const seen = ((await page.locator('body').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   throw new Error(
     `login did not complete for ${email} after 75s — url=${page.url()} authToken=${hasToken} `
-    + `loginFormVisible=${emailStillVisible} otpPromptVisible=${otpVisible} mfaAttempts=${mfaAttempts}`
-    + `${otpVisible && !process.env.UAT_TOTP_SECRET ? ' (MFA is on and UAT_TOTP_SECRET is unset)' : ''}`
+    + `loginFormVisible=${emailStillVisible}`
     + ` — screen: ${seen.slice(0, 240) || '(blank)'}`,
   );
 }

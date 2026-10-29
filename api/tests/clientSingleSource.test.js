@@ -88,16 +88,16 @@ test('signing in as staff leaves this router instead of bouncing off it', () => 
   assert.match(auth, /window\.location\.assign\(adminDashboardUrl\(\)\)/);
 });
 
-test('the 2FA panel does not claim a code was sent', () => {
-  // codeOnly, not the raw file: the comment recording this fix quotes the very
-  // string being asserted absent, and would satisfy the check on its own.
+test('the code step says where the code went, and only when the API did send one', () => {
+  // codeOnly, not the raw file: a comment quoting a string would satisfy a check for its absence on its own.
   const auth = codeOnly(read('client/pages/Auth.tsx'));
-  // TOTP: POST /api/auth/login answers totpRequired and sends nothing at all.
+  const step = codeOnly(read('shared/ui/EmailCodeStep.tsx'));
+  // POST /api/auth/login answers emailCodeRequired only after the mail was sent (lib/loginEmailCode.js startEmailCodeStep).
   const api = authRouteSource();
-  assert.match(api, /totpRequired: true, pendingToken/);
-  assert.ok(!auth.includes('تم إرسال رمز التحقق إلى'),
-    'the 2FA step tells the user to wait for a code that is never sent');
-  assert.match(auth, /هذا الحساب محمي بالتحقق الثنائي/);
+  assert.match(api, /startEmailCodeStep\(req/);
+  assert.match(auth, /result\.emailCodeRequired/);
+  assert.match(step, /الكود اللي وصلك على البريد الإلكتروني/);
+  assert.match(step, /\{hint\}/, 'the masked address is shown');
 });
 
 test('the new-password field asks the browser for the same minimum the code enforces', () => {

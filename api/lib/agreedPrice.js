@@ -48,6 +48,7 @@ async function agreedPrice(db, { tenantId, subscriberId, courseId = null, bundle
     `SELECT MAX(course_expected) AS price,
             SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) AS paid FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','pending')
+        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
         AND course_id <=> ? AND bundle_id <=> ? AND currency=?`,
     [tenantId, subscriberId, courseId || null, bundleId || null, currency]);
   const catalogue = Number(booked?.price) > 0 ? 0 : await resolveCatalogPrice(db, {

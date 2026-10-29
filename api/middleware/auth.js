@@ -29,7 +29,7 @@ const {
   resolvePermissions,
   hasPermission: _hasPermission,
 } = require('../constants/permissions');
-const { getMfaPolicy, policyRequiresStaff, enrolmentGraceEndsAt } = require('../lib/mfaPolicy');
+const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { getClientIp, hashClientIp } = require('../lib/clientContext');
 
 // Lower-cased on both sides, like PLATFORM_ADMIN_EMAILS: an owner written
@@ -56,7 +56,7 @@ async function activeIdentity(tenantId, payload) {
   // authenticated request scanned the tenant's users, and when two accounts
   // matched one each way LIMIT 1 picked either. The address is only the fallback
   // for a token whose id no longer resolves.
-  const columns = 'is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name,mfa_grace_started_at,email_unverified';
+  const columns = 'is_active,session_version,active_session_id,active_session_ip_hash,name,email_unverified';
   let user = null;
   if (payload.uid) {
     [[user]] = await pool.query(`SELECT ${columns} FROM users WHERE tenant_id=? AND id=? LIMIT 1`, [tenantId, payload.uid]);
@@ -70,11 +70,9 @@ async function activeIdentity(tenantId, payload) {
     ? {
       active: Boolean(user.is_active),
       sessionVersion: Number(user.session_version),
-      mfaEnrolled: Boolean(user.totp_enabled),
       sessionId: user.active_session_id || null,
       sessionIpHash: user.active_session_ip_hash || null,
       name: user.name || null,
-      mfaGraceStartedAt: user.mfa_grace_started_at || null,
       emailUnverified: Number(user.email_unverified) === 1,
     }
     : null;
@@ -225,9 +223,7 @@ async function optionalAuth(req, res, next) {
           jti: payload.jti,
           session_version: identity.sessionVersion,
           session_id: identity.sessionId,
-          mfa_enrolled: identity.mfaEnrolled,
           mfa_verified: payload.mfa === true,
-          mfa_grace_started_at: identity.mfaGraceStartedAt,
           email_unverified: identity.emailUnverified,
           name: identity.name,
           tenant_id: tenantId,
@@ -275,9 +271,7 @@ async function requireAuth(req, res, next) {
       exp: payload.exp,
       session_version: identity.sessionVersion,
       session_id: identity.sessionId,
-      mfa_enrolled: identity.mfaEnrolled,
       mfa_verified: payload.mfa === true,
-      mfa_grace_started_at: identity.mfaGraceStartedAt,
       email_unverified: identity.emailUnverified,
       // Carried through so a route that re-issues a token (refresh, 2FA) can
       // preserve the claim instead of silently dropping it back to false — that
@@ -462,28 +456,12 @@ async function enforceMfa(req, res, staff = req.staffRecord, requestedPermission
   try {
     const policy = await getMfaPolicy(req.tenantId);
     if (!policy.enabled || (!force && !policyRequiresStaff(policy, staff, requestedPermissions))) return true;
+    // The session of an account the policy names has to come through the code sent to its email (lib/loginEmailCode.js). One that did not —
+    // opened before the code existed, or by a door that skips it — is asked to sign in again, which now sends the code.
     if (req.user?.mfa_verified) return true;
-    const enrolled = Boolean(req.user?.mfa_enrolled);
-    let graceEndedAt = null;
-    if (!enrolled) {
-      // Not enrolled yet: let in while the account's grace period runs, and
-      // say until when, so the panel can count down. After it, only the routes
-      // behind requireAuth alone answer — /api/auth/2fa/setup and /enable among
-      // them — which is the enrolment and nothing else.
-      const ends = await enrolmentGraceEndsAt(policy, req.user, req.tenantId);
-      if (ends > Date.now()) {
-        // A handler called directly (jobs, tests) may pass a bare response.
-        if (typeof res.setHeader === 'function') res.setHeader('X-MFA-Enrolment-Due', new Date(ends).toISOString());
-        return true;
-      }
-      graceEndedAt = new Date(ends).toISOString();
-    }
     res.status(403).json({
-      error: enrolled
-        ? 'Multi-factor authentication is required for this action'
-        : 'Multi-factor authentication enrollment is required for this account',
-      code: enrolled ? 'MFA_REQUIRED' : 'MFA_ENROLLMENT_REQUIRED',
-      ...(graceEndedAt ? { graceEndedAt } : {}),
+      error: 'سجّل دخول من جديد بكود البريد الإلكتروني علشان تفتح الصفحة دي',
+      code: 'MFA_REQUIRED',
     });
     return false;
   } catch (error) {

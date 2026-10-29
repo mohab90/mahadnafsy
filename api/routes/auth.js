@@ -13,7 +13,7 @@ const router = Router();
 
 const PARTS = [
   'registration', 'staffAccounts', 'session', 'whatsappLogin',
-  'passwordReset', 'profile', 'adminCredentials', 'refreshAndTwoFactor', 'sessions',
+  'passwordReset', 'profile', 'adminCredentials', 'refreshAndEmailCode', 'sessions',
 ];
 for (const part of PARTS) router.stack.push(...require(`./auth/${part}`).stack);
 

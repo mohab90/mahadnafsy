@@ -85,14 +85,8 @@ async function login(email) {
       method: 'POST',
       body: { email, password: PASSWORD },
     });
-    if (!first?.totpRequired) return first;
-    const secret = String(process.env.UAT_TOTP_SECRET || '');
-    if (secret.length < 16) throw new Error(`MFA challenge received for ${email} without UAT_TOTP_SECRET`);
-    const { generate } = require('otplib');
-    return api('/api/auth/2fa/verify', {
-      method: 'POST',
-      body: { pendingToken: first.pendingToken, token: await generate({ secret }) },
-    });
+    if (first?.emailCodeRequired) throw new Error(`${email} is asked for an emailed code — the email-code step needs a mailbox, so a test environment runs with the security policy off (الأمان ← سياسة MFA)`);
+    return first;
   });
   const token = data?.token || lastAuthToken;
   if (!token) throw new Error(`No token for ${email}`);

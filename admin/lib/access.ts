@@ -68,6 +68,7 @@ export function can(viewer: Viewer, permission: string): boolean {
 function canUseChannel(viewer: Viewer, channel: 'inbox' | 'whatsapp'): boolean {
   if (viewer.role === 'sales') return true;
   if (viewer.role === 'collection') return channel === 'whatsapp';
+  if (channel === 'whatsapp' && (viewer.role === 'reception_daqqi' || viewer.role === 'daqqi_manager')) return true;
   return can(viewer, 'manage_inbox');
 }
 

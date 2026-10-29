@@ -35,7 +35,7 @@ export const SECTIONS = [
   { key: 'staff_roles',        label: 'أدوار الموظفين',      icon: Users,           color: 'violet',  source: 'syscfg'  },
   { key: 'countries',          label: 'الدول',               icon: MapPin,          color: 'rose',    source: 'syscfg'  },
   { key: 'currencies',         label: 'العملات',             icon: DollarSign,      color: 'yellow',  source: 'syscfg'  },
-  { key: 'security',           label: 'الأمان (2FA)',        icon: Shield,          color: 'rose',    source: 'security'},
+  { key: 'security',           label: 'الأمان (كود الإيميل)',        icon: Shield,          color: 'rose',    source: 'security'},
   { key: 'growth',             label: 'النمو والأتمتة',       icon: Rocket,          color: 'indigo',  source: 'growth'  },
   { key: 'meetings',           label: 'الربط بـ Zoom / Meet', icon: Video,         color: 'violet',  source: 'meetings' },
   { key: 'backups',            label: 'النسخ الاحتياطية',  icon: Database,        color: 'slate',   source: 'backups' },

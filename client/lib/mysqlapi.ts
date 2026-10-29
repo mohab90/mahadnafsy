@@ -375,8 +375,10 @@ export const mysqlAuth = {
     apiFetch<{
       ok: boolean;
       user?: AuthUser;
-      totpRequired?: boolean;
+      emailCodeRequired?: boolean;
       pendingToken?: string;
+      emailHint?: string;
+      resendAfterSeconds?: number;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string; ref?: string }) =>
     apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }) }, true),
@@ -413,12 +415,14 @@ export const mysqlAuth = {
     apiFetch<{
       ok: boolean; created: boolean;
       user: { uid: string; email: string; displayName: string; phone: string };
+      emailCodeRequired?: boolean; pendingToken?: string; emailHint?: string; resendAfterSeconds?: number;
     }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name, ...(ref ? { ref } : {}) }) }),
-  verify2fa: (pendingToken: string, token: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
-  // The phone is gone: one of the ten one-time codes stands in, and is burned.
-  verify2faRecovery: (pendingToken: string, recoveryCode: string) =>
-    apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
+  // The second step of an important account's sign-in: the code sent to its email (api/lib/loginEmailCode.js). The session is the httpOnly
+  // cookie the API sets; the body carries no token.
+  verifyLoginEmailCode: (pendingToken: string, code: string) =>
+    apiFetch<{ ok: boolean }>('/auth/login/email-code/verify', { method: 'POST', body: JSON.stringify({ pendingToken, code }) }),
+  resendLoginEmailCode: (pendingToken: string) =>
+    apiFetch<{ ok: boolean; resendAfterSeconds?: number }>('/auth/login/email-code/resend', { method: 'POST', body: JSON.stringify({ pendingToken }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
   refreshToken: () => apiFetch<{ ok: boolean }>('/auth/refresh', { method: 'POST', body: '{}' }, true),
 };

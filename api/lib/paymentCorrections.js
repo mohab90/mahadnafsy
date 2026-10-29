@@ -34,7 +34,7 @@ const { dateOnlyInTimeZone } = require('./dates');
 const { clawBackPaidCommission, rejectRetentionBonus, revokeAccessWithoutOtherGrant } = require('./refunds');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('./paymentEntitlementAccess');
 const { grantCourseEntitlement } = require('./entitlements');
-const { agreedPrice } = require('./agreedPrice');
+const { agreedPrice, isItemPaymentType } = require('./agreedPrice');
 
 const CORRECTING_ROLES = new Set(['admin', 'manager']);
 
@@ -61,12 +61,13 @@ const RECOMPUTABLE_SOURCES = new Set([
  * that guard does not hold the old access in place.
  */
 async function recomputeItemAccess(conn, { tenantId, pay, actor }) {
-  if (!pay.subscriber_id || (!pay.course_id && !pay.bundle_id)) return;
+  if (!pay.subscriber_id || (!pay.course_id && !pay.bundle_id) || !isItemPaymentType(pay.payment_type)) return;
   const courseId = pay.course_id || null;
   const bundleId = pay.bundle_id || null;
   const [[latest]] = await conn.query(
     `SELECT id, amount, currency, course_expected FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','confirmed') AND amount > 0
+        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
         AND course_id <=> ? AND bundle_id <=> ?
       ORDER BY date DESC, created_at DESC LIMIT 1`,
     [tenantId, pay.subscriber_id, courseId, bundleId]);
@@ -153,7 +154,8 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
   // a payment that no longer exists, and nothing else could use the money.
   await require('./incomingTransfers').releaseTransfer(conn, { tenantId, paymentId });
 
-  if (wasPaid) {
+  // A certificate, carnet, book or consultation names a course without being its money: taking it back leaves the course as it is.
+  if (wasPaid && isItemPaymentType(pay.payment_type)) {
     // After the row is archived, so it no longer counts as the course's grant.
     await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
     // And when other payments are left, the access is what they pay for.
@@ -162,6 +164,7 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
     if (itemId) {
       const [[other]] = await conn.query(
         `SELECT id FROM payments WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','confirmed')
+            AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
             AND (course_id=? OR bundle_id=?) LIMIT 1`, [tenantId, pay.subscriber_id, itemId, itemId]);
       if (!other) {
         // The booking bonuses were for booking this item; with no payment left, there is no booking.

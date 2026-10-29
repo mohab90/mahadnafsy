@@ -44,22 +44,6 @@ export default function StaffSettingsPanel({
       setSaveMsg(`❌ ${err instanceof Error ? err.message : 'فشل تعيين كلمة المرور'}`);
     }
   };
-  // Two steps on purpose: clearing someone's second factor is the one thing on
-  // this card that weakens their account, so it asks before it does it.
-  const [confirmReset2fa, setConfirmReset2fa] = useState(false);
-  const [resetting2fa, setResetting2fa] = useState(false);
-  const handleReset2fa = async () => {
-    setResetting2fa(true);
-    try {
-      const result = await mysqlAuth.resetStaff2fa(staff.id);
-      setSaveMsg(`✅ ${result.message || 'اتشال التحقق الثنائي'}`);
-      setConfirmReset2fa(false);
-    } catch (err: unknown) {
-      setSaveMsg(`❌ ${err instanceof Error ? err.message : 'معرفناش نشيل التحقق الثنائي'}`);
-    } finally {
-      setResetting2fa(false);
-    }
-  };
   const [draft, setDraft] = useState<StaffMember | null>(null);
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -313,35 +297,6 @@ export default function StaffSettingsPanel({
                     </button>
                   )}
                 </div>
-                {/* Owner only (the API answers 403 to anyone else): for an
-                    employee who lost the phone with the authenticator and has
-                    no recovery code left. Not on your own record — yours is
-                    switched off from the settings with your own code. */}
-                {staff.email && currentStaff?.id !== staff.id && (
-                  confirmReset2fa ? (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2">
-                      <p className="text-xs text-red-800 font-bold">
-                        متأكد؟ التحقق الثنائي وأكواد الاسترجاع بتوع {staff.name || staff.email} هيتشالوا، وهيخرج من كل الأجهزة.
-                        يدخل بكلمة المرور بس ويفعّله تاني.
-                      </p>
-                      <div className="flex gap-2">
-                        <button type="button" disabled={resetting2fa} onClick={() => void handleReset2fa()}
-                          className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition disabled:opacity-50">
-                          {resetting2fa ? 'جارٍ...' : 'أيوه، شيله'}
-                        </button>
-                        <button type="button" disabled={resetting2fa} onClick={() => setConfirmReset2fa(false)}
-                          className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50 transition">
-                          لا، رجوع
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => setConfirmReset2fa(true)}
-                      className="px-4 py-2.5 rounded-xl border border-red-200 text-red-700 text-sm font-bold hover:bg-red-50 transition whitespace-nowrap">
-                      إلغاء التحقق الثنائي للموظف
-                    </button>
-                  )
-                )}
               </div>
             )}
           </div>

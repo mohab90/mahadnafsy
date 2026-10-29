@@ -18,10 +18,10 @@ test('client and admin registration wait for the real auth API before reporting 
   }
 });
 
-test('client and admin TOTP forms verify the pending session before refreshing auth', () => {
+test('client and admin code forms verify the pending session before refreshing auth', () => {
   for (const relativePath of ['client/pages/Auth.tsx', 'admin/pages/Auth.tsx']) {
     const source = read(relativePath);
-    assert.match(source, /await mysqlAuth\.verify2fa\(twoFaTempToken,\s*twoFaCode\)/);
+    assert.match(source, /await mysqlAuth\.verifyLoginEmailCode\(codeStep\.pendingToken,\s*code\)/);
     // The session is the httpOnly cookie the API sets on that call, so the form
     // has nothing to stash and only needs to re-read who it is now signed in as.
     //
@@ -30,12 +30,12 @@ test('client and admin TOTP forms verify the pending session before refreshing a
     // keeping a copy in localStorage is exactly what an httpOnly cookie exists to
     // prevent, since any injected script can read it. The assertion outlived the
     // behaviour it described and pinned the insecure version as the requirement.
-    assert.match(source, /verify2fa\([\s\S]{0,400}?refreshAuth\(\)/);
+    assert.match(source, /verifyLoginEmailCode\([\s\S]{0,400}?refreshAuth\(\)/);
     assert.doesNotMatch(source, /localStorage\.setItem\(\s*'mahad-token'/,
       'the session token must never be copied out of the httpOnly cookie');
   }
   for (const relativePath of ['client/lib/mysqlapi.ts', 'admin/lib/mysqlapi.ts']) {
-    assert.match(read(relativePath), /\/auth\/2fa\/verify/);
+    assert.match(read(relativePath), /\/auth\/login\/email-code\/verify/);
   }
 });
 

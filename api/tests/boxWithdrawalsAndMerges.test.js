@@ -43,6 +43,7 @@ function world({ payments = [], chart = [] } = {}) {
         }
         return [[...sums].map(([k, total]) => ({ method: k.split('|')[0], currency: k.split('|')[1], total }))];
       }
+      if (/^SELECT box_method AS method, currency, SUM\(amount\) AS total FROM expenses/.test(text)) return [[]];
       if (/^SELECT method, to_method, currency, kind, SUM\(amount\) AS total FROM box_withdrawals/.test(text)) {
         const since = /created_at > \?/.test(text) ? params[1] : null;
         const groups = new Map();

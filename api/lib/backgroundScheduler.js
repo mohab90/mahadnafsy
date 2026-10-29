@@ -78,12 +78,6 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(run, 60 * 60 * 1000);
   }, 5 * 60 * 1000);
 
-  // Once per boot, a minute in: authenticator secrets still stored in plain
-  // text are sealed (lib/totpSecretSweep.js) instead of waiting for each
-  // owner's next sign-in. Under a lock so two processes booting together do
-  // not both sweep; idempotent, so every later boot finds nothing to do.
-  later(lockedJob('totp_secret_seal', () => require('./totpSecretSweep').runTotpSecretSweep({ pool, logger })), 60 * 1000);
-
   later(() => {
     const sync = lockedJob('sheets_sync', () => syncAllConfiguredSheets(undefined, { autoOnly: true })
       .then(result => {

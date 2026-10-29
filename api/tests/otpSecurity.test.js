@@ -47,11 +47,11 @@ test('production refuses a missing or reused OTP HMAC secret', () => {
   assert.equal(criticalProductionPolicy({ ...base, OTP_HMAC_SECRET: base.JWT_SECRET }).ok, false);
 });
 
-test('browser MFA retries safely across a TOTP boundary and avoids parallel session invalidation', () => {
+test('the browser login helper stops at the emailed-code step instead of waiting for a code, and runs one session at a time', () => {
   const helper = fs.readFileSync(path.join(__dirname, '..', '..', 'e2e', 'helpers', 'adminLogin.ts'), 'utf8');
   const config = fs.readFileSync(path.join(__dirname, '..', '..', 'e2e', 'playwright.config.ts'), 'utf8');
-  assert.match(helper, /mfaAttempts < 2/);
-  assert.match(helper, /30_000 - \(Date\.now\(\) % 30_000\) \+ 500/);
-  assert.match(helper, /غير صحيح\|منتهي الصلاحية\|invalid\|expired/);
+  assert.match(helper, /input\[autocomplete="one-time-code"\]/);
+  assert.match(helper, /is asked for an emailed code/);
+  assert.doesNotMatch(helper, /otplib|UAT_TOTP_SECRET/);
   assert.match(config, /workers:\s*1/);
 });

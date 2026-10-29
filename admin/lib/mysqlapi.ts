@@ -97,6 +97,21 @@ function sessionIsOver(path: string): void {
 }
 
 /**
+ * A session an important account holds without having come through the emailed code (api/middleware/auth.js enforceMfa answers 403
+ * MFA_REQUIRED): opened before the code existed, or by a door that skips it. The cookie is httpOnly, so it is ended by the API, and the
+ * next sign-in sends the code.
+ */
+function codeSessionIsOver(): void {
+  if (endingSession || typeof window === 'undefined') return;
+  if (window.location.pathname.startsWith('/auth')) return;
+  endingSession = true;
+  try { localStorage.removeItem('mahad-token'); } catch { /* private mode */ }
+  fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+    .catch(() => undefined)
+    .finally(() => window.location.assign('/auth'));
+}
+
+/**
  * Walk a paginated admin list endpoint to the end, overlapping the requests.
  *
  * These lists were fetched strictly one page at a time: each round trip had to
@@ -184,7 +199,11 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
     if (res.status === 401) sessionIsOver(path);
-    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      if (res.status === 403 && b.code === 'MFA_REQUIRED') codeSessionIsOver();
+      throw new Error(b.error || `HTTP ${res.status}`);
+    }
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
@@ -1324,15 +1343,6 @@ export const mysqlPaymob = {
 };
 
 // ── Custom Auth ───────────────────────────────────────────────────────────────
-export interface MfaRequirement {
-  required: boolean;
-  enrolled: boolean;
-  verified: boolean;
-  graceEndsAt: string | null;
-  blocked: boolean;
-  graceDays: number | null;
-}
-
 export interface ActiveSession {
   id: string;
   current: boolean;
@@ -1347,8 +1357,10 @@ export const mysqlAuth = {
     apiFetch<{
       ok: boolean;
       user?: AuthUser;
-      totpRequired?: boolean;
+      emailCodeRequired?: boolean;
       pendingToken?: string;
+      emailHint?: string;
+      resendAfterSeconds?: number;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string }) =>
     apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
@@ -1367,37 +1379,17 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
-  // No `token` in the body — /auth/2fa/verify answers `{ ok: true }` and the
-  // session is the httpOnly cookie it sets. Declaring one invited `result.token`,
-  // which type-checks and is undefined at runtime.
-  verify2fa: (pendingToken: string, token: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
-  // The phone is gone: one of the ten one-time codes stands in, and is burned.
-  verify2faRecovery: (pendingToken: string, recoveryCode: string) =>
-    apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
-  get2faStatus: () =>
-    apiFetch<{ enabled: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/status'),
-  // Whether the tenant's policy requires 2FA of this account and, until it
-  // enrols, when its grace period ends (components/MfaEnrolmentGate.tsx).
-  get2faRequirement: () =>
-    apiFetch<MfaRequirement>('/auth/2fa/requirement'),
+  // The second step of an important account's sign-in: the code sent to its email (api/lib/loginEmailCode.js). The session is the httpOnly
+  // cookie the API sets; the body carries no token.
+  verifyLoginEmailCode: (pendingToken: string, code: string) =>
+    apiFetch<{ ok: boolean }>('/auth/login/email-code/verify', { method: 'POST', body: JSON.stringify({ pendingToken, code }) }),
+  resendLoginEmailCode: (pendingToken: string) =>
+    apiFetch<{ ok: boolean; resendAfterSeconds?: number }>('/auth/login/email-code/resend', { method: 'POST', body: JSON.stringify({ pendingToken }) }),
   // Where this account is signed in, and signing the other devices out.
   listSessions: () =>
     apiFetch<{ sessions: ActiveSession[] }>('/auth/sessions'),
   logoutOtherSessions: () =>
     apiFetch<{ ok: boolean; signedOut: number }>('/auth/sessions/logout-others', { method: 'POST', body: JSON.stringify({}) }),
-  setup2fa: () =>
-    apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
-  // recoveryCodes come back once, here, and are never shown again.
-  enable2fa: (token: string) =>
-    apiFetch<{ ok: boolean; recoveryCodes?: string[] }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
-  regenerateRecoveryCodes: (token: string) =>
-    apiFetch<{ ok: boolean; recoveryCodes: string[] }>('/auth/2fa/recovery-codes', { method: 'POST', body: JSON.stringify({ token }) }),
-  // Owner only: clears an employee's 2FA and recovery codes, ends their sessions.
-  resetStaff2fa: (staffId: string) =>
-    apiFetch<{ ok: boolean; message?: string }>(`/admin/staff/${encodeURIComponent(staffId)}/reset-2fa`, { method: 'POST', body: JSON.stringify({}) }, true),
-  disable2fa: (token?: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
 };
 

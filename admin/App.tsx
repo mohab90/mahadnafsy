@@ -7,7 +7,6 @@ import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { mysqlClient } from './lib/mysqlapi';
-import { MfaEnrolmentGate } from './components/MfaEnrolmentGate';
 import { LECTURER_ROLES } from './constants/permissions';
 
 // ── Lazily-loaded admin pages ────────────────────────────────────────────────
@@ -87,9 +86,8 @@ const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [authGateKey, isAdmin]);
 
   if (allowed === null) return <PageSpinner />;
-  // A privileged account without 2FA is sent to enrol first (api/lib/mfaPolicy.js).
   return allowed
-    ? <MfaEnrolmentGate>{children}</MfaEnrolmentGate>
+    ? <>{children}</>
     : <Suspense fallback={<PageSpinner />}><Auth /></Suspense>;
 };
 

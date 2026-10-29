@@ -891,6 +891,8 @@ export interface ExpenseItem {
   currency: Currency;
   date: string;
   receiptUrl?: string;
+  /** The box (خزنة) the money left — chosen when the expense is recorded. */
+  boxMethod?: string;
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
   staffName?: string | null; // «القائم بالعملية» — who entered it

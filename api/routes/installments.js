@@ -179,6 +179,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     const [[agreed]] = await conn.query(
       `SELECT MAX(course_expected) AS expected FROM payments
         WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
+          AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
           AND course_id <=> ? AND bundle_id <=> ? AND course_expected > 0`,
       [req.tenantId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null]
     );

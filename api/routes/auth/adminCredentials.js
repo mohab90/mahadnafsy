@@ -13,10 +13,7 @@ const {
   requireAdminOrOnlineManager,
   invalidateIdentity,
   claimWhatsAppIdentity,
-  isInstituteOwner,
 } = require('./_shared');
-const { clearRecoveryCodes } = require('../../lib/twoFactor');
-const { writeAuditEvent } = require('../../lib/auditTrail');
 const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../lib/staffEmailGuard');
 
 // The logins a customer can hold; anything else (admin, staff, instructor…) is not changed here.
@@ -48,74 +45,6 @@ router.post('/api/admin/force-reset-password', requireAuth, requireSuperAdmin, a
   } catch (err) {
     logger.error('[admin/force-reset-password]', err);
     res.status(500).json({ error: 'Reset failed' });
-  } finally { conn.release(); }
-});
-
-// POST /api/admin/staff/:id/reset-2fa — the way back for an employee who lost
-// the phone with their authenticator on it and has no recovery code left.
-// Before this, only HR offboarding them ever cleared it. Super-admin only, like
-// every other change to someone else's sign-in: it removes a factor from an
-// account. It clears the secret and the recovery codes, ends every session the
-// account has (session_version), and is written to the audit trail. They sign
-// in with their password next, and a policy that requires 2FA asks them to
-// enrol again.
-router.post('/api/admin/staff/:id/reset-2fa', requireAuth, requireSuperAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    const [[staff]] = await conn.query(
-      'SELECT id, name, email FROM staff WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
-      [req.params.id, req.tenantId]
-    );
-    if (!staff) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'الموظف مش موجود' });
-    }
-    const email = String(staff.email || '').toLowerCase().trim();
-    // Your own is switched off from «الأمان» with your own code. Allowing it here
-    // would let a stolen session strip the factor that was meant to stop it.
-    if (email && email === String(req.user?.email || '').toLowerCase().trim()) {
-      await conn.rollback();
-      return res.status(409).json({ error: 'التحقق الثنائي بتاعك بيتشال من «الإعدادات ← الأمان» بالكود بتاعك', code: 'OWN_ACCOUNT' });
-    }
-    const [users] = email ? await conn.query(
-      'SELECT id, email, totp_enabled FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? FOR UPDATE',
-      [req.tenantId, email]
-    ) : [[]];
-    // A manager is a super admin too, but the owner's own factor is the owner's.
-    const targetIsOwner = users.some(user => isInstituteOwner({ email: user.email, uid: user.id, tenantId: req.tenantId }));
-    const callerIsOwner = isInstituteOwner({ email: req.user?.email, uid: req.user?.uid, tenantId: req.tenantId });
-    if (targetIsOwner && !callerIsOwner) {
-      await conn.rollback();
-      return res.status(403).json({ error: 'التحقق الثنائي بتاع صاحب المعهد ميتشالش غير منه', code: 'OWNER_ONLY' });
-    }
-    await conn.query(
-      'UPDATE staff SET totp_enabled=0, totp_secret=NULL WHERE id=? AND tenant_id=?',
-      [staff.id, req.tenantId]
-    );
-    const userIds = users.map(user => user.id);
-    if (userIds.length) {
-      await conn.query(
-        `UPDATE users SET totp_enabled=0, totp_secret=NULL, session_version=session_version+1,
-          active_session_id=NULL, active_session_ip_hash=NULL,
-          active_session_started_at=NULL, active_session_last_seen_at=NULL
-         WHERE tenant_id=? AND id IN (?)`,
-        [req.tenantId, userIds]
-      );
-      await clearRecoveryCodes(conn, { tenantId: req.tenantId, userIds });
-    }
-    // In the same transaction: a reset nobody can account for is not one.
-    await writeAuditEvent({
-      req, db: conn, action: 'auth.mfa.reset_by_owner', entityType: 'staff', entityId: staff.id, severity: 'warning',
-      metadata: { staff_name: staff.name, had_2fa: users.some(user => Number(user.totp_enabled) === 1), accounts: userIds.length },
-    });
-    await conn.commit();
-    invalidateIdentity(req.tenantId, '', email);
-    res.json({ ok: true, message: 'اتشال التحقق الثنائي — الموظف يدخل بكلمة المرور ويفعّله تاني' });
-  } catch (err) {
-    await conn.rollback().catch(() => {});
-    logger.error('[admin/reset-2fa]', err);
-    res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 

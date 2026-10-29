@@ -23,6 +23,7 @@ const { logLeadEvent } = require('./crm');
 const { revokeCourseEntitlement } = require('./entitlements');
 const { revokeCertificate } = require('./certificateLifecycle');
 const { dateOnlyInTimeZone } = require('./dates');
+const { isItemPaymentType } = require('./agreedPrice');
 const { ensureInvoiceForPayment, issueFinancialDocument } = require('./financialDocuments');
 
 // Money going back as a row of its own, negative, out of the box it leaves
@@ -185,11 +186,12 @@ async function rejectRetentionBonus(conn, { tenantId, paymentId }) {
 // (lib/paymentCorrections.js).
 async function cancelBookingBonusesWithoutOtherPayment(conn, { tenantId, pay }) {
   const itemId = pay.course_id || pay.bundle_id;
-  if (!itemId || !pay.subscriber_id) return;
+  if (!itemId || !pay.subscriber_id || !isItemPaymentType(pay.payment_type)) return;
   const itemColumn = pay.course_id ? 'course_id' : 'bundle_id';
   const [[left]] = await conn.query(
     `SELECT COALESCE(SUM(amount), 0) AS net FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','confirmed')
+        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
         AND ${itemColumn}=?`,
     [tenantId, pay.subscriber_id, itemId]);
   if (Number(left?.net) > 0.01) return;
@@ -203,8 +205,11 @@ async function cancelBookingBonusesWithoutOtherPayment(conn, { tenantId, pay }) 
     [tenantId, `booking:${pay.subscriber_id}:${itemId}`]);
 }
 
+// Only the money of the course or track itself holds it open or closes it. A certificate, carnet, book or consultation names the client's course
+// as well («الكورس المرتبط») and is not its money: a certificate instalment taken back — voided, corrected, refunded — used to close the course
+// and revoke the certificate already issued on it, and one still standing used to keep a refunded course open.
 async function revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor }) {
-  if (!pay.course_id && !pay.bundle_id) return;
+  if ((!pay.course_id && !pay.bundle_id) || !isItemPaymentType(pay.payment_type)) return;
   let courseIds = pay.course_id ? [pay.course_id] : [];
   if (pay.bundle_id) {
     const [rows] = await conn.query(
@@ -220,6 +225,7 @@ async function revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor }) {
       `SELECT p.id FROM payments p
        WHERE p.tenant_id=? AND p.subscriber_id=? AND p.id<>?
          AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount > 0
+         AND (p.payment_type IS NULL OR p.payment_type IN ('COURSE','BUNDLE','OTHER'))
          AND (p.course_id=? OR EXISTS (
            SELECT 1 FROM bundle_courses bc
             WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=?

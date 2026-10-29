@@ -318,7 +318,7 @@ router.put('/api/admin/hr/offboarding/:id', requireAuth, requireAdminOrStaff, re
     );
     await conn.query(
       `UPDATE staff
-          SET is_active=0,totp_enabled=0,totp_secret=NULL,
+          SET is_active=0,
               termination_date=COALESCE(termination_date,${sqlCairoToday()})
         WHERE id=? AND tenant_id=?`,
       [row.staff_id, req.tenantId]
@@ -332,9 +332,6 @@ router.put('/api/admin/hr/offboarding/:id', requireAuth, requireAdminOrStaff, re
           WHERE tenant_id=? AND LOWER(TRIM(email))=?`,
         [req.tenantId, String(row.email || '').toLowerCase().trim()]
       );
-      // The 2FA recovery codes go with the factor: kept, they would let the
-      // account past its second step again the day it was ever reactivated.
-      await require('../../lib/twoFactor').clearRecoveryCodes(conn, { tenantId: req.tenantId, userIds: users.map(user => user.id) });
     }
     await conn.query(
       `UPDATE therapists

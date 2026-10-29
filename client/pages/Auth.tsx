@@ -6,6 +6,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { adminDashboardUrl } from '../lib/adminDashboard';
 import { useSeo } from '../lib/useSeo';
 import { trackCompleteRegistration } from '../lib/tracking';
+import { EmailCodeStep } from '../../shared/ui/EmailCodeStep';
 
 // The referral code a visitor arrived with (/auth?ref=CODE). Kept for the visit,
 // so wandering off to read a course page and coming back to sign up through
@@ -52,15 +53,8 @@ const Auth: React.FC = () => {
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
-  // 2FA state (admin login)
-  const [twoFaStep, setTwoFaStep] = useState(false);
-  const [twoFaCode, setTwoFaCode] = useState('');
-  const [twoFaTempToken, setTwoFaTempToken] = useState('');
-  const [twoFaEmail, setTwoFaEmail] = useState('');
-  // «استخدم كود استرجاع»: the phone with the authenticator is not at hand, so
-  // one of the one-time codes shown when 2FA was switched on stands in — the
-  // same door the admin login has (admin/pages/Auth.tsx).
-  const [twoFaRecovery, setTwoFaRecovery] = useState(false);
+  // The emailed sign-in code (api/lib/loginEmailCode.js): set once the password (or the WhatsApp code) has been accepted for an important account.
+  const [codeStep, setCodeStep] = useState<{ pendingToken: string; hint: string; resendAfterSeconds: number } | null>(null);
     const [fullName, setFullName] = useState('');
         const [phone, setPhone] = useState('');
         const [country, setCountry] = useState('مصر');
@@ -152,6 +146,10 @@ const Auth: React.FC = () => {
             // nothing to stash here. `created` is still read from the body to
             // greet a brand-new customer differently from a returning one.
             const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined, referralCode || undefined);
+            if (result.emailCodeRequired && result.pendingToken) {
+                setCodeStep({ pendingToken: result.pendingToken, hint: result.emailHint || '', resendAfterSeconds: result.resendAfterSeconds ?? 45 });
+                return;
+            }
             setNotice({
                 type: 'success',
                 text: result.created ? 'أهلاً بك! تم إنشاء حسابك.' : 'تم تسجيل الدخول.',
@@ -213,26 +211,18 @@ const Auth: React.FC = () => {
         }
     };
 
-    const handleVerify2fa = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        if (twoFaRecovery ? twoFaCode.replace(/[^A-Za-z0-9]/g, '').length !== 12 : twoFaCode.length !== 6) return;
-        setLoading(true);
-        setNotice(null);
-        try {
-            if (!twoFaTempToken) throw new Error('Missing 2FA session');
-            if (twoFaRecovery) await mysqlAuth.verify2faRecovery(twoFaTempToken, twoFaCode);
-            else await mysqlAuth.verify2fa(twoFaTempToken, twoFaCode);
-            setTwoFaStep(false);
-            setTwoFaCode('');
-            setTwoFaTempToken('');
-            setTwoFaRecovery(false);
-            refreshAuth();
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : '';
-            setNotice({ type: 'error', text: twoFaRecovery ? (msg || 'كود الاسترجاع غير صحيح أو اتستخدم قبل كده.') : 'الرمز غير صحيح أو منتهي الصلاحية.' });
-        } finally {
-            setLoading(false);
-        }
+    const finishCodeStep = async (code: string) => {
+        if (!codeStep) return;
+        await mysqlAuth.verifyLoginEmailCode(codeStep.pendingToken, code);
+        // The session lives in the httpOnly cookie the API just set. Nothing to stash here.
+        setCodeStep(null);
+        refreshAuth();
+    };
+
+    const resendLoginCode = async () => {
+        if (!codeStep) return 45;
+        const result = await mysqlAuth.resendLoginEmailCode(codeStep.pendingToken);
+        return result.resendAfterSeconds ?? 45;
     };
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -268,11 +258,9 @@ const Auth: React.FC = () => {
         try {
             if (isLogin) {
                 const result = await mysqlAuth.login(email.trim(), password);
-                if (result.totpRequired) {
-                    if (!result.pendingToken) throw new Error('Missing 2FA session');
-                    setTwoFaTempToken(result.pendingToken);
-                    setTwoFaEmail(email.trim());
-                    setTwoFaStep(true);
+                if (result.emailCodeRequired) {
+                    if (!result.pendingToken) throw new Error('Missing sign-in session');
+                    setCodeStep({ pendingToken: result.pendingToken, hint: result.emailHint || '', resendAfterSeconds: result.resendAfterSeconds ?? 45 });
                     return;
                 }
                 setNotice({ type: 'success', text: 'تم تسجيل الدخول بنجاح.' });
@@ -358,77 +346,20 @@ const Auth: React.FC = () => {
               ن
            </div>
            <h2 className="text-2xl font-black text-ink sm:text-[28px]">
-             {twoFaStep ? 'التحقق الثنائي' : forgotMode ? 'استعادة كلمة المرور' : isLogin ? 'تسجيل الدخول إلى حسابك' : 'إنشاء حساب جديد'}
+             {codeStep ? 'كود الدخول' : forgotMode ? 'استعادة كلمة المرور' : isLogin ? 'تسجيل الدخول إلى حسابك' : 'إنشاء حساب جديد'}
            </h2>
            <p className="mt-2 text-sm text-muted-body">مرحباً بك في مجتمع معهد الدراسات النفسية</p>
         </div>
 
-        {/* ── 2FA step (admin login) ── */}
-        {twoFaStep ? (
-          <form className="space-y-4 animate-fade-in" onSubmit={handleVerify2fa}>
-            <div className="rounded-2xl bg-paper p-4 text-center ring-1 ring-line">
-              <div className="text-3xl mb-2">🔐</div>
-              {/* This said «تم إرسال رمز التحقق إلى {email}» — nothing is sent.
-                  The second line, telling them to open their authenticator, was
-                  right; the headline above it had people waiting for an email
-                  that was never going to arrive. */}
-              <p className="text-sm font-black text-ink">{twoFaRecovery ? 'أدخل كود من أكواد الاسترجاع' : 'هذا الحساب محمي بالتحقق الثنائي'}</p>
-              <p className="mt-1 font-mono text-sm text-primary-700">{twoFaEmail}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted">
-                {twoFaRecovery
-                  ? 'الأكواد اللي ظهرتلك لما فعّلت التحقق الثنائي — كل كود بيشتغل مرة واحدة بس'
-                  : 'افتح تطبيق المصادقة (Google Authenticator أو ما شابه) وأدخل الرمز المعروض الآن'}
-              </p>
-            </div>
-            <div>
-              {twoFaRecovery ? (
-                <>
-                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">كود الاسترجاع</label>
-                  <input
-                    key="recovery"
-                    type="text"
-                    dir="ltr"
-                    value={twoFaCode}
-                    onChange={e => setTwoFaCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 14))}
-                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-center font-mono text-xl tracking-wider"
-                    placeholder="XXXX-XXXX-XXXX"
-                    autoComplete="off"
-                    autoFocus
-                    required
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">رمز التحقق (6 أرقام)</label>
-                  <input
-                    key="totp"
-                    type="text"
-                    value={twoFaCode}
-                    onChange={e => setTwoFaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-center font-mono text-2xl tracking-widest"
-                    placeholder="000000"
-                    maxLength={6}
-                    autoFocus
-                    required
-                  />
-                </>
-              )}
-              <button
-                type="button"
-                onClick={() => { setTwoFaRecovery(!twoFaRecovery); setTwoFaCode(''); setNotice(null); }}
-                className="mt-2 min-h-[36px] text-xs font-bold text-primary-700 underline underline-offset-4 hover:text-primary-800"
-              >
-                {twoFaRecovery ? 'استخدم رمز التطبيق' : 'استخدم كود استرجاع'}
-              </button>
-            </div>
-            {notice && (
-              <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
-            )}
-            <button type="submit" disabled={loading || (twoFaRecovery ? twoFaCode.replace(/[^A-Z0-9]/g, '').length !== 12 : twoFaCode.length !== 6)} className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60">
-              {loading ? 'جارٍ التحقق...' : 'تأكيد الدخول'}
-            </button>
-            <button type="button" onClick={() => { setTwoFaStep(false); setTwoFaCode(''); setTwoFaTempToken(''); setTwoFaRecovery(false); setNotice(null); }} className="min-h-[44px] w-full text-sm font-bold text-muted hover:text-ink">← العودة لتسجيل الدخول</button>
-          </form>
+        {/* ── the code sent to the email (important accounts) ── */}
+        {codeStep ? (
+          <EmailCodeStep
+            hint={codeStep.hint}
+            initialResendIn={codeStep.resendAfterSeconds}
+            onVerify={finishCodeStep}
+            onResend={resendLoginCode}
+            onCancel={() => { setCodeStep(null); setNotice(null); }}
+          />
         ) : /* ── Forgot password mode ── */
         forgotMode ? (
           <div className="animate-fade-in">
@@ -766,7 +697,7 @@ const Auth: React.FC = () => {
         {/* Fixed on the login page regardless of which mode (email/phone or
             WhatsApp) is showing — only hidden mid-verification (2FA / password
             reset), where switching to registration mid-flow makes no sense. */}
-        {!twoFaStep && !forgotMode && (
+        {!codeStep && !forgotMode && (
           <div className="mt-6 text-center text-sm">
               <p className="text-muted-body">
                   {isLogin ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'} {' '}

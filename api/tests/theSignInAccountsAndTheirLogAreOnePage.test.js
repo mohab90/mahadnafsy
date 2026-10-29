@@ -14,11 +14,11 @@ const { reasonLabel, REASONS } = require('../lib/loginReasons');
 
 test('every reason the sign-in routes write has an Arabic label, and an unknown one is shown, not hidden', () => {
   const written = new Set();
-  for (const file of ['api/routes/auth/session.js', 'api/routes/auth/whatsappLogin.js', 'api/routes/auth/refreshAndTwoFactor.js']) {
+  for (const file of ['api/routes/auth/session.js', 'api/routes/auth/whatsappLogin.js', 'api/routes/auth/refreshAndEmailCode.js']) {
     for (const match of read(file).matchAll(/failureReason(?::|\s*=)\s*'([a-z_]+)'/g)) written.add(match[1]);
     for (const match of read(file).matchAll(/'(wa_otp_invalid|device_limit)'/g)) written.add(match[1]);
   }
-  assert.ok(written.size >= 7, `found ${[...written].join(', ')}`);
+  assert.ok(written.size >= 5, `found ${[...written].join(', ')}`);
   for (const code of written) assert.ok(REASONS[code], `${code} has no Arabic label`);
   assert.equal(reasonLabel('wrong_password'), 'كلمة المرور غلط');
   assert.equal(reasonLabel('something_new'), 'something_new');
@@ -40,9 +40,12 @@ test('the log keeps who was tried and where from, and tells the truth about the 
   }
   const wa = read('api/routes/auth/whatsappLogin.js');
   assert.match(wa, /phone: req\.body\?\.phone, req, status: 'failed', failureReason/, 'a failed WhatsApp code has the number it was tried for');
-  const twoFa = read('api/routes/auth/refreshAndTwoFactor.js');
-  assert.match(twoFa, /failureReason: 'totp_invalid'/);
-  assert.match(twoFa, /failureReason: 'recovery_code_invalid'/);
+  const emailCode = read('api/routes/auth/refreshAndEmailCode.js');
+  assert.match(emailCode, /'email_code_expired'/);
+  assert.match(emailCode, /'email_code_wrong'/);
+  for (const code of ['email_code_expired', 'email_code_wrong', 'email_code_no_email', 'email_code_too_soon', 'email_code_send_failed']) {
+    assert.ok(REASONS[code], `${code} has no Arabic label`);
+  }
 });
 
 test('the accounts endpoint answers the page: counts from the log, the last attempt, the 2FA step told apart', () => {

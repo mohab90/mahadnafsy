@@ -10551,86 +10551,6 @@
         }
       }
     },
-    "/api/auth/2fa/disable": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "POST /api/auth/2fa/disable",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/auth/2fa/enable": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "POST /api/auth/2fa/enable",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/auth/2fa/setup": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "POST /api/auth/2fa/setup",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/auth/2fa/status": {
-      "get": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "GET /api/auth/2fa/status",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/auth/2fa/verify": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "POST /api/auth/2fa/verify",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
     "/api/auth/forgot-password": {
       "post": {
         "tags": [
@@ -10765,22 +10685,6 @@
           "auth"
         ],
         "summary": "PUT /api/auth/update-profile",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/auth/verify-2fa": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "POST /api/auth/verify-2fa",
         "responses": {
           "200": {
             "description": "OK"
@@ -12034,6 +11938,44 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/auth/login/email-code/verify": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /api/auth/login/email-code/verify — the code sent to the email opens the session of an account the security policy names",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Wrong or expired code"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/auth/login/email-code/resend": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /api/auth/login/email-code/resend — a new code (not more often than every 45 seconds)",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Wrong or expired code"
           },
           "500": {
             "description": "Internal server error"

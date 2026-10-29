@@ -274,7 +274,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         {active === 'exchange_rates'     && <ExchangeRatesSection data={data.exchange_rates as ExchangeRates} mutateField={(f,v) => mutateField('exchange_rates', f, v)}/>}
         {active === 'currencies'         && <CurrenciesSection   data={data.currencies as ListItem[]}    mutate={v => mutate('currencies', v)} c={c}/>}
         {active === 'countries'          && <CountriesSection    data={data.countries as ListItem[]}     mutate={v => mutate('countries', v)} c={c}/>}
-        {active === 'security'           && <Security2FASection  notify={notify} />}
+        {active === 'security'           && <Security2FASection />}
         {active === 'security'           && <ActiveSessionsSection notify={notify} />}
         {active === 'growth'             && <GrowthOpsSection    notify={notify} />}
         {active === 'meetings'            && <MeetingIntegrationSection notify={notify} />}
@@ -514,229 +514,22 @@ const ExchangeRatesSection: React.FC<{ data: ExchangeRates; mutateField: (f: str
   );
 };
 
-// ─── Certificate Pricing (uses old content format) ────────────────────────
-const Security2FASection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
-  const [status, setStatus]         = useState<'loading' | 'enabled' | 'disabled'>('loading');
-  const [step, setStep]             = useState<'idle' | 'setup' | 'enable' | 'disable' | 'regenerate'>('idle');
-  const [qrDataUrl, setQrDataUrl]   = useState('');
-  const [secret, setSecret]         = useState('');
-  const [token, setToken]           = useState('');
-  const [working, setWorking]       = useState(false);
-  // Shown once: the codes live only in this state, from the response that
-  // created them, until the person says they saved them. The server keeps
-  // hashes and cannot show them again.
-  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
-  const [codesLeft, setCodesLeft]   = useState<number | null>(null);
-
-  const loadStatus = useCallback(() => {
-    mysqlAuth.get2faStatus()
-      .then(r => { setStatus(r.enabled ? 'enabled' : 'disabled'); setCodesLeft(r.recoveryCodesLeft ?? null); })
-      .catch(() => setStatus('disabled'));
-  }, []);
-  useEffect(() => { loadStatus(); }, [loadStatus]);
-
-  const startSetup = async () => {
-    setWorking(true);
-    try {
-      const res = await mysqlAuth.setup2fa();
-      setQrDataUrl(res.qrDataUrl);
-      setSecret(res.secret);
-      setStep('setup');
-    } catch { notify('error', 'حدث خطأ في توليد رمز الإعداد'); }
-    finally { setWorking(false); }
-  };
-
-  const doEnable = async () => {
-    if (token.length !== 6) return;
-    setWorking(true);
-    try {
-      // The re-issued session comes back as the httpOnly cookie. Writing
-      // result.token here stored the literal string "undefined" once the API
-      // stopped echoing tokens, and sent it as `Bearer undefined` from then on.
-      const result = await mysqlAuth.enable2fa(token);
-      setStatus('enabled');
-      setStep('idle');
-      setToken('');
-      setSecret('');
-      setQrDataUrl('');
-      setRecoveryCodes(result.recoveryCodes || []);
-      setCodesLeft(result.recoveryCodes?.length ?? null);
-      notify('success', 'تم تفعيل المصادقة الثنائية بنجاح ✅');
-    } catch (e: unknown) {
-      notify('error', e instanceof Error ? e.message : 'الرمز غير صحيح');
-    } finally { setWorking(false); }
-  };
-
-  const doDisable = async () => {
-    setWorking(true);
-    try {
-      await mysqlAuth.disable2fa(token || undefined);
-      setStatus('disabled');
-      setStep('idle');
-      setToken('');
-      setRecoveryCodes([]);
-      setCodesLeft(null);
-      notify('success', 'تم تعطيل المصادقة الثنائية');
-    } catch (e: unknown) {
-      notify('error', e instanceof Error ? e.message : 'الرمز غير صحيح');
-    } finally { setWorking(false); }
-  };
-
-  const doRegenerate = async () => {
-    if (token.length !== 6) return;
-    setWorking(true);
-    try {
-      const result = await mysqlAuth.regenerateRecoveryCodes(token);
-      setRecoveryCodes(result.recoveryCodes);
-      setCodesLeft(result.recoveryCodes.length);
-      setStep('idle');
-      setToken('');
-      notify('success', 'اتعملت أكواد جديدة — القديمة مبقتش شغالة');
-    } catch (e: unknown) {
-      notify('error', e instanceof Error ? e.message : 'الرمز غير صحيح');
-    } finally { setWorking(false); }
-  };
-
-  const copyCodes = async () => {
-    try {
-      await navigator.clipboard.writeText(recoveryCodes.join('\n'));
-      notify('success', 'اتنسخت الأكواد');
-    } catch { notify('error', 'النسخ مش متاح — اكتبهم بإيدك'); }
-  };
-
-  if (status === 'loading') return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gray-400" size={28}/></div>;
-
-  const codeInput = (focus: string) => (
-    <input type="text" value={token} onChange={e => setToken(e.target.value.replace(/\D/g,'').slice(0,6))}
-      placeholder="000000" maxLength={6}
-      className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-center font-mono text-xl tracking-widest focus:outline-none focus:ring-2 ${focus}`}/>
-  );
-
-  return (
-    <div className="space-y-5 max-w-lg" dir="rtl">
-      <SecretRotationCard />
-      <div className={`rounded-2xl p-5 border flex items-start gap-4 ${status === 'enabled' ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
-        <Shield size={28} className={status === 'enabled' ? 'text-emerald-600' : 'text-gray-400'} />
-        <div>
-          <p className="font-bold text-gray-800">{status === 'enabled' ? '🔒 المصادقة الثنائية مفعّلة' : 'المصادقة الثنائية غير مفعّلة'}</p>
-          <p className="text-xs text-gray-500 mt-1">{status === 'enabled' ? 'حسابك محمي برمز TOTP — كل تسجيل دخول يتطلب رمز من تطبيق المصادقة.' : 'فعّل المصادقة الثنائية لحماية حسابك.'}</p>
-          {status === 'enabled' && codesLeft !== null && (
-            <p className={`text-xs mt-1 font-bold ${codesLeft <= 2 ? 'text-amber-700' : 'text-gray-500'}`}>
-              أكواد الاسترجاع الباقية: {codesLeft}{codesLeft <= 2 ? ' — اعمل أكواد جديدة' : ''}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {recoveryCodes.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 space-y-3">
-          <p className="font-bold text-amber-900 text-sm">أكواد الاسترجاع — هتظهر المرة دي بس</p>
-          <p className="text-xs text-amber-800">
-            لو الموبايل ضاع، كل كود منهم يدخّلك مرة واحدة بدل رمز التطبيق. احفظهم في مكان آمن بعيد عن الموبايل.
-          </p>
-          <div className="grid grid-cols-2 gap-2 font-mono text-sm text-gray-800" dir="ltr">
-            {recoveryCodes.map(code => <span key={code} className="bg-white rounded-lg px-2 py-1 text-center border border-amber-200">{code}</span>)}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => void copyCodes()}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-300 text-amber-800 rounded-xl text-sm font-bold hover:bg-amber-100 transition">
-              <Copy size={14}/> نسخ
-            </button>
-            <button onClick={() => setRecoveryCodes([])}
-              className="flex-1 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition">
-              حفظتهم
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 'idle' && (
-        <div className="flex gap-3 flex-wrap">
-          {status === 'disabled' && (
-            <button onClick={startSetup} disabled={working}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition disabled:opacity-50">
-              {working ? <Loader2 size={14} className="animate-spin"/> : <Shield size={14}/>} تفعيل المصادقة الثنائية
-            </button>
-          )}
-          {status === 'enabled' && (
-            <button onClick={() => setStep('regenerate')} disabled={working}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-xl text-sm font-bold hover:bg-gray-50 transition">
-              <RefreshCw size={14}/> أكواد استرجاع جديدة
-            </button>
-          )}
-          {status === 'enabled' && (
-            <button onClick={() => setStep('disable')} disabled={working}
-              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-bold hover:bg-red-100 transition">
-              تعطيل المصادقة الثنائية
-            </button>
-          )}
-        </div>
-      )}
-
-      {step === 'setup' && qrDataUrl && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
-          <h4 className="font-bold text-gray-700">خطوات الإعداد</h4>
-          <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-            <li>حمّل تطبيق Google Authenticator أو Authy على هاتفك</li>
-            <li>امسح رمز QR التالي:</li>
-          </ol>
-          <div className="flex justify-center">
-            <img src={qrDataUrl} alt="QR Code" className="w-44 h-44 rounded-xl border border-gray-200"/>
-          </div>
-          <p className="text-xs text-gray-400 text-center font-mono bg-gray-50 rounded-lg p-2 break-all">{secret}</p>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-1">أدخل رمز التحقق من التطبيق (6 أرقام)</label>
-            {codeInput('focus:ring-emerald-400')}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={doEnable} disabled={token.length !== 6 || working}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition disabled:opacity-40">
-              {working ? <Loader2 size={14} className="animate-spin"/> : <CheckCircle size={14}/>} تفعيل
-            </button>
-            <button onClick={() => { setStep('idle'); setToken(''); }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition">
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 'regenerate' && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
-          <p className="text-sm text-gray-600">أدخل الرمز الحالي من تطبيق المصادقة. الأكواد القديمة كلها هتبطل وتظهرلك عشرة جداد:</p>
-          {codeInput('focus:ring-emerald-400')}
-          <div className="flex gap-2">
-            <button onClick={doRegenerate} disabled={token.length !== 6 || working}
-              className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition disabled:opacity-40">
-              {working ? <Loader2 size={14} className="animate-spin inline ml-1"/> : null} اعمل أكواد جديدة
-            </button>
-            <button onClick={() => { setStep('idle'); setToken(''); }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition">
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 'disable' && (
-        <div className="bg-white border border-red-100 rounded-2xl p-5 space-y-4">
-          <p className="text-sm text-gray-600">أدخل رمز التحقق الحالي من تطبيق المصادقة لتعطيل الحماية:</p>
-          {codeInput('focus:ring-red-400')}
-          <div className="flex gap-2">
-            <button onClick={doDisable} disabled={working}
-              className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition disabled:opacity-40">
-              {working ? <Loader2 size={14} className="animate-spin inline ml-1"/> : null} تعطيل
-            </button>
-            <button onClick={() => { setStep('idle'); setToken(''); }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition">
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
+// ─── Sign-in code (the emailed code replaced the authenticator app) ───────
+const Security2FASection: React.FC = () => (
+  <div className="space-y-4" dir="rtl">
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+      <p className="font-bold text-emerald-900">الدخول بكود على الإيميل</p>
+      <p className="mt-1 text-sm text-gray-700">
+        الحسابات المهمة (المدير والمدراء والحسابات والموارد البشرية وأي حساب معاه صلاحية مالية أو إدارة موظفين) بتدخل بكلمة المرور،
+        وبعدها بيوصلها كود من 6 أرقام على إيميلها تكتبه علشان تفتح السيستم. مفيش تطبيق مصادقة ولا حاجة تفعّلها.
+      </p>
+      <p className="mt-2 text-xs text-gray-500">
+        تحدد مين اللي عليه الكود من «لوحة الأمان ← سياسة MFA». لازم يكون للحساب إيميل مسجّل، والإيميل بتاعه شغّال.
+      </p>
     </div>
-  );
-};
+    <SecretRotationCard />
+  </div>
+);
 
 export default SystemSettingsTab;
 

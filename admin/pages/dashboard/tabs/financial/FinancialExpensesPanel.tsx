@@ -122,7 +122,7 @@ export function FinancialExpensesPanel({
               filteredExpenses={filteredExpenses}
               totalEGP={filteredExpenses.reduce((sum, expense) => sum + toEGP(expense.amount, expense.currency), 0)}
               exportCSV={exportCSV}
-              onEdit={(expense) => { setExpenseDraft({ category: expense.category, description: expense.description, amount: expense.amount, currency: expense.currency, date: expense.date, receiptUrl: expense.receiptUrl || '', branchType: expense.branchType }); setEditingExpenseId(expense.id); setIsExpenseFormOpen(true); }}
+              onEdit={(expense) => { setExpenseDraft({ category: expense.category, description: expense.description, amount: expense.amount, currency: expense.currency, date: expense.date, receiptUrl: expense.receiptUrl || '', boxMethod: expense.boxMethod || '', branchType: expense.branchType }); setEditingExpenseId(expense.id); setIsExpenseFormOpen(true); }}
               onDelete={removeExpense}
               deletingId={deletingId}
             />

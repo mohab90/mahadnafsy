@@ -93,6 +93,7 @@ async function settlePlanEntry(conn, { tenantId, planId, index, subscriberId, pa
   const [[agreed]] = await conn.query(
     `SELECT MAX(course_expected) AS expected FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
+        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
         AND course_id <=> ? AND bundle_id <=> ? AND course_expected > 0`,
     [tenantId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null]
   );
