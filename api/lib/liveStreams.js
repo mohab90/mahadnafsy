@@ -17,6 +17,7 @@ const outbox = require('./outbox');
 const { insertNotification } = require('./notification');
 const { hasPaidForCourse } = require('./coursePaid');
 const { uuidv4 } = require('./id');
+const { ITEM_PAYMENT_SQL } = require('./agreedPrice');
 
 const SITE = () => String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/+$/, '');
 const secret = () => process.env.JWT_SECRET || process.env.AUTH_SECRET || 'mahad-live';
@@ -49,10 +50,10 @@ async function audienceOf(db, tenantId, stream) {
   const [rows] = await db.query(
     `SELECT DISTINCT s.id, s.name, s.phone, s.email, x.course_id FROM (
         SELECT p.subscriber_id, p.course_id FROM payments p
-         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.course_id IN (${marks})
+         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND ${ITEM_PAYMENT_SQL} AND p.course_id IN (${marks})
         UNION SELECT p.subscriber_id, bc.course_id FROM payments p
           JOIN bundle_courses bc ON bc.bundle_id=p.bundle_id AND bc.tenant_id=p.tenant_id
-         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND bc.course_id IN (${marks})
+         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND ${ITEM_PAYMENT_SQL} AND bc.course_id IN (${marks})
         UNION SELECT e.subscriber_id, e.course_id FROM enrollments e
          WHERE e.tenant_id=? AND e.status='active' AND e.course_id IN (${marks})
         UNION SELECT da.subscriber_id, dr.course_id FROM daqqi_attendees da
@@ -134,10 +135,35 @@ async function announceLiveStream(db, { tenantId, streamId }) {
 }
 
 /** A client joined — through their link or from the site. Once per live. */
+/**
+ * Whether a client may count as having joined this live: one aimed at courses is for the clients who hold one of them
+ * (an enrolment, the course's own money, a track that holds it, a seat in a Dokki round of it); any other live is open.
+ * POST /api/me/live-streams/:id/join took any signed-in client's word for it, which put strangers into the attendance
+ * and into «حضر قبل كده» for the next live of that course.
+ */
+async function holdsALiveCourse(db, { tenantId, stream, subscriberId }) {
+  const courseIds = courseIdsOf(stream);
+  if (!courseIds.length) return true;
+  const marks = courseIds.map(() => '?').join(',');
+  const [[row]] = await db.query(
+    `SELECT (
+        EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id=? AND e.subscriber_id=? AND e.status='active' AND e.course_id IN (${marks}))
+        OR EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id=? AND p.subscriber_id=? AND p.status='paid' AND p.deleted_at IS NULL
+                      AND ${ITEM_PAYMENT_SQL} AND p.course_id IN (${marks}))
+        OR EXISTS (SELECT 1 FROM payments p JOIN bundle_courses bc ON bc.bundle_id=p.bundle_id AND bc.tenant_id=p.tenant_id
+                    WHERE p.tenant_id=? AND p.subscriber_id=? AND p.status='paid' AND p.deleted_at IS NULL
+                      AND ${ITEM_PAYMENT_SQL} AND bc.course_id IN (${marks}))
+        OR EXISTS (SELECT 1 FROM daqqi_attendees da JOIN daqqi_rounds dr ON dr.id=da.round_id AND dr.tenant_id=da.tenant_id
+                    WHERE da.tenant_id=? AND da.subscriber_id=? AND dr.course_id IN (${marks}))
+      ) AS ok`,
+    [tenantId, subscriberId, ...courseIds, tenantId, subscriberId, ...courseIds, tenantId, subscriberId, ...courseIds, tenantId, subscriberId, ...courseIds]);
+  return Boolean(row?.ok);
+}
+
 async function recordAttendance(db, { tenantId, streamId, subscriberId, via = 'link' }) {
   await db.query(
     'INSERT IGNORE INTO live_stream_attendance (id, tenant_id, stream_id, subscriber_id, via) VALUES (?,?,?,?,?)',
     [uuidv4(), tenantId, streamId, subscriberId, via]);
 }
 
-module.exports = { announceLiveStream, audienceOf, joinLink, joinToken, recordAttendance, validJoin };
+module.exports = { announceLiveStream, audienceOf, holdsALiveCourse, joinLink, joinToken, recordAttendance, validJoin };

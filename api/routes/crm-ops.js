@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 
 const logger = require('../lib/logger').child({ module: 'crm-ops-route' });
-const { pool } = require('../lib/db');
+const { pool, cached } = require('../lib/db');
 const { queueLeadWhatsAppBatch } = require('../lib/leadInteractions');
 const { leadScope } = require('../lib/leadAccess');
 const { buildWorkQueue } = require('../lib/crmWorkQueue');
@@ -49,7 +49,11 @@ router.get('/api/admin/crm/stale-leads', requireAuth, requireAdminOrStaff, requi
       ORDER BY days_silent DESC
       LIMIT 200`;
     params.push(days);
-    const [rows] = await pool.query(sql, params);
+    // Every open lead's last message is needed to rank them, so the answer costs a pass over the leads (1.2-1.4 s at 150,000, about
+    // three times that at the 520,000 production holds). Held for 15 s per scope and dropped by the next successful write
+    // (dropFiguresAfterWrites in httpApp.js), like the counters on /leads/stats.
+    const rows = await cached(`figures:crm-stale-leads:${req.tenantId}:${sql}:${JSON.stringify(params)}`, 15 * 1000,
+      async () => (await pool.query(sql, params))[0]);
     res.json(rows);
   } catch (e) { routeError(res, e); }
 });
@@ -101,30 +105,42 @@ router.get('/api/admin/crm/work-queue', requireAuth, requireAdminOrStaff, requir
     const scope = leadScope(req, 'l');
     if (scope.none) return res.json(buildWorkQueue([]));
     const sourceLimit = Math.min(Math.max(parseInt(req.query.limit || '100', 10) || 100, 1), 250);
-    const [rows] = await pool.query(
+    // The leads first, cut at the page; the message counts and the active sequence are then read for those leads only.
+    // Both used to be aggregated over every communication and every enrolment of the tenant and joined to every lead
+    // before the ORDER BY could cut anything (0.9-1.5 s at 150,000 leads and 40 messages each).
+    const [leads] = await pool.query(
       `SELECT l.id,l.name,l.phone,l.email,l.status,l.source,l.branch,l.interest_level,
               l.score,l.deal_value,l.forecast_category,l.expected_close_date,
-              l.next_follow_up_date,l.created_at,l.assigned_sales_id,l.assigned_sales_name,
-              comm.communication_count,comm.last_communication_at,
-              seq.active_sequence_id
+              l.next_follow_up_date,l.created_at,l.assigned_sales_id,l.assigned_sales_name
          FROM leads l
-         LEFT JOIN (
-           SELECT tenant_id,lead_id,COUNT(*) AS communication_count,MAX(date) AS last_communication_at
-             FROM communications WHERE tenant_id=? GROUP BY tenant_id,lead_id
-         ) comm ON comm.tenant_id=l.tenant_id AND comm.lead_id=l.id
-         LEFT JOIN (
-           SELECT tenant_id,lead_id,MIN(sequence_id) AS active_sequence_id
-             FROM drip_enrollments
-            WHERE tenant_id=? AND status IN ('active','paused') AND lead_id IS NOT NULL
-            GROUP BY tenant_id,lead_id
-         ) seq ON seq.tenant_id=l.tenant_id AND seq.lead_id=l.id
         WHERE l.tenant_id=? AND l.hidden=0 AND l.deleted_at IS NULL
           AND l.status NOT IN ${TERMINAL_SQL}
           ${scope.sql}
         ORDER BY l.score DESC,l.created_at ASC
         LIMIT ?`,
-      [req.tenantId, req.tenantId, req.tenantId, ...scope.params, Math.max(sourceLimit * 4, 250)]
+      [req.tenantId, ...scope.params, Math.max(sourceLimit * 4, 250)]
     );
+    const ids = leads.map(lead => lead.id);
+    const [comms, sequences] = ids.length ? await Promise.all([
+      pool.query(
+        `SELECT lead_id,COUNT(*) AS communication_count,MAX(date) AS last_communication_at
+           FROM communications WHERE tenant_id=? AND lead_id IN (?) GROUP BY lead_id`,
+        [req.tenantId, ids]).then(([result]) => result),
+      pool.query(
+        `SELECT lead_id,MIN(sequence_id) AS active_sequence_id
+           FROM drip_enrollments
+          WHERE tenant_id=? AND status IN ('active','paused') AND lead_id IN (?)
+          GROUP BY lead_id`,
+        [req.tenantId, ids]).then(([result]) => result),
+    ]) : [[], []];
+    const commByLead = new Map(comms.map(row => [row.lead_id, row]));
+    const sequenceByLead = new Map(sequences.map(row => [row.lead_id, row]));
+    const rows = leads.map(lead => ({
+      ...lead,
+      communication_count: commByLead.get(lead.id)?.communication_count ?? null,
+      last_communication_at: commByLead.get(lead.id)?.last_communication_at ?? null,
+      active_sequence_id: sequenceByLead.get(lead.id)?.active_sequence_id ?? null,
+    }));
     res.json(buildWorkQueue(rows, { limit: sourceLimit }));
   } catch (error) {
     routeError(res, error, 'CRM work queue failed');

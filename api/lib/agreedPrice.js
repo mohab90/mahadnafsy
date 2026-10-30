@@ -183,5 +183,7 @@ function priorPaidTotal(crmJson) {
 // course money (admin/lib/agreedPrice.ts isCoursePayment).
 const ITEM_PAYMENT_TYPES = Object.freeze(['COURSE', 'BUNDLE', 'OTHER']);
 const isItemPaymentType = type => !type || ITEM_PAYMENT_TYPES.includes(String(type).toUpperCase());
+// The same rule for SQL, written for the alias `p`: the payments that are the course's (or track's) own money.
+const ITEM_PAYMENT_SQL = "COALESCE(p.payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER')";
 
-module.exports = { ITEM_PAYMENT_TYPES, isItemPaymentType, agreedPrice, itemBalances, itemKey, priorPaidTotal, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };
+module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, itemBalances, itemKey, priorPaidTotal, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };

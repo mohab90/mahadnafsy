@@ -76,16 +76,38 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       return byStaff[key];
     };
 
-    // leads and converted in one pass, grouped by status so both come from the
-    // same population — the reason /stats groups this way too.
-    const [createdRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, l.status AS status, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''${createdBound}
-        GROUP BY l.assigned_sales_id, l.status`,
-      [...base, ...fromParam],
-    );
+    // The three reads are independent (0.4 s, 0.3 s and 2 ms at 150,000 leads): issued together, the page takes the slowest.
+    // leads and converted come from one pass, grouped by status so both are the same population — the reason /stats groups
+    // this way too. The follow-ups due today are not bounded by the range: today is today. The sales hub counted them in the
+    // browser out of the page of leads it had.
+    const due = dueOn(cairoToday());
+    const [[createdRows], [contactedRows], [dueRows]] = await Promise.all([
+      pool.query(
+        `SELECT l.assigned_sales_id AS staff_id, l.status AS status, COUNT(*) AS cnt
+           FROM leads l
+          WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+            AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''${createdBound}
+          GROUP BY l.assigned_sales_id, l.status`,
+        [...base, ...fromParam],
+      ),
+      pool.query(
+        `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+           FROM leads l
+          WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+            AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+            AND l.status IN ('contacted','interested','interested_booking','converted')${touchedBound}
+          GROUP BY l.assigned_sales_id`,
+        [...base, ...fromParam],
+      ),
+      pool.query(
+        `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+           FROM leads l
+          WHERE l.tenant_id = ?${scopeClause}${due.sql}
+            AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          GROUP BY l.assigned_sales_id`,
+        [...base, ...due.params],
+      ),
+    ]);
     for (const r of createdRows) {
       const entry = entryFor(r.staff_id);
       if (!entry) continue;
@@ -95,32 +117,10 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       if (status) entry.byStatus[status] = (entry.byStatus[status] || 0) + count;
       if (status === 'converted') entry.converted += count;
     }
-
-    const [contactedRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.status IN ('contacted','interested','interested_booking','converted')${touchedBound}
-        GROUP BY l.assigned_sales_id`,
-      [...base, ...fromParam],
-    );
     for (const r of contactedRows) {
       const entry = entryFor(r.staff_id);
       if (entry) entry.contacted = Number(r.cnt);
     }
-
-    // Each rep's follow-ups due today — not bounded by the range: today is today.
-    // The sales hub counted them in the browser out of the page of leads it had.
-    const due = dueOn(cairoToday());
-    const [dueRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ?${scopeClause}${due.sql}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-        GROUP BY l.assigned_sales_id`,
-      [...base, ...due.params],
-    );
     for (const r of dueRows) {
       const entry = entryFor(r.staff_id);
       if (entry) entry.followUpsToday = Number(r.cnt);
@@ -224,7 +224,10 @@ router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requireP
     // are plain reads of an indexed column. Computing the formula here instead
     // took over a minute at 500k leads: it had to score every lead to find the
     // top fifty.
-    const [rows] = await pool.query(
+    // The page, its total, the histogram and the filter lists are independent reads of the same set: issued together they
+    // take the slowest one's time (the lists and the histogram scan the whole scoped table, 0.15-0.3 s each at 150,000 leads).
+    const [[rows], [[totalRow]], [[distRow]], [facetRows]] = await Promise.all([
+      pool.query(
       `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
@@ -238,7 +241,32 @@ router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requireP
         ORDER BY ${sortBy === 'date' ? 'l.created_at DESC, l.id DESC' : 'l.score DESC, l.id DESC'}
         LIMIT ?`,
       [...base, ...filterParams, minScore, limit],
-    );
+      ),
+      // How many match the filter in total, so the screen can say "showing 50 of N"
+      // rather than implying the fifty rows are everything.
+      pool.query(
+      `SELECT COUNT(*) AS cnt FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}${filterClause} AND l.score >= ?`,
+      [...base, ...filterParams, minScore],
+      ),
+      // Histogram and mean over the whole scoped table, matching the browser.
+      pool.query(
+      `SELECT
+         COALESCE(SUM(l.score >= 80), 0) AS hot,
+         COALESCE(SUM(l.score >= 60 AND l.score < 80), 0) AS warm,
+         COALESCE(SUM(l.score >= 40 AND l.score < 60), 0) AS medium,
+         COALESCE(SUM(l.score < 40), 0) AS cold,
+         COALESCE(AVG(l.score), 0) AS avg_score
+       FROM leads l
+      WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}`,
+      base,
+      ),
+      pool.query(
+      `SELECT DISTINCT COALESCE(NULLIF(l.source, ''), '') AS source, l.status AS status
+         FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}`,
+      base,
+      ),
+    ]);
 
     // Communication counts for the page only, not for the table.
     const commCounts = new Map();
@@ -251,32 +279,6 @@ router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requireP
       for (const r of countRows) commCounts.set(r.lead_id, Number(r.cnt));
     }
 
-    // How many match the filter in total, so the screen can say "showing 50 of N"
-    // rather than implying the fifty rows are everything.
-    const [[totalRow]] = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}${filterClause} AND l.score >= ?`,
-      [...base, ...filterParams, minScore],
-    );
-
-    // Histogram and mean over the whole scoped table, matching the browser.
-    const [[distRow]] = await pool.query(
-      `SELECT
-         COALESCE(SUM(l.score >= 80), 0) AS hot,
-         COALESCE(SUM(l.score >= 60 AND l.score < 80), 0) AS warm,
-         COALESCE(SUM(l.score >= 40 AND l.score < 60), 0) AS medium,
-         COALESCE(SUM(l.score < 40), 0) AS cold,
-         COALESCE(AVG(l.score), 0) AS avg_score
-       FROM leads l
-      WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}`,
-      base,
-    );
-
-    const [facetRows] = await pool.query(
-      `SELECT DISTINCT COALESCE(NULLIF(l.source, ''), '') AS source, l.status AS status
-         FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}`,
-      base,
-    );
     const sources = [...new Set(facetRows.map(r => String(r.source || '').toLowerCase()).filter(Boolean))].sort();
     const statuses = [...new Set(facetRows.map(r => String(r.status || '').toLowerCase()).filter(Boolean))].sort();
 
@@ -358,10 +360,11 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
          LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
         WHERE l.tenant_id = ?${scopeClause} AND ${FOLLOW_UP_OPEN}
-          AND ${FOLLOW_UP_DATE} <= ?
+          AND l.next_follow_up_date < ?
         ORDER BY ${FOLLOW_UP_DATE} ASC, l.id ASC
         LIMIT 500`,
-      [req.tenantId, ...scopeParams, addDaysToDateOnly(cairoToday(), 7)],
+      // Up to the end of the seventh day: a range on the DATETIME column, which the follow-up index serves.
+      [req.tenantId, ...scopeParams, addDaysToDateOnly(cairoToday(), 8)],
     );
 
     // ── 1b. The two undated queues beside them ──────────────────────────────
@@ -369,10 +372,8 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // oldest first, the fifty the panel shows. «وعدوا بالدفع»: every lead at
     // interested_booking, dated promises first. Both used to scan every lead in
     // the browser, which held the whole table for one tab.
-    // The follow-up date as mapLeadRow reads it: the column, else crm_json's.
-    const followUpSql = `COALESCE(DATE_FORMAT(l.next_follow_up_date, '%Y-%m-%d'),
-      NULLIF(LEFT(IF(JSON_VALID(l.crm_json) AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')) = 'STRING',
-        JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')), ''), 10), ''))`;
+    // The follow-up day (lib/leadFollowUps.js): the column, which every writer sets.
+    const followUpSql = FOLLOW_UP_DATE;
     const queueColumns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
@@ -407,11 +408,18 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     const untouched = untouchedRows.map(r => mapLeadRow(r, commsByLead));
     const promised = promisedRows.map(r => mapLeadRow(r, commsByLead));
 
+    // The independent reads below (the completion rate, the four scorecard aggregates, the never-contacted leads and the open
+    // load per rep) start together: one after another they were the 1.4 s of this route; side by side they take the slowest's time.
     // completionRate counts leads whose follow-up date has already passed —
     // including closed ones the list above excludes, matching what the browser
     // counted — and whether a communication landed on or after that date. Only
     // the percentage is displayed, so only the two totals are computed.
-    const [[dueRow]] = await pool.query(
+    const idleWhere = `l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.status NOT IN (${redistSql})`;
+    const idleParams = [...scopeParams, ...REDIST_EXCLUDED];
+    const [[[dueRow]], [weekCommRows], [followupRows], [newLeadRows], [overdueRows], [neverContacted], [loadRows]] = await Promise.all([
+      pool.query(
       `SELECT COUNT(*) AS due,
               COALESCE(SUM(EXISTS (
                 SELECT 1 FROM communications c
@@ -423,7 +431,72 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
           AND l.next_follow_up_date IS NOT NULL
           AND l.next_follow_up_date <= ${sqlCairoToday()}`,
       [req.tenantId, ...scopeParams],
-    );
+    ),
+      pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, c.type AS type, COUNT(*) AS cnt
+         FROM communications c
+         JOIN leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND c.date >= ${sqlCairoDayStartUtc()} - INTERVAL 7 DAY
+        GROUP BY l.assigned_sales_id, c.type`,
+      [req.tenantId, ...scopeParams],
+    ),
+      pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.next_follow_up_date >= ${sqlCairoToday()} - INTERVAL 7 DAY
+          AND l.next_follow_up_date <= ${sqlCairoToday()}
+          AND EXISTS (
+            SELECT 1 FROM communications c
+             WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id
+               AND c.date >= l.next_follow_up_date
+          )
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams],
+    ),
+      pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.created_at >= ${sqlCairoDayStartUtc()} - INTERVAL 7 DAY
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams],
+    ),
+      pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.next_follow_up_date IS NOT NULL
+          AND l.next_follow_up_date < ${sqlCairoToday()}
+          AND l.status NOT IN ${TERMINAL_SQL}
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams],
+    ),
+      pool.query(
+      `SELECT l.id, l.created_at AS last_activity
+         FROM leads l
+        WHERE l.tenant_id = ? AND ${idleWhere}
+          AND l.created_at < ${sqlCairoToday()} - INTERVAL ? DAY + INTERVAL 1 DAY
+          AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id)
+        ORDER BY l.created_at ASC, l.id ASC
+        LIMIT 50`,
+      [req.tenantId, ...idleParams, idleDays],
+    ),
+      pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.status NOT IN (${closedSql})
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams, ...CLOSED],
+    ),
+    ]);
     const totalDue = Number(dueRow?.due || 0);
     const completedDue = Number(dueRow?.completed || 0);
 
@@ -445,16 +518,6 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
       return scorecardById.get(key);
     };
 
-    const [weekCommRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, c.type AS type, COUNT(*) AS cnt
-         FROM communications c
-         JOIN leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND c.date >= ${sqlCairoDayStartUtc()} - INTERVAL 7 DAY
-        GROUP BY l.assigned_sales_id, c.type`,
-      [req.tenantId, ...scopeParams],
-    );
     for (const r of weekCommRows) {
       const entry = scoreEntry(r.staff_id);
       if (!entry) continue;
@@ -466,21 +529,6 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
       else if (type === 'meeting') entry.meetings += count;
     }
 
-    const [followupRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.next_follow_up_date >= ${sqlCairoToday()} - INTERVAL 7 DAY
-          AND l.next_follow_up_date <= ${sqlCairoToday()}
-          AND EXISTS (
-            SELECT 1 FROM communications c
-             WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id
-               AND c.date >= l.next_follow_up_date
-          )
-        GROUP BY l.assigned_sales_id`,
-      [req.tenantId, ...scopeParams],
-    );
     for (const r of followupRows) {
       const entry = scoreEntry(r.staff_id);
       if (entry) entry.followupsDone = Number(r.cnt);
@@ -489,15 +537,6 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // Bare column, no DATE() wrapper — same reason /stats uses a half-open
     // range: wrapping created_at puts idx_leads_tenant_status_created out of
     // reach and turns this into a full scan.
-    const [newLeadRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.created_at >= ${sqlCairoDayStartUtc()} - INTERVAL 7 DAY
-        GROUP BY l.assigned_sales_id`,
-      [req.tenantId, ...scopeParams],
-    );
     for (const r of newLeadRows) {
       const entry = scoreEntry(r.staff_id);
       if (entry) entry.newLeadsThisWeek = Number(r.cnt);
@@ -506,17 +545,6 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // overdueOwn excludes converted and lost only — not not_interested_hidden.
     // That is what the browser counted, and quietly widening it here would move
     // a number the user reads without anyone having decided to.
-    const [overdueRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.next_follow_up_date IS NOT NULL
-          AND l.next_follow_up_date < ${sqlCairoToday()}
-          AND l.status NOT IN ${TERMINAL_SQL}
-        GROUP BY l.assigned_sales_id`,
-      [req.tenantId, ...scopeParams],
-    );
     for (const r of overdueRows) {
       const entry = scoreEntry(r.staff_id);
       if (entry) entry.overdueOwn = Number(r.cnt);
@@ -550,20 +578,6 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // MAX(communications.date) per open lead in one statement made the database
     // look up every open lead's communications to sort them — 19 seconds at
     // 500k leads, for a panel of fifty rows.
-    const idleWhere = `l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.status NOT IN (${redistSql})`;
-    const idleParams = [...scopeParams, ...REDIST_EXCLUDED];
-    const [neverContacted] = await pool.query(
-      `SELECT l.id, l.created_at AS last_activity
-         FROM leads l
-        WHERE l.tenant_id = ? AND ${idleWhere}
-          AND l.created_at < ${sqlCairoToday()} - INTERVAL ? DAY + INTERVAL 1 DAY
-          AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id)
-        ORDER BY l.created_at ASC, l.id ASC
-        LIMIT 50`,
-      [req.tenantId, ...idleParams, idleDays],
-    );
     // Communicated leads, quietest first, a page at a time: most of a page
     // passes the lead filter, so one page is the usual cost.
     const contacted = [];
@@ -617,15 +631,6 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
       idleRows.sort((x, y) => rank.get(x.id) - rank.get(y.id));
     }
 
-    const [loadRows] = await pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.status NOT IN (${closedSql})
-        GROUP BY l.assigned_sales_id`,
-      [req.tenantId, ...scopeParams, ...CLOSED],
-    );
     const openLoadByRep = {};
     for (const r of loadRows) openLoadByRep[String(r.staff_id)] = Number(r.cnt);
 

@@ -8,6 +8,7 @@
 // pass nothing a caller chose except filters.
 
 const { sqlCairoToday } = require('./dates');
+const { ITEM_PAYMENT_SQL } = require('./agreedPrice');
 
 const LECTURER_ROLES = Object.freeze(['instructor', 'trainer', 'consultant', 'expert']);
 
@@ -228,7 +229,7 @@ async function performanceOf(db, { tenantId, staffId, therapistId = null }) {
     `SELECT COUNT(*) AS clients, COALESCE(SUM(x.courses >= 2), 0) AS repeaters FROM (
         SELECT p.subscriber_id, COUNT(DISTINCT p.course_id) AS courses
           FROM payments p JOIN courses c ON c.id=p.course_id AND c.tenant_id=p.tenant_id AND c.instructor_id=?
-         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.amount > 0 GROUP BY p.subscriber_id) x`, [staffId, tenantId]);
+         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.amount > 0 AND ${ITEM_PAYMENT_SQL} GROUP BY p.subscriber_id) x`, [staffId, tenantId]);
   let consultations = { completed: 0, cancelled: 0 };
   if (therapistId) {
     const [[row]] = await db.query(

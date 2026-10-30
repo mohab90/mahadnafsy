@@ -22,13 +22,17 @@ const {
   logger,
 } = require('./_shared');
 const { requireDeleteRight } = require('../../../lib/deleteRights');
+const { cached } = require('../../../lib/db');
 
 const router = Router();
 
 // POST /api/admin/leads/dedup-cleanup — delete duplicate leads (leads matching subscriber phones + dup-phone leads)
 router.get('/api/admin/leads/duplicates', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   try {
-    const groups = await findLeadDuplicateGroups(req.tenantId);
+    // A pass over every lead (3 s at 150,000, about three times that at the 520,000 production holds). Held for 30 s and dropped by
+    // the first successful write after it (dropFiguresAfterWrites in httpApp.js) — a merge, an archive, a new lead — so reopening
+    // the screen, or two admins opening it, read it once.
+    const groups = await cached(`figures:lead-duplicates:${req.tenantId}`, 30 * 1000, () => findLeadDuplicateGroups(req.tenantId));
     res.json({ groups, count: groups.length });
   } catch (e) { logger.error('[lead-duplicates]', e.message); sendRouteError(res, e); }
 });

@@ -1291,14 +1291,15 @@ router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireA
           const p = [req.tenantId, ...scope.params];
           // Open, and the follow-up date, as every screen counts them (lib/leadFollowUps.js).
           const openSql = FOLLOW_UP_OPEN;
+          const tomorrow = addDaysToDateOnly(today, 1);
           const [[[totals]], [[month]], [overdue], [dueToday], [recent], [urgent], [calls], [convDays]] = await Promise.all([
             pool.query(`SELECT COUNT(*) AS total, COALESCE(SUM(l.status IN ${CONVERTED_SQL}), 0) AS converted,
                                 COALESCE(SUM(l.status IN ${CONVERTED_SQL} AND l.updated_at >= ?), 0) AS convertedMonth,
-                                COALESCE(SUM(${openSql} AND ${NEXT_FOLLOWUP} < ?), 0) AS overdueCount,
-                                COALESCE(SUM(${openSql} AND ${NEXT_FOLLOWUP} = ?), 0) AS todayCount ${base}`, [monthStart, today, today, ...p]),
+                                COALESCE(SUM(${openSql} AND l.next_follow_up_date < ?), 0) AS overdueCount,
+                                COALESCE(SUM(${openSql} AND l.next_follow_up_date >= ? AND l.next_follow_up_date < ?), 0) AS todayCount ${base}`, [monthStart, today, today, tomorrow, ...p]),
             pool.query(`SELECT COUNT(*) AS n ${base} AND l.created_at >= ?`, [...p, monthStart]),
-            pool.query(`SELECT l.* ${base} AND ${openSql} AND ${NEXT_FOLLOWUP} < ? ORDER BY ${NEXT_FOLLOWUP} ASC LIMIT 30`, [...p, today]),
-            pool.query(`SELECT l.* ${base} AND ${openSql} AND ${NEXT_FOLLOWUP} = ? LIMIT 30`, [...p, today]),
+            pool.query(`SELECT l.* ${base} AND ${openSql} AND l.next_follow_up_date < ? ORDER BY l.next_follow_up_date ASC LIMIT 30`, [...p, today]),
+            pool.query(`SELECT l.* ${base} AND ${openSql} AND l.next_follow_up_date >= ? AND l.next_follow_up_date < ? LIMIT 30`, [...p, today, tomorrow]),
             pool.query(`SELECT l.* ${base} ORDER BY l.updated_at DESC LIMIT 8`, p),
             pool.query(`SELECT l.* ${base} AND l.status IN ('new','interested','contacted') AND ${NEXT_FOLLOWUP} IS NULL ORDER BY l.created_at DESC LIMIT 5`, p),
             pool.query(

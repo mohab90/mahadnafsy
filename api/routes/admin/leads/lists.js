@@ -24,7 +24,14 @@ const {
   mapLeadRow,
 } = require('./_shared');
 
+const { cached } = require('../../../lib/db');
+
 const router = Router();
+
+// The two counts below read every lead the filter keeps — 0.3-0.9 s at 150,000 leads, about three times that at the 520,000
+// production holds — to answer a number. Held for 15 s per scope and filter and dropped by the first successful write after
+// it (dropFiguresAfterWrites in httpApp.js), like the counters on /leads/stats.
+const FIGURES_TTL = 15 * 1000;
 
 // GET /api/admin/leads/table — one page of the CRM's main table, filtered and
 // counted in the database (lib/leadTableFilter.js). The table used to download
@@ -51,8 +58,8 @@ router.get('/api/admin/leads/table', requireAuth, requireAdminOrStaff, requirePe
     const counted = req.query.withTotal !== '0';
     const [[countRow], [rows]] = await Promise.all([
       counted
-        ? pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ?${where}`, [req.tenantId, ...whereParams])
-          .then(([result]) => result)
+        ? cached(`figures:leads-table-total:${req.tenantId}:${where}:${JSON.stringify(whereParams)}`, FIGURES_TTL,
+          async () => (await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ?${where}`, [req.tenantId, ...whereParams]))[0])
         : [null],
       // Deferred join, as in the list below: the OFFSET walks ids only.
       pool.query(
@@ -141,9 +148,10 @@ router.get('/api/admin/leads/board', requireAuth, requireAdminOrStaff, requirePe
     // Every status's count, so a column the board does not show yet but that
     // holds leads can still be offered (the browser showed a column once any
     // visible lead was in it).
-    const [countRows] = await pool.query(
-      `SELECT l.status, COUNT(*) AS n FROM leads l WHERE l.tenant_id = ?${where} GROUP BY l.status`,
-      [req.tenantId, ...whereParams]);
+    const countRows = await cached(`figures:leads-board-counts:${req.tenantId}:${where}:${JSON.stringify(whereParams)}`, FIGURES_TTL,
+      async () => (await pool.query(
+        `SELECT l.status, COUNT(*) AS n FROM leads l WHERE l.tenant_id = ?${where} GROUP BY l.status`,
+        [req.tenantId, ...whereParams]))[0]);
     // The collation already groups 'NEW' with 'new'; the key is lowercased here,
     // as mapLeadRow lowercases the status the cards carry.
     const counts = {};

@@ -39,8 +39,10 @@ const COURSE_IDS = `COALESCE(
   IF(JSON_VALID(l.interested_course_ids_json), l.interested_course_ids_json, NULL),
   IF(JSON_VALID(l.crm_json) AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.interestedCourseIds')) = 'ARRAY',
      JSON_EXTRACT(l.crm_json, '$.interestedCourseIds'), NULL))`;
-// mapLeadRow: ymd(next_follow_up_date) || crm.nextFollowUpDate
-const NEXT_FOLLOWUP = `COALESCE(DATE_FORMAT(l.next_follow_up_date, '%Y-%m-%d'), NULLIF(LEFT(${crmText('$.nextFollowUpDate')}, 10), ''))`;
+// The follow-up day. mapLeadRow still shows crm.nextFollowUpDate when the column is empty, but every writer sets both
+// (leads/write.js, crm-advanced.js, leadInteractions.js) and migration 349 copied the rest, so the filters read the
+// column alone: with the JSON fallback every lead's crm_json was parsed (and no index could serve the date).
+const NEXT_FOLLOWUP = "DATE_FORMAT(l.next_follow_up_date, '%Y-%m-%d')";
 
 const list = value => String(value || '').split(',').map(item => item.trim()).filter(Boolean);
 const escapeLike = value => String(value).replace(/[\\%_]/g, match => `\\${match}`);
@@ -117,20 +119,23 @@ function leadTableFilter(query, { today, salesOnly }) {
 
   const window = String(query.followup || '');
   if (FOLLOWUP_WINDOWS.has(window)) {
-    if (window === 'no_followup') add(`${NEXT_FOLLOWUP} IS NULL`);
+    if (window === 'no_followup') add('l.next_follow_up_date IS NULL');
     else {
+      // From the first day's start up to (not including) the day after the last: a DATETIME column, and a range on it
+      // is what idx_leads_tenant_followup_open serves (DATE_FORMAT(column) = day could not use it).
       const day = n => addDaysToDateOnly(today, n);
       const ranges = {
-        today: ['= ?', [today]],
-        overdue: ['< ?', [today]],
-        past3d: ['BETWEEN ? AND ?', [day(-3), day(-1)]],
-        past7d: ['BETWEEN ? AND ?', [day(-7), day(-1)]],
-        past30d: ['BETWEEN ? AND ?', [day(-30), day(-1)]],
-        next3d: ['BETWEEN ? AND ?', [day(1), day(3)]],
-        next7d: ['BETWEEN ? AND ?', [day(1), day(7)]],
+        today: [today, day(1)],
+        overdue: [null, today],
+        past3d: [day(-3), today],
+        past7d: [day(-7), today],
+        past30d: [day(-30), today],
+        next3d: [day(1), day(4)],
+        next7d: [day(1), day(8)],
       };
-      const [op, values] = ranges[window];
-      add(`${NEXT_FOLLOWUP} ${op}`, ...values);
+      const [first, after] = ranges[window];
+      if (first) add('l.next_follow_up_date >= ? AND l.next_follow_up_date < ?', first, after);
+      else add('l.next_follow_up_date < ?', after);
     }
   }
   return { sql, params };

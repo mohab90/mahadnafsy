@@ -17,7 +17,7 @@ const {
 } = require('./_shared');
 const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueBy } = require('../../../lib/leadFollowUps');
 const { cached } = require('../../../lib/db');
-const { sqlCairoWall, sqlCairoDayEndUtc } = require('../../../lib/dates');
+const { sqlCairoWall, sqlCairoDayEndUtc, addDaysToDateOnly } = require('../../../lib/dates');
 
 const router = Router();
 
@@ -258,7 +258,7 @@ router.get('/api/admin/leads/followups-due', requireAuth, requireAdminOrStaff, r
     // The header bell, on every page: held like the counters above (15 s, dropped by the next write).
     const payload = await cached(`figures:followups-due:${req.tenantId}:${today}:${accessScope.sql}:${JSON.stringify(accessScope.params)}`, 15 * 1000, async () => {
       const [[row]] = await pool.query(
-        `SELECT SUM(${FOLLOW_UP_DATE} < ?) AS overdue, SUM(${FOLLOW_UP_DATE} = ?) AS today
+        `SELECT SUM(l.next_follow_up_date < ?) AS overdue, SUM(l.next_follow_up_date >= ?) AS today
            FROM leads l
           WHERE l.tenant_id = ?${accessScope.sql}${due.sql}`,
         [today, today, req.tenantId, ...accessScope.params, ...due.params],
@@ -288,7 +288,10 @@ router.get('/api/admin/leads/followups-panel', requireAuth, requireAdminOrStaff,
     const open = FOLLOW_UP_OPEN;
     const base = `FROM leads l WHERE l.tenant_id = ?${accessScope.sql} AND ${open}`;
     const p = [req.tenantId, ...accessScope.params];
-    const undated = `${FOLLOW_UP_DATE} IS NULL AND l.status IN ('new','contacted','interested')`;
+    const undated = "l.next_follow_up_date IS NULL AND l.status IN ('new','contacted','interested')";
+    // A day is the range from its start to the next day's: the dates are read from the index (lib/leadFollowUps.js).
+    const tomorrow = addDaysToDateOnly(today, 1);
+    const onToday = 'l.next_follow_up_date >= ? AND l.next_follow_up_date < ?';
     const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
@@ -301,10 +304,10 @@ router.get('/api/admin/leads/followups-panel', requireAuth, requireAdminOrStaff,
         WHERE l.tenant_id = ?${accessScope.sql} AND ${open}`;
     const [[[counts]], [overdue], [dueToday], [noDate]] = await Promise.all([
       pool.query(
-        `SELECT COUNT(*) AS open_total, COALESCE(SUM(${FOLLOW_UP_DATE} < ?), 0) AS overdue, COALESCE(SUM(${FOLLOW_UP_DATE} = ?), 0) AS today,
-                COALESCE(SUM(${undated}), 0) AS no_followup ${base}`, [today, today, ...p]),
-      pool.query(`${columns} AND ${FOLLOW_UP_DATE} < ? ORDER BY ${FOLLOW_UP_DATE} ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
-      pool.query(`${columns} AND ${FOLLOW_UP_DATE} = ? ORDER BY l.name ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
+        `SELECT COUNT(*) AS open_total, COALESCE(SUM(l.next_follow_up_date < ?), 0) AS overdue, COALESCE(SUM(${onToday}), 0) AS today,
+                COALESCE(SUM(${undated}), 0) AS no_followup ${base}`, [today, today, tomorrow, ...p]),
+      pool.query(`${columns} AND l.next_follow_up_date < ? ORDER BY ${FOLLOW_UP_DATE} ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
+      pool.query(`${columns} AND ${onToday} ORDER BY l.name ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today, tomorrow]),
       pool.query(`${columns} AND ${undated} ORDER BY l.created_at DESC, l.id DESC LIMIT ${PANEL_ROWS}`, p),
     ]);
     // The cards act on a lead from the row alone; the communications are not drawn here.

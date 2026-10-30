@@ -16,7 +16,7 @@ const { LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { recordDeliveredLecture } = require('../lib/instructorPay');
 const { PROVIDERS, integrationStatus, saveIntegration, createMeeting, deleteMeeting } = require('../lib/meetingProvider');
 const { dateOnlyInTimeZone } = require('../lib/dates');
-const { announceLiveStream, audienceOf, recordAttendance, validJoin } = require('../lib/liveStreams');
+const { announceLiveStream, audienceOf, holdsALiveCourse, recordAttendance, validJoin } = require('../lib/liveStreams');
 
 const fail = (res, error, where) => {
   const statusCode = error.statusCode || 500;
@@ -70,8 +70,11 @@ router.post('/api/me/live-streams/:id/join', requireAuth, async (req, res) => {
   try {
     const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.json({ ok: true });
-    const [[stream]] = await pool.query('SELECT id FROM live_streams WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
-    if (stream) await recordAttendance(pool, { tenantId: req.tenantId, streamId: stream.id, subscriberId: sub.id, via: 'site' });
+    const [[stream]] = await pool.query('SELECT id, visibility, target_course_ids_json FROM live_streams WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
+    // Counted only when the client holds one of the courses the live is for (lib/liveStreams.js holdsALiveCourse).
+    if (stream && await holdsALiveCourse(pool, { tenantId: req.tenantId, stream, subscriberId: sub.id })) {
+      await recordAttendance(pool, { tenantId: req.tenantId, streamId: stream.id, subscriberId: sub.id, via: 'site' });
+    }
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'join'); }
 });

@@ -14,3 +14,9 @@ ALTER TABLE leads ADD INDEX IF NOT EXISTS idx_leads_tenant_followup_open (tenant
 -- two together, so every open lead (77,000 of the lab's 150,000) was sorted to keep the first 10,000: 884 ms; read in index order: 110 ms,
 -- the same rows in the same order. In production, with ~3.5x the leads, the sort is what grows.
 ALTER TABLE leads ADD INDEX IF NOT EXISTS idx_leads_tenant_close_id (tenant_id, expected_close_date, id);
+
+-- «قائمة شغل اليوم» (routes/crm-ops.js /crm/work-queue): the open leads ranked ORDER BY score DESC, created_at ASC, cut at 400. The
+-- index held score and the id but not the date after it, so the 74,000 open leads of the lab were sorted to keep 400: 790 ms; read
+-- in this order (the key is written the way the query sorts, mixed directions need MariaDB 10.8 or later): 13 ms, the same 400 ids in
+-- the same order.
+ALTER TABLE leads ADD INDEX IF NOT EXISTS idx_leads_tenant_queue (tenant_id, hidden, score DESC, created_at ASC);

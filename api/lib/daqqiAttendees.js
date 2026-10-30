@@ -26,6 +26,8 @@
 // attendance report overstated Dokki revenue by the same amount again. The
 // booking INSERT in daqqi-rounds.js always had the strict predicate; only the
 // read carried a looser copy.
+const { ITEM_PAYMENT_SQL } = require('./agreedPrice');
+
 async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = false } = {}) {
   if (roundIds.length === 0) return [];
   const placeholders = roundIds.map(() => '?').join(',');
@@ -45,6 +47,7 @@ async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = fa
                 FROM payments p
                WHERE p.tenant_id=da.tenant_id
                  AND p.subscriber_id=da.subscriber_id
+                 AND ${ITEM_PAYMENT_SQL}
                  AND p.status='paid'
                  AND p.deleted_at IS NULL
                  AND (p.course_id=dr.course_id OR EXISTS (
@@ -57,6 +60,7 @@ async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = fa
                  SELECT 1 FROM payments p
                   WHERE p.tenant_id=da.tenant_id
                     AND p.subscriber_id=da.subscriber_id
+                    AND ${ITEM_PAYMENT_SQL}
                     AND (p.course_id=dr.course_id OR EXISTS (
                           SELECT 1 FROM bundle_courses bc
                            WHERE bc.tenant_id=p.tenant_id
@@ -73,6 +77,7 @@ async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = fa
                 FROM payments p
                WHERE p.tenant_id=da.tenant_id
                  AND p.subscriber_id=da.subscriber_id
+                 AND ${ITEM_PAYMENT_SQL}
                  AND p.status='pending'
                  AND p.deleted_at IS NULL
                  AND (p.course_id=dr.course_id OR EXISTS (
@@ -90,6 +95,7 @@ async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = fa
                 FROM payments p
                WHERE p.tenant_id=da.tenant_id
                  AND p.subscriber_id=da.subscriber_id
+                 AND ${ITEM_PAYMENT_SQL}
                  AND p.status='paid'
                  AND p.deleted_at IS NULL
                  AND p.amount > 0
@@ -134,6 +140,7 @@ const REVENUE_SQL = `-- What this round earned, for the reports. amount_paid abo
                 FROM payments p
                WHERE p.tenant_id=da.tenant_id
                  AND p.subscriber_id=da.subscriber_id
+                 AND ${ITEM_PAYMENT_SQL}
                  AND p.status='paid'
                  AND p.deleted_at IS NULL
                  AND (p.course_id=dr.course_id OR (p.course_id IS NULL AND EXISTS (
@@ -146,6 +153,7 @@ const REVENUE_SQL = `-- What this round earned, for the reports. amount_paid abo
                  SELECT 1 FROM payments p
                   WHERE p.tenant_id=da.tenant_id
                     AND p.subscriber_id=da.subscriber_id
+                    AND ${ITEM_PAYMENT_SQL}
                     AND (p.course_id=dr.course_id OR EXISTS (
                           SELECT 1 FROM bundle_courses bc
                            WHERE bc.tenant_id=p.tenant_id

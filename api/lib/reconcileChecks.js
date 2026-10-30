@@ -1,4 +1,6 @@
 'use strict';
+
+const { ITEM_PAYMENT_SQL } = require('./agreedPrice');
 // Shared money-model / journey integrity checks — the invariants foreign keys
 // can't enforce. Used by both the `npm run reconcile` CLI and the periodic
 // boot-time monitor (lib/reconcileJob). Every query is read-only.
@@ -265,6 +267,7 @@ const CHECKS = [
               SELECT SUM(COALESCE(p.amount_egp, p.amount)) FROM payments p
                WHERE p.subscriber_id=e.subscriber_id AND p.deleted_at IS NULL
                  AND p.status='paid' AND p.tenant_id=e.tenant_id
+                 AND ${ITEM_PAYMENT_SQL}
                  AND (p.course_id=e.course_id
                       OR (p.bundle_id IS NOT NULL AND EXISTS (
                         SELECT 1 FROM bundle_courses bc
@@ -289,6 +292,7 @@ const CHECKS = [
     // A bundle payment counts, because a bundle enrols its courses.
     sql: `SELECT COUNT(*) AS n FROM payments p
           WHERE p.deleted_at IS NULL AND p.status='paid'
+            AND ${ITEM_PAYMENT_SQL}
             AND p.course_id IS NOT NULL
             AND NOT EXISTS (
               SELECT 1 FROM enrollments e
@@ -318,6 +322,7 @@ const CHECKS = [
     severity: 'warning',
     sql: `SELECT COUNT(*) AS n FROM payments p
           WHERE p.deleted_at IS NULL AND p.status='paid'
+            AND ${ITEM_PAYMENT_SQL}
             AND p.course_id IS NOT NULL
             AND NOT EXISTS (
               SELECT 1 FROM enrollments e

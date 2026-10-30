@@ -14,6 +14,7 @@ const { pool } = require('./db');
 const { addDaysToDateOnly, cairoDayStartUtc } = require('./dates');
 const { buildTeamDailyReport } = require('./teamDailyReport');
 const { buildDaqqiTeamReport, buildTagamoaTeamReport, buildOnlineTeamReport, buildSupportTeamReport, MONEY_EGP } = require('./teamReports');
+const { ITEM_PAYMENT_SQL } = require('./agreedPrice');
 
 const num = value => Number(value) || 0;
 
@@ -73,6 +74,7 @@ async function buildManagementReport({ tenantId, from, to, today }, db = pool) {
        LEFT JOIN courses c ON c.id=p.course_id AND c.tenant_id=p.tenant_id
        LEFT JOIN bundles b ON b.id=p.bundle_id AND b.tenant_id=p.tenant_id
       WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND p.date >= ? AND p.date < ? AND (p.course_id IS NOT NULL OR p.bundle_id IS NOT NULL)
+        AND ${ITEM_PAYMENT_SQL}
       GROUP BY 1, 2, 3
       ORDER BY bookings DESC, moneyEgp DESC
       LIMIT 10`,

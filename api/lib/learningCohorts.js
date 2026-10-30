@@ -4,6 +4,7 @@ const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { grantCourseEntitlement, revokeCourseEntitlement } = require('./entitlements');
 const { assertLearningPrerequisites } = require('./learningPrerequisites');
+const { ITEM_PAYMENT_SQL } = require('./agreedPrice');
 
 const COHORT_STATUSES = new Set(['draft', 'active', 'completed', 'cancelled']);
 
@@ -154,6 +155,7 @@ async function removeCohortMember({ tenantId, cohortId, subscriberId, actor = nu
     `SELECT e.id,e.entitlement_source,
             EXISTS(SELECT 1 FROM payments p
               WHERE p.tenant_id=? AND p.subscriber_id=? AND p.status='paid' AND p.deleted_at IS NULL
+                AND ${ITEM_PAYMENT_SQL}
                 AND (p.course_id=? OR EXISTS(
                   SELECT 1 FROM bundle_courses bc
                   WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=?
