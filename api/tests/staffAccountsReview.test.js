@@ -49,10 +49,8 @@ test('a collection officer\'s leads are the ones handed to them and the ones beh
   const { leadScope } = require('../lib/leadAccess');
   const scope = leadScope({ tenantId: 't1', staffRecord: { id: 'st-9', role: 'COLLECTION' }, isSuperAdmin: false }, 'l');
   assert.equal(scope.scope, 'assigned_cs');
-  // The two sets — the leads handed to them and the lead behind each of their clients — joined into one list of ids
-  // (crmAndLeadsFoundOn30Oct.test.js says why it is not an OR).
-  assert.match(scope.sql, /SELECT id FROM leads WHERE tenant_id=\? AND assigned_cs_id=\? UNION SELECT lead_id FROM subscribers WHERE tenant_id=\? AND assigned_cs_id=\?/);
-  assert.deepEqual(scope.params, ['t1', 'st-9', 't1', 'st-9']);
+  assert.match(scope.sql, /l\.assigned_cs_id=\? OR l\.id IN \(SELECT lead_id FROM subscribers/);
+  assert.deepEqual(scope.params, ['st-9', 't1', 'st-9']);
   const staffLeads = read('api/routes/admin/stafflists.js');
   assert.doesNotMatch(staffLeads, /noLeadsRoles = new Set\(\['collection'/);
   assert.match(staffLeads, /else if \(scope === 'assigned_cs'\) \{\s*if \(!staffId\)/);

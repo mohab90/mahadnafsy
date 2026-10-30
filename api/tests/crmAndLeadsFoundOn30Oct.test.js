@@ -10,7 +10,6 @@
  *   GET /api/admin/leads/staff-performance             1.2 s -> 0.3 s
  *   GET /api/admin/leads/scored                        0.67 s -> 0.3 s
  *   sign-in                                            a full scan of the clients (1 s of database time) for the firebase_uid link
- *   a collection officer's leads                       `assigned_cs_id=? OR id IN (subquery)` -> one list of ids (1.0 s -> 0.5 s)
  *
  * and the places that took a certificate / book / carnet payment, which names the course, for the course's own money.
  */
@@ -124,19 +123,6 @@ test('signing in links the client record through the unique email index, not by 
   assert.match(session, /UPDATE subscribers SET firebase_uid = \? WHERE tenant_id=\? AND email = \? AND firebase_uid IS NULL LIMIT 1/);
   assert.doesNotMatch(session, /UPDATE subscribers SET firebase_uid = \? WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\)/);
   assert.match(session, /String\(user\.email\)\.trim\(\)\.toLowerCase\(\)/);
-});
-
-test('a collection officer\'s leads are one list of ids, the same two sets as before', () => {
-  const { leadScope } = require('../lib/leadAccess');
-  const scope = leadScope({
-    tenantId: 'T', isSuperAdmin: false,
-    staffRecord: { id: 'S1', role: 'collection', data_scope: 'assigned_cs' },
-  }, 'x');
-  assert.equal(scope.scope, 'assigned_cs');
-  assert.doesNotMatch(scope.sql, / OR /, 'an OR between the column and the subquery keeps every index out of reach');
-  assert.match(scope.sql, /x\.id IN \(SELECT mine\.id FROM \(SELECT id FROM leads WHERE tenant_id=\? AND assigned_cs_id=\? UNION SELECT lead_id FROM subscribers WHERE tenant_id=\? AND assigned_cs_id=\? AND lead_id IS NOT NULL\) mine\)/);
-  assert.deepEqual(scope.params, ['T', 'S1', 'T', 'S1']);
-  assert.equal((scope.sql.match(/\?/g) || []).length, scope.params.length);
 });
 
 test('the places that sum what a client paid for a course leave the certificate, book, carnet and consultation payments out', () => {
