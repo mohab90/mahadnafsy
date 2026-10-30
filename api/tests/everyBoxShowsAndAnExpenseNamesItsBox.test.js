@@ -62,3 +62,14 @@ test('«واتسابي» is open to the Dokki desk and its manager, and to nobod
   assert.match(desk, /key: 'whatsapp_web'/);
   assert.match(manager, /key: 'whatsapp_web'/);
 });
+
+test('the box list names every box for whoever records an expense but shows balances only to the main books', () => {
+  const route = read('routes', 'finance', 'budgets.js');
+  const body = route.slice(route.indexOf("router.get('/api/admin/finance/box-options'"), route.indexOf('// ── The balances: reset a box'));
+  assert.match(body, /const seesBalances = scope\.kind === 'all' && !scope\.branchId/);
+  assert.match(body, /balance: seesBalances \? value\.balance : null/);
+  assert.match(body, /balance: seesBalances \? 0 : null/);
+  const form = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'financial', 'ExpenseForm.tsx');
+  assert.match(form, /balance: number \| null/);
+  assert.match(form, /chosenBox\.balance !== null && Number\(expenseDraft\.amount\) > chosenBox\.balance/);
+});

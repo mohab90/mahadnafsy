@@ -218,7 +218,9 @@ test('payment review and certificate settlement preserve tenant and workflow ide
 
   assert.match(payments, /LEFT JOIN subscribers s ON s\.id = p\.subscriber_id AND s\.tenant_id=p\.tenant_id/);
   assert.match(payments, /SELECT id FROM subscribers[\s\S]{0,120}tenant_id=\?/);
-  assert.match(payments, /pp\.tenant_id=orders\.tenant_id/);
+  // The online orders' twin payments are looked up inside the same tenant (two LEFT JOINs that must find nothing).
+  assert.match(payments, /p1\.tenant_id = orders\.tenant_id/);
+  assert.match(payments, /p2\.tenant_id = orders\.tenant_id/);
   assert.match(paymentProofs, /const scope = resolveFinancialScope\(req/);
   // The branch, or the officer's own clients (anOfficerSeesTheirClientsReceipts).
   assert.match(paymentProofs, /financialScopeClause\(scope, \{ branchColumn: 'pp\.branch_id', subscriberAlias: 's' \}\)/);

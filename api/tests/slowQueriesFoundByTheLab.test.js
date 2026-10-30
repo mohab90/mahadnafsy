@@ -70,8 +70,11 @@ test('«paid, or phone, or email» is asked as separate lookups, so each can use
 
   const payments = read('api/routes/payments.js');
   assert.ok(!/pp\.id = CONCAT\('paymob-', orders\.id\)\s*\n\s*OR/.test(payments), 'an OR between the key and transaction_id read every payment per order');
-  assert.ok(payments.includes("AND pp.id = CONCAT('paymob-', orders.id)"));
-  assert.ok(payments.includes('AND pp.transaction_id = orders.transaction_id'));
+  // Each twin is its own LEFT JOIN that must find nothing (a NOT EXISTS was materialised: 2.7 s -> 5-26 ms on the lab).
+  assert.ok(payments.includes("LEFT JOIN payments p1 ON p1.id = CONCAT('paymob-', orders.id)"));
+  assert.ok(payments.includes('AND p2.transaction_id = orders.transaction_id'));
+  assert.ok(payments.includes('p1.id IS NULL AND p2.id IS NULL'));
+  assert.ok(!/NOT EXISTS\s*\(\s*SELECT 1 FROM payments pp/.test(payments), 'the twin lookups went back to NOT EXISTS');
 
   const payops = read('api/routes/core/payops.js');
   assert.ok(!/\(p\.id=o\.id OR \(o\.transaction_id IS NOT NULL/.test(payops));

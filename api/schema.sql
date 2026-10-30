@@ -6485,3 +6485,18 @@ CREATE TABLE `online_presence` (
   PRIMARY KEY (`tenant_id`,`uid`),
   KEY `idx_online_presence_seen` (`tenant_id`,`last_seen`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- login_email_codes: migration 347 — the code mailed to an account the security policy names, hash only (lib/loginEmailCode.js).
+CREATE TABLE `login_email_codes` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `user_id` varchar(100) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `code_hash` char(64) NOT NULL,
+  `attempts` int(11) NOT NULL DEFAULT 0,
+  `expires_at` datetime NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_login_email_codes_user` (`tenant_id`,`user_id`,`used_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

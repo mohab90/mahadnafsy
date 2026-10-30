@@ -242,16 +242,20 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
 // balance and currency. Asked by whoever records an expense (manage_financial), who may not hold view_financial's balances screen.
 router.get('/api/admin/finance/box-options', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'manage_financial'), async (req, res) => {
   try {
+    // The names are for anyone who records an expense; the balances are the institute's books, which only the main accounts
+    // see (the boxes screen is the same): a collection officer or a branch accountant holds view_financial too.
+    const scope = resolveFinancialScope(req, { requestedBranch: null });
+    const seesBalances = scope.kind === 'all' && !scope.branchId;
     const current = await currentBalances(pool, { tenantId: req.tenantId });
     const options = new Map();
     for (const [key, value] of current) {
       if (key.startsWith(`${GENERAL}|`)) continue;
       const cut = key.lastIndexOf('|');
-      options.set(key, { method: key.slice(0, cut), currency: key.slice(cut + 1), balance: value.balance });
+      options.set(key, { method: key.slice(0, cut), currency: key.slice(cut + 1), balance: seesBalances ? value.balance : null });
     }
     const named = new Set([...options.values()].map(option => option.method));
     for (const name of await configuredBoxes(pool, req.tenantId)) {
-      if (!named.has(name)) options.set(`${name}|${currencyOfName(name)}`, { method: name, currency: currencyOfName(name), balance: 0 });
+      if (!named.has(name)) options.set(`${name}|${currencyOfName(name)}`, { method: name, currency: currencyOfName(name), balance: seesBalances ? 0 : null });
     }
     res.json([...options.values()].sort((a, b) => a.method.localeCompare(b.method, 'ar') || a.currency.localeCompare(b.currency)));
   } catch (e) {

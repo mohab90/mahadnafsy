@@ -5,7 +5,7 @@ import { Modal } from '../../../../../shared/ui/Modal';
 import { BRANCH_LABELS_AR, BRANCHES, normalizeBranch } from '../../../../constants/branches';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
-interface BoxOption { method: string; currency: 'EGP' | 'SAR' | 'USD'; balance: number }
+interface BoxOption { method: string; currency: 'EGP' | 'SAR' | 'USD'; balance: number | null }
 
 const branchName = (value?: string | null) => { const key = normalizeBranch(value); return key ? BRANCH_LABELS_AR[key] : ''; };
 
@@ -104,10 +104,10 @@ export function ExpenseForm({
             }}>
             <option value="">{boxes === null ? 'بنحمّل الخزن…' : '— اختار الخزنة —'}</option>
             {(boxes || []).map(box => (
-              <option key={boxKey(box)} value={boxKey(box)}>{box.method} ({box.currency}) — الرصيد {box.balance.toLocaleString('ar-EG-u-nu-latn')}</option>
+              <option key={boxKey(box)} value={boxKey(box)}>{box.method} ({box.currency}){box.balance === null ? '' : ` — الرصيد ${box.balance.toLocaleString('ar-EG-u-nu-latn')}`}</option>
             ))}
           </select>
-          {chosenBox && Number(expenseDraft.amount) > chosenBox.balance && (
+          {chosenBox && chosenBox.balance !== null && Number(expenseDraft.amount) > chosenBox.balance && (
             <span className="block text-[11px] font-bold text-amber-700">المبلغ أكبر من رصيد الخزنة الحالي ({chosenBox.balance.toLocaleString('ar-EG-u-nu-latn')} {chosenBox.currency}).</span>
           )}
         </label>

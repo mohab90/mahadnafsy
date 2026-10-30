@@ -291,30 +291,29 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       // that have NO twin payment row (e.g. legacy orders predating the sync).
       // Two lookups, not one with an OR: an OR between the primary key and transaction_id uses neither index,
       // so every order read every payment (measured: this list never returned at 40,000 payments).
-      oFilters += ` AND NOT EXISTS (
-        SELECT 1 FROM payments pp
-        WHERE pp.tenant_id=orders.tenant_id AND pp.deleted_at IS NULL
-          AND pp.id = CONCAT('paymob-', orders.id)
-      )
-      AND NOT (orders.transaction_id IS NOT NULL AND orders.transaction_id <> '' AND EXISTS (
-        SELECT 1 FROM payments pp
-        WHERE pp.tenant_id=orders.tenant_id AND pp.deleted_at IS NULL
-          AND pp.transaction_id = orders.transaction_id
-      ))`;
-      if (dateFrom) { oFilters += ` AND created_at >= ?`; oParams.push(dateFrom); }
-      if (dateTo)   { oFilters += ` AND created_at < ?`; oParams.push(addDaysToDateOnly(dateTo, 1)); }
-      if (search)   { oFilters += ` AND (customer_name LIKE ? OR customer_email LIKE ?)`; oParams.push(`%${search}%`, `%${search}%`); }
+      // Written as two LEFT JOINs that must find nothing, not as NOT EXISTS: the optimizer turned each NOT EXISTS into a
+      // materialised table of 19,000 payments and sorted every paid order against them (2.7 s on the lab); the joins walk
+      // the orders newest first, look each one's twin up by key and stop at the 200th row (5–26 ms).
+      oFilters += ` AND p1.id IS NULL AND p2.id IS NULL`;
+      if (dateFrom) { oFilters += ` AND orders.created_at >= ?`; oParams.push(dateFrom); }
+      if (dateTo)   { oFilters += ` AND orders.created_at < ?`; oParams.push(addDaysToDateOnly(dateTo, 1)); }
+      if (search)   { oFilters += ` AND (orders.customer_name LIKE ? OR orders.customer_email LIKE ?)`; oParams.push(`%${search}%`, `%${search}%`); }
       if (paymentType && paymentType !== 'all') {
-        oFilters += ` AND type = ?`; oParams.push(paymentType.toLowerCase());
+        oFilters += ` AND orders.type = ?`; oParams.push(paymentType.toLowerCase());
       }
       // Only include online orders on page 1 when no status/source filter that excludes them
       const includeOnline = (!status || status === 'all' || status === 'paid') && (!source || source === 'all' || source === 'paymob');
       if (includeOnline && pageNum === 1) {
         const [oRows] = await pool.query(
-             `SELECT id, customer_name, customer_email, customer_phone, amount, currency, type AS payment_type,
-                     item_title, transaction_id, payment_method, created_at AS date, 'paid' AS status, 'paymob' AS source
-              FROM orders WHERE tenant_id=? AND status='paid' ${oFilters}
-              ORDER BY created_at DESC LIMIT 200`,
+             `SELECT orders.id, orders.customer_name, orders.customer_email, orders.customer_phone, orders.amount, orders.currency,
+                     orders.type AS payment_type, orders.item_title, orders.transaction_id, orders.payment_method,
+                     orders.created_at AS date, 'paid' AS status, 'paymob' AS source
+              FROM orders FORCE INDEX (idx_orders_tenant_status_created)
+              LEFT JOIN payments p1 ON p1.id = CONCAT('paymob-', orders.id) AND p1.tenant_id = orders.tenant_id AND p1.deleted_at IS NULL
+              LEFT JOIN payments p2 ON orders.transaction_id IS NOT NULL AND orders.transaction_id <> ''
+                                   AND p2.transaction_id = orders.transaction_id AND p2.tenant_id = orders.tenant_id AND p2.deleted_at IS NULL
+              WHERE orders.tenant_id=? AND orders.status='paid' ${oFilters}
+              ORDER BY orders.created_at DESC LIMIT 200`,
             oParams
         );
         onlineOrders = oRows.map(o => ({

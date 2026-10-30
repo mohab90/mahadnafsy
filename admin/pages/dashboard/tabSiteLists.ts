@@ -156,7 +156,16 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   my_hr: [],
 };
 
+/**
+ * A tagamoa_* tab draws the Dokki screen it stands for (admin/lib/physicalBranch.tsx screenForTab), so it reads what that
+ * screen reads. Looked up under its own name it was listed nowhere and every list came with it: six tabs, each pulling the
+ * leads, clients, orders, expenses and logs of a branch whose screens read none of them.
+ */
+const dokkiScreenOf = (tab: string): string =>
+  tab === 'tagamoa_waitlist' ? 'waitlist' : tab.startsWith('tagamoa_') ? `daqqi_${tab.slice('tagamoa_'.length)}` : tab;
+
 /** The lists to load when `tab` opens: its own, or all of them for a screen nobody has listed. */
 export function listsForTab(tab: string): readonly SiteList[] {
-  return Object.prototype.hasOwnProperty.call(tabSiteLists, tab) ? tabSiteLists[tab] : SITE_LISTS;
+  const screen = dokkiScreenOf(tab);
+  return Object.prototype.hasOwnProperty.call(tabSiteLists, screen) ? tabSiteLists[screen] : SITE_LISTS;
 }

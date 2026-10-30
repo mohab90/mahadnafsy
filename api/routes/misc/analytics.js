@@ -497,44 +497,52 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOr
     // from/to are Cairo days; the columns below are UTC instants.
     const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
+    // Each figure is counted by itself, per staff member, and the four are joined to the staff list. The query this replaces
+    // joined the staff to their leads, clients and tasks side by side, so every lead was repeated once for each client-and-
+    // task pair of the same person: it took 26 s for a year on the lab (150,000 leads) and `leads_converted` counted those
+    // repeats — 175,448 «converted» for a rep with 1,687 — so the conversion rate and the score built on it were wrong.
     const [staff] = await pool.query(`
       SELECT st.id, st.name, st.email, st.role,
-        -- Leads handled
-        COUNT(DISTINCT l.id) AS total_leads,
-        SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) AS leads_converted,
-        -- Subscribers managed
-        COUNT(DISTINCT s.id) AS subscribers_managed,
-        -- Revenue generated (payments on their clients)
-        COALESCE((
-          SELECT SUM(p.amount_egp) FROM payments p
-          JOIN subscribers sub ON sub.id = p.subscriber_id AND sub.tenant_id=p.tenant_id
-          WHERE p.tenant_id=st.tenant_id AND sub.assigned_sales_id = st.id AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
-        ), 0) AS revenue_generated,
-        -- Tasks completed
-        COUNT(DISTINCT CASE WHEN t.status='done' THEN t.id END) AS tasks_done,
-        COUNT(DISTINCT t.id) AS tasks_total
+        COALESCE(ls.total_leads, 0) AS total_leads, COALESCE(ls.leads_converted, 0) AS leads_converted,
+        COALESCE(ss.subscribers_managed, 0) AS subscribers_managed,
+        COALESCE(rv.revenue_generated, 0) AS revenue_generated,
+        COALESCE(ts.tasks_done, 0) AS tasks_done, COALESCE(ts.tasks_total, 0) AS tasks_total
       FROM staff st
-      LEFT JOIN leads l ON l.tenant_id=st.tenant_id AND l.assigned_sales_id = st.id AND l.created_at >= ? AND l.created_at < ?
-      LEFT JOIN subscribers s ON s.tenant_id=st.tenant_id AND s.assigned_sales_id = st.id AND s.created_at >= ? AND s.created_at < ?
-      LEFT JOIN tasks t ON t.tenant_id=st.tenant_id AND t.assigned_to = st.id AND t.created_at >= ? AND t.created_at < ?
+      LEFT JOIN (SELECT assigned_sales_id AS sid, COUNT(*) AS total_leads, SUM(status='converted') AS leads_converted
+                   FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_sales_id IS NOT NULL
+                  GROUP BY assigned_sales_id) ls ON ls.sid = st.id
+      LEFT JOIN (SELECT assigned_sales_id AS sid, COUNT(*) AS subscribers_managed
+                   FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_sales_id IS NOT NULL
+                  GROUP BY assigned_sales_id) ss ON ss.sid = st.id
+      -- Revenue generated: the payments on their clients
+      LEFT JOIN (SELECT sub.assigned_sales_id AS sid, SUM(p.amount_egp) AS revenue_generated
+                   FROM payments p JOIN subscribers sub ON sub.id = p.subscriber_id AND sub.tenant_id = p.tenant_id
+                  WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
+                    AND sub.assigned_sales_id IS NOT NULL
+                  GROUP BY sub.assigned_sales_id) rv ON rv.sid = st.id
+      LEFT JOIN (SELECT assigned_to AS sid, COUNT(*) AS tasks_total, SUM(status='done') AS tasks_done
+                   FROM tasks WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_to IS NOT NULL
+                  GROUP BY assigned_to) ts ON ts.sid = st.id
       WHERE st.tenant_id=? AND st.is_active = 1
-      GROUP BY st.id
       ORDER BY revenue_generated DESC`,
-      [fromUtc, toUtc, fromUtc, toUtc, fromUtc, toUtc, fromUtc, toUtc, req.tenantId]
+      [req.tenantId, fromUtc, toUtc, req.tenantId, fromUtc, toUtc, req.tenantId, fromUtc, toUtc, req.tenantId, fromUtc, toUtc, req.tenantId]
     );
 
-    const result = staff.map(s => ({
-      ...s,
-      conversion_rate: s.total_leads > 0 ? Math.round(s.leads_converted / s.total_leads * 100 * 10) / 10 : 0,
-      task_completion_rate: s.tasks_total > 0 ? Math.round(s.tasks_done / s.tasks_total * 100) : 0,
-      revenue_generated: parseFloat(s.revenue_generated),
-      // Overall performance score (weighted)
-      performance_score: Math.round(
-        (s.total_leads > 0 ? (s.leads_converted / s.total_leads) * 35 : 0) +
-        (s.tasks_total > 0 ? (s.tasks_done / s.tasks_total) * 25 : 0) +
-        Math.min(parseFloat(s.revenue_generated) / 10000, 1) * 40
-      ),
-    }));
+    const result = staff.map(row => {
+      const s = { ...row, leads_converted: Number(row.leads_converted), tasks_done: Number(row.tasks_done) };
+      return {
+        ...s,
+        conversion_rate: s.total_leads > 0 ? Math.round(s.leads_converted / s.total_leads * 100 * 10) / 10 : 0,
+        task_completion_rate: s.tasks_total > 0 ? Math.round(s.tasks_done / s.tasks_total * 100) : 0,
+        revenue_generated: parseFloat(s.revenue_generated),
+        // Overall performance score (weighted)
+        performance_score: Math.round(
+          (s.total_leads > 0 ? (s.leads_converted / s.total_leads) * 35 : 0) +
+          (s.tasks_total > 0 ? (s.tasks_done / s.tasks_total) * 25 : 0) +
+          Math.min(parseFloat(s.revenue_generated) / 10000, 1) * 40
+        ),
+      };
+    });
 
     result.sort((a, b) => b.performance_score - a.performance_score);
 

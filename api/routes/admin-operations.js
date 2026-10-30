@@ -302,8 +302,8 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const offset = parseOffset(req.query.offset);
-    const where = ['a.tenant_id=?'];
-    const params = [req.tenantId];
+    const where = [];
+    const params = [];
     const from = String(req.query.from || '');
     const to = String(req.query.to || '');
     if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { where.push('a.at >= ?'); params.push(cairoDayStartUtc(from)); }
@@ -325,20 +325,21 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
     const joins = `LEFT JOIN staff st ON st.tenant_id=a.tenant_id AND (st.email=a.actor OR st.id=a.actor)
          LEFT JOIN hr_departments d ON d.id=st.department_id AND d.tenant_id=st.tenant_id`;
     const searchesStaff = Boolean(q || actor);
+    const filters = where.map(clause => ` AND ${clause}`).join('');
     const [rows] = await pool.query(
       searchesStaff
         ? `SELECT a.id, a.action, a.entity, a.entity_id, a.label, a.actor, a.at, a.details, ${joinedColumns}
              FROM activity_logs a
              ${joins}
-            WHERE ${where.join(' AND ')}
+            WHERE a.tenant_id=?${filters}
             ORDER BY a.at DESC LIMIT ? OFFSET ?`
         : `SELECT a.id, a.action, a.entity, a.entity_id, a.label, a.actor, a.at, a.details, ${joinedColumns}
-             FROM (SELECT * FROM activity_logs a WHERE ${where.join(' AND ')} ORDER BY a.at DESC LIMIT ? OFFSET ?) a
+             FROM (SELECT * FROM activity_logs a WHERE a.tenant_id=?${filters} ORDER BY a.at DESC LIMIT ? OFFSET ?) a
              ${joins}
             ORDER BY a.at DESC`,
       // A department or a part of the system is resolved per row (old rows
       // carry neither), so those filters read a wider page and keep `limit`.
-      [...params, department || section ? Math.min(limit * 6, 3000) : limit, offset]);
+      [req.tenantId, ...params, department || section ? Math.min(limit * 6, 3000) : limit, offset]);
     const owners = new Set(listEnv('ADMIN_EMAILS').map(email => email.toLowerCase()));
     res.json(rows.map(row => {
       const described = describeLabel(row.label, row.entity);
