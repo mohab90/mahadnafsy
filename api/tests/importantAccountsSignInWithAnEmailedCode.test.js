@@ -181,6 +181,27 @@ test('a new code replaces the old one, and cannot be asked for in a flood', asyn
   assert.deepEqual(await loginCode.checkLoginCode(db, { tenantId: 't', userId: 'u3', code: second }), { ok: true });
 });
 
+test('the password entered again inside the resend window keeps the code already sent, instead of refusing a person who holds a good code', async () => {
+  // Found by signing in through the real admin screen twice within 45 s: the second answer was a 429 the screen showed as «تعذر إتمام العملية».
+  const db = fakeCodeTable();
+  stub('../lib/db', { pool: db });
+  stub('../lib/loginAudit', { logLoginAttempt: async () => {} });
+  const user = { id: 'u9', email: 'a@x.test', name: 'A', session_version: 1 };
+  sent.length = 0;
+  const first = await loginCode.startEmailCodeStep({}, { user, tenantId: 't' });
+  const second = await loginCode.startEmailCodeStep({}, { user, tenantId: 't' });
+  assert.equal(first.emailCodeRequired, true);
+  assert.equal(second.emailCodeRequired, true);
+  assert.ok(second.pendingToken, 'a fresh step to come back with');
+  assert.equal(sent.length, 1, 'no second email: the first code is still the live one');
+  assert.deepEqual(await loginCode.checkLoginCode(db, { tenantId: 't', userId: 'u9', code: lastCode() }), { ok: true });
+  // Any other refusal still reaches the screen.
+  stub('../lib/email', { sendEmail: async () => { throw new Error('smtp down'); } });
+  await assert.rejects(loginCode.startEmailCodeStep({}, { user: { ...user, id: 'u10' }, tenantId: 't' }), error => error.code === 'EMAIL_CODE_SEND_FAILED');
+  stub('../lib/email', { sendEmail: async (to, subject, html) => { sent.push({ to, subject, html }); return { ok: true }; } });
+  stub('../lib/db', { pool: { async query(sql) { if (/FROM staff/.test(sql)) return [[staffRow]]; return [{ affectedRows: 1 }]; } } });
+});
+
 test('an account with no email, or whose mail cannot be sent, is told so and left with no live code', async () => {
   const db = fakeCodeTable();
   await assert.rejects(loginCode.sendLoginCode(db, { tenantId: 't', userId: 'u4', email: '' }), error => error.code === 'EMAIL_CODE_NO_EMAIL');

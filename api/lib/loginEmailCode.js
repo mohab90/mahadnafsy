@@ -137,7 +137,13 @@ function readPendingToken(token) {
 async function startEmailCodeStep(req, { user, tenantId, via = 'password' }) {
   const { pool } = require('./db');
   const { logLoginAttempt } = require('./loginAudit');
-  await sendLoginCode(pool, { tenantId, userId: user.id, email: user.email, name: user.name });
+  try {
+    await sendLoginCode(pool, { tenantId, userId: user.id, email: user.email, name: user.name });
+  } catch (error) {
+    // The password entered again inside the resend window (a refresh, the back button, a second tab) keeps the code already in the
+    // mailbox: it is still good. Refusing here left a person holding a valid code with no screen to type it on.
+    if (error.code !== 'EMAIL_CODE_TOO_SOON') throw error;
+  }
   await logLoginAttempt({ userId: user.id, email: user.email, req, tenantId, status: '2fa_pending' });
   return {
     ok: false,
