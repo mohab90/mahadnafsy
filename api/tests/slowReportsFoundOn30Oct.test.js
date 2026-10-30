@@ -67,3 +67,20 @@ test('the stale leads read each lead\'s newest message once, not through a group
   assert.ok(!/GROUP BY l\.id/.test(body));
   assert.ok(body.includes('SELECT lead_id, MAX(date) AS last_date FROM communications'));
 });
+
+test('the reports that read the leads by assigned_at and by follow-up date have an index that holds both', () => {
+  const sql = read('api/migrations/348_v26_report_indexes.sql');
+  assert.ok(sql.includes('idx_leads_tenant_assigned_at (tenant_id, hidden, assigned_at, assigned_sales_id, created_at)'));
+  assert.ok(sql.includes('idx_leads_tenant_followup_open (tenant_id, next_follow_up_date, assigned_sales_id, status, hidden)'));
+  // The queries those indexes were made for still read these columns together.
+  assert.match(read('api/lib/teamReports.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
+  assert.match(read('api/lib/teamDailyReport.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
+  assert.match(read('api/lib/teamDailyReport.js'), /next_follow_up_date IS NOT NULL\s+AND assigned_sales_id IS NOT NULL AND status IN/);
+});
+
+test('the campaign report starts its five independent reads together', () => {
+  const route = read('api/routes/analytics/campaigns.js');
+  const body = route.slice(route.indexOf("router.get('/api/admin/reports/campaign'"), route.indexOf("router.patch('/api/admin/leads/:id/utm'"));
+  assert.ok(body.includes('await Promise.all(['));
+  assert.equal((body.match(/await pool\.query/g) || []).length, 0, 'a read of the report is awaited alone again');
+});

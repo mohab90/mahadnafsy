@@ -30,8 +30,10 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
       by_source: [], by_campaign: [], monthly_trend: [], revenue_by_source: [], top_courses: [],
     });
 
+    // The five reads are independent and each scans the period's leads or payments (0.2-0.6 s apiece on the lab), so they run
+    // together: 2.0 s one after the other, the slowest one's time side by side.
     // By referral source
-    const [bySource] = await pool.query(`
+    const bySourceQuery = pool.query(`
       SELECT
         COALESCE(l.source, 'غير محدد') AS source,
         COUNT(*) AS total_leads,
@@ -43,7 +45,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
     `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     // By UTM campaign
-    const [byCampaign] = await pool.query(`
+    const byCampaignQuery = pool.query(`
       SELECT
         COALESCE(l.utm_campaign, 'بدون حملة') AS campaign,
         COALESCE(l.utm_source,   'غير محدد')   AS utm_source,
@@ -58,7 +60,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
     `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     // Monthly new leads + conversions trend
-    const [monthlyTrend] = await pool.query(`
+    const monthlyTrendQuery = pool.query(`
       SELECT
         DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m') AS month,
         COUNT(*) AS new_leads,
@@ -69,9 +71,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
     `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     // Revenue by source (joins leads → subscribers → payments)
-    let revenueBySource = [];
-    if (req.isSuperAdmin || hasPermission(req.staffRecord, 'view_financial')) {
-      [revenueBySource] = await pool.query(`
+    const revenueQuery = (req.isSuperAdmin || hasPermission(req.staffRecord, 'view_financial')) ? pool.query(`
         SELECT
           COALESCE(l.source, 'غير محدد') AS source,
           COUNT(DISTINCT p.id)            AS payment_count,
@@ -82,11 +82,10 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         WHERE p.deleted_at IS NULL AND p.tenant_id=? AND p.status IN ('paid','confirmed')
           AND p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
         GROUP BY l.source ORDER BY revenue DESC
-      `, [req.tenantId, from, to, ...scope.params]);
-    }
+      `, [req.tenantId, from, to, ...scope.params]) : Promise.resolve([[]]);
 
     // Top interested courses
-    const [topCourses] = await pool.query(`
+    const topCoursesQuery = pool.query(`
       SELECT
         c.title, COUNT(*) AS interested_count,
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
@@ -95,6 +94,10 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
       WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?${scope.sql}
       GROUP BY l.enrolled_course_id, c.title ORDER BY interested_count DESC LIMIT 20
     `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
+
+    const [[bySource], [byCampaign], [monthlyTrend], [revenueBySource], [topCourses]] = await Promise.all([
+      bySourceQuery, byCampaignQuery, monthlyTrendQuery, revenueQuery, topCoursesQuery,
+    ]);
 
     const totalLeads     = bySource.reduce((s, r) => s + Number(r.total_leads), 0);
     const totalConverted = bySource.reduce((s, r) => s + Number(r.converted), 0);
