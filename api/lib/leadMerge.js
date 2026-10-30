@@ -55,22 +55,63 @@ function duplicateGroups(rows) {
 // Reads every visible lead, a page at a time. This used to stop at the oldest
 // 10,000 — with ~14k leads, a repeat among the newer ones was never detected,
 // which is most of what the sheet importer and web forms create.
+//
+// Two passes, so the whole table is never held: the first reads only id, phone and email of every lead, a page at a time,
+// and remembers the first lead of each phone identity and email; a lead that repeats one is a suspect. Every duplicate
+// group is made of suspects only (two leads share a key, so both are), so the second pass reads the whole row of the
+// suspects alone and groups them with duplicateGroups, which gives the groups the single full read gave. With the 520,000
+// leads of production the full read was ~400 MB of row objects inside the API process; the keys are a fraction of it.
+// FNV-1a over the key's UTF-16 units: a number to remember instead of the string. Two different keys can share one; that
+// only makes an extra suspect, and the second pass groups the suspects by the real keys.
+function keyHash(key) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) { hash ^= key.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
+  return hash >>> 0;
+}
+
 async function findLeadDuplicateGroups(tenantId, db = pool) {
-  const rows = [];
   const PAGE = 5000;
+  const ids = [];
+  const phones = new Map();
+  const emails = new Map();
+  const suspects = new Set();
+  const seen = (map, key, index) => {
+    const hash = keyHash(key);
+    if (map.has(hash)) { suspects.add(index); suspects.add(map.get(hash)); } else map.set(hash, index);
+  };
   let cursor = null;
   for (;;) {
     const [page] = await db.query(
-      `SELECT id,name,email,phone,status,score,client_code,created_at
+      `SELECT id,email,phone,created_at
          FROM leads WHERE tenant_id=? AND hidden=0 AND merged_into_lead_id IS NULL
           ${cursor ? 'AND (created_at > ? OR (created_at = ? AND id > ?))' : ''}
         ORDER BY created_at ASC, id ASC LIMIT ?`,
       cursor ? [tenantId, cursor.created_at, cursor.created_at, cursor.id, PAGE] : [tenantId, PAGE]
     );
-    rows.push(...page);
+    for (const row of page) {
+      const index = ids.push(row.id) - 1;
+      const phone = normalizePhone(row.phone);
+      const email = normalizedEmail(row.email);
+      if (phone.length >= 7) seen(phones, phone, index);
+      if (email) seen(emails, email, index);
+    }
     if (page.length < PAGE) break;
     cursor = page[page.length - 1];
   }
+  if (!suspects.size) return [];
+  const suspectIds = [...suspects].map(index => ids[index]);
+  const rows = [];
+  for (let i = 0; i < suspectIds.length; i += 1000) {
+    const [chunk] = await db.query(
+      `SELECT id,name,email,phone,status,score,client_code,created_at
+         FROM leads WHERE tenant_id=? AND hidden=0 AND merged_into_lead_id IS NULL AND id IN (?)
+        ORDER BY created_at ASC, id ASC`,
+      [tenantId, suspectIds.slice(i, i + 1000)]
+    );
+    rows.push(...chunk);
+  }
+  // In the order the single read had them (oldest first), so the groups come out in the same order.
+  rows.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return duplicateGroups(rows);
 }
 
