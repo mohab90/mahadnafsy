@@ -16,6 +16,7 @@ import { CertificatePriceAudit } from './CertificatePriceAudit';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useCanDelete } from '../../../hooks/useCanDelete';
 import { SelectionExportBar, useRowPicker } from './SelectionExportBar';
+import { webLink } from '../../../lib/webLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -393,8 +394,8 @@ export default function CertRequestsTab({
                             {start || '؟'} ← {end || '؟'}
                           </span>
                         )}
-                        {row.personalPhotoUrl && <a href={row.personalPhotoUrl} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">الصورة الشخصية</a>}
-                        {row.idPhotoUrl && <a href={row.idPhotoUrl} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">صورة الهوية</a>}
+                        {row.personalPhotoUrl && <a href={webLink(row.personalPhotoUrl)} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">الصورة الشخصية</a>}
+                        {row.idPhotoUrl && <a href={webLink(row.idPhotoUrl)} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">صورة الهوية</a>}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {missing.length > 0 && <span className="font-bold text-red-600">ناقص: {missing.join('، ')}</span>}

@@ -18,7 +18,7 @@ const { assertGrantable, heldByTarget } = require('../../lib/permissionGrant');
 const { ADMIN_EMAILS } = require('../../middleware/auth');
 const { sqlCairoToday } = require('../../lib/dates');
 const { requireRecruiting, joinUsInReach, outOfRecruitReach } = require('../../lib/branchHr');
-const { parseInterviewAt } = require('../../lib/joinApplication');
+const { parseInterviewAt, webAddress } = require('../../lib/joinApplication');
 const { signerName } = require('../../lib/staffNames');
 
 // Lower-case permission keys, the form stored in staff.permissions_json.
@@ -163,7 +163,7 @@ async function createJoinApplication(data) {
        VALUES (?,?,?,?,?,?,?,?,?,?,?, 'NEW', ?,?,?,?,?,?)`,
       [
         data.id, data.tenant_id, data.branch_id || null, data.name, data.email, data.phone,
-        data.specialty, data.experience || '', data.type, data.linkedin || null, data.message || null,
+        data.specialty, data.experience || '', data.type, webAddress(data.linkedin) || null, data.message || null,
         data.source_form || (data.type === 'EMPLOYEE' ? 'staff' : 'teaching'), cleanBranch(data.branch),
         data.lectured_before ?? null, data.sessions_before ?? null,
         Array.isArray(data.programs) && data.programs.length ? JSON.stringify(data.programs) : null,

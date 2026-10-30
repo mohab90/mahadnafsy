@@ -16,6 +16,7 @@ import { CommunityEventsSection, FeaturedEventCard } from '../components/Communi
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
 import PageHeader from '../components/PageHeader';
+import { webLink } from '../lib/webLink';
 
 const TAG_COLORS: Record<string, string> = {
   'نقاش حالة': 'bg-primary-50 text-primary-700 border-primary-100',
@@ -399,7 +400,7 @@ const Community: React.FC = () => {
                       </div>
                       <p className="mb-1 text-sm leading-relaxed text-muted-body">{item.description}</p>
                       <p className="mb-3 text-xs text-muted-soft">{item.fileSize}</p>
-                      <a href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-primary-50 px-4 text-sm font-extrabold text-primary-700 transition hover:bg-primary-100">
+                      <a href={webLink(item.downloadUrl)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-primary-50 px-4 text-sm font-extrabold text-primary-700 transition hover:bg-primary-100">
                         <Download size={14} />تحميل الملف
                       </a>
                     </div>

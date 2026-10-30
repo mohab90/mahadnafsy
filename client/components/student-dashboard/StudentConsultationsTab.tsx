@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Calendar, ChevronRight, Clock, MessageSquare, Phone, User, Video } from 'lucide-react';
+import { webLink } from '../../lib/webLink';
 
 type Consultation = {
   id: string;
@@ -114,7 +115,7 @@ export function StudentConsultationsTab({ consultations }: StudentConsultationsT
             </div>
             {consultation.meetingLink && consultation.status === 'confirmed' && (
               <a
-                href={consultation.meetingLink}
+                href={webLink(consultation.meetingLink)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-1.5 text-sm font-bold text-white transition hover:bg-green-700"

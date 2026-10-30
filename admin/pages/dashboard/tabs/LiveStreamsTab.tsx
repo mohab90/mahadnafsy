@@ -4,6 +4,7 @@ import { useCrmData, useStaticData } from '../../../context/siteDataSlices';
 import { LiveAudienceModal } from './LiveAudienceModal';
 import type { LiveStream } from '../../../types';
 import { cairoDateTime, cairoDateTimeInput, cairoInputToUtc } from '../../../../shared/cairoDate';
+import { webLink } from '../../../lib/webLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -138,8 +139,8 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
                     {ls.durationMinutes && <span>{ls.durationMinutes} دقيقة</span>}
                   </div>
                   <div className="flex gap-2 mt-2">
-                    <a href={ls.streamUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] bg-primary-50 text-primary-700 font-bold px-3 py-1 rounded-lg hover:bg-primary-100 transition">🔗 رابط البث</a>
-                    {ls.recordingUrl && <a href={ls.recordingUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] bg-gray-100 text-gray-700 font-bold px-3 py-1 rounded-lg hover:bg-gray-200 transition">▶ التسجيل</a>}
+                    <a href={webLink(ls.streamUrl)} target="_blank" rel="noopener noreferrer" className="text-[11px] bg-primary-50 text-primary-700 font-bold px-3 py-1 rounded-lg hover:bg-primary-100 transition">🔗 رابط البث</a>
+                    {ls.recordingUrl && <a href={webLink(ls.recordingUrl)} target="_blank" rel="noopener noreferrer" className="text-[11px] bg-gray-100 text-gray-700 font-bold px-3 py-1 rounded-lg hover:bg-gray-200 transition">▶ التسجيل</a>}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 flex-shrink-0">

@@ -5,6 +5,7 @@ import { promptDialog } from '../../../shared/ui/promptDialog';
 import { errorText, lecturerApi, type LecturerConsultation, type Notify } from './lecturerApi';
 import { PendingReschedule, RescheduleForm } from './LecturerReschedule';
 import { Card, Empty, Loading } from './ui';
+import { webLink } from '../../lib/webLink';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   pending: { label: 'مستنية رد', cls: 'bg-amber-100 text-amber-800' }, confirmed: { label: 'مؤكدة', cls: 'bg-blue-100 text-blue-800' },
@@ -71,7 +72,7 @@ export function LecturerConsultations({ notify, systemMeetings = false }: { noti
                     {!systemMeetings && !item.systemMade && <button type="button" aria-label="رابط الجلسة" title="رابط الجلسة" onClick={() => void link(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Link2 size={14} /></button>}
                     <button type="button" aria-label="ملاحظات" title="ملاحظات" onClick={() => void note(item)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-600"><Pencil size={14} /></button>
                     {(systemMeetings || item.systemMade) && item.status === 'confirmed' && <button type="button" disabled={busy === item.id} onClick={() => void start(item)} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Video size={12} /> ابدأ الجلسة</button>}
-                    {!systemMeetings && !item.systemMade && item.meetingLink && <a href={item.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white"><ExternalLink size={12} /> فتح الجلسة</a>}
+                    {!systemMeetings && !item.systemMade && item.meetingLink && <a href={webLink(item.meetingLink)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white"><ExternalLink size={12} /> فتح الجلسة</a>}
                   </div>
                 </div>
                 <PendingReschedule item={item} notify={notify} onDone={load} />

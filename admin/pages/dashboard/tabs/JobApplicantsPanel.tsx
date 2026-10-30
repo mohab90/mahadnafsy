@@ -10,6 +10,7 @@ import { EXPERIENCE_YEARS as YEARS, BRANCH_LABELS as BRANCHES, STAGE_LABELS as S
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { webLink } from '../../../lib/webLink';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -136,7 +137,7 @@ export const JobApplicantsPanel: React.FC<{
               {row.experience_years && <span className="flex items-center gap-1"><Briefcase size={11} />{YEARS[row.experience_years] || row.experience_years}</span>}
               {row.education && <span className="flex items-center gap-1"><GraduationCap size={11} />{row.education}</span>}
               {row.cv_url && (
-                <a href={row.cv_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-600 hover:underline">
+                <a href={webLink(row.cv_url)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-600 hover:underline">
                   <FileText size={11} />السيرة الذاتية
                 </a>
               )}

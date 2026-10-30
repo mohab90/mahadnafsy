@@ -2,6 +2,7 @@ import { Download, FileText } from 'lucide-react';
 
 import type { Course, CourseMaterial, SubscriberItem } from '../../types';
 import { cdnImg } from '../../../shared/img';
+import { webLink } from '../../lib/webLink';
 
 type MaterialWithCourse = CourseMaterial & {
   courseName: string;
@@ -72,7 +73,7 @@ export function StudentMaterialsTab({ subscriber, enrolledCourses }: { subscribe
                   <p className="mt-0.5 text-[10px] text-gray-400">PDF</p>
                 </div>
                 <a
-                  href={material.url}
+                  href={webLink(material.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   download

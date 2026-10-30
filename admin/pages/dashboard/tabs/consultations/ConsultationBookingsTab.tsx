@@ -8,6 +8,7 @@ import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { waLink } from '../../../../lib/whatsappLink';
 import { ConsultationTimingBadge } from '../../../../components/ConsultationTimingBadge';
+import { webLink } from '../../../../lib/webLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -260,7 +261,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
                         <button disabled={busy} onClick={() => void editLink(item)} title={meetingLink ? 'تعديل رابط الجلسة' : 'إضافة رابط الجلسة'} aria-label="رابط الجلسة" className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}><Link2 size={14} /></button>
                       )}
                       {meetingLink && (
-                        <a href={meetingLink} target="_blank" rel="noopener noreferrer" title="فتح رابط الجلسة" aria-label="فتح رابط الجلسة" className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}><ExternalLink size={14} /></a>
+                        <a href={webLink(meetingLink)} target="_blank" rel="noopener noreferrer" title="فتح رابط الجلسة" aria-label="فتح رابط الجلسة" className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}><ExternalLink size={14} /></a>
                       )}
                       <button disabled={busy} onClick={() => void remove(item)} title="حذف" aria-label="حذف" className={`${iconBtn} border-red-200 bg-red-50 text-red-500 hover:bg-red-100`}><Trash2 size={14} /></button>
                     </div>

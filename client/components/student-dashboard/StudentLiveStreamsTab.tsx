@@ -3,6 +3,7 @@ import { mysqlClient } from '../../lib/mysqlapi';
 import { cairoDateTime } from '../../../shared/cairoDate';
 import { Calendar, Radio, User, Video } from 'lucide-react';
 import type { LiveStream } from '../../types';
+import { webLink } from '../../lib/webLink';
 
 interface StudentLiveStreamsTabProps {
   upcomingLives: LiveStream[];
@@ -52,7 +53,7 @@ export const StudentLiveStreamsTab: React.FC<StudentLiveStreamsTabProps> = ({ up
               </div>
               {nextLive.description && <p className="text-white/70 text-sm mb-4">{nextLive.description}</p>}
               <a
-                href={nextLive.streamUrl}
+                href={webLink(nextLive.streamUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => { mysqlClient.joinLiveStream(nextLive.id).catch(() => {}); }}
@@ -77,7 +78,7 @@ export const StudentLiveStreamsTab: React.FC<StudentLiveStreamsTabProps> = ({ up
                   </div>
                 </div>
                 <a
-                  href={live.streamUrl}
+                  href={webLink(live.streamUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => { mysqlClient.joinLiveStream(live.id).catch(() => {}); }}

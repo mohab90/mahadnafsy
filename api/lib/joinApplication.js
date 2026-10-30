@@ -116,7 +116,23 @@ function parseInterviewAt(raw, now = new Date()) {
   return { value: `${day} ${hh}:${mm}:00` };
 }
 
+/**
+ * The «LinkedIn / الموقع» box. The website takes whatever an anonymous visitor types
+ * there and the HR screen opens it in one click, so `javascript:alert(1)` was a script
+ * running in the HR officer's session. A bare address ("linkedin.com/in/x") becomes
+ * https; any other scheme (javascript:, data:, mailto:, file:) or a `//host` jump is
+ * refused. Returns the link, '' when there is none, or null when it is not a web link.
+ */
+function webAddress(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\/[^\s"'<>]+$/i.test(raw)) return raw;
+  if (/^[a-z][a-z0-9+.-]*:(?!\d+(\/|$))/i.test(raw) || raw.startsWith('/')) return null;
+  const withScheme = `https://${raw}`;
+  return /^https:\/\/[^\s"'<>]+$/.test(withScheme) ? withScheme : null;
+}
+
 module.exports = {
   FIRST_CALL_TAGS, MAX_PROGRAMS,
-  parseFirstCall, parseInterviewAt, parseYesNo, programIdsFrom, readPrograms, resolveApplicationKind,
+  parseFirstCall, parseInterviewAt, parseYesNo, programIdsFrom, readPrograms, resolveApplicationKind, webAddress,
 };

@@ -42,6 +42,7 @@ const {
   cairoToday,
 } = require('./_shared');
 const { hrReach } = require('../../lib/branchHr');
+const { escapeHtml } = require('../../lib/html');
 const { requireAnyPermission } = require('../../middleware/auth');
 
 const router = Router();
@@ -533,13 +534,13 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
         subject: 'بيانات دخولك لمنصة معهد الدراسات النفسية',
         html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
           <h2 style="color:#7c3aed;text-align:center;">معهد الدراسات النفسية</h2>
-          <p>مرحباً <strong>${displayName}</strong>،</p>
+          <p>مرحباً <strong>${escapeHtml(displayName)}</strong>،</p>
           <p>تم ${action === 'created' ? 'إنشاء' : 'تفعيل'} حسابك على منصة معهد الدراسات النفسية.</p>
           <div style="background:#f3f4f6;border:2px solid #7c3aed;border-radius:8px;padding:16px;text-align:center;margin:16px 0;">
             <p style="margin:0 0 6px;color:#6b7280;font-size:13px;">كلمة المرور المؤقتة</p>
             <span style="font-family:monospace;font-size:26px;font-weight:bold;color:#7c3aed;letter-spacing:4px;">${tempPass}</span>
           </div>
-          <p style="color:#6b7280;font-size:13px;">📧 البريد: <strong>${normEmail}</strong></p>
+          <p style="color:#6b7280;font-size:13px;">📧 البريد: <strong>${escapeHtml(normEmail)}</strong></p>
           <p style="color:#6b7280;font-size:13px;">🌐 <a href="https://mahadnafsy.com">mahadnafsy.com</a></p>
           <p style="color:#9ca3af;font-size:12px;margin-top:16px;">يرجى تغيير كلمة المرور بعد أول تسجيل دخول.</p>
         </div>`,
@@ -682,13 +683,13 @@ router.post(
             subject: 'بيانات دخولك لمنصة معهد الدراسات النفسية',
             html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
               <h2 style="color:#7c3aed;text-align:center;">معهد الدراسات النفسية</h2>
-              <p>مرحباً <strong>${displayName}</strong>،</p>
+              <p>مرحباً <strong>${escapeHtml(displayName)}</strong>،</p>
               <p>تم إنشاء حسابك على منصة معهد الدراسات النفسية.</p>
               <div style="background:#f3f4f6;border:2px solid #7c3aed;border-radius:8px;padding:16px;text-align:center;margin:16px 0;">
                 <p style="margin:0 0 6px;color:#6b7280;font-size:13px;">كلمة المرور المؤقتة</p>
                 <span style="font-family:monospace;font-size:26px;font-weight:bold;color:#7c3aed;letter-spacing:4px;">${tempPass}</span>
               </div>
-              <p style="color:#6b7280;font-size:13px;">📧 البريد: <strong>${normEmail}</strong></p>
+              <p style="color:#6b7280;font-size:13px;">📧 البريد: <strong>${escapeHtml(normEmail)}</strong></p>
               <p style="color:#6b7280;font-size:13px;">🌐 <a href="https://mahadnafsy.com">mahadnafsy.com</a></p>
               <p style="color:#9ca3af;font-size:12px;">يرجى تغيير كلمة المرور بعد أول تسجيل دخول.</p>
             </div>`,

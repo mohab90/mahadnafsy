@@ -3,6 +3,7 @@ import { Radio, Square, Users, Video } from 'lucide-react';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { cairoDateTime } from '../../shared/cairoDate';
 import { promptDialog } from '../../shared/ui/promptDialog';
+import { webLink } from '../lib/webLink';
 
 // «لايفاتي» (8 Oct 2026): «حساب لمحاضر يدخل علي السيستم بصلاحيه محاضر ويقدر يفتح
 // اللايف». The lives the administration set with this lecturer's account: open
@@ -69,7 +70,7 @@ export function InstructorLivePanel() {
           )}
           {live.status === 'live' && (
             <>
-              <a href={live.streamUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-700">ادخل البث</a>
+              <a href={webLink(live.streamUrl)} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-700">ادخل البث</a>
               <button disabled={busy === live.id} onClick={() => void setStatus(live, 'ENDED')}
                 className="inline-flex items-center gap-1 rounded-xl bg-gray-800 px-4 py-2 text-sm font-bold text-white hover:bg-gray-900 disabled:opacity-50">
                 <Square size={13} /> إنهاء

@@ -33,6 +33,7 @@ const {
 } = require('./_shared');
 
 const { toIdentity } = require('../../../lib/phoneNumber');
+const { escapeHtml } = require('../../../lib/html');
 const { clientHoldingPhone, phoneInUse, spellingsOf } = require('../../../lib/phoneDuplicates');
 
 const router = Router();
@@ -357,11 +358,11 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
         subject: 'تم تفعيل حسابك — معهد الدراسات النفسية',
         html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
           <h2 style="color:#7c3aed;text-align:center;">معهد الدراسات النفسية</h2>
-          <p>مرحباً <strong>${lead.name}</strong>،</p>
+          <p>مرحباً <strong>${escapeHtml(lead.name)}</strong>،</p>
           <p>يسعدنا إبلاغك بأنه تم تحويلك إلى مشترك فعّال في منصتنا. إليك بيانات الدخول:</p>
           <div style="background:#f5f3ff;border:2px solid #7c3aed;border-radius:8px;padding:16px;text-align:center;margin:16px 0;">
             <p style="margin:0 0 6px;color:#6b7280;font-size:13px;">البريد الإلكتروني</p>
-            <strong style="color:#1f2937;">${normEmail}</strong>
+            <strong style="color:#1f2937;">${escapeHtml(normEmail)}</strong>
             <p style="margin:12px 0 6px;color:#6b7280;font-size:13px;">كلمة المرور المؤقتة</p>
             <span style="font-family:monospace;font-size:26px;font-weight:bold;color:#7c3aed;letter-spacing:4px;">${tempPass}</span>
           </div>

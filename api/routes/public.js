@@ -943,6 +943,8 @@ router.post('/api/join-us', contactLimiter, scalarFields('name', 'email', 'phone
       branch, education, experiencePlaces, experienceYears, form } = req.body;
     const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'optional|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000', programsOther: 'optional|1000', branch: 'optional|60' });
     if (verr) return res.status(400).json({ error: verr });
+    const website = joinApplication.webAddress(linkedin);
+    if (website === null) return res.status(400).json({ error: 'رابط LinkedIn أو الموقع لازم يكون رابط ويب (https://…)' });
     const id = uuidv4();
     // Which list the application belongs on comes from the page it was sent from,
     // not from a type that silently fell back to INSTRUCTOR — «لازم تفرق بيينهم
@@ -990,7 +992,7 @@ router.post('/api/join-us', contactLimiter, scalarFields('name', 'email', 'phone
     }
     const { applicantId } = await require('./hr/talent').createJoinApplication({
       id, tenant_id: req.tenantId, branch_id: req.tenantBranchId || null,
-      name, email, phone, specialty, experience, type: safeType, linkedin, message,
+      name, email, phone, specialty, experience, type: safeType, linkedin: website, message,
       branch, education, experiencePlaces, experienceYears,
       job_id: targetJobId,
       source_form: kind.sourceForm,

@@ -1,5 +1,6 @@
 import { PHOTO_ACCEPT, type PhotoKind, type PhotoNeed } from '../../lib/drivePhotos';
 import { PHOTO_COPY } from './paymentTiles';
+import { webLink } from '../../lib/webLink';
 
 /** One picture: shows what is on the client's file, takes a new one, says what happened. */
 export function PhotoPicker({ kind, need, uploaded, onFile, busy, disabled, onPick }: {
@@ -18,7 +19,7 @@ export function PhotoPicker({ kind, need, uploaded, onFile, busy, disabled, onPi
       <span className="mr-auto flex items-center gap-2">
         {busy && <span className="text-[11px] font-bold text-sky-700">جاري الرفع…</span>}
         {!busy && link && (
-          <a href={link} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-emerald-700 underline">
+          <a href={webLink(link)} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-emerald-700 underline">
             {uploaded ? '✓ اترفعت — فتح' : '✓ على ملف العميل — فتح'}
           </a>
         )}

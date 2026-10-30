@@ -11,6 +11,7 @@ import { branchLabel, fmtDateTime, yearsLabel } from '../hr-sections/applicantLa
 import {
   KIND, KindBadge, RatingStars, STAGE_LABEL, STATUS, type Status, YesNoBadge, kindOf, statusOf,
 } from './joinUsUi';
+import { webLink } from '../../../../lib/webLink';
 
 type Note = { id: string; kind: string; body: string; author_name: string | null; created_at: string };
 
@@ -133,7 +134,7 @@ const ApplicationCard: React.FC<{
           </a>
         )}
         {app.linkedin && (
-          <a href={app.linkedin} target="_blank" rel="noopener noreferrer"
+          <a href={webLink(app.linkedin)} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-xl border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100">
             <ExternalLink size={12} /> LinkedIn / الموقع
           </a>

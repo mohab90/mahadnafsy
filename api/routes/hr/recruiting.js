@@ -4,7 +4,7 @@ const router = Router();
 const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireRecruiting, applicantReachSql, applicantInReach, outOfRecruitReach } = require('../../lib/branchHr');
-const { parseInterviewAt } = require('../../lib/joinApplication');
+const { parseInterviewAt, webAddress } = require('../../lib/joinApplication');
 const { cairoToday } = require('../../lib/dates');
 const { interviewFilterSql, interviewFormSql, interviewHeldSql, pageOf } = require('../../lib/recruitmentFilters');
 
@@ -34,6 +34,7 @@ function validateApplicant(body, partial = false) {
     const cvUrl = String(body.cv_url).trim();
     if (!/^https:\/\//i.test(cvUrl) && !cvUrl.startsWith('/uploads/')) return 'cv_url must use HTTPS or an uploaded file';
   }
+  if (body.linkedin && webAddress(body.linkedin) === null) return 'linkedin must be a web link (https://…)';
   if (body.interview_rating !== undefined && body.interview_rating !== null) {
     const rating = Number(body.interview_rating);
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return 'interview_rating must be an integer from 1 to 5';
@@ -504,7 +505,7 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
         phone || null, cv_url || null, notes || null,
         clean(req.body.education), clean(req.body.experience_years), clean(req.body.experience_places),
         clean(req.body.branch), clean(req.body.specialty), clean(req.body.applicant_type),
-        clean(req.body.linkedin),
+        clean(webAddress(req.body.linkedin)),
         req.staffRecord?.id || null, req.params.jobId, req.tenantId]
     );
     if (!created.affectedRows) {

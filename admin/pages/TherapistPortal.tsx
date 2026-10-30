@@ -5,6 +5,7 @@ import { sortConsultationsByDate, meetingProviderLabels } from '../lib/consultat
 import type { ConsultationItem, Therapist } from '../types';
 import { InstructorLivePanel } from './InstructorLivePanel';
 import { ConsultationTimingBadge } from '../components/ConsultationTimingBadge';
+import { webLink } from '../lib/webLink';
 
 const TherapistPortal: React.FC = () => {
   const [therapist, setTherapist] = useState<Therapist | null>(null);
@@ -140,7 +141,7 @@ const TherapistPortal: React.FC = () => {
                   <button disabled={savingId === item.id} onClick={() => void updateConsultation(item, { status: 'completed' })} className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 disabled:opacity-50 text-sm font-bold">إنهاء</button>
                   <button disabled={savingId === item.id} onClick={() => void updateConsultation(item, { status: 'cancelled' })} className="px-3 py-2 rounded-xl bg-red-50 text-red-700 disabled:opacity-50 text-sm font-bold">إلغاء</button>
                   {item.meetingLink && (
-                    <a href={item.meetingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary-600 text-white text-sm font-bold">
+                    <a href={webLink(item.meetingLink)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary-600 text-white text-sm font-bold">
                       <ExternalLink size={14} />
                       فتح الجلسة
                     </a>
