@@ -244,8 +244,12 @@ router.get('/api/admin/finance/box-options', requireAuth, requireAdminOrStaff, r
   try {
     // The names are for anyone who records an expense; the balances are the institute's books, which only the main accounts
     // see (the boxes screen is the same): a collection officer or a branch accountant holds view_financial too.
-    const scope = resolveFinancialScope(req, { requestedBranch: null });
-    const seesBalances = scope.kind === 'all' && !scope.branchId;
+    // A data scope with no aggregate view of the books (a collection officer's) throws here: they get the names, no balances.
+    let seesBalances = false;
+    try {
+      const scope = resolveFinancialScope(req, { requestedBranch: null });
+      seesBalances = scope.kind === 'all' && !scope.branchId;
+    } catch { seesBalances = false; }
     const current = await currentBalances(pool, { tenantId: req.tenantId });
     const options = new Map();
     for (const [key, value] of current) {

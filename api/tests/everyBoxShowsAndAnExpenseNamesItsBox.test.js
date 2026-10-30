@@ -66,7 +66,10 @@ test('«واتسابي» is open to the Dokki desk and its manager, and to nobod
 test('the box list names every box for whoever records an expense but shows balances only to the main books', () => {
   const route = read('routes', 'finance', 'budgets.js');
   const body = route.slice(route.indexOf("router.get('/api/admin/finance/box-options'"), route.indexOf('// ── The balances: reset a box'));
-  assert.match(body, /const seesBalances = scope\.kind === 'all' && !scope\.branchId/);
+  assert.match(body, /seesBalances = scope\.kind === 'all' && !scope\.branchId/);
+  // A scope with no aggregate view of the books (a collection officer's) makes resolveFinancialScope throw: the lab's sweep
+  // got a 500 here for that account. They get the names and no balances.
+  assert.match(body, /let seesBalances = false;\s+try \{\s+const scope = resolveFinancialScope\(req, \{ requestedBranch: null \}\);[\s\S]*?\} catch \{ seesBalances = false; \}/);
   assert.match(body, /balance: seesBalances \? value\.balance : null/);
   assert.match(body, /balance: seesBalances \? 0 : null/);
   const form = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'financial', 'ExpenseForm.tsx');
