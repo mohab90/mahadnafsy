@@ -89,15 +89,16 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
     // from/to are Cairo days; the columns below are UTC instants.
     const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
+    // Five independent reads of the period's payments (0.2-0.4 s apiece on the lab): started together, not one after the other.
     // By payment_type
-    const [byType] = await pool.query(`
+    const byTypeQuery = pool.query(`
       SELECT COALESCE(payment_type, 'other') AS source,
              COUNT(*) AS transactions, SUM(amount_egp) AS total
       FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL
       GROUP BY source ORDER BY total DESC`, [req.tenantId, fromUtc, toUtc]);
 
     // Monthly breakdown by source
-    const [monthly] = await pool.query(`
+    const monthlyQuery = pool.query(`
       SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') AS month,
              COALESCE(payment_type, 'other') AS source,
              SUM(amount_egp) AS total
@@ -105,7 +106,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
       GROUP BY month, source ORDER BY month, total DESC`, [req.tenantId, fromUtc, toUtc]);
 
     // Top paying clients
-    const [topClients] = await pool.query(`
+    const topClientsQuery = pool.query(`
       SELECT s.id, s.name, s.phone, s.branch, s.client_code,
              SUM(p.amount_egp) AS total_paid, COUNT(p.id) AS payment_count
       FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
@@ -113,17 +114,21 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
       GROUP BY s.id ORDER BY total_paid DESC LIMIT 20`, [req.tenantId, fromUtc, toUtc]);
 
     // By branch
-    const [byBranch] = await pool.query(`
+    const byBranchQuery = pool.query(`
       SELECT COALESCE(s.branch,'غير محدد') AS branch,
              SUM(p.amount_egp) AS total, COUNT(p.id) AS count
       FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
       WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
       GROUP BY branch ORDER BY total DESC`, [req.tenantId, fromUtc, toUtc]);
 
-    const [[{ grand_total }]] = await pool.query(
+    const grandTotalQuery = pool.query(
       `SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`,
       [req.tenantId, fromUtc, toUtc]
     );
+
+    const [[byType], [monthly], [topClients], [byBranch], [[{ grand_total }]]] = await Promise.all([
+      byTypeQuery, monthlyQuery, topClientsQuery, byBranchQuery, grandTotalQuery,
+    ]);
 
     const sourceLabel = {
       course: 'كورسات', consultation: 'استشارات', daqqi: 'دقيقي',

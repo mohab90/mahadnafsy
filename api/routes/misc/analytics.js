@@ -408,16 +408,19 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdminOrStaff, r
       -- name MAX() itself: MariaDB refuses an expression built on an aggregate
       -- alias ("Reference not supported"), so the previous fix still answered 500.
       SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.is_active,
-             COALESCE(SUM(p.amount), 0) AS total_paid,
-             MAX(p.created_at) AS last_payment_date,
-             DATEDIFF(NOW(), MAX(p.created_at)) AS days_since_payment
+             COALESCE(pay.total_paid, 0) AS total_paid,
+             pay.last_payment_date,
+             DATEDIFF(NOW(), pay.last_payment_date) AS days_since_payment
       FROM subscribers s
-      LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.status = 'paid' AND p.deleted_at IS NULL
+      -- Each client's payments are summed once, then joined: joining the payments to every active client and grouping by
+      -- client took 1.4 s for 30,000 clients and 40,000 payments on the lab, this 0.5 s, same rows.
+      LEFT JOIN (SELECT subscriber_id, SUM(amount) AS total_paid, MAX(created_at) AS last_payment_date
+                   FROM payments WHERE tenant_id=? AND status = 'paid' AND deleted_at IS NULL
+                  GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
-      GROUP BY s.id
-      HAVING (last_payment_date IS NULL OR last_payment_date < ?)
-      ORDER BY MAX(p.created_at) IS NULL, days_since_payment DESC
-      LIMIT 500`, [req.tenantId, cutoffStr]);
+        AND (pay.last_payment_date IS NULL OR pay.last_payment_date < ?)
+      ORDER BY pay.last_payment_date IS NULL, days_since_payment DESC
+      LIMIT 500`, [req.tenantId, req.tenantId, cutoffStr]);
 
     // Retention rate: active clients with recent payment / all active
     const [[{ total_active }]] = await pool.query(`SELECT COUNT(*) AS total_active FROM subscribers WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL`, [req.tenantId]);
@@ -451,17 +454,24 @@ router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdminOrStaff, 
     const [clients] = await pool.query(`
       -- total_paid and remaining_amount are not columns on subscribers; the
       -- money is summed from payments. This 500'd the churn-risk report.
+      -- The three figures are read from each client's payments once, in one pass, and joined: three subqueries per active client
+      -- took 2.0 s for 30,000 clients on the lab, this 0.5 s, the same 27,040 qualifying clients with the same figures.
+      -- (last_payment keeps counting a deleted paid row, as it always did; total_paid and pending_count do not.)
       SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.created_at,
-             (SELECT COALESCE(SUM(px.amount),0) FROM payments px
-               WHERE px.tenant_id=s.tenant_id AND px.subscriber_id=s.id AND px.status='paid' AND px.deleted_at IS NULL) AS total_paid,
+             COALESCE(pay.total_paid, 0) AS total_paid,
              DATEDIFF(NOW(), s.created_at) AS days_old,
-             (SELECT MAX(p.created_at) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='paid') AS last_payment,
-             (SELECT COUNT(*) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='pending' AND p.deleted_at IS NULL) AS pending_count
+             pay.last_payment,
+             COALESCE(pay.pending_count, 0) AS pending_count
       FROM subscribers s
+      LEFT JOIN (SELECT subscriber_id,
+                        SUM(CASE WHEN status='paid' AND deleted_at IS NULL THEN amount ELSE 0 END) AS total_paid,
+                        MAX(CASE WHEN status='paid' THEN created_at END) AS last_payment,
+                        SUM(status='pending' AND deleted_at IS NULL) AS pending_count
+                   FROM payments WHERE tenant_id=? GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
-      HAVING (last_payment IS NULL OR DATEDIFF(NOW(), last_payment) > 45) OR pending_count > 0
-      ORDER BY pending_count DESC, last_payment ASC
-      LIMIT 200`, [req.tenantId]);
+        AND ((pay.last_payment IS NULL OR DATEDIFF(NOW(), pay.last_payment) > 45) OR COALESCE(pay.pending_count, 0) > 0)
+      ORDER BY pending_count DESC, pay.last_payment ASC
+      LIMIT 200`, [req.tenantId, req.tenantId]);
 
     // Score churn risk (0-100, higher = more at risk)
     const scored = clients.map(c => {

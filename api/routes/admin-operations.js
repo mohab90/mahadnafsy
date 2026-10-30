@@ -310,8 +310,14 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
     if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { where.push('a.at < ?'); params.push(cairoDayStartUtc(addDaysToDateOnly(to, 1))); }
     const q = String(req.query.q || '').trim().slice(0, 100);
     if (q) {
-      where.push('(a.label LIKE ? OR a.details LIKE ? OR a.actor_name LIKE ? OR st.name LIKE ? OR a.entity_id = ?)');
-      params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, q);
+      // A staff member's name is matched by looking up who they are first (a few rows), then asking for the log rows that
+      // actor is: the same rows as `st.name LIKE ?` over a join, but the scan no longer carries the join whose OR cannot use
+      // an index (5.8 s for a name, 9.9 s for a word, over 250,000 rows on the lab; 1.3 s this way).
+      const [namedStaff] = await pool.query('SELECT id, email FROM staff WHERE tenant_id=? AND name LIKE ? LIMIT 200', [req.tenantId, `%${q}%`]);
+      const actors = [...new Set(namedStaff.flatMap(row => [row.id, row.email]).filter(Boolean))];
+      where.push(`(a.label LIKE ? OR a.details LIKE ? OR a.actor_name LIKE ? OR a.entity_id = ?${actors.length ? ' OR a.actor IN (?)' : ''})`);
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`, q);
+      if (actors.length) params.push(actors);
     }
     const department = String(req.query.department || '');
     const section = String(req.query.section || '');
@@ -319,12 +325,12 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
     if (actor) { where.push('COALESCE(a.actor_name, st.name, a.actor) = ?'); params.push(actor); }
     // The page is cut from the log first and only then joined to the staff. The join's `email = actor OR id = actor`
     // cannot use an index, and with it in the same statement as the ORDER BY the optimizer read 127,000 of the log's
-    // 250,000 rows into a temporary table to sort them (2.5 s on the lab; the page alone is 0.07 s). A search or an
+    // 250,000 rows into a temporary table to sort them (2.5 s on the lab; the page alone is 0.07 s). A search by text no longer needs the staff (the names are looked up first); an
     // actor filter does need the staff's name, so those keep the single statement.
     const joinedColumns = `COALESCE(a.actor_name, st.name) AS actor_name, COALESCE(a.department, d.name) AS department, st.role AS actor_role`;
     const joins = `LEFT JOIN staff st ON st.tenant_id=a.tenant_id AND (st.email=a.actor OR st.id=a.actor)
          LEFT JOIN hr_departments d ON d.id=st.department_id AND d.tenant_id=st.tenant_id`;
-    const searchesStaff = Boolean(q || actor);
+    const searchesStaff = Boolean(actor);
     const filters = where.map(clause => ` AND ${clause}`).join('');
     const [rows] = await pool.query(
       searchesStaff

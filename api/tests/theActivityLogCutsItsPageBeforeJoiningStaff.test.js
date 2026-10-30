@@ -15,7 +15,10 @@ test('the log\'s default view cuts its page from activity_logs alone, then joins
   const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'admin-operations.js'), 'utf8');
   const route = source.slice(source.indexOf("router.get('/api/admin/activity-logs'"), source.indexOf("router.post('/api/admin/activity-logs'"));
   assert.match(route, /FROM \(SELECT \* FROM activity_logs a WHERE a\.tenant_id=\?\$\{filters\} ORDER BY a\.at DESC LIMIT \? OFFSET \?\) a/);
-  assert.match(route, /const searchesStaff = Boolean\(q \|\| actor\)/);
+  assert.match(route, /const searchesStaff = Boolean\(actor\)/);
+  // A text search finds a staff member's rows through their id and email, looked up first, not through the join.
+  assert.match(route, /SELECT id, email FROM staff WHERE tenant_id=\? AND name LIKE \?/);
+  assert.doesNotMatch(route, /OR st\.name LIKE \?/);
   // The single statement stays only where the WHERE reads the staff's columns.
   assert.match(route, /searchesStaff\s*\? `SELECT[\s\S]*?FROM activity_logs a\s+\$\{joins\}/);
   // The OR join is written once, so the two statements cannot drift apart.

@@ -129,7 +129,8 @@ test('two queries MariaDB refused, found by EXPLAIN-ing the release against the 
   // over an aggregate alias, which MariaDB 10.11 refuses outright. Its own
   // comment says an earlier fix stopped it answering 500; it had not.
   const analytics = fs.readFileSync(path.join(ROOT, 'api', 'routes', 'misc', 'analytics.js'), 'utf8');
-  assert.match(analytics, /ORDER BY MAX\(p\.created_at\) IS NULL, days_since_payment DESC/);
+  // (The payments are summed in a derived table now, so the sort names a plain column of it, not an aggregate.)
+  assert.match(analytics, /ORDER BY pay\.last_payment_date IS NULL, days_since_payment DESC/);
   assert.ok(!/ORDER BY days_since_payment IS NULL/.test(analytics), 'the churn report sorts on an aggregate-alias expression again');
 
   // The queue dashboard selected job_queue.updated_at, which does not exist; a

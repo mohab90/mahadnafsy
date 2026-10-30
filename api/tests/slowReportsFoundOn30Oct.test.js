@@ -84,3 +84,15 @@ test('the campaign report starts its five independent reads together', () => {
   assert.ok(body.includes('await Promise.all(['));
   assert.equal((body.match(/await pool\.query/g) || []).length, 0, 'a read of the report is awaited alone again');
 });
+
+test('retention, churn risk and the revenue sources read each client\'s payments once', () => {
+  const analytics = read('api/routes/misc/analytics.js');
+  const retention = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/retention'"), analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"));
+  const churn = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"), analytics.indexOf("router.get('/api/admin/analytics/staff-performance'"));
+  assert.ok(!/LEFT JOIN payments p ON/.test(retention) && !/GROUP BY s\.id/.test(retention), 'retention joins the payments to every client again');
+  assert.ok(retention.includes('GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id'));
+  assert.ok(!/\(SELECT MAX\(p\.created_at\) FROM payments p/.test(churn), 'churn risk is back to a subquery per client');
+  assert.ok(churn.includes('FROM payments WHERE tenant_id=? GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id'));
+  const sources = read('api/routes/misc/reminders.js');
+  assert.ok(sources.includes('await Promise.all([\n      byTypeQuery, monthlyQuery, topClientsQuery, byBranchQuery, grandTotalQuery,'));
+});
