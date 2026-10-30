@@ -95,11 +95,11 @@ test('the administration\'s online clients come a page at a time, with the distr
   const page = await call(staffListsRouter, '/api/staff/subscribers', null, { paged: '1', view: 'active', limit: '1', offset: '0' });
   assert.equal(page.statusCode, 200);
   assert.equal(page.body.rows.length, 1, 'one page, not the table');
-  assert.equal(page.body.total, 3, 'the online clients of the tenant: the Dokki one is not on the online screen');
-  assert.equal(page.body.unassignedMatching, 2);
+  assert.equal(page.body.total, 2, 'the online clients of the tenant, old data aside: the Dokki one is not on the online screen');
+  assert.equal(page.body.unassignedMatching, 1);
   assert.deepEqual(page.body.assignedCounts, { 'adm-it-cs-1': 1 });
-  // Paid in dollars, so «دولي قديم».
-  const old = await call(staffListsRouter, '/api/staff/subscribers', null, { paged: '1', view: 'old_intl', limit: '10', offset: '0' });
+  // Paid in dollars: «دولي», old data or not — a foreign client lives in the tab of their market (the owner's tab rule of 29 Oct 2026).
+  const old = await call(staffListsRouter, '/api/staff/subscribers', null, { paged: '1', view: 'real-intl', limit: '10', offset: '0' });
   assert.deepEqual(old.body.rows.map(row => row.id), ['adm-it-s3']);
-  assert.equal(old.body.unassignedMatching, 1, 'the old-data panel distributes what nobody holds');
+  assert.equal(old.body.unassignedMatching, 1, 'the international tab distributes what nobody holds');
 });

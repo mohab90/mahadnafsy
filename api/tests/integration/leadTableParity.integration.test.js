@@ -21,7 +21,8 @@ for (const key of ['HOST', 'PORT', 'USER', 'PASSWORD', 'NAME']) {
 }
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
 const ADMIN = path.join(__dirname, '..', '..', '..', 'admin');
-const ESBUILD = path.join(ADMIN, 'node_modules', '.bin', 'esbuild');
+// The package's own entry, run by node: .bin/esbuild is a shell shim a Windows machine cannot spawn.
+const ESBUILD = path.join(ADMIN, 'node_modules', 'esbuild', 'bin', 'esbuild');
 const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 const skip = !ENABLED ? 'no DB_* configured' : !fs.existsSync(ESBUILD) && 'admin dependencies not installed';
 const T = 'tenant-lead-table-it';
@@ -43,7 +44,7 @@ function bundleBrowserFilter() {
     `export { useLeadEffectiveRecords } from ${JSON.stringify(path.join(tabs, 'leads', 'useLeadEffectiveRecords'))};`,
     `export { setStaleDays } from ${JSON.stringify(path.join(tabs, 'leadUtils'))};`,
   ].join('\n'));
-  execFileSync(ESBUILD, [path.join(dir, 'entry.ts'), '--bundle', '--platform=node', '--format=cjs',
+  execFileSync(process.execPath, [ESBUILD, path.join(dir, 'entry.ts'), '--bundle', '--platform=node', '--format=cjs',
     `--alias:react=${path.join(dir, 'react.js')}`, `--outfile=${path.join(dir, 'browser.cjs')}`, '--log-level=error']);
   return require(path.join(dir, 'browser.cjs'));
 }
@@ -62,7 +63,8 @@ async function fixture() {
     if (rnd() < 0.2) crm.interestedCourseIds = [pick(['c1', 'c2'])];
     if (rnd() < 0.15) crm.nextFollowUpDate = addDaysToDateOnly(today, Math.floor(rnd() * 40) - 20);
     const created = new Date(Date.now() - Math.floor(rnd() * 60) * 86400000 - i * 1000);
-    const nf = rnd() < 0.4 ? addDaysToDateOnly(today, Math.floor(rnd() * 40) - 20) + ' 00:00:00' : null;
+    // A date in crm_json always has the column too (every writer sets both; migration 349 copied the rest): the server counts the column.
+    const nf = rnd() < 0.4 ? addDaysToDateOnly(today, Math.floor(rnd() * 40) - 20) + ' 00:00:00' : (crm.nextFollowUpDate ? `${crm.nextFollowUpDate} 00:00:00` : null);
     rows.push([`lt-${String(i).padStart(4, '0')}`, T, `CP${i}`, rnd() < 0.05 ? '' : `${pick(['Ahmed Ali', 'منى حسن', 'Sara Adel', 'ياسمين'])} ${i}`,
       rnd() < 0.3 ? `p${i}@m.t` : null, rnd() < 0.05 ? null : `10${String(18100000 + i)}`,
       pick(['facebook', 'website', 'أونلاين 2025', 'محلي قديم — موزّع', 'استيراد يناير', '']),

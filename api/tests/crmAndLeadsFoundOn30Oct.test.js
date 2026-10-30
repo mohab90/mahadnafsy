@@ -171,3 +171,11 @@ test('the clients without an account are found through the account email index, 
   assert.equal((source.match(/AND u\.email=TRIM\(s\.email\)/g) || []).length, 2, 'the count and the bulk creation both use the indexed form');
   assert.doesNotMatch(source, /LOWER\(TRIM\(u\.email\)\)=LOWER\(TRIM\(s\.email\)\)/);
 });
+
+test('a lead created with a follow-up date keeps it in the column the counters read (the INSERT, not only the UPDATE)', () => {
+  const write = read('api/routes/admin/leads/write.js');
+  const insert = write.slice(write.indexOf('INSERT INTO leads (id, tenant_id, client_code'), write.indexOf('} else {', write.indexOf('INSERT INTO leads (id, tenant_id, client_code')));
+  assert.match(insert, /interested_course_ids_json,\s+next_follow_up_date\)/);
+  assert.match(insert, /courseIdsJson,\s+followUpDay\]/);
+  assert.ok(write.indexOf('const followUpDay =') < write.indexOf('INSERT INTO leads (id, tenant_id, client_code'), 'the day is worked out before both the INSERT and the UPDATE use it');
+});

@@ -20,7 +20,8 @@ for (const key of ['HOST', 'PORT', 'USER', 'PASSWORD', 'NAME']) {
 }
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
 const ADMIN = path.join(__dirname, '..', '..', '..', 'admin');
-const ESBUILD = path.join(ADMIN, 'node_modules', '.bin', 'esbuild');
+// The package's own entry, run by node: .bin/esbuild is a shell shim a Windows machine cannot spawn.
+const ESBUILD = path.join(ADMIN, 'node_modules', 'esbuild', 'bin', 'esbuild');
 const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 const skip = !ENABLED ? 'no DB_* configured' : !fs.existsSync(ESBUILD) && 'admin dependencies not installed';
 const T = 'tenant-lead-pool-it';
@@ -37,7 +38,7 @@ function bundleBrowserPredicates() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-pool-'));
   const file = path.join(ADMIN, 'pages', 'dashboard', 'tabs', 'leads', 'leadSourceGroups');
   fs.writeFileSync(path.join(dir, 'entry.ts'), `export * from ${JSON.stringify(file)};`);
-  execFileSync(ESBUILD, [path.join(dir, 'entry.ts'), '--bundle', '--platform=node', '--format=cjs',
+  execFileSync(process.execPath, [ESBUILD, path.join(dir, 'entry.ts'), '--bundle', '--platform=node', '--format=cjs',
     `--outfile=${path.join(dir, 'browser.cjs')}`, '--log-level=error']);
   return require(path.join(dir, 'browser.cjs'));
 }

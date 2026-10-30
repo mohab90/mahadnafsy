@@ -181,7 +181,7 @@ test('a reopened ticket loses its old resolution and is back on the clock', { sk
   assert.deepEqual({ ...again }, { status: 'in_progress', resolved_at: null });
 });
 
-test('a rep\'s follow-ups today are one count: archived and closed out, a crm_json date in', { skip }, async () => {
+test('a rep\'s follow-ups today are one count: archived and closed out left out, the date read from the column', { skip }, async () => {
   const router = require('../../routes/admin/leads/insights');
   const { cairoToday } = require('../../lib/dates');
   const today = cairoToday();
@@ -195,5 +195,7 @@ test('a rep\'s follow-ups today are one count: archived and closed out, a crm_js
   await lead('crm-fu-4', 'lost', 0, today, null);
   const res = await call(router, 'get', '/api/admin/leads/staff-performance');
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
-  assert.equal(res.body.byStaff['crm-rep-2'].followUpsToday, 2);
+  // The count reads the column alone (migration 349 copied every date that lived only in crm_json, and every writer sets both): a
+  // crm_json date with an empty column is not counted, which is what lets the count use the date index instead of parsing every lead.
+  assert.equal(res.body.byStaff['crm-rep-2'].followUpsToday, 1);
 });

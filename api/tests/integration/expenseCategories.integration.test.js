@@ -75,7 +75,7 @@ test('the categories are the settings\' active ones', { skip }, async () => {
 
 test('a category added in settings is kept, with the branch and who entered it', { skip }, async () => {
   const saved = await call('post', '/api/admin/expenses', {
-    body: { description: 'فاتورة أكتوبر', amount: 850, currency: 'EGP', category: 'كهرباء ومياه', date: '2026-10-05', branchType: 'DAQQI' },
+    body: { description: 'فاتورة أكتوبر', amount: 850, currency: 'EGP', category: 'كهرباء ومياه', date: '2026-10-05', branchType: 'DAQQI', boxMethod: 'خزنة الدقي - كاش' },
   });
   assert.equal(saved.statusCode, 200, JSON.stringify(saved.body));
   assert.equal(saved.body.category, 'كهرباء ومياه');
@@ -94,7 +94,7 @@ test('a category added in settings is kept, with the branch and who entered it',
 
 test('the owner, with no staff row, is named too', { skip }, async () => {
   const saved = await call('post', '/api/admin/expenses', {
-    body: { description: 'إيجار', amount: 5000, currency: 'EGP', category: 'إيجار', date: '2026-10-05' }, staff: null,
+    body: { description: 'إيجار', amount: 5000, currency: 'EGP', category: 'إيجار', date: '2026-10-05', boxMethod: 'خزنة الدقي - كاش' }, staff: null,
   });
   assert.equal(saved.statusCode, 200, JSON.stringify(saved.body));
   const list = await call('get', '/api/admin/expenses', { staff: null });

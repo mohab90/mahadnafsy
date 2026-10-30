@@ -15,14 +15,13 @@ function encodeCursor(ts, id) {
   return Buffer.from(`${ts}|${id}`).toString('base64');
 }
 
-// DATETIME values arrive from mysql2 as Dates in the server's local time and
-// are compared back the same way, so the cursor carries the local wall-clock
-// text. toISOString() wrote UTC instead, and on a server not running in UTC the
-// next page started hours away from where the last one ended.
+// The pool reads DATETIME as UTC (lib/db.js timezone 'Z') and the session compares in UTC, so the cursor carries the UTC wall-clock
+// text. It used the process's local getters, which agree only while the process runs in UTC (server.js sets TZ=UTC): anywhere
+// else (a test run on a Cairo machine) the next page started hours away from where the last one ended and repeated rows.
 const pad = (n, w = 2) => String(n).padStart(w, '0');
 function sqlDateTime(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} `
-    + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} `
+    + `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.${pad(d.getUTCMilliseconds(), 3)}`;
 }
 // A cursor written by the old encoder is ISO UTC; read it as the instant it is.
 function cursorTs(ts) {

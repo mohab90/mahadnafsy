@@ -244,13 +244,22 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     const courseIdsJson = Array.isArray(crmData.interestedCourseIds) && crmData.interestedCourseIds.length
       ? JSON.stringify(crmData.interestedCourseIds) : null;
 
+    // The follow-up date, to its column. It reached crm_json alone, and every list reads the column first (mapLeadRow), so a date
+    // moved from the lead's panel — or «بكرة» on the follow-ups page — snapped back to the old one on the next load, and a cleared
+    // one stayed due. A new lead takes it too: the counters read the column alone (migration 349).
+    const followUpGiven = Object.prototype.hasOwnProperty.call(crmData, 'nextFollowUpDate');
+    const followUpDay = followUpGiven && /^\d{4}-\d{2}-\d{2}/.test(String(crmData.nextFollowUpDate || ''))
+      ? String(crmData.nextFollowUpDate).slice(0, 10) : null;
+
     if (isNew) {
       await conn.query(
         `INSERT INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, hidden,
-           assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name, crm_json, branch, branch_id, client_type, interested_course_ids_json)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name, crm_json, branch, branch_id, client_type, interested_course_ids_json,
+           next_follow_up_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
          [id, tenantId, code, safeName||'', safeEmail||'', safePhone||null, safeSource||null, normalizedRequestedStatus,
-         safeNotes||null, hidden||0, salesId, salesName, csId, csName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson]
+         safeNotes||null, hidden||0, salesId, salesName, csId, csName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
+         followUpDay]
       );
     } else {
       // `hidden` used to be silently dropped here — extracted from the body
@@ -270,13 +279,6 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       // crm_json stale-assignment bug). Distinguish the two: an explicitly
       // present null clears, an absent key still leaves the value untouched.
       const clearSales = Object.prototype.hasOwnProperty.call(crmData, 'assignedSalesId') && !crmData.assignedSalesId;
-      // The follow-up date, to its column. It reached crm_json alone, and every
-      // list reads the column first (mapLeadRow), so a date moved from the
-      // lead's panel — or «بكرة» on the follow-ups page — snapped back to the
-      // old one on the next load, and a cleared one stayed due.
-      const followUpGiven = Object.prototype.hasOwnProperty.call(crmData, 'nextFollowUpDate');
-      const followUpDay = followUpGiven && /^\d{4}-\d{2}-\d{2}/.test(String(crmData.nextFollowUpDate || ''))
-        ? String(crmData.nextFollowUpDate).slice(0, 10) : null;
       // The same number in another spelling stays as stored: rewriting it could
       // run into a duplicate lead that holds the new spelling (those are merged
       // from the duplicates screen, not by an edit).

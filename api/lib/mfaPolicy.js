@@ -60,12 +60,16 @@ function normalizeMfaPolicy(value = {}) {
   };
 }
 
+// A test database has no policy row, and the policy is on until one says otherwise. tests/integration/support/isolatedDb.mjs sets
+// MAHAD_IT_NO_EMAIL_CODE so the sign-ins those files make are not stopped at a code nobody can read. Ignored in production.
+const noCodeInTests = () => process.env.MAHAD_IT_NO_EMAIL_CODE === '1' && process.env.NODE_ENV !== 'production';
+
 async function getMfaPolicy(tenantId, { fresh = false } = {}) {
   const key = String(tenantId || 'tenant-default');
   const cached = policyCache.get(key);
   if (!fresh && cached?.expiresAt > Date.now()) return cached.value;
   const stored = await getTenantSetting('security_mfa_policy', { tenantId: key, fallback: null });
-  const value = normalizeMfaPolicy(stored || {});
+  const value = !stored && noCodeInTests() ? normalizeMfaPolicy({ version: POLICY_VERSION, enabled: false }) : normalizeMfaPolicy(stored || {});
   policyCache.set(key, { value, expiresAt: Date.now() + CACHE_MS });
   return value;
 }

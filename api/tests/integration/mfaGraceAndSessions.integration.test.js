@@ -13,6 +13,8 @@ for (const key of ['HOST', 'PORT', 'USER', 'PASSWORD', 'NAME']) {
 }
 const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
+// This file is about the policy itself: unlike the others it needs it on, as it is in production.
+process.env.MAHAD_IT_NO_EMAIL_CODE = '0';
 const skip = !ENABLED && 'no DB_* configured';
 const TENANT = 'tenant-sec2-mfa-it';
 const IP = '41.33.10.21';

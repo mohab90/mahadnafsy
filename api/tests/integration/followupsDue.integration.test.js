@@ -48,7 +48,8 @@ before(async () => {
   await lead('fu-tomorrow', '1017770003', 'new', 'fu-rep-1', `${ahead} 00:00:00`);
   await lead('fu-converted', '1017770004', 'converted', 'fu-rep-1', `${ago} 00:00:00`);
   await lead('fu-hidden', '1017770005', 'new', 'fu-rep-1', `${ago} 00:00:00`, { hidden: true });
-  // Imported with the date in crm_json only — mapLeadRow reads it from there.
+  // A date left in crm_json with an empty column (migration 349 copied every such date; every writer sets both now): the lead list
+  // still shows it, the counters read the column alone and leave it out.
   await lead('fu-json', '1017770006', 'interested', 'fu-rep-1', null, { crm: { nextFollowUpDate: ago } });
   await lead('fu-none', '1017770007', 'new', 'fu-rep-1', null);
 });
@@ -57,12 +58,12 @@ after(async () => { if (ENABLED) { await clean(); await pool.end(); } });
 test('an admin\'s bell: every open lead followed up today or overdue, hidden and closed ones left out', { skip }, async () => {
   const { statusCode, body } = await due();
   assert.equal(statusCode, 200, JSON.stringify(body));
-  assert.deepEqual(body, { due: 3, overdue: 2, today: 1 });
+  assert.deepEqual(body, { due: 2, overdue: 1, today: 1 });
 });
 
 test('a rep\'s bell: their own leads only, the scope the leads list answers with', { skip }, async () => {
   const { body } = await due({ id: 'fu-rep-1', role: 'sales', tenant_id: TENANT });
-  assert.deepEqual(body, { due: 2, overdue: 2, today: 0 });
+  assert.deepEqual(body, { due: 1, overdue: 1, today: 0 });
   const other = await due({ id: 'fu-rep-2', role: 'sales', tenant_id: TENANT });
   assert.deepEqual(other.body, { due: 1, overdue: 0, today: 1 });
 });

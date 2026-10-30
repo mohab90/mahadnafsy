@@ -323,8 +323,8 @@ const Community: React.FC = () => {
                     <div className="mb-4">
                       <span className={`mb-2 inline-block rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${getTagColor(post.tag)}`}>{post.tag}</span>
                       <h5 className="mb-2 text-[17px] font-black leading-snug text-ink">{post.title}</h5>
-                      <p className={`break-words text-[15px] leading-relaxed text-muted-body ${expandedPost !== post.id && post.body.length > 200 ? 'line-clamp-3' : ''}`}>{post.body}</p>
-                      {post.body.length > 200 && (
+                      <p className={`break-words text-[15px] leading-relaxed text-muted-body ${expandedPost !== post.id && (post.body || '').length > 200 ? 'line-clamp-3' : ''}`}>{post.body}</p>
+                      {(post.body || '').length > 200 && (
                         <button onClick={() => setExpandedPost(expandedPost === post.id ? null : post.id)} className="mt-1 text-sm font-extrabold text-primary-700 hover:underline">
                           {expandedPost === post.id ? 'عرض أقل' : 'قراءة المزيد'}
                         </button>
