@@ -9,3 +9,8 @@ ALTER TABLE leads ADD INDEX IF NOT EXISTS idx_leads_tenant_assigned_at (tenant_i
 -- «متابعات اليوم والمتأخرة» of each rep (lib/teamDailyReport.js): the open leads that have a follow-up date, grouped by rep.
 -- 788 ms over the lead rows; 39 ms from this index.
 ALTER TABLE leads ADD INDEX IF NOT EXISTS idx_leads_tenant_followup_open (tenant_id, next_follow_up_date, assigned_sales_id, status, hidden);
+
+-- «توقعات المبيعات» (lib/crmForecast.js): the open leads in the order ORDER BY expected_close_date, id, cut at 10,000. No index held the
+-- two together, so every open lead (77,000 of the lab's 150,000) was sorted to keep the first 10,000: 884 ms; read in index order: 110 ms,
+-- the same rows in the same order. In production, with ~3.5x the leads, the sort is what grows.
+ALTER TABLE leads ADD INDEX IF NOT EXISTS idx_leads_tenant_close_id (tenant_id, expected_close_date, id);

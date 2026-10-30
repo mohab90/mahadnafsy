@@ -72,6 +72,8 @@ test('the reports that read the leads by assigned_at and by follow-up date have 
   const sql = read('api/migrations/348_v26_report_indexes.sql');
   assert.ok(sql.includes('idx_leads_tenant_assigned_at (tenant_id, hidden, assigned_at, assigned_sales_id, created_at)'));
   assert.ok(sql.includes('idx_leads_tenant_followup_open (tenant_id, next_follow_up_date, assigned_sales_id, status, hidden)'));
+  assert.ok(sql.includes('idx_leads_tenant_close_id (tenant_id, expected_close_date, id)'));
+  assert.match(read('api/lib/crmForecast.js'), /ORDER BY l.expected_close_date,l.id LIMIT 10000/);
   // The queries those indexes were made for still read these columns together.
   assert.match(read('api/lib/teamReports.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
   assert.match(read('api/lib/teamDailyReport.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
