@@ -5,7 +5,7 @@ const express = require('express');
 const { resolveSecret } = require('../lib/secretResolver');
 const { applyDeliveryStatus } = require('../lib/whatsappDelivery');
 const {
-  recordInboundMessage, extractMetaMessages, extractGreenApiMessage,
+  recordInboundMessage, extractMetaMessages, extractGreenApiMessage, extractUltraMsgMessage,
 } = require('../lib/whatsappInbound');
 const { channelByExternalId } = require('../lib/messagingChannels');
 const { whatsappWebhookLimiter } = require('../middleware/rateLimits');
@@ -126,6 +126,30 @@ router.post('/api/webhooks/whatsapp/green-api', whatsappWebhookLimiter, async (r
   } catch (error) {
     logger.error('[WhatsApp webhook] Green API status processing failed', error.message);
     return res.status(500).json({ error: 'WhatsApp delivery status processing failed' });
+  }
+});
+
+// UltraMsg: the provider the institute's own number is on. It does not sign its callbacks, so the address carries a secret of ours
+// (`?token=` or `x-webhook-token`), set in the instance's webhook settings with «Webhook on received» on.
+router.post('/api/webhooks/whatsapp/ultramsg', whatsappWebhookLimiter, async (req, res) => {
+  let webhookSecret = '';
+  try { webhookSecret = resolveSecret('WHATSAPP_ULTRAMSG_WEBHOOK_SECRET'); } catch (_) {}
+  if (!webhookSecret) return res.status(503).json({ error: 'WhatsApp webhook secret is not configured' });
+  if (!safeEqual(req.headers['x-webhook-token'] || req.query.token, webhookSecret)) {
+    return res.status(401).json({ error: 'Invalid WhatsApp webhook token' });
+  }
+  const configuredInstance = String(process.env.ULTRAMSG_INSTANCE_ID || '').replace(/^instance/i, '').trim();
+  const received = String(req.body?.instanceId || '').replace(/^instance/i, '').trim();
+  if (configuredInstance && received && configuredInstance !== received) {
+    return res.status(401).json({ error: 'WhatsApp instance mismatch' });
+  }
+  try {
+    const message = extractUltraMsgMessage(req.body);
+    const result = message ? await recordInboundMessage({ tenantId: req.tenantId, ...message }) : { recorded: false };
+    return res.json({ received: true, inbound: result.recorded ? 1 : 0 });
+  } catch (error) {
+    logger.error('[WhatsApp webhook] UltraMsg inbound processing failed', error.message);
+    return res.status(500).json({ error: 'WhatsApp inbound processing failed' });
   }
 });
 

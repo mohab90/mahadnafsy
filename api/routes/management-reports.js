@@ -11,6 +11,7 @@ const { reportRange } = require('../lib/teamDailyReport');
 const { TEAM_REPORTS } = require('../lib/teamReports');
 const { buildManagementReport } = require('../lib/managementReport');
 const { REPORT_PARTS, SECTION, composeOwnerReport, ownerReportSettings, sendOwnerDailyReport } = require('../lib/ownerDailyReport');
+const { buildDailyIncomeReport, DAY_ENDS_AT_HOUR } = require('../lib/dailyIncomeReport');
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { toDialable } = require('../lib/phoneNumber');
 const { cairoToday } = require('../lib/dates');
@@ -63,8 +64,7 @@ router.get('/api/admin/reports/management', requireAuth, requireAdmin, async (re
 router.get('/api/admin/reports/whatsapp', requireAuth, requireAdmin, async (req, res) => {
   try {
     const settings = await ownerReportSettings(req.tenantId);
-    const today = cairoToday();
-    const report = await buildManagementReport({ tenantId: req.tenantId, from: today, to: today, today });
+    const report = await buildDailyIncomeReport({ tenantId: req.tenantId, date: cairoToday() });
     res.json({ ...settings, preview: composeOwnerReport(report, settings.parts), allParts: REPORT_PARTS.map(([key, label]) => ({ key, label })) });
   } catch (error) { failed(res, error, 'owner-report-settings'); }
 });
@@ -79,12 +79,11 @@ router.put('/api/admin/reports/whatsapp', requireAuth, requireAdmin, async (req,
     await setTenantSetting(SECTION, {
       enabled: req.body?.enabled === true,
       phones: phones.slice(0, 5),
-      hour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 21,
+      hour: Number.isInteger(hour) && hour >= DAY_ENDS_AT_HOUR && hour <= 23 ? hour : DAY_ENDS_AT_HOUR + 2,
       parts: Array.isArray(req.body?.parts) ? req.body.parts.map(String).filter(part => REPORT_PARTS.some(([key]) => key === part)) : REPORT_PARTS.map(([key]) => key),
     }, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
     const saved = await ownerReportSettings(req.tenantId);
-    const today = cairoToday();
-    const report = await buildManagementReport({ tenantId: req.tenantId, from: today, to: today, today });
+    const report = await buildDailyIncomeReport({ tenantId: req.tenantId, date: cairoToday() });
     res.json({ ok: true, ...saved, preview: composeOwnerReport(report, saved.parts) });
   } catch (error) { failed(res, error, 'owner-report-save'); }
 });

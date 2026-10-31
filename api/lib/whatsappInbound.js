@@ -323,11 +323,33 @@ function extractGreenApiMessage(payload) {
   };
 }
 
+/**
+ * UltraMsg webhook body → the message in it. The institute's own number is on UltraMsg (lib/whatsapp.js), and nothing received its
+ * webhook: every customer message to that number stopped at the provider and never reached the team inbox. A callback is
+ * `{ event_type: 'message_received', instanceId, data: { id, from: '2010…@c.us', body, type, fromMe, time } }`. Messages the
+ * number itself sent (fromMe), groups and anything but a received message are not the customer's and come back null.
+ */
+function extractUltraMsgMessage(payload) {
+  if (payload?.event_type !== 'message_received') return null;
+  const data = payload.data || {};
+  if (data.fromMe === true || data.self === true) return null;
+  const chat = String(data.from || '');
+  if (!chat.endsWith('@c.us')) return null; // a group (@g.us) or a broadcast is not a person writing to us
+  const kind = String(data.type || 'chat').toLowerCase();
+  return {
+    providerMessageId: data.id,
+    from: chat.split('@')[0],
+    body: kind === 'chat' ? String(data.body || '') : (MEDIA_LABEL[kind === 'ptt' ? 'voice' : kind === 'vcard' ? 'contacts' : kind] || String(data.body || '')),
+    timestamp: data.time,
+  };
+}
+
 module.exports = {
   recordInboundMessage,
   identifySender,
   extractMetaMessages,
   extractGreenApiMessage,
+  extractUltraMsgMessage,
   isOptOut,
   isOptIn,
   normalizeCommand,

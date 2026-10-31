@@ -23,14 +23,13 @@ stub('../lib/whatsapp', { sendWhatsApp: async (phone, text, opts) => { direct.pu
 stub('../lib/tenantSettings', {
   getTenantSetting: async () => ({ enabled: true, phones: ['01000000001', '01000000002'], hour: 21 }),
 });
-stub('../lib/managementReport', {
-  buildManagementReport: async () => ({
-    to: '2026-10-11',
-    income: { totalEgp: 0, payments: 0, byBranch: [] },
-    counts: { newLeads: 0, newClients: 0, pendingPayments: 0 },
-    leaders: { salesByMoney: [], salesByCalls: [], collectionByMoney: [] },
-    topCourses: [],
-    teams: { sales: { team: {} }, online: { totals: {} }, support: { totals: {} }, daqqi: { totals: {} } },
+stub('../lib/dailyIncomeReport', {
+  DAY_ENDS_AT_HOUR: 19,
+  buildDailyIncomeReport: async () => ({
+    date: '2026-10-11', open: false,
+    income: { totalEgp: 0, payments: 0, acceptedEgp: 0, acceptedN: 0, reviewEgp: 0, reviewN: 0, failedN: 0 },
+    teams: Object.fromEntries(['collection', 'daqqi', 'sales', 'tagamoa', 'other'].map(key => [key, { totalEgp: 0 }])),
+    counts: { newLeads: 0, newBookings: 0, certificatesRequested: 0, certificatesIssued: 0 },
   }),
 });
 const { sendOwnerDailyReport } = require('../lib/ownerDailyReport');

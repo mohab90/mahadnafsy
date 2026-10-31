@@ -64,7 +64,11 @@ function Ticks({ status }: { status: string | null }) {
 
 export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
-  const [view, setView] = useState<View>('mine');
+  const [view, setViewState] = useState<View>('mine');
+  // Someone who sees every conversation (the owner, the managers) has none of their own to begin with: «محادثاتي» opened empty and read as
+  // an inbox with nothing in it. They land on «الكل» until they pick a view themselves.
+  const pickedView = useRef(false);
+  const setView = useCallback((next: View) => { pickedView.current = true; setViewState(next); }, []);
   const [platform, setPlatform] = useState<Platform | ''>('');
   const [closed, setClosed] = useState(false);
   const [search, setSearch] = useState('');
@@ -111,6 +115,7 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
       ]);
       setThreads(list.threads);
       setSeesAll(list.seesAll);
+      if (list.seesAll && !pickedView.current) { pickedView.current = true; setViewState('all'); }
       setRepVisibility(list.repVisibility === 'own' ? 'own' : 'pool');
       setCounts(badge);
     } catch (error) { notify('error', errorText(error)); }

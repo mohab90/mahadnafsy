@@ -60,10 +60,10 @@ export function OwnerWhatsappReportCard({ notify }: { notify: Notify }) {
             className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-bold text-gray-600">الساعة (القاهرة)</span>
+          <span className="mb-1 block text-xs font-bold text-gray-600">الساعة (القاهرة) — اليوم بيقفل 7 م</span>
           <select value={settings.hour} onChange={event => setSettings({ ...settings, hour: Number(event.target.value) })}
             className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
-            {Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, '0')}:00</option>)}
+            {Array.from({ length: 5 }, (_, index) => index + 19).map(hour => <option key={hour} value={hour}>{String(hour).padStart(2, '0')}:00</option>)}
           </select>
         </label>
         <label className="flex items-end gap-2 pb-2 text-sm font-bold text-gray-700">

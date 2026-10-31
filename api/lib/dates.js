@@ -147,6 +147,31 @@ function cairoDayStartUtc(dateOnly = cairoToday()) {
 }
 
 /**
+ * The UTC instant at which the clock in Cairo reads `hour`:`minute` on a calendar day, as a MySQL DATETIME string — for an hour between
+ * 01:00 and 23:59, where the offset in force is the one at that wall time (Egypt changes its clocks at midnight, which
+ * cairoDayStartUtc handles for a day's start). The owner's business day ends at 19:00, not at midnight.
+ */
+function cairoWallUtc(dateOnly, hour = 0, minute = 0) {
+  if (!DATE_ONLY.test(String(dateOnly))) throw new Error(`not a date: ${dateOnly}`);
+  const [y, m, d] = dateOnly.split('-').map(Number);
+  const wallAsUtc = Date.UTC(y, m - 1, d, hour, minute);
+  // Both offsets that can apply around that day (as cairoDayStartUtc tries them); the one whose instant Cairo's clock reads back as
+  // this wall time is the answer.
+  const candidates = new Set([
+    cairoOffsetMinutes(new Date(wallAsUtc - 12 * 3600000)),
+    cairoOffsetMinutes(new Date(wallAsUtc + 12 * 3600000)),
+  ]);
+  for (const offset of candidates) {
+    const instant = wallAsUtc - offset * 60000;
+    const read = zonedDateTimeParts(new Date(instant), CAIRO);
+    if (read.year === y && read.month === m && read.day === d && read.hour === hour && read.minute === minute) {
+      return new Date(instant).toISOString().slice(0, 19).replace('T', ' ');
+    }
+  }
+  throw new Error(`Cairo has no ${hour}:${minute} on ${dateOnly}`);
+}
+
+/**
  * [start, end) in UTC for the Cairo days `from` … `to`, both included — the
  * bounds to hold a column written with NOW() against.
  *
@@ -352,6 +377,7 @@ module.exports = {
   cairoClock,
   cairoOffsetMinutes,
   cairoDayStartUtc,
+  cairoWallUtc,
   cairoDayBoundsUtc,
   cairoDayOf,
   msUntilCairoTime,
