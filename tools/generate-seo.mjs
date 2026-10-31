@@ -24,14 +24,15 @@
  *
  *   node tools/generate-seo.mjs [--api https://…] [--dist client/dist]
  */
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { writeFileSync, mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 // The rendering is shared with the API, which serves the same pages fresh
 // between releases (api/routes/seo-pages.js) — one copy of the rules.
 const require = createRequire(import.meta.url);
-const { STATIC_PAGES, render, summarise, coursePage, bundlePage, absoluteImage, sitemapXml } = require('../api/lib/seoPages.js');
+const { STATIC_PAGES, render, summarise, coursePage, bundlePage, absoluteImage, sitemapXml, extractStaticSeo } = require('../api/lib/seoPages.js');
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -112,6 +113,22 @@ function writePage(relUrl, html) {
     urls.push({ loc: `/community/events/${slug}`, priority: '0.6', changefreq: 'weekly' });
     pages++;
   }
+
+  // The sections of the site, each with the title, description and canonical its own page sets.
+  // '/' keeps the shell's tags and '/community/events' was written above.
+  const pagesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'client', 'pages');
+  const seoSources = readdirSync(pagesDir).filter(name => name.endsWith('.tsx'))
+    .map(name => ({ file: name, text: readFileSync(join(pagesDir, name), 'utf8') }));
+  const sections = extractStaticSeo(seoSources);
+  let sectionPages = 0;
+  for (const [loc] of STATIC_PAGES) {
+    if (loc === '/' || loc === '/community/events' || !sections[loc]) continue;
+    writePage(loc, render(shell, {
+      url: `${SITE}${loc}`, title: sections[loc].title, description: sections[loc].description || sections[loc].title, type: 'website',
+    }));
+    sectionPages++;
+  }
+  console.log(`seo: ${sectionPages} section page(s) prerendered (${STATIC_PAGES.length - 1 - sectionPages} keep the shell's tags)`);
 
   const sitemap = sitemapXml(urls, SITE);
   writeFileSync(join(DIST, 'sitemap.xml'), sitemap);

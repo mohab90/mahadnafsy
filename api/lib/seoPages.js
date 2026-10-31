@@ -75,7 +75,7 @@ function courseJsonLd({ name, description, url, image, site }) {
 }
 
 /** Swap the shell's meta block for this page's. */
-function render(shell, { url, title, description, image, jsonLd = '' }) {
+function render(shell, { url, title, description, image, jsonLd = '', type = 'article' }) {
   const t = esc(title);
   const d = esc(description);
   const u = esc(url);
@@ -91,12 +91,33 @@ function render(shell, { url, title, description, image, jsonLd = '' }) {
     .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${t}"`)
     .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${d}"`)
     .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${u}"`);
+  if (type === 'website') html = html.replace('og:type" content="article"', 'og:type" content="website"');
   if (image) {
     html = html
       .replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${esc(image)}"`)
       .replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${esc(image)}"`);
   }
   return html;
+}
+
+/**
+ * What each page of the app sets for itself with useSeo({ title, path, description }) — read from the page files, so the
+ * HTML a crawler fetches (which never runs the app) carries the same title, description and canonical the app sets once
+ * it is running. Without it every address outside the catalogue served the homepage's tags: a link to /about shared on
+ * WhatsApp previewed as the front page, and its canonical said so. Pages whose path is built at run time (the community
+ * sections) are not here and keep the shell's.
+ * sources: [{ file, text }]. Returns { '/about': { title, description } }.
+ */
+function extractStaticSeo(sources) {
+  const found = {};
+  const pattern = /useSeo\(\{\s*title:\s*'([^']+)',\s*path:\s*'(\/[^']*)'(?:,\s*description:\s*'([^']*)')?/g;
+  for (const { text } of sources) {
+    for (const match of String(text).matchAll(pattern)) {
+      const [, title, pagePath, description] = match;
+      if (!found[pagePath]) found[pagePath] = { title, description: description || '' };
+    }
+  }
+  return found;
 }
 
 /** A course's page: its address, and what the shell is rendered with. */
@@ -162,6 +183,7 @@ module.exports = {
   bundlePage,
   courseJsonLd,
   coursePage,
+  extractStaticSeo,
   esc,
   render,
   sitemapXml,

@@ -51,7 +51,7 @@ server {
     }
 
     location @build_files {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/index.html /index.html;
         add_header Cache-Control "no-store" always;
         include /etc/nginx/snippets/mahad-security-headers.conf;
     }
@@ -68,8 +68,18 @@ server {
 
     # index.html must never be cached, or a browser keeps loading the old
     # bundle after a release and the hashed asset it references is gone.
+    # The pages the app has. Every other address answers 404 (with the app's own «not found» page): a catch-all that
+    # answered 200 to /no-such-page made every mistyped or removed link a soft 404 in Google's index. client/App.tsx lists
+    # the routes; api/tests/anUnknownAddressIsA404.test.js fails when a route is added there and not here.
+    location ~ ^/(eg|sa|usd|new|about|courses|course|c|bundles|bundle|consultations|community|institute-gallery|instructors|instructor|therapist-portal|lead|subscriber|dashboard|staff|client|auth|my-account|checkout|pay|payments|standalone-payment|success|policies|privacy|terms|contact|faq|ticket-rating|consultation-rating|consultation-reschedule|join|join-us|enroll|certificate|rate)(/|$) {
+        try_files $uri $uri/index.html /index.html;
+        add_header Cache-Control "no-store" always;
+        include /etc/nginx/snippets/mahad-security-headers.conf;
+    }
+
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/index.html =404;
+        error_page 404 /index.html;
         add_header Cache-Control "no-store" always;
         include /etc/nginx/snippets/mahad-security-headers.conf;
     }
