@@ -8,7 +8,7 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { toIdentity, toDialable } = require('./phoneNumber');
-const { phoneIdentityClause } = require('./leadMatching');
+const { phoneIdentityClause, leadPhoneClause } = require('./leadMatching');
 const { scoreInterest } = require('./whatsappInterest');
 
 const PERSON_JID = /@s\.whatsapp\.net$/;
@@ -140,14 +140,15 @@ async function matchChat(tenantId, staffId, jid, { fresh = false } = {}) {
   let leadId = null;
   let subscriberId = null;
   const clause = chat.phone ? phoneIdentityClause(toIdentity(chat.phone)) : null;
+  const leadClause = chat.phone ? leadPhoneClause(toIdentity(chat.phone)) : null;
   if (clause) {
     const [[sub]] = await pool.query(
       `SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND ${clause.sql} ORDER BY created_at DESC LIMIT 1`,
       [tenantId, ...clause.params]);
     subscriberId = sub?.id || null;
     const [[lead]] = await pool.query(
-      `SELECT id FROM leads WHERE tenant_id=? AND hidden=0 AND ${clause.sql} ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, ...clause.params]);
+      `SELECT id FROM leads WHERE tenant_id=? AND hidden=0 AND ${leadClause.sql} ORDER BY created_at DESC LIMIT 1`,
+      [tenantId, ...leadClause.params]);
     leadId = lead?.id || null;
   }
   await pool.query(

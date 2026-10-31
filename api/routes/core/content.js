@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
-const { grantCourseSelections, grantCourseEntitlement, revokeCourseEntitlement } = require('../../lib/entitlements');
+const { DEFAULT_ACCESS_MONTHS, grantCourseSelections, grantCourseEntitlement, revokeCourseEntitlement } = require('../../lib/entitlements');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { logLeadEvent } = require('../../lib/crm');
 const { sanitize } = require('../../lib/helpers');
@@ -86,7 +86,7 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
       title: r.title_ar || r.title,
       enrolledAt: r.enrolled_at,
       expiresAt: r.expiry_date,
-      courseDefaultMonths: r.access_months,
+      courseDefaultMonths: Number(r.access_months) > 0 ? r.access_months : DEFAULT_ACCESS_MONTHS,
       accessType: r.access_type,
       item,
       itemTitle: r.bundle_id ? (r.bundle_title || r.title_ar || r.title) : (r.title_ar || r.title),

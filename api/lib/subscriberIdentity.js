@@ -21,7 +21,7 @@
  */
 const { pool } = require('./db');
 const logger = require('./logger');
-const { toIdentity } = require('./phoneNumber');
+const { toIdentity, matchingSpellings } = require('./phoneNumber');
 
 /**
  * The literal spellings the same Egyptian number is stored in across imports,
@@ -87,6 +87,7 @@ async function resolveSubscriberRow(req, columns = ['id'], db = pool) {
     ? ''
     : String(account?.email || req.user?.email || '').trim().toLowerCase();
   const variants = phoneVariants(account?.phone);
+  const digitSpellings = account?.phone ? matchingSpellings(account.phone).map(value => String(value).replace(/\D/g, '')).filter(Boolean) : [];
 
   // 2. Email — skipped entirely when empty, because `LOWER(TRIM(email))=''`
   // would be a wildcard across every subscriber stored with a blank email.
@@ -98,21 +99,26 @@ async function resolveSubscriberRow(req, columns = ['id'], db = pool) {
     const [[byEmail]] = await db.query(
       `SELECT ${select} FROM subscribers s
         WHERE s.tenant_id=? AND LOWER(TRIM(s.email))=? AND s.deleted_at IS NULL
-          AND (s.firebase_uid IS NULL OR s.firebase_uid = '' OR s.firebase_uid = ?)
+          AND (s.firebase_uid IS NULL OR s.firebase_uid = '' OR s.firebase_uid = ?
+               OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = s.firebase_uid AND lu.tenant_id = s.tenant_id))
         ORDER BY s.created_at DESC LIMIT 1`,
       [tenantId, email, uid]
     );
     found = byEmail || null;
   }
 
-  // 3. WhatsApp number.
-  if (!found && variants.length) {
-    const placeholders = variants.map(() => '?').join(',');
+  // 3. WhatsApp number — by the digits, so a number stored with spaces, dashes, a + or another country prefix is still the same number
+  // (subscribers.phone_digits, migration 352). A record already linked to another LIVE account is not taken, as with the email.
+  if (!found && (variants.length || digitSpellings.length)) {
+    const spellings = [...new Set([...digitSpellings, ...variants.map(value => value.replace(/\D/g, ''))])];
+    const placeholders = spellings.map(() => '?').join(',');
     const [[byPhone]] = await db.query(
       `SELECT ${select} FROM subscribers s
-        WHERE s.tenant_id=? AND s.phone IN (${placeholders}) AND s.deleted_at IS NULL
+        WHERE s.tenant_id=? AND s.phone_digits IN (${placeholders}) AND s.deleted_at IS NULL
+          AND (s.firebase_uid IS NULL OR s.firebase_uid = '' OR s.firebase_uid = ?
+               OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = s.firebase_uid AND lu.tenant_id = s.tenant_id))
         ORDER BY s.created_at DESC LIMIT 1`,
-      [tenantId, ...variants]
+      [tenantId, ...spellings, uid]
     );
     found = byPhone || null;
   }
@@ -125,7 +131,9 @@ async function resolveSubscriberRow(req, columns = ['id'], db = pool) {
   // repair from looking like a client edit to anything watching that column.
   db.query(
     `UPDATE subscribers SET firebase_uid=?, updated_at=updated_at
-      WHERE id=? AND tenant_id=? AND firebase_uid IS NULL`,
+      WHERE id=? AND tenant_id=?
+        AND (firebase_uid IS NULL OR firebase_uid = ''
+             OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = firebase_uid AND lu.tenant_id = subscribers.tenant_id))`,
     [uid, found.id, tenantId]
   ).catch(e => logger.warn('[subscriber-identity] link-back failed:', e.message));
 

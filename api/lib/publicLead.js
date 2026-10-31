@@ -11,8 +11,8 @@ const { getNextClientCode } = require('./mappers');
 const { normalizePhone } = require('./helpers');
 const { branchIdForBranch, normalizeBranch } = require('./branches');
 const { logLeadEvent } = require('./crm');
-const { getNextSalesRep } = require('./leadAssignment');
-const { phoneIdentityClause } = require('./leadMatching');
+const { getNextSalesRep, SINGLE_LEAD_LOADS_TTL_MS } = require('./leadAssignment');
+const { leadPhoneClause } = require('./leadMatching');
 const { completeForBranch, toIdentity } = require('./phoneNumber');
 const { attributionValues, fillAttributionSql } = require('./visitAttribution');
 
@@ -49,7 +49,7 @@ async function fileLead({ tenantId, name, phone, notes, source, branch, attribut
     transactionStarted = true;
     const note = String(notes || '').trim().slice(0, 500);
     const origin = String(source || 'chatbot').slice(0, 50);
-    const identityMatch = phoneIdentityClause(normPhone);
+    const identityMatch = leadPhoneClause(normPhone);
     if (identityMatch) {
       const [[existing]] = await conn.query(
         `SELECT id FROM leads WHERE tenant_id=? AND ${identityMatch.sql} AND hidden = 0 LIMIT 1 FOR UPDATE`,
@@ -72,7 +72,7 @@ async function fileLead({ tenantId, name, phone, notes, source, branch, attribut
     let code = null;
     try { code = await getNextClientCode(conn, tenantId); } catch (_) { /* a lead without a code is still a lead */ }
     const normalizedBranch = normalizeBranch(branch, 'OTHER');
-    const rep = await getNextSalesRep(tenantId, conn, { branch: normalizedBranch, lead: { source: origin, courseIds: [] } });
+    const rep = await getNextSalesRep(tenantId, conn, { branch: normalizedBranch, lead: { source: origin, courseIds: [] }, loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS });
     await conn.execute(
       `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name,
          utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, created_at, hidden)

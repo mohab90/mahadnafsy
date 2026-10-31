@@ -57,7 +57,8 @@ test('the lead matcher no longer matches on a blank identifier', () => {
 test('the phone term is an exact set membership, not a trailing wildcard', () => {
   // The other original defect: LIKE '%' + last 9 digits returns "ends with
   // these digits", which is a different customer's lead.
-  assert.ok(matching.includes("REGEXP_REPLACE(phone,'[^0-9]','') IN ("),
-    'the phone must be matched against known spellings exactly');
+  // leads.phone_digits is REGEXP_REPLACE(phone,'[^0-9]','') as an indexed virtual column (migration 351): the same exact set, read from an index.
+  assert.ok(matching.includes('phone_digits IN ('), 'the phone must be matched against known spellings exactly');
+  assert.ok(matching.includes("REGEXP_REPLACE(${column},'[^0-9]','') IN ("), 'the other tables keep the exact set too');
   assert.ok(!/LIKE\s+CONCAT\('%'/.test(matching), 'no leading-wildcard phone match may remain');
 });

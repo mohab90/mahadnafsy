@@ -44,7 +44,7 @@ async function findLeadByContact(db, { tenantId, phone, email, includeHidden = f
   const match = [];
   const params = [];
   if (spellings.length) {
-    match.push(`REGEXP_REPLACE(phone,'[^0-9]','') IN (${spellings.map(() => '?').join(',')})`);
+    match.push(`phone_digits IN (${spellings.map(() => '?').join(',')})`);
     params.push(...spellings);
   }
   if (cleanEmail) {
@@ -99,4 +99,17 @@ function phoneIdentityClause(phone, column = 'phone') {
   };
 }
 
-module.exports = { findLeadByContact, phoneIdentityClause, DEFAULT_TENANT_ID };
+/**
+ * The same question as phoneIdentityClause, for the LEADS table: leads.phone_digits is the number's digits as an indexed virtual column
+ * (migration 351), so this reads a few index entries where phoneIdentityClause reads and rewrites every row. Only leads have the column;
+ * other tables keep phoneIdentityClause.
+ *
+ * @returns {{sql: string, params: string[]}|null}
+ */
+function leadPhoneClause(phone, column = 'phone_digits') {
+  const spellings = matchingSpellings(phone);
+  if (!spellings.length) return null;
+  return { sql: `${column} IN (${spellings.map(() => '?').join(',')})`, params: spellings };
+}
+
+module.exports = { findLeadByContact, phoneIdentityClause, leadPhoneClause, DEFAULT_TENANT_ID };

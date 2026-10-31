@@ -540,12 +540,12 @@ const saveCourse = async () => {
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">مدة إتاحة الكورس للعميل (بالشهور)</label>
               <input
-                type="number" min={0} placeholder="سيبها فاضية = مفتوح بدون نهاية"
+                type="number" min={0} placeholder="سيبها فاضية = سنة (12 شهر)"
                 className="w-full border border-gray-300 rounded-xl px-4 py-2.5"
                 value={courseDraft.accessMonths ?? ''}
                 onChange={(e) => setCourseDraft({ ...courseDraft, accessMonths: e.target.value === '' ? null : Number(e.target.value) })}
               />
-              <p className="text-[11px] text-gray-400 mt-1">بيتحسب من يوم اشتراك كل عميل. العملاء الحاليين مش هيتأثروا.</p>
+              <p className="text-[11px] text-gray-400 mt-1">بيتحسب من يوم اشتراك كل عميل، والافتراضي سنة. العملاء الحاليين بيتحوّلوا بأداة `set-year-access` (مش من هنا).</p>
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-gray-600 mb-1">فيديو برومو الكورس (YouTube/Vimeo/MP4)</label>

@@ -61,6 +61,33 @@ async function saveTurns(db, tenantId, reps) {
 // round-robin — and under "least loaded" got nearly everything, having zero
 // open leads. New reps now appear on the screen switched off and receive
 // nothing until someone turns them on.
+// Each rep's open leads. It is a count over every open lead of the tenant — 0.2 s at 150,000 leads, about 1 s at 600,000 — and a lead from the
+// website needs it to pick its rep, while holding a pooled connection: forty forms at once (a campaign) held every connection and answered 500
+// (found by CI's burst smoke at that size). The one-lead-at-a-time path may therefore read counts up to `ttlMs` old, and counts its own
+// assignments on top, so a burst is still shared out by load and not poured onto whoever was least loaded when the burst began. Distribution
+// screens and batch runs read fresh.
+const loadsCache = new Map();
+async function openLoads(tenantId, db, ttlMs = 0) {
+  const now = Date.now();
+  const hit = ttlMs > 0 ? loadsCache.get(tenantId) : null;
+  if (hit && now - hit.at < ttlMs) return new Map(hit.loads);
+  const [loads] = await db.query(
+    `SELECT assigned_sales_id,COUNT(*) active_leads FROM leads
+      WHERE tenant_id=? AND hidden=0
+        AND status NOT IN ${TERMINAL_SQL}
+        AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
+    [tenantId]
+  );
+  const map = new Map(loads.map(row => [String(row.assigned_sales_id), Number(row.active_leads)]));
+  if (ttlMs > 0) loadsCache.set(tenantId, { at: now, loads: new Map(map) });
+  return map;
+}
+/** A lead was just given to this rep: the cached count (if there is one) includes it. */
+function noteAssigned(tenantId, repId) {
+  const hit = loadsCache.get(tenantId);
+  if (hit) hit.loads.set(String(repId), (hit.loads.get(String(repId)) || 0) + 1);
+}
+
 async function listDistributableReps(tenantId, db = pool, options = {}) {
   const branch = options.branch ? normalizeBranch(options.branch) : null;
   const teamKey = String(options.teamKey || 'sales').trim().toLowerCase();
@@ -75,14 +102,7 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
       ORDER BY s.name ASC`,
     [teamKey, tenantId]
   );
-  const [loads] = await db.query(
-    `SELECT assigned_sales_id,COUNT(*) active_leads FROM leads
-      WHERE tenant_id=? AND hidden=0
-        AND status NOT IN ${TERMINAL_SQL}
-        AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
-    [tenantId]
-  );
-  const loadByStaff = new Map(loads.map(row => [String(row.assigned_sales_id), Number(row.active_leads)]));
+  const loadByStaff = await openLoads(tenantId, db, options.loadsTtlMs);
   const configured = rows.some(row => row.policy_id != null);
 
   const staffById = new Map();
@@ -201,6 +221,7 @@ async function getNextSalesRep(tenantId, db = pool, options = {}) {
     branch: options.branch,
     teamKey: options.teamKey,
     lead: options.lead,
+    loadsTtlMs: options.loadsTtlMs,
   });
   const rep = reps
     .map(entry => ({ ...entry, open: entry.activeLeads, lastAt: timeOf(entry.lastAssignedAt) }))
@@ -211,6 +232,7 @@ async function getNextSalesRep(tenantId, db = pool, options = {}) {
       [rep.policyId, tenantId]
     );
   }
+  if (rep && options.loadsTtlMs > 0) noteAssigned(tenantId, rep.id);
   return rep ? { id: rep.id, name: rep.name } : null;
 }
 
@@ -396,4 +418,7 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
   };
 }
 
-module.exports = { assignLead, createBatchAssigner, createRepRotation, distributionMode, getNextSalesRep, listDistributableReps };
+// What the website's one-lead path asks for (lib/publicLead.js, routes/lead-capture-crm.js): counts up to this old.
+const SINGLE_LEAD_LOADS_TTL_MS = 3000;
+
+module.exports = { SINGLE_LEAD_LOADS_TTL_MS, assignLead, createBatchAssigner, createRepRotation, distributionMode, getNextSalesRep, listDistributableReps };

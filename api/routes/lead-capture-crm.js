@@ -18,14 +18,14 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { publicLimiter } = require('../middleware/rateLimits');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
-const { getNextSalesRep, listDistributableReps } = require('../lib/leadAssignment');
+const { getNextSalesRep, listDistributableReps, SINGLE_LEAD_LOADS_TTL_MS } = require('../lib/leadAssignment');
 const { hasRoom } = require('../lib/assignmentQuota');
 const { repTakesLead } = require('../lib/leadAssignmentPolicy');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
-const { phoneIdentityClause, findLeadByContact } = require('../lib/leadMatching');
+const { leadPhoneClause, findLeadByContact } = require('../lib/leadMatching');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
@@ -95,7 +95,7 @@ router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', '
     // found by the tenant-bound identity lookup below.
     let id = uuidv4();
     let existing = null;
-    const identityMatch = phoneIdentityClause(normPhone);
+    const identityMatch = leadPhoneClause(normPhone);
     if (identityMatch) {
       // Whoever this returns has their id, client_code and sales assignment
       // reused for the incoming submission, so a false match merges two people
@@ -142,6 +142,7 @@ router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', '
           source: source || 'تسجيل اهتمام',
           courseIds: Array.isArray(crmData.interestedCourseIds) ? crmData.interestedCourseIds : [],
         },
+        loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS,
       });
       salesId = rep?.id || null;
       salesName = rep?.name || null;
@@ -693,7 +694,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
     } else {
       const crmJson = JSON.stringify({ interestedCourseIds: itemId ? [itemId] : [], itemTitle: canonicalTitle, itemType: normalizedType });
       const rep = await getNextSalesRep(tenantId, conn, {
-        branch, lead: { source: 'checkout_intent', courseIds: itemId ? [itemId] : [] },
+        branch, lead: { source: 'checkout_intent', courseIds: itemId ? [itemId] : [] }, loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS,
       }).catch(() => null);
       // A number already on a lead the matcher could not see (a hidden one) is
       // left as it is: the no-op update writes nothing over it.

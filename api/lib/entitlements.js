@@ -60,6 +60,10 @@ async function ownedSubject(conn, tenantId, subscriberId, courseId) {
   return row;
 }
 
+// «اي عميل اعمله سنه صلاحيه الكورسات من تاريخ اشتراكه» (31 Oct 2026): a course is open for a year from the day the client subscribed unless the
+// course itself names another duration (courses.access_months). It used to be open-ended until someone set one.
+const DEFAULT_ACCESS_MONTHS = 12;
+
 async function grantCourseEntitlement({
   tenantId, subscriberId, courseId, accessType = 'full', lectureLimit = null,
   branchId = null, bundleId = null, enrolledAt = null, source = 'admin', actor = null,
@@ -82,15 +86,12 @@ async function grantCourseEntitlement({
       ? lectureLimit
       : await proportionalLectureLimit(conn, tenantId, courseId, paidRatio);
     const policy = accessPolicy(accessType, resolvedLimit);
-    // How long this course is sold for. NULL means unlimited, which is what
-    // every course is until someone sets a duration, so nothing changes for
-    // existing catalogue entries.
-    // Read defensively: granting access must not fail because a duration
-    // lookup came back in an unexpected shape. No duration means unlimited,
-    // which is the safe direction to be wrong in.
+    // How long this course is sold for: the months the course names, else a year (DEFAULT_ACCESS_MONTHS), counted from the subscription day.
+    // Read defensively: granting access must not fail because a duration lookup came back in an unexpected shape.
     const durationResult = await conn.query(
       'SELECT access_months FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, tenantId]);
-    const accessMonths = Number(durationResult?.[0]?.[0]?.access_months) || 0;
+    const accessMonths = Number(durationResult?.[0]?.[0]?.access_months) > 0
+      ? Number(durationResult[0][0].access_months) : DEFAULT_ACCESS_MONTHS;
     const [[existing]] = await conn.query(
       `SELECT id,status,access_type,lecture_limit FROM enrollments
         WHERE tenant_id=? AND subscriber_id=? AND course_id=? LIMIT 1 FOR UPDATE`,
@@ -125,6 +126,10 @@ async function grantCourseEntitlement({
     }
     const changed = !existing || existing.status !== 'active' ||
       existing.access_type !== effective.mode || Number(existing.lecture_limit || 0) !== Number(effective.lectureLimit || 0);
+    // A re-grant (the next instalment, a recomputation) leaves a live enrollment's window where it was, a year from its own subscription day;
+    // a lapsed or revoked one starts again from now. GREATEST never shortens a window an admin extended. An enrollment with NO expiry (the
+    // open-ended ones from before this rule) stays as it is: paying an instalment must not be what closes it. They are converted, deliberately,
+    // by tools/set-year-access.cjs.
     const enrollmentId = existing?.id || uuidv4();
     await conn.query(
       `INSERT INTO enrollments
@@ -133,14 +138,18 @@ async function grantCourseEntitlement({
        VALUES (?,?,?,?,?,COALESCE(?,NOW()),
               CASE WHEN ? > 0 THEN DATE_ADD(COALESCE(?,NOW()), INTERVAL ? MONTH) ELSE NULL END,
               ?,?,'active',?,?,?)
-       ON DUPLICATE KEY UPDATE expiry_date=GREATEST(COALESCE(expiry_date,VALUES(expiry_date)),COALESCE(VALUES(expiry_date),expiry_date)),access_type=VALUES(access_type),lecture_limit=VALUES(lecture_limit),
+       ON DUPLICATE KEY UPDATE expiry_date=CASE WHEN ? > 0 AND expiry_date IS NOT NULL THEN GREATEST(
+           expiry_date,
+           DATE_ADD(IF(status='active' AND expiry_date > NOW(),enrolled_at,NOW()), INTERVAL ? MONTH)) ELSE expiry_date END,
+         access_type=VALUES(access_type),lecture_limit=VALUES(lecture_limit),
          status='active',entitlement_source=VALUES(entitlement_source),granted_by=VALUES(granted_by),
          bundle_id=COALESCE(VALUES(bundle_id),bundle_id),revoked_at=NULL,revoked_by=NULL,
          branch_id=VALUES(branch_id),updated_at=NOW()`,
       [enrollmentId, tenantId, subscriberId, courseId, bundleId, enrolledAt,
         accessMonths, enrolledAt, accessMonths,
         effective.mode, effective.lectureLimit,
-        source, actor, branchId || subject.branch_id || 'branch-other']
+        source, actor, branchId || subject.branch_id || 'branch-other',
+        accessMonths, accessMonths]
     );
     if (changed) {
       await conn.query(
@@ -288,6 +297,7 @@ async function grantCourseSelections({
 }
 
 module.exports = {
+  DEFAULT_ACCESS_MONTHS,
   accessPolicy,
   grantCourseEntitlement,
   grantCourseSelections,
