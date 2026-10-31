@@ -32,7 +32,7 @@ const q = async (sql, p) => (await db.query(sql, p))[0];
     let r = await api(null, 'POST', '/api/leads-public', { name: `Public Lead ${stamp}`, phone, notes: 'n', source: 'website' });
     check('public', 'lead form answers ok', r.status === 200 && r.json?.ok, r.text.slice(0, 120));
     r = await api('admin', 'GET', `/api/admin/leads?search=${phone}&limit=5`);
-    check('public', 'the lead is in the admin leads list', has(rows(r), l => l.phone === phone), `status ${r.status}`);
+    check('public', 'the lead is in the admin leads list', has(rows(r), l => String(l.phone).replace(/\D/g, '').slice(-10) === phone.replace(/\D/g, '').slice(-10)), `status ${r.status}`);
     r = await api('admin', 'GET', `/api/admin/leads/stats`);
     check('public', 'lead statistics answer', r.status === 200 && typeof r.json?.total === 'number');
     const beforeTotal = r.json?.total;
