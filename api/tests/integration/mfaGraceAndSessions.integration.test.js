@@ -13,8 +13,6 @@ for (const key of ['HOST', 'PORT', 'USER', 'PASSWORD', 'NAME']) {
 }
 const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
-// This file is about the policy itself: unlike the others it needs it on, as it is in production.
-process.env.MAHAD_IT_NO_EMAIL_CODE = '0';
 const skip = !ENABLED && 'no DB_* configured';
 const TENANT = 'tenant-sec2-mfa-it';
 const IP = '41.33.10.21';
@@ -79,6 +77,8 @@ before(async () => {
   await pool.query(
     `INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active)
      VALUES ('u-sec2-acc', ?, 'acc-sec2@example.test', 'x', 'محاسبة', 'user', 1)`, [TENANT]);
+  // The code is off until the owner turns it on (lib/mfaPolicy.js): this file is about the policy being on.
+  await require('../../lib/mfaPolicy').saveMfaPolicy(TENANT, { enabled: true }, 'it');
   await pool.query(
     `INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at)
      VALUES ('st-sec2-acc', ?, 'محاسبة', 'acc-sec2@example.test', '1012000123', 'ACCOUNTANT', 1, '2025-01-01')`, [TENANT]);

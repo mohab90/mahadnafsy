@@ -38,7 +38,7 @@ const MFA_PERMISSIONS = [
   ['manage_settings', 'إدارة الإعدادات'],
 ] as const;
 const DEFAULT_MFA_POLICY: MfaPolicy = {
-  enabled: true,
+  enabled: false,
   required_roles: MFA_ROLES.map(([key]) => key),
   required_permissions: MFA_PERMISSIONS.map(([key]) => key),
 };

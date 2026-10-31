@@ -108,6 +108,25 @@ test('there is no grace period and no enrolment: nothing lets an unverified impo
   staffRow = null;
 });
 
+test('by default nobody is asked for the code, and an old stored policy does not turn it on', async () => {
+  // 31 Oct 2026: «دخول بالايميل والباصورد فقط لحين نظبط الفريق». Nothing stored, the authenticator-era policy (no version, even one that
+  // said enabled), and a version-2 policy the owner never saved all leave everybody on the email and the password.
+  assert.equal(mfa.DEFAULT_MFA_POLICY.enabled, false);
+  assert.equal(mfa.normalizeMfaPolicy(null).enabled, false);
+  assert.equal(mfa.normalizeMfaPolicy({ enabled: true, required_roles: ['admin'] }).enabled, false, 'a policy from before version 2 never meant this code');
+  assert.equal(mfa.normalizeMfaPolicy({ version: 2 }).enabled, false);
+  assert.equal(mfa.normalizeMfaPolicy({ version: 2, enabled: true }).enabled, true, 'only the owner saving it from the security screen turns it on');
+  const before = storedPolicy;
+  storedPolicy = null;
+  await mfa.getMfaPolicy('tenant-default', { fresh: true });
+  assert.equal(await loginCode.accountNeedsEmailCode({ tenantId: 'tenant-default', user: { id: 'u-owner', email: 'owner@x.test' } }), false, 'not even the owner');
+  storedPolicy = { enabled: true, required_roles: ['admin'] };
+  await mfa.getMfaPolicy('tenant-default', { fresh: true });
+  assert.equal(await loginCode.accountNeedsEmailCode({ tenantId: 'tenant-default', user: { id: 'u-owner', email: 'owner@x.test' } }), false);
+  storedPolicy = before;
+  await mfa.getMfaPolicy('tenant-default', { fresh: true });
+});
+
 test('with the policy off nobody is asked', async () => {
   storedPolicy = { ...storedPolicy, enabled: false };
   await mfa.getMfaPolicy('tenant-default', { fresh: true });
@@ -128,9 +147,9 @@ test('who owes the code: the owner and the listed roles or permissions — not a
   assert.equal(await loginCode.accountNeedsEmailCode({ tenantId: 'tenant-default', user: { id: 'u-c', email: 'client@x.test' } }), false, 'a customer is not staff');
 });
 
-test('the policy has no grace days or enrolment date left, and the default still covers the roles that see money', () => {
+test('the policy has no grace days or enrolment date left, and the roles that see money are listed for the day the owner turns it on', () => {
   const fresh = mfa.normalizeMfaPolicy({});
-  assert.equal(fresh.enabled, true);
+  assert.equal(fresh.enabled, false, 'off until the owner turns it on (31 Oct 2026)');
   assert.equal('grace_days' in fresh, false);
   assert.equal('enforced_from' in fresh, false);
   for (const role of ['admin', 'manager', 'accountant', 'collection', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager', 'hr']) {

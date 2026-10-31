@@ -30,8 +30,6 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const env = process.env;
-// The emailed login code is on by default (lib/mfaPolicy.js); the sign-ins the integration files make have no mailbox to read it from.
-if (env.MAHAD_IT_NO_EMAIL_CODE === undefined) env.MAHAD_IT_NO_EMAIL_CODE = '1';
 const setting = key => env[`TEST_DB_${key}`] || env[`DB_${key}`];
 const enabled = Boolean(setting('USER') && setting('NAME')) && env.MAHAD_IT_SHARED_DB !== '1';
 

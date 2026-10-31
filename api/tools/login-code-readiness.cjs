@@ -53,11 +53,11 @@ const OWNERS = String(process.env.ADMIN_EMAILS || '').split(',').map(value => va
     if (key) byEmail.set(key, [...(byEmail.get(key) || []), row.name || row.id]);
   }
 
-  const asked = rows.filter(row => row.is_active && accountRequiresMfa(policy, {
+  const asked = rows.filter(row => row.is_active && accountRequiresMfa({ ...policy, enabled: true }, {
     isOwner: OWNERS.includes(String(row.email || '').trim().toLowerCase()),
     staff: row.role ? { role: row.role, permissions_json: row.permissions_json } : null,
   }));
-  console.log(`كود الإيميل:${policy.enabled ? 'مفعّل' : 'مقفول'} | حسابات هتتطلب كود: ${asked.length} من ${rows.length}\n`);
+  console.log(`كود الإيميل: ${policy.enabled ? 'مفعّل' : 'مقفول حالياً (الدخول بالإيميل والباصورد بس)'} | حسابات هتتطلب كود لو اتفعّل:${asked.length} من ${rows.length}\n`);
 
   const order = { missing: 0, invalid: 1, placeholder: 2, phone_like: 3, shared: 4, check: 5 };
   const report = asked.map(row => {
