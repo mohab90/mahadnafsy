@@ -20,7 +20,7 @@ const funnel = fs.readFileSync(path.join(__dirname, '..', 'routes', 'funnel.js')
 const route = funnel.slice(funnel.indexOf("router.get('/api/admin/funnel/attribution'"), funnel.indexOf("router.get('/api/admin/action-center'"));
 
 test('attribution counts leads on their own and reads payments only through the leads that have a client', () => {
-  assert.ok(route.includes('FROM leads l\n             ${salesJoin}\n            WHERE ${where}'), 'the lead count must not join subscribers');
+  assert.ok(route.includes('FROM leads l\n             ${salesJoin}\n            WHERE l.tenant_id=? AND ${c.slice(1)'), 'the lead count must not join subscribers');
   assert.ok(route.includes('FROM subscribers s\n             JOIN leads l ON l.id = s.lead_id AND l.tenant_id = s.tenant_id'), 'the revenue read starts from the clients');
   assert.ok(!/FROM leads l\s+\$\{salesJoin\}\s+LEFT JOIN subscribers/.test(route), 'leads LEFT JOIN subscribers over the whole table is the 5-8 s shape');
   assert.equal((route.match(/pool\.query\(/g) || []).length, 2, 'two reads, merged in memory');

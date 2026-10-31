@@ -112,7 +112,7 @@ router.get('/api/admin/funnel/attribution', requireAuth, requireAdminOrStaff, re
                   SUM(l.status='converted') AS converted
              FROM leads l
              ${salesJoin}
-            WHERE ${where}
+            WHERE l.tenant_id=? AND ${c.slice(1).join(' AND ')}
             GROUP BY label`, p),
         pool.query(
           `SELECT ${groupCol} AS label,
