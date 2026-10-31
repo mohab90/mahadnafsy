@@ -58,6 +58,7 @@ const routeModules = [
   ['/', '../routes/facebook-leads-webhook'],
   ['/', '../routes/whatsapp-webhook'],
   ['/', '../routes/messenger-webhook'],
+  ['/', '../routes/email-webhook'],
   ['/', '../routes/messaging-channels'],
   ['/', '../routes/whatsapp-campaigns'],
   ['/', '../routes/messaging-inbox'],

@@ -42,9 +42,11 @@ const T = {
   otpFailed: num('OPS_OTP_FAILED', 3),
   otpShare: num('OPS_OTP_SHARE', 0.3),
   emailFailures: num('OPS_EMAIL_FAILURES', 3),
+  bounceMin: num('OPS_BOUNCE_MIN', 5),
+  bounceShare: num('OPS_BOUNCE_SHARE', 0.1),
 };
 // How long one kind of finding stays quiet after it was sent (hours).
-const QUIET_HOURS = { errors: 2, storm: 3, slow: 3, backup: 24, offsite: 24, outbox: 3, otp: 2, email: 3 };
+const QUIET_HOURS = { errors: 2, storm: 3, slow: 3, backup: 24, offsite: 24, outbox: 3, otp: 2, email: 3, bounces: 24 };
 
 const KEEP_MINUTES = 70;
 const SAMPLES_PER_MINUTE = 300;
@@ -299,6 +301,26 @@ async function otpFindings(db, tenantId, now = Date.now()) {
 const RECIPIENT_FAULT = /no recipients defined|recipient|mailbox|user unknown|invalid (address|email)/i;
 
 /**
+ * Mail the relay accepted and then could not deliver (email_delivery_events, written by routes/email-webhook.js): hard bounces, blocks and
+ * spam reports in the last day. A handful among thousands is a list with a few dead addresses; several, and a tenth of what was
+ * delivered, is a sender whose reputation is going — receipts and login codes stop arriving next.
+ */
+async function bounceFindings(db, tenantId, now = Date.now()) {
+  const [[row]] = await db.query(
+    `SELECT SUM(event IN ('hard_bounce','blocked','spam')) AS failed, SUM(event='delivered') AS delivered
+       FROM email_delivery_events WHERE tenant_id=? AND occurred_at >= ?`,
+    [tenantId, new Date(now - 24 * 3600 * 1000)]);
+  const failed = Number(row?.failed) || 0;
+  const delivered = Number(row?.delivered) || 0;
+  if (failed < T.bounceMin || failed / (failed + delivered) < T.bounceShare) return [];
+  return [{
+    key: 'bounces', severity: 'high', title: 'إيميلات بترتد أو بتتعلّم سبام',
+    body: `${failed} إيميل ما وصلش (ارتد أو اتحجب أو اتبلّغ كسبام) من ${failed + delivered} في آخر 24 ساعة.`,
+    hint: 'افتح «Brevo ← Logs» وشوف العناوين؛ العناوين دي اتوقّفت من الحملات تلقائياً. راجع SPF وDKIM للدومين.',
+  }];
+}
+
+/**
  * The mail relay refusing sends. Receipts, password resets and codes by e-mail are sent directly (lib/email.js sendEmail), not queued, so
  * the only record is the delivery state it keeps: how many sends failed in a row, and when one last worked.
  */
@@ -382,6 +404,7 @@ async function runOpsWatchdog({ pool, logger, tenantId = process.env.DEFAULT_TEN
     ...backupFindings({ local: newestBackup(), offsite: offsiteState(), now }),
     ...await outboxFindings(pool, tenantId, now).catch(error => { logger?.warn?.('[ops-watchdog] outbox check failed', error.message); return []; }),
     ...await otpFindings(pool, tenantId, now).catch(error => { logger?.warn?.('[ops-watchdog] otp check failed', error.message); return []; }),
+    ...await bounceFindings(pool, tenantId, now).catch(error => { logger?.warn?.('[ops-watchdog] bounce check failed', error.message); return []; }),
     ...(() => { try { return emailFindings({ tenantId, now }); } catch (error) { logger?.warn?.('[ops-watchdog] email check failed', error.message); return []; } })(),
   ];
   await require('./opsAssistant').assist({
@@ -396,6 +419,6 @@ async function runOpsWatchdog({ pool, logger, tenantId = process.env.DEFAULT_TEN
 const status = () => ({ ...lastRun, thresholds: T, quietHours: QUIET_HOURS, heartbeatConfigured: /^https:\/\//i.test(String(process.env.OPS_HEARTBEAT_URL || '')) });
 
 module.exports = {
-  T, QUIET_HOURS, noteRequest, trafficFindings, backupFindings, newestBackup, offsiteState, outboxFindings, otpFindings, emailFindings, compose, queueAlerts, heartbeat,
+  T, QUIET_HOURS, noteRequest, trafficFindings, backupFindings, newestBackup, offsiteState, outboxFindings, otpFindings, emailFindings, bounceFindings, compose, queueAlerts, heartbeat,
   runOpsWatchdog, status, _buckets: buckets,
 };

@@ -272,3 +272,17 @@ test('the watchdog asks both questions, and tells the owner in the same way as t
   // the explanation at the top no longer says codes pass through the outbox
   assert.doesNotMatch(source, /login codes and password resets are among them/);
 });
+
+// ── Mail the relay accepted and could not deliver (31 Oct 2026) ──
+test('a day of bounces, blocks and spam reports is told once there are several and they are a tenth of the mail', async () => {
+  const at = Date.parse('2026-10-31T12:00:00Z');
+  const dbWith = (failed, delivered) => ({ query: async () => [[{ failed, delivered }]] });
+  assert.deepEqual(await watchdog.bounceFindings(dbWith(4, 10), 't1', at), [], 'four is a few dead addresses');
+  assert.deepEqual(await watchdog.bounceFindings(dbWith(6, 200), 't1', at), [], 'six in two hundred is a list with some dead addresses');
+  assert.deepEqual(await watchdog.bounceFindings(dbWith(0, 0), 't1', at), [], 'nothing came in');
+  const [finding] = await watchdog.bounceFindings(dbWith('9', '40'), 't1', at);
+  assert.equal(finding.key, 'bounces');
+  assert.match(finding.body, /9 إيميل/);
+  assert.match(finding.body, /49/);
+  assert.equal(watchdog.QUIET_HOURS.bounces, 24);
+});
