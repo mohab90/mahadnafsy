@@ -11,6 +11,7 @@ const {
   resolveFinancialScope,
   addDaysToDateOnly,
   dateOnlyInTimeZone,
+  cairoDayStartUtc,
   monthRange,
   escapeHtml,
   logger,
@@ -56,6 +57,10 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdminO
     const today = dateOnlyInTimeZone();
     const current = monthRange(today);
     const previous = monthRange(addDaysToDateOnly(current.startDate, -1));
+    // payments, leads and clients are UTC instants: compare them with the instants Cairo's month starts fall on.
+    const curStartUtc = cairoDayStartUtc(current.startDate);
+    const prevStartUtc = cairoDayStartUtc(previous.startDate);
+    const curEndUtc = cairoDayStartUtc(current.endDate);
     const [ledgerResult, paymentResult, leadResult, subscriberResult] = await Promise.all([
       pool.query(`
         SELECT
@@ -76,22 +81,22 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdminO
           COUNT(DISTINCT CASE WHEN p.date<? AND p.status='paid' THEN p.subscriber_id END) AS previous_active_clients
         FROM payments p
         WHERE p.tenant_id=? AND p.deleted_at IS NULL AND p.date>=? AND p.date<?${paymentBranchSql}`,
-      scopedParams(current.startDate, current.startDate, current.startDate, current.startDate,
-        req.tenantId, previous.startDate, current.endDate)),
+      scopedParams(curStartUtc, curStartUtc, curStartUtc, curStartUtc,
+        req.tenantId, prevStartUtc, curEndUtc)),
       pool.query(`
         SELECT
           COUNT(CASE WHEN l.created_at>=? THEN 1 END) AS current_count,
           COUNT(CASE WHEN l.created_at<? THEN 1 END) AS previous_count
         FROM leads l
         WHERE l.tenant_id=? AND l.created_at>=? AND l.created_at<?${leadBranchSql}`,
-      scopedParams(current.startDate, current.startDate, req.tenantId, previous.startDate, current.endDate)),
+      scopedParams(curStartUtc, curStartUtc, req.tenantId, prevStartUtc, curEndUtc)),
       pool.query(`
         SELECT
           COUNT(CASE WHEN s.created_at>=? THEN 1 END) AS current_count,
           COUNT(CASE WHEN s.created_at<? THEN 1 END) AS previous_count
         FROM subscribers s
         WHERE s.tenant_id=? AND s.deleted_at IS NULL AND s.created_at>=? AND s.created_at<?${subscriberBranchSql}`,
-      scopedParams(current.startDate, current.startDate, req.tenantId, previous.startDate, current.endDate)),
+      scopedParams(curStartUtc, curStartUtc, req.tenantId, prevStartUtc, curEndUtc)),
     ]);
     const ledger = ledgerResult[0][0];
     const payments = paymentResult[0][0];

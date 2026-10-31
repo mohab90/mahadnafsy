@@ -5,7 +5,7 @@ const router  = express.Router();
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { addDaysToDateOnly, isValidDateOnly, safeDateOnly } = require('../lib/dates');
+const { addDaysToDateOnly, cairoDayStartUtc, isValidDateOnly, safeDateOnly } = require('../lib/dates');
 const { BRANCHES, normalizeBranch } = require('../constants/branches');
 const { resolveFinancialScope } = require('../lib/financialScope');
 
@@ -93,8 +93,9 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
                LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
                WHERE p.tenant_id = ? AND p.deleted_at IS NULL`;
     const params = [req.tenantId];
-    if (startDate)   { sql += ' AND p.date >= ?';           params.push(startDate); }
-    if (endDate)     { sql += ' AND p.date <= ?';           params.push(endDate); }
+    // Cairo days, to the end of the last one: `<= '2026-10-31'` stopped at its first second, so the day's payments were left out.
+    if (isValidDateOnly(String(startDate || '').slice(0, 10)))   { sql += ' AND p.date >= ?';  params.push(cairoDayStartUtc(String(startDate).slice(0, 10))); }
+    if (isValidDateOnly(String(endDate || '').slice(0, 10)))     { sql += ' AND p.date < ?';   params.push(cairoDayStartUtc(addDaysToDateOnly(String(endDate).slice(0, 10), 1))); }
     if (channel)     { sql += ' AND p.payment_method = ?';  params.push(channel); }
     if (paymentType) { sql += ' AND p.payment_type = ?';    params.push(String(paymentType).toUpperCase()); }
     if (source && source !== 'all')  { sql += ' AND p.source = ?'; params.push(String(source)); }
@@ -210,13 +211,14 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       where += ' AND p.branch_id = ?';
       params.push(scope.branchId);
     }
-    if (dateFrom) {
+    // The columns are UTC instants and the filter is Cairo days.
+    if (isValidDateOnly(String(dateFrom || '').slice(0, 10))) {
       where += ` AND p.date >= ?`;
-      params.push(dateFrom);
+      params.push(cairoDayStartUtc(String(dateFrom).slice(0, 10)));
     }
-    if (dateTo) {
+    if (isValidDateOnly(String(dateTo || '').slice(0, 10))) {
       where += ` AND p.date < ?`;
-      params.push(addDaysToDateOnly(dateTo, 1));
+      params.push(cairoDayStartUtc(addDaysToDateOnly(String(dateTo).slice(0, 10), 1)));
     }
     if (search) {
       // Left as a contains-scan on purpose. Unlike a client code (^C\d+$) or a

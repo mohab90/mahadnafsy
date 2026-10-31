@@ -10,6 +10,7 @@ const {
   resolveFinancialScope,
   addDaysToDateOnly,
   dateOnlyInTimeZone,
+  cairoDayStartUtc,
   monthRange,
   sqlCairoToday,
   logger,
@@ -40,6 +41,10 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
     const weekStart = addDaysToDateOnly(today, -todayUtc.getUTCDay());
     const currentMonth = monthRange(today);
     const monthStart = currentMonth.startDate;
+    // The payments, expenses and leads below are UTC instants; the month is Cairo days (same bounds as the dashboard's revenue).
+    // The journal's entry_date is a plain date and keeps the date-only bounds.
+    const monthStartUtc = cairoDayStartUtc(monthStart);
+    const monthEndUtc = cairoDayStartUtc(currentMonth.endDate);
     const prevMonth = monthRange(addDaysToDateOnly(monthStart, -1));
     const prevMonthStart = prevMonth.startDate;
     const prevMonthEnd = prevMonth.endDate;
@@ -100,7 +105,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
       WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL${paymentAliasScopeSql}
       GROUP BY p.course_id ORDER BY revenue DESC LIMIT 5
-    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStartUtc, scope.branchId] : [req.tenantId, monthStartUtc]);
 
     // ── Top 5 staff by revenue collected this month ────────────────────
     const [topStaff] = await pool.query(`
@@ -110,7 +115,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       LEFT JOIN staff s ON s.id = p.staff_id AND s.tenant_id = p.tenant_id
       WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.staff_id IS NOT NULL${paymentAliasScopeSql}
       GROUP BY p.staff_id ORDER BY collected DESC LIMIT 5
-    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStartUtc, scope.branchId] : [req.tenantId, monthStartUtc]);
 
     // ── Revenue by payment method this month ───────────────────────────
     const [byMethod] = await pool.query(`
@@ -119,7 +124,18 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       FROM payments
       WHERE tenant_id=? AND date >= ? AND status='paid' AND deleted_at IS NULL${paymentScopeSql}
       GROUP BY payment_method ORDER BY revenue DESC
-    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStartUtc, scope.branchId] : [req.tenantId, monthStartUtc]);
+
+    // ── Paid this month and not in the books ───────────────────────────
+    // The revenue, expense and trend figures above are read from the journal; the top lists and the methods from
+    // payments. A payment that never reached the journal (a failed posting, one from before postings existed) is in
+    // the second and not the first, and the screen contradicted itself with nothing saying why. This counts them.
+    const [[unposted]] = await pool.query(`
+      SELECT COUNT(*) AS n, COALESCE(SUM(p.amount_egp),0) AS v
+      FROM payments p
+      WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.date >= ? AND p.date < ?
+        AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE je.tenant_id=p.tenant_id AND je.ref_type='payment' AND je.ref_id=p.id)${paymentAliasScopeSql}
+    `, scope.branchId ? [req.tenantId, monthStartUtc, monthEndUtc, scope.branchId] : [req.tenantId, monthStartUtc, monthEndUtc]);
 
     // ── Expense by category this month ────────────────────────────────
     const [byCategory] = await pool.query(`
@@ -127,7 +143,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       FROM expenses
       WHERE tenant_id=? AND deleted_at IS NULL AND date >= ?${expenseScopeSql}
       GROUP BY category ORDER BY total DESC
-    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStartUtc, scope.branchId] : [req.tenantId, monthStartUtc]);
 
     // ── Budget utilization ─────────────────────────────────────────────
     const curMonthLabel = today.slice(0, 7);
@@ -143,15 +159,15 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       WHERE tenant_id=? AND status='converted' AND created_at>=? AND created_at<?
         ${scope.branchId ? 'AND branch_id=?' : ''}
     `, scope.branchId
-      ? [req.tenantId, monthStart, currentMonth.endDate, scope.branchId]
-      : [req.tenantId, monthStart, currentMonth.endDate]);
+      ? [req.tenantId, monthStartUtc, monthEndUtc, scope.branchId]
+      : [req.tenantId, monthStartUtc, monthEndUtc]);
     const [[leadsTotal]] = await pool.query(`
       SELECT COUNT(*) AS n FROM leads
       WHERE tenant_id=? AND created_at>=? AND created_at<?
         ${scope.branchId ? 'AND branch_id=?' : ''}
     `, scope.branchId
-      ? [req.tenantId, monthStart, currentMonth.endDate, scope.branchId]
-      : [req.tenantId, monthStart, currentMonth.endDate]);
+      ? [req.tenantId, monthStartUtc, monthEndUtc, scope.branchId]
+      : [req.tenantId, monthStartUtc, monthEndUtc]);
 
     // ── Cross-section: posted payroll expense this month ───────────────
     // The ledger is authoritative here. Summing payroll_items.net_salary
@@ -176,13 +192,13 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       SELECT COALESCE(SUM(p.amount_egp),0) AS v
       FROM payments p
       WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.branch='DAQQI'${paymentAliasScopeSql}
-    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStartUtc, scope.branchId] : [req.tenantId, monthStartUtc]);
     // And the Tagamoa branch beside it, read the same way.
     const [[tagamoaRev]] = await pool.query(`
       SELECT COALESCE(SUM(p.amount_egp),0) AS v
       FROM payments p
       WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.branch='TAGAMOA'${paymentAliasScopeSql}
-    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStartUtc, scope.branchId] : [req.tenantId, monthStartUtc]);
 
     // ── Alerts ─────────────────────────────────────────────────────────
     const [[pendingProofs]] = await pool.query(
@@ -261,6 +277,11 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       topStaff: topStaff.map(r => ({ name: r.name, collected: parseFloat(r.collected) || 0, deals: r.deals })),
       byMethod: byMethod.map(r => ({ method: r.method, revenue: parseFloat(r.revenue) || 0 })),
       budgets: budgets.map(r => ({ category: r.category, limit: parseFloat(r.limit_amount) || 0 })),
+      books: {
+        paymentsMonth: byMethod.reduce((sum, r) => sum + (parseFloat(r.revenue) || 0), 0),
+        unpostedCount: Number(unposted.n) || 0,
+        unpostedAmount: parseFloat(unposted.v) || 0,
+      },
       crossSection: {
         leadsConverted: leadsConverted.n,
         leadsTotal: leadsTotal.n,

@@ -6,7 +6,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
-const { safeDateOnly, monthRange, cairoToday } = require('../lib/dates');
+const { safeDateOnly, monthRange, cairoToday, cairoDayStartUtc } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
 const { isBranch, normalizeBranch } = require('../constants/branches');
 const { logFinancialAudit } = require('../lib/finance');
@@ -184,6 +184,9 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
       return res.status(400).json({ error: 'تنسيق الفترة غير صالح (متوقع YYYY-MM)' });
     }
     const { startDate, endDate } = range;
+    // payments.date and expenses.date are UTC instants; the month is Cairo days. The journal's entry_date is a plain date.
+    const startUtc = cairoDayStartUtc(startDate);
+    const endUtc = cairoDayStartUtc(endDate);
     const [[integrity]] = await conn.query(
       `SELECT
          (SELECT COUNT(*) FROM payments p
@@ -229,12 +232,12 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
          (SELECT COUNT(*) FROM finance_outbox fo
            WHERE fo.tenant_id=? AND fo.status IN ('failed','dead')) AS failed_finance_events`,
       [
+        req.tenantId, startUtc, endUtc,
         req.tenantId, startDate, endDate,
-        req.tenantId, startDate, endDate,
-        req.tenantId, startDate, endDate,
-        req.tenantId, startDate, endDate,
+        req.tenantId, startUtc, endUtc,
+        req.tenantId, startUtc, endUtc,
         req.tenantId, Number(period.period_label.slice(0, 4)), Number(period.period_label.slice(5, 7)),
-        req.tenantId, startDate, endDate,
+        req.tenantId, startUtc, endUtc,
         req.tenantId,
       ]
     );

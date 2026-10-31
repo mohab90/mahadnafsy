@@ -18,7 +18,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requi
 const { publicLimiter } = require('../../middleware/rateLimits');
 const { branchIdForBranch, defaultDigitalBranch } = require('../../lib/branches');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
-const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange, sqlCairoToday } = require('../../lib/dates');
+const { addDaysToDateOnly, cairoDayStartUtc, dateOnlyInTimeZone, isValidDateOnly, monthRange, sqlCairoToday } = require('../../lib/dates');
 const { EXPENSE_CATEGORY_LABEL } = require('../../lib/expenseCategories');
 const { getVatPercent, logFinancialAudit } = require('../../lib/finance');
 
@@ -106,6 +106,7 @@ module.exports = {
   resolveFinancialScope,
   addDaysToDateOnly,
   dateOnlyInTimeZone,
+  cairoDayStartUtc,
   isValidDateOnly,
   monthRange,
   sqlCairoToday,

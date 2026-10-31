@@ -20,6 +20,7 @@ const logger = require('../lib/logger');
 const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../middleware/auth');
 const { financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { canonicalChannel } = require('../lib/paymentChannels');
+const { addDaysToDateOnly, cairoDayStartUtc, isValidDateOnly } = require('../lib/dates');
 const { identitySpellings } = require('../lib/phoneNumber');
 
 const router = express.Router();
@@ -55,8 +56,9 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
       let base = ' AND p.deleted_at IS NULL';
       const baseParams = [];
       if (status !== 'all') { base += ' AND p.status = ?'; baseParams.push(status); }
-      if (isDate(req.query.from)) { base += ' AND p.date >= ?'; baseParams.push(req.query.from); }
-      if (isDate(req.query.to)) { base += ' AND p.date < ? + INTERVAL 1 DAY'; baseParams.push(req.query.to); }
+      // Cairo days: the instants Cairo's midnights fall on, not UTC midnights (see lib/financeStatement.js).
+      if (isDate(req.query.from) && isValidDateOnly(req.query.from)) { base += ' AND p.date >= ?'; baseParams.push(cairoDayStartUtc(req.query.from)); }
+      if (isDate(req.query.to) && isValidDateOnly(req.query.to)) { base += ' AND p.date < ?'; baseParams.push(cairoDayStartUtc(addDaysToDateOnly(req.query.to, 1))); }
       base += scopeClause.sql; baseParams.push(...scopeClause.params);
 
       const from = `FROM payments p

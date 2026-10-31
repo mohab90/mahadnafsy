@@ -328,8 +328,9 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, bulkOperatio
     const { dateFrom, dateTo } = req.query;
     let where = 'p.tenant_id=?';
     const params = [req.tenantId];
-    if (dateFrom) { where += ' AND p.date >= ?'; params.push(dateFrom); }
-    if (dateTo)   { where += ' AND p.date <= ?'; params.push(dateTo); }
+    // Cairo days, to the end of the last one (`<= '2026-10-31'` stopped at its first second).
+    if (/^d{4}-d{2}-d{2}/.test(String(dateFrom || ''))) { where += ' AND p.date >= ?'; params.push(cairoDayStartUtc(String(dateFrom).slice(0, 10))); }
+    if (/^d{4}-d{2}-d{2}/.test(String(dateTo || '')))   { where += ' AND p.date < ?';  params.push(cairoDayStartUtc(addDaysToDateOnly(String(dateTo).slice(0, 10), 1))); }
     const [rows] = await pool.query(
       `SELECT p.id, s.name AS subscriber_name, s.email AS subscriber_email,
               p.amount, p.currency, p.payment_type, p.payment_method, p.status,

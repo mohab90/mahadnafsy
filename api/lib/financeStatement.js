@@ -22,7 +22,7 @@
 // Branch scope is the caller's resolveFinancialScope result; instructor fees
 // carry no branch, so a branch-scoped statement leaves them out and says so.
 
-const { addDaysToDateOnly } = require('./dates');
+const { addDaysToDateOnly, cairoDayBoundsUtc, sqlCairoWall } = require('./dates');
 const { loadOutstandingBalances } = require('./outstandingBalances');
 
 const num = value => Math.round((Number(value) || 0) * 100) / 100;
@@ -43,11 +43,15 @@ const ranked = rows => rows
   .filter(row => row.amount !== 0 || row.count)
   .sort((a, b) => b.amount - a.amount);
 
+// The columns compared here are UTC instants (payments.date, expenses.date, refunds, commissions), and a period is
+// Cairo days: from, to are turned into the two UTC instants that Cairo's midnights fall on, the same bounds the
+// dashboard's «revenue» figure uses. Compared as bare dates they meant UTC midnight, so a payment taken between
+// 00:00 and 03:00 in Cairo on the 1st counted in the month before here and in the month on the dashboard.
 async function periodTotals(db, { tenantId, from, to, scope, rates }) {
-  const end = addDaysToDateOnly(to, 1);
+  const [start, end] = cairoDayBoundsUtc(from, to);
   const b = scope?.branchId || null;
   const pay = b ? ' AND p.branch_id=?' : '';
-  const args = extra => (b ? [tenantId, from, end, b, ...extra] : [tenantId, from, end, ...extra]);
+  const args = extra => (b ? [tenantId, start, end, b, ...extra] : [tenantId, start, end, ...extra]);
 
   const [[money]] = await db.query(
     `SELECT COALESCE(SUM(p.amount_egp),0) AS collected, COUNT(*) AS cnt, COUNT(DISTINCT p.subscriber_id) AS clients
@@ -88,7 +92,7 @@ async function periodTotals(db, { tenantId, from, to, scope, rates }) {
               COALESCE(SUM(total_amount * CASE currency WHEN 'SAR' THEN ? WHEN 'USD' THEN ? ELSE 1 END),0) AS accrued
          FROM instructor_fees
         WHERE tenant_id=? AND created_at>=? AND created_at<? AND status<>'rejected'`,
-      [rates.SAR || 1, rates.USD || 1, rates.SAR || 1, rates.USD || 1, tenantId, from, end]);
+      [rates.SAR || 1, rates.USD || 1, rates.SAR || 1, rates.USD || 1, tenantId, start, end]);
     fees = row;
   }
 
@@ -116,10 +120,10 @@ async function periodTotals(db, { tenantId, from, to, scope, rates }) {
 
 async function buildFinanceStatement(db, { tenantId, from, to, scope = null, rates = {} }) {
   const prev = previousPeriod(from, to);
-  const end = addDaysToDateOnly(to, 1);
+  const [start, end] = cairoDayBoundsUtc(from, to);
   const b = scope?.branchId || null;
   const pay = b ? ' AND p.branch_id=?' : '';
-  const base = b ? [tenantId, from, end, b] : [tenantId, from, end];
+  const base = b ? [tenantId, start, end, b] : [tenantId, start, end];
   const paidIn = `p.tenant_id=? AND p.date>=? AND p.date<? AND p.status='paid' AND p.deleted_at IS NULL${pay}`;
 
   const [current, previous] = await Promise.all([
@@ -149,7 +153,7 @@ async function buildFinanceStatement(db, { tenantId, from, to, scope = null, rat
 
   // Up to two months reads by day; longer, by month.
   const byDay = dayDiff(from, to) <= 62;
-  const bucket = column => (byDay ? `DATE_FORMAT(${column}, '%Y-%m-%d')` : `DATE_FORMAT(${column}, '%Y-%m')`);
+  const bucket = column => (byDay ? `DATE_FORMAT(${sqlCairoWall(column)}, '%Y-%m-%d')` : `DATE_FORMAT(${sqlCairoWall(column)}, '%Y-%m')`);
   const [inSeries] = await db.query(
     `SELECT ${bucket('p.date')} AS k, SUM(p.amount_egp) AS amount, COUNT(*) AS cnt FROM payments p WHERE ${paidIn} GROUP BY k`, base);
   const [outSeries] = await db.query(

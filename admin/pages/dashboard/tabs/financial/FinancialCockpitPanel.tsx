@@ -18,6 +18,7 @@ interface CockpitData {
   topStaff: { name: string; collected: number; deals: number }[];
   byMethod: { method: string; revenue: number }[];
   budgets: { category: string; limit: number }[];
+  books?: { paymentsMonth: number; unpostedCount: number; unpostedAmount: number };
   crossSection: {
     leadsConverted: number; leadsTotal: number; conversionRate: number;
     payrollCost: number; daqqiRevenue: number;
@@ -146,6 +147,15 @@ export default function FinancialCockpitPanel({
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> تحديث
         </button>
       </div>
+
+      {data.books && data.books.unpostedCount > 0 && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {fmt(data.books.unpostedCount)} دفعة مدفوعة الشهر ده ({fmt(data.books.unpostedAmount)} ج.م) لسه مش مترحّلة لدفتر اليومية، فإيراد الشهر في اللوحة (من الدفتر) أقل من اللي اتحصّل فعلاً ({fmt(data.books.paymentsMonth)} ج.م من سجل المدفوعات). الأرقام هتتطابق بعد الترحيل.
+          </span>
+        </div>
+      )}
 
       {/* ── Alerts bar ── */}
       {alerts.total > 0 && (

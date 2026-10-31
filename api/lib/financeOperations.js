@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { cairoDayStartUtc } = require('./dates');
 
 const CURRENCIES = new Set(['EGP', 'SAR', 'USD']);
 const dateOnly = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null;
@@ -33,6 +34,9 @@ async function buildCloseChecklist(db, tenantId, period) {
   const month = Number(String(period.period_label).slice(5, 7));
   const startDate = `${period.period_label}-01`;
   const endDate = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  // The payments' date is a UTC instant and the month is Cairo days.
+  const startUtc = cairoDayStartUtc(startDate);
+  const endUtc = cairoDayStartUtc(endDate);
   const [[counts]] = await db.query(
     `SELECT
        (SELECT COUNT(*) FROM payments p
@@ -59,8 +63,8 @@ async function buildCloseChecklist(db, tenantId, period) {
              OR ABS(je.total_debit-je.total_credit)>=0.01
         ) broken) AS unbalanced_journals`,
     [
-      tenantId, startDate, endDate,
-      tenantId, startDate, endDate,
+      tenantId, startUtc, endUtc,
+      tenantId, startUtc, endUtc,
       tenantId,
       tenantId, startDate, endDate,
       tenantId, startDate, endDate,

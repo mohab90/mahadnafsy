@@ -43,7 +43,7 @@ test('accounting periods and snapshots are tenant scoped', () => {
   const integrityParams = route.match(/const \[\[integrity\]\][\s\S]*?\[\s*([\s\S]*?)\s*\]\s*\n\s*\);/);
   assert.ok(integrityParams, 'period-close integrity query must expose its parameter list');
   assert.equal(
-    (integrityParams[1].match(/req\.tenantId|startDate|endDate|Number\(period\.period_label/g) || []).length,
+    (integrityParams[1].match(/req\.tenantId|startDate|endDate|startUtc|endUtc|Number\(period\.period_label/g) || []).length,
     19,
     'period-close reconciliation query must bind all 19 placeholders in semantic order',
   );
