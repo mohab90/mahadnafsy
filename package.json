@@ -21,6 +21,7 @@
     "release:gate": "node tools/pre-deploy-check.mjs",
     "release:prepare": "node tools/prepare-release.mjs",
     "qa:launch:static": "npm run syntax:api && npm run lint:api && npm run lint:admin && npm run lint:client && npm run test:unit && npm run quality",
+    "qa:launch:full": "npm run qa:launch:static && npm run test:integration",
     "qa:launch": "npm run qa:launch:static && npm --prefix admin run build && npm --prefix client run build",
     "start:api": "cd api && node server.js",
     "start:tunnel": "cd api && node tunnel.js",

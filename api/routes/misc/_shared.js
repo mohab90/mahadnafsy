@@ -344,7 +344,7 @@ function scheduleWeeklyBranchReport() {
 async function runPaymentReviewSweep(tenantId = DEFAULT_TENANT) {
   try {
     const [rows] = await pool.query(
-      `SELECT p.id, p.amount_egp, p.payment_method, p.created_at, p.staff_name,
+      `SELECT p.id, p.amount, p.currency, p.amount_egp, p.payment_method, p.created_at, p.staff_name,
               s.name AS subscriber_name,
               TIMESTAMPDIFF(HOUR, p.created_at, NOW()) AS age_hours
          FROM payments p
@@ -357,9 +357,12 @@ async function runPaymentReviewSweep(tenantId = DEFAULT_TENANT) {
 
     for (const row of rows) {
       const who = row.subscriber_name || row.staff_name || "عميل";
+      // amount_egp is empty until a payment is approved (or converted), so a payment waiting for review read «null ج.م». It is the
+      // amount it was entered in, in that currency, when there is no pound figure yet.
+      const shown = row.amount_egp != null ? `${Number(row.amount_egp)} ج.م` : `${Number(row.amount)} ${row.currency || 'ج.م'}`;
       await createNotification(
         'payment', '⏰ دفعة مستنية مراجعة أكتر من 24 ساعة',
-        `${row.amount_egp} ج.م من «${who}»${row.payment_method ? ` — ${row.payment_method}` : ''} · مستنية ${row.age_hours} ساعة`,
+        `${shown} من «${who}»${row.payment_method ? ` — ${row.payment_method}` : ''} · مستنية ${row.age_hours} ساعة`,
         { paymentId: row.id }, tenantId, null
       ).catch(() => {});
       await pool.query(
