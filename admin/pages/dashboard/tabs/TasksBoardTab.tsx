@@ -217,7 +217,7 @@ const TasksBoardTab: React.FC<Props> = ({ notify }) => {
                     <span className="font-bold text-gray-700 text-sm">{col.label}</span>
                     <span className="text-xs bg-gray-200 text-gray-600 rounded-full px-1.5 py-0.5">{colTasks.length}</span>
                   </div>
-                  <button onClick={() => { setAddingColumn(col.key); setDraft({ priority: 'medium' }); }}
+                  <button onClick={() => { setAddingColumn(col.key); setDraft({ priority: 'medium' }); }} aria-label="إضافة مهمة"
                     className="w-6 h-6 rounded-lg bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors">
                     <Plus size={13} />
                   </button>

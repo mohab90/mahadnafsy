@@ -172,7 +172,7 @@ export default function MetaCapiSettingsTab({ notify }: { notify: NotifyFn }) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 md:col-span-2">
             <span className="text-sm font-semibold text-gray-600">إرسال الأحداث من السيرفر</span>
-            <Toggle checked={enabled} onChange={value => { setEnabled(value); touch(); }} />
+            <Toggle label="تفعيل Meta CAPI" checked={enabled} onChange={value => { setEnabled(value); touch(); }} />
           </div>
           <Field label="Pixel ID">
             <Input value={pixelId} onChange={value => { setPixelId(value.replace(/\D/g, '')); touch(); }} placeholder={effective?.pixelSource !== 'settings' ? effective?.pixelId || '' : ''} />

@@ -721,7 +721,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                   <tr key={rowKey} className={`transition ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                     {/* Checkbox */}
                     <td className="px-3 py-3 text-center">
-                      <button onClick={() => toggleSelect(rowKey)} className="text-gray-400 hover:text-indigo-600 transition">
+                      <button onClick={() => toggleSelect(rowKey)} role="checkbox" aria-checked={isSelected} aria-label="تحديد العميل" className="text-gray-400 hover:text-indigo-600 transition">
                         {isSelected
                           ? <CheckSquare size={15} className="text-indigo-600" />
                           : <Square size={15} />}

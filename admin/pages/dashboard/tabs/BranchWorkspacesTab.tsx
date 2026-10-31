@@ -109,7 +109,7 @@ export default function BranchWorkspacesTab({ notify }: { notify: NotifyFn }) {
               <Field label="العملة"><Input value={item.currency} onChange={value => update(index, { currency: value.toUpperCase() })} /></Field>
               <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                 <span className="text-sm font-semibold text-gray-600">نشط</span>
-                <Toggle checked={!!item.is_active} onChange={value => update(index, { is_active: value })} />
+                <Toggle label="تفعيل مساحة العمل" checked={!!item.is_active} onChange={value => update(index, { is_active: value })} />
               </div>
               <button className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-bold text-red-600" onClick={() => { setItems(prev => prev.filter((_, i) => i !== index)); setDirty(true); }}>
                 <Trash2 size={15} /> حذف

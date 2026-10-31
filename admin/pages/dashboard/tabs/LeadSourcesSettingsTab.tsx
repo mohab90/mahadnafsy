@@ -105,7 +105,7 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
             <span className="text-sm font-semibold text-gray-600">ربط Facebook</span>
-            <Toggle checked={!!config.facebook.enabled} onChange={value => update('facebook.enabled', value)} />
+            <Toggle label="تفعيل فيسبوك" checked={!!config.facebook.enabled} onChange={value => update('facebook.enabled', value)} />
           </div>
           <Field label="معرّف الصفحة (Page ID)"><Input value={String(config.facebook.page_id || '')} onChange={value => update('facebook.page_id', value)} /></Field>
           <Field label="معرّف التطبيق (App ID)"><Input value={String(config.facebook.app_id || '')} onChange={value => update('facebook.app_id', value)} /></Field>
@@ -126,11 +126,11 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
         <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
             <span className="text-sm font-semibold text-gray-600">ربط Google Sheets</span>
-            <Toggle checked={!!config.google_sheets.enabled} onChange={value => update('google_sheets.enabled', value)} />
+            <Toggle label="تفعيل جوجل شيتس" checked={!!config.google_sheets.enabled} onChange={value => update('google_sheets.enabled', value)} />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
             <span className="text-sm font-semibold text-gray-600">المزامنة التلقائية</span>
-            <Toggle checked={!!config.google_sheets.auto_sync_enabled} onChange={value => update('google_sheets.auto_sync_enabled', value)} />
+            <Toggle label="المزامنة التلقائية" checked={!!config.google_sheets.auto_sync_enabled} onChange={value => update('google_sheets.auto_sync_enabled', value)} />
           </div>
         </div>
         <p className="text-xs text-gray-400">الربط الحالي يستخدم إعدادات CRM المحفوظة، وهذه الشاشة توحد مصادر الليدز ومزامنة الشيتات في مكان واحد.</p>
@@ -139,7 +139,7 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
       <Card title="مصادر الموقع والـ API">
         <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
           <span className="text-sm font-semibold text-gray-600">نماذج الموقع وتتبع UTM</span>
-          <Toggle checked={!!config.website.capture_utm} onChange={value => update('website.capture_utm', value)} />
+          <Toggle label="التقاط بيانات الحملة UTM" checked={!!config.website.capture_utm} onChange={value => update('website.capture_utm', value)} />
         </div>
         <div className="space-y-2">
           {config.api_sources.map((source, index) => (
@@ -147,7 +147,7 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
               <Input value={source.name} onChange={value => updateApiSource(index, { name: value })} placeholder="اسم المصدر" />
               <Input value={source.default_branch} onChange={value => updateApiSource(index, { default_branch: value })} placeholder="الفرع الافتراضي" />
               <Input type="password" value={source.secret} onChange={value => updateApiSource(index, { secret: value })} placeholder="السر" />
-              <div className="flex items-center justify-center"><Toggle checked={!!source.enabled} onChange={value => updateApiSource(index, { enabled: value })} /></div>
+              <div className="flex items-center justify-center"><Toggle label="تفعيل المصدر" checked={!!source.enabled} onChange={value => updateApiSource(index, { enabled: value })} /></div>
               <button className="inline-flex items-center justify-center rounded-xl border border-red-200 text-red-600" onClick={() => update('api_sources', config.api_sources.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
             </div>
           ))}

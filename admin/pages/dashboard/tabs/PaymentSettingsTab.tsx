@@ -84,7 +84,7 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
           </Field>
           <div className="flex items-end justify-between rounded-xl border border-gray-200 px-4 py-3">
             <span className="text-sm font-semibold text-gray-600">تفعيل الدفع اليدوي</span>
-            <Toggle checked={!!config.manual.enabled} onChange={value => update('manual.enabled', value)} />
+            <Toggle label="تفعيل الدفع اليدوي" checked={!!config.manual.enabled} onChange={value => update('manual.enabled', value)} />
           </div>
         </div>
       </Card>
@@ -97,7 +97,7 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
             <span className="text-sm font-semibold text-gray-600">تفعيل Paymob</span>
-            <Toggle checked={!!config.paymob.enabled} onChange={value => update('paymob.enabled', value)} />
+            <Toggle label="تفعيل الدفع الإلكتروني" checked={!!config.paymob.enabled} onChange={value => update('paymob.enabled', value)} />
           </div>
           <Field label="معرّف التاجر (Merchant ID)"><Input value={String(config.paymob.merchant_id || '')} onChange={value => update('paymob.merchant_id', value)} /></Field>
           <Field label="مفتاح API"><Input type="password" value={String(config.paymob.api_key || '')} onChange={value => update('paymob.api_key', value)} /></Field>

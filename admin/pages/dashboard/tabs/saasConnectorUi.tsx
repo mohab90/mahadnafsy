@@ -68,9 +68,12 @@ export const Input = ({
   />
 );
 
-export const Toggle = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
+export const Toggle = ({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label?: string }) => (
   <button
     type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
     onClick={() => onChange(!checked)}
     className={`relative h-6 w-11 rounded-full transition ${checked ? 'bg-emerald-500' : 'bg-gray-300'}`}
   >
