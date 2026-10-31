@@ -98,7 +98,9 @@ async function loadCompletionProjection(tenantId, subscriberIds) {
 router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
   requireAnyPermission(PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_ONLINE), async (req, res) => {
     try {
-      const [[byStaff], [months], [[totals]]] = await Promise.all([
+      // Lifetime counts per rep over every lead and client (2.6-3.2 s at 600,000 leads, one read per screen open). Held for 30 s under
+      // «figures:», so the first write after it drops it (lib/httpApp.js dropFiguresAfterWrites) and the next read counts again.
+      const [[byStaff], [months], [[totals]]] = await cached(`figures:online-performance:${req.tenantId}`, 30 * 1000, () => Promise.all([
         pool.query(
           `SELECT st.id, st.name, LOWER(st.role) role,
                   COALESCE(cs.clients, 0) clients,
@@ -141,7 +143,7 @@ router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
              (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD') AND is_active=1) active_clients,
              (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD')) leads`,
           [req.tenantId, req.tenantId, req.tenantId]),
-      ]);
+      ]));
 
       res.json({
         totals: {

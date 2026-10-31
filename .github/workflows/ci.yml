@@ -285,6 +285,21 @@ jobs:
           API_BASE_URL: http://127.0.0.1:3105
           E2E_SEEDED: '1'
         run: npx playwright test tests/public-smoke.spec.ts tests/admin-login.spec.ts tests/payment-flow.spec.ts tests/ci-journeys.spec.ts
+      # The admin specs that skip themselves without a login (every screen opens and draws; a dead session ends at the login
+      # screen). The seed files an administrator, so they can run here. Not blocking until they have passed on CI once: a spec
+      # that has never run on a runner is more likely to be wrong than the product, and a red gate that is ignored is worse
+      # than none. Once green, delete continue-on-error.
+      - name: Admin screens (not blocking yet)
+        working-directory: e2e
+        continue-on-error: true
+        env:
+          BASE_URL: http://127.0.0.1:3000
+          ADMIN_BASE_URL: http://127.0.0.1:4000
+          API_BASE_URL: http://127.0.0.1:3105
+          E2E_SEEDED: '1'
+          E2E_ADMIN_EMAIL: e2e.admin@mahad.test
+          E2E_ADMIN_PASSWORD: MahadE2e#Admin2026
+        run: npx playwright test tests/dashboard-screens.spec.ts tests/a-dead-session-ends-at-the-login-screen.spec.ts
       - name: Server logs
         if: failure()
         shell: bash
