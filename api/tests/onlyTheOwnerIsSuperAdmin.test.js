@@ -30,14 +30,10 @@ test('every place that guards an administrator\'s account asks for the owner, no
   }
 });
 
-test('a role that reads payments without view_financial and without a narrower scope must search (audit BUG-12)', () => {
+test('customer service reads the payments register as before (1 Nov 2026: the search-only limit was taken back)', () => {
   const src = read('routes/finance-payments-register.js');
-  assert.match(src, /const readsEverything = req\.isSuperAdmin \|\| hasPermission\(req\.staffRecord, 'view_financial'\) \|\| scope\.kind !== 'all';/);
-  assert.match(src, /if \(!readsEverything && String\(req\.query\.q \|\| ''\)\.trim\(\)\.length < 3\) \{\s*\n\s*return res\.json\(\{ rows: \[\], total: 0, totalEgp: 0, facets: \{ channels: \[\], staff: \[\], types: \[\] \}, searchRequired: true \}\);/);
-  const { hasPermission } = require('../constants/permissions');
-  assert.equal(hasPermission({ role: 'SUPPORT', permissions_json: null }, 'view_financial'), false);
-  assert.equal(hasPermission({ role: 'SUPPORT', permissions_json: null }, 'view_orders'), true);
-  assert.equal(hasPermission({ role: 'ACCOUNTANT', permissions_json: null }, 'view_financial'), true);
+  assert.ok(!src.includes('searchRequired'));
+  assert.ok(!src.includes('readsEverything'));
 });
 
 test('an employee who forgot the password gets the code by email, at the address on their staff record, never on WhatsApp', () => {

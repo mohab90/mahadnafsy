@@ -61,7 +61,7 @@
 ## BUG-11 · P2 · 3 شاشات بتفتح لدور وزرارها يرجّع 403
 **الخطوات:** `node tools/permission-mismatch-scan.mjs`. `customer_inbox` للمبيعات والمحاسب (POST `/admin/subscribers` يحتاج `manage_subscribers`)، `whatsapp_web` للدعم والمحاسب (POST `/admin/leads` يحتاج `manage_leads`)، `interviews` لمدير الدقي (DELETE `/admin/hr/applicants/*` يحتاج `manage_hr`). (نفس بند 4 في `OPEN_PROBLEMS_20261031_AR.md`.) **المطلوب:** قرارك: أدّي الصلاحية ولا اخفي الزرار.
 
-## BUG-12 · P2 (بالتصميم) · الدعم شايف كل سجل المدفوعات بتليفونات العملاء
+## BUG-12 · P2 (بالتصميم — الحد اتشال 1 نوفمبر بطلب المالك، هنا بتأكد التحويلات) · الدعم شايف كل سجل المدفوعات بتليفونات العملاء
 **الخطوات:** `support1@perf.test`، `GET /api/admin/finance/payments-register?limit=200` ← `total: 36683`، فيه اسم وكود وتليفون العميل ومين استلم. (المندوب `sales1` شايف 197 بس.) السبب: `DATA_SCOPE[SUPPORT] = 'all'` (`api/constants/permissions.js:368`) + `view_orders`. نفس بند 3 في ملف المشاكل. **المطلوب:** قرار تضييق.
 
 ## BUG-13 · P2 · DNS الإيميل
