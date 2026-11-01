@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link2, Plus, Trash2, UserPlus } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
+import { savedSecretPlaceholder, type SavedSecrets } from '../../../lib/savedSecrets';
 
 type ApiSource = { id: string; name: string; enabled: boolean; secret: string; default_branch: string };
 type LeadSourceConfig = {
@@ -23,9 +24,9 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testingProvider, setTestingProvider] = useState<string>('');
+  const facebookSaved = (config.facebook as unknown as { __savedSecrets?: SavedSecrets }).__savedSecrets;
 
-  useEffect(() => {
-    fetch('/api/admin/sys-config?section=lead_source_connectors', { credentials: 'include', headers: adminAuthHeaders() })
+  const load = useCallback(() => fetch('/api/admin/sys-config?section=lead_source_connectors', { credentials: 'include', headers: adminAuthHeaders() })
       // null until the section has been saved once: a tenant that never set
       // up a connector got «فشل تحميل مصادر الليد» on every visit.
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
@@ -38,8 +39,9 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
         website: { ...DEFAULT_CONFIG.website, ...(data.website || {}) },
         api_sources: data.api_sources || [],
       }))
-      .catch(() => notify('error', 'فشل تحميل مصادر الليد'));
-  }, [notify]);
+      .catch(() => notify('error', 'فشل تحميل مصادر الليد')), [notify]);
+
+  useEffect(() => { void load(); }, [load]);
 
   const update = (path: string, value: unknown) => {
     setConfig(prev => setNested(prev, path, value));
@@ -57,6 +59,8 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
       });
       if (!res.ok) throw new Error(await res.text());
       setDirty(false);
+      // Read back, so the saved keys show as «محفوظ» and what is on screen is what the server holds.
+      await load();
       notify('success', 'تم حفظ مصادر الليد');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل حفظ مصادر الليد');
@@ -110,8 +114,8 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
           <Field label="معرّف الصفحة (Page ID)"><Input value={String(config.facebook.page_id || '')} onChange={value => update('facebook.page_id', value)} /></Field>
           <Field label="معرّف التطبيق (App ID)"><Input value={String(config.facebook.app_id || '')} onChange={value => update('facebook.app_id', value)} /></Field>
           <Field label="رمز تحقق الـ Webhook"><Input value={String(config.facebook.webhook_verify_token || '')} onChange={value => update('facebook.webhook_verify_token', value)} /></Field>
-          <Field label="رمز وصول الصفحة"><Input type="password" value={String(config.facebook.page_access_token || '')} onChange={value => update('facebook.page_access_token', value)} /></Field>
-          <Field label="سر التطبيق (App Secret)"><Input type="password" value={String(config.facebook.app_secret || '')} onChange={value => update('facebook.app_secret', value)} /></Field>
+          <Field label="رمز وصول الصفحة"><Input type="password" value={String(config.facebook.page_access_token || '')} onChange={value => update('facebook.page_access_token', value)} placeholder={savedSecretPlaceholder(facebookSaved, 'page_access_token')} /></Field>
+          <Field label="سر التطبيق (App Secret)"><Input type="password" value={String(config.facebook.app_secret || '')} onChange={value => update('facebook.app_secret', value)} placeholder={savedSecretPlaceholder(facebookSaved, 'app_secret')} /></Field>
           <Field label="الفرع الافتراضي"><Input value={String(config.facebook.default_branch || '')} onChange={value => update('facebook.default_branch', value)} /></Field>
           <Field label="مسؤول السيلز الافتراضي"><Input value={String(config.facebook.default_sales_id || '')} onChange={value => update('facebook.default_sales_id', value)} /></Field>
         </div>
@@ -146,7 +150,7 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
             <div key={source.id || index} className="grid grid-cols-1 gap-2 rounded-xl border border-gray-200 p-3 md:grid-cols-5">
               <Input value={source.name} onChange={value => updateApiSource(index, { name: value })} placeholder="اسم المصدر" />
               <Input value={source.default_branch} onChange={value => updateApiSource(index, { default_branch: value })} placeholder="الفرع الافتراضي" />
-              <Input type="password" value={source.secret} onChange={value => updateApiSource(index, { secret: value })} placeholder="السر" />
+              <Input type="password" value={source.secret} onChange={value => updateApiSource(index, { secret: value })} placeholder={savedSecretPlaceholder((source as { __savedSecrets?: SavedSecrets }).__savedSecrets, 'secret', 'السر')} />
               <div className="flex items-center justify-center"><Toggle label="تفعيل المصدر" checked={!!source.enabled} onChange={value => updateApiSource(index, { enabled: value })} /></div>
               <button className="inline-flex items-center justify-center rounded-xl border border-red-200 text-red-600" onClick={() => update('api_sources', config.api_sources.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
             </div>

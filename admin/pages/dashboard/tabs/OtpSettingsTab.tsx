@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { KeyRound, Mail, MessageCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
+import { savedSecretPlaceholder, type SavedSecrets } from '../../../lib/savedSecrets';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type OtpConfig = Record<string, any>;
@@ -24,18 +25,20 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const smsSaved = (config.sms as unknown as { __savedSecrets?: SavedSecrets }).__savedSecrets;
 
-  useEffect(() => {
-    fetch('/api/admin/sys-config?section=otp_provider', { credentials: 'include', headers: adminAuthHeaders() })
+  const load = useCallback(() => fetch('/api/admin/sys-config?section=otp_provider', { credentials: 'include', headers: adminAuthHeaders() })
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
       // A section with nothing saved answers `null`.
       .then((data: OtpConfig | null) => {
         const loaded = data && typeof data === 'object' ? data : {};
         setConfig({ ...loaded, sms: { ...DEFAULT_CONFIG.sms, ...(loaded.sms || {}) } });
       })
-      .catch(() => notify('error', 'فشل تحميل إعدادات الرسائل النصية'));
-    // notify is a stable useCallback in Dashboard; an unstable one would re-fire the fetch every render.
-  }, [notify]);
+      .catch(() => notify('error', 'فشل تحميل إعدادات الرسائل النصية')),
+  // notify is a stable useCallback in Dashboard; an unstable one would re-fire the fetch every render.
+  [notify]);
+
+  useEffect(() => { void load(); }, [load]);
 
   const update = (path: string, value: unknown) => {
     setConfig(prev => setNested(prev, path, value));
@@ -48,6 +51,7 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
       const res = await fetch('/api/admin/sys-config/otp_provider', { method: 'PUT', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify(config) });
       if (!res.ok) throw new Error(await res.text());
       setDirty(false);
+      await load();
       notify('success', 'تم حفظ إعدادات الرسائل النصية');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل الحفظ');
@@ -110,8 +114,8 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3"><span className="text-sm font-semibold text-gray-600">تفعيل الرسائل النصية</span><Toggle checked={!!config.sms.enabled} onChange={value => update('sms.enabled', value)} /></div>
           <Field label="المزوّد"><Input value={config.sms.provider} onChange={value => update('sms.provider', value)} /></Field>
-          <Field label="مفتاح API"><Input type="password" value={config.sms.api_key} onChange={value => update('sms.api_key', value)} /></Field>
-          <Field label="سر API (API Secret)"><Input type="password" value={config.sms.api_secret} onChange={value => update('sms.api_secret', value)} /></Field>
+          <Field label="مفتاح API"><Input type="password" value={config.sms.api_key} onChange={value => update('sms.api_key', value)} placeholder={savedSecretPlaceholder(smsSaved, 'api_key')} /></Field>
+          <Field label="سر API (API Secret)"><Input type="password" value={config.sms.api_secret} onChange={value => update('sms.api_secret', value)} placeholder={savedSecretPlaceholder(smsSaved, 'api_secret')} /></Field>
           <Field label="معرّف المرسل"><Input value={config.sms.sender_id} onChange={value => update('sms.sender_id', value)} /></Field>
         </div>
       </Card>

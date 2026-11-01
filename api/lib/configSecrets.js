@@ -39,7 +39,9 @@ function redactSecrets(value, options = {}) {
 function preserveStoredSecrets(stored, incoming) {
   if (Array.isArray(incoming)) {
     const oldById = new Map((Array.isArray(stored) ? stored : []).map(item => [item?.id, item]));
-    return incoming.map((item, index) => preserveStoredSecrets(oldById.get(item?.id) || stored?.[index], item));
+    // A row is matched by its id. Only a row with no id at all falls back to its position: a NEW row (an id nobody saved yet) taking the
+    // row that happened to sit at its index would be handed that row's secret.
+    return incoming.map((item, index) => preserveStoredSecrets(item?.id ? oldById.get(item.id) : stored?.[index], item));
   }
   if (!isPlainJsonObject(incoming)) return incoming;
   const old = isPlainJsonObject(stored) ? stored : {};
@@ -49,4 +51,11 @@ function preserveStoredSecrets(stored, incoming) {
   }));
 }
 
-module.exports = { SAVED_HINTS, isPlainJsonObject, preserveStoredSecrets, redactSecrets };
+/** The value without the `__savedSecrets` hints the screens get beside a section, wherever they sit: what a screen echoes back is not data. */
+function stripSavedHints(value) {
+  if (Array.isArray(value)) return value.map(stripSavedHints);
+  if (!isPlainJsonObject(value)) return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== SAVED_HINTS).map(([key, item]) => [key, stripSavedHints(item)]));
+}
+
+module.exports = { SAVED_HINTS, isPlainJsonObject, preserveStoredSecrets, redactSecrets, stripSavedHints };

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CreditCard, ShieldCheck } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
 import { PAYMENT_METHOD_CODES } from '../../../../shared/paymentMethods';
+import { savedSecretPlaceholder, type SavedSecrets } from '../../../lib/savedSecrets';
 
 type PaymentGatewayConfig = {
   active_provider: 'manual' | 'paymob';
@@ -23,15 +24,20 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  // Which keys are saved on the server: they never come back, so an empty box has to say so.
+  const [saved, setSaved] = useState<SavedSecrets | undefined>(undefined);
 
-  useEffect(() => {
-    fetch('/api/admin/sys-config?section=payment_gateway', { credentials: 'include', headers: adminAuthHeaders() })
+  const load = useCallback(() => fetch('/api/admin/sys-config?section=payment_gateway', { credentials: 'include', headers: adminAuthHeaders() })
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
       // A section with nothing saved answers `null`; data.manual would throw.
       .then(saved => saved || DEFAULT_CONFIG)
-      .then(data => setConfig({ ...DEFAULT_CONFIG, ...data, manual: { ...DEFAULT_CONFIG.manual, ...(data.manual || {}) }, paymob: { ...DEFAULT_CONFIG.paymob, ...(data.paymob || {}) } }))
-      .catch(() => notify('error', 'فشل تحميل إعدادات الدفع'));
-  }, [notify]);
+      .then(data => {
+        setSaved(data?.paymob?.__savedSecrets);
+        setConfig({ ...DEFAULT_CONFIG, ...data, manual: { ...DEFAULT_CONFIG.manual, ...(data.manual || {}) }, paymob: { ...DEFAULT_CONFIG.paymob, ...(data.paymob || {}) } });
+      })
+      .catch(() => notify('error', 'فشل تحميل إعدادات الدفع')), [notify]);
+
+  useEffect(() => { void load(); }, [load]);
 
   const update = (path: string, value: unknown) => {
     setConfig(prev => setNested(prev, path, value));
@@ -44,6 +50,8 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
       const res = await fetch('/api/admin/sys-config/payment_gateway', { method: 'PUT', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify(config) });
       if (!res.ok) throw new Error(await res.text());
       setDirty(false);
+      // Read it back: what the screen shows after a save is what the server holds, with the saved keys marked.
+      await load();
       notify('success', 'تم حفظ إعدادات بوابة الدفع');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل حفظ إعدادات الدفع');
@@ -100,13 +108,13 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
             <Toggle label="تفعيل الدفع الإلكتروني" checked={!!config.paymob.enabled} onChange={value => update('paymob.enabled', value)} />
           </div>
           <Field label="معرّف التاجر (Merchant ID)"><Input value={String(config.paymob.merchant_id || '')} onChange={value => update('paymob.merchant_id', value)} /></Field>
-          <Field label="مفتاح API"><Input type="password" value={String(config.paymob.api_key || '')} onChange={value => update('paymob.api_key', value)} /></Field>
-          <Field label="المفتاح السري"><Input type="password" value={String(config.paymob.secret_key || '')} onChange={value => update('paymob.secret_key', value)} /></Field>
+          <Field label="مفتاح API"><Input type="password" value={String(config.paymob.api_key || '')} onChange={value => update('paymob.api_key', value)} placeholder={savedSecretPlaceholder(saved, 'api_key')} /></Field>
+          <Field label="المفتاح السري"><Input type="password" value={String(config.paymob.secret_key || '')} onChange={value => update('paymob.secret_key', value)} placeholder={savedSecretPlaceholder(saved, 'secret_key')} /></Field>
           {/* Public by design (it identifies the merchant to Paymob's hosted
               checkout in the customer's own browser), so it is not masked —
               masking it would only make it harder to confirm it is right. */}
           <Field label="المفتاح العام egy_pk (لصفحة الدفع الموحّدة)"><Input value={String(config.paymob.public_key || '')} onChange={value => update('paymob.public_key', value)} /></Field>
-          <Field label="سر HMAC"><Input type="password" value={String(config.paymob.hmac_secret || '')} onChange={value => update('paymob.hmac_secret', value)} /></Field>
+          <Field label="سر HMAC"><Input type="password" value={String(config.paymob.hmac_secret || '')} onChange={value => update('paymob.hmac_secret', value)} placeholder={savedSecretPlaceholder(saved, 'hmac_secret')} /></Field>
           <Field label="معرّف تكامل البطاقات"><Input value={String(config.paymob.integration_id_card || '')} onChange={value => update('paymob.integration_id_card', value)} /></Field>
           <Field label="معرّف تكامل المحفظة"><Input value={String(config.paymob.integration_id_wallet || '')} onChange={value => update('paymob.integration_id_wallet', value)} /></Field>
           {/* The Unified (UIG) integration is what lets the server send the

@@ -257,17 +257,21 @@ async function updateChannel(tenantId, id, patch, db = pool) {
     // «mergeCredentials»: only what was typed replaces what was saved. A new token for a channel whose Phone Number ID is already saved
     // should not need the ID typed again, and an expired token must be replaceable without deleting the channel (it lost the daily
     // counter and the default flag).
-    if (patch.mergeCredentials && patch.credentials) {
+    // Merging is the rule, not an option the client has to ask for (1 Nov 2026: «لو رجعت اعدل واعمل حفظ بتكون ممسوحة كلها»): a form that
+    // never receives a saved token sends it back blank, and a replace-all took every blank field as «delete it». Only `replaceCredentials: true`
+    // (or `credentials: null`, to disconnect) replaces the lot.
+    if (patch.credentials && typeof patch.credentials === 'object' && patch.replaceCredentials !== true) {
       const [[saved]] = await db.query('SELECT credentials_sealed FROM messaging_channels WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, id]);
       let current = {};
       try { current = (saved?.credentials_sealed && open(saved.credentials_sealed)) || {}; } catch { current = {}; }
       const typed = {};
       for (const key of [...HINT_KEYS, ...SECRET_KEYS]) {
         const value = String(patch.credentials[key] ?? '').trim();
-        if (value) typed[key] = value;
+        if (value && !value.startsWith('•')) typed[key] = value;
       }
       next = { ...current, ...typed };
-      if (!Object.keys(typed).length) next = undefined;
+      // Nothing typed, or what was typed is what is saved: no write, and the connection is not sent back to «pending» for nothing.
+      if (!Object.keys(typed).length || Object.entries(typed).every(([key, value]) => String(current[key] ?? '') === value)) next = undefined;
     }
     // Re-sealing resets the connection state: new credentials are unverified
     // until a send or a test proves them.

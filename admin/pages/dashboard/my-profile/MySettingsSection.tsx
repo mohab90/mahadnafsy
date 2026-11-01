@@ -4,6 +4,8 @@ import type { StaffMember } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toDialable } from '../../../lib/whatsappLink';
 import { ChangePasswordCard } from './ChangePasswordCard';
+import { ChangeEmailCard } from './ChangeEmailCard';
+import { compressImage } from '../../../../shared/imageCompress';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 type Template = { id: string; title: string; body: string };
@@ -25,6 +27,24 @@ export function MySettingsSection({ staff, notify }: { staff: StaffMember; notif
   const [editing, setEditing] = useState<Template | null>(null);
   const [newTag, setNewTag] = useState('');
   const [saving, setSaving] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [email, setEmail] = useState(staff.email || '');
+
+  // The photo is saved the moment it is chosen (the server stores and links it); the rest of the form still saves with the button.
+  const uploadPhoto = async (file: File) => {
+    setPhotoBusy(true);
+    try {
+      const dataUrl = await compressImage(file, 'avatar');
+      const result = await mysqlAdmin.setMyPhoto(dataUrl);
+      setDraft(d => ({ ...d, image: result.image }));
+      notify('success', 'اتحفظت صورتك');
+    } catch (error) { notify('error', error instanceof Error && error.message ? error.message : 'تعذّر رفع الصورة'); } finally { setPhotoBusy(false); }
+  };
+  const removePhoto = async () => {
+    setPhotoBusy(true);
+    try { await mysqlAdmin.removeMyPhoto(); setDraft(d => ({ ...d, image: '' })); notify('success', 'اتشالت الصورة'); }
+    catch { notify('error', 'تعذّر إزالة الصورة'); } finally { setPhotoBusy(false); }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -80,9 +100,17 @@ export function MySettingsSection({ staff, notify }: { staff: StaffMember; notif
           <label className="block"><span className="mb-1 block text-xs font-bold text-gray-600">رقم الموبايل</span>
             <input value={draft.phone} dir="ltr" onChange={e => setDraft(d => ({ ...d, phone: e.target.value }))} className={input} /></label>
           <label className="block"><span className="mb-1 block text-xs font-bold text-gray-600">البريد الإلكتروني</span>
-            <input value={staff.email} readOnly dir="ltr" className={`${input} cursor-not-allowed bg-gray-50 text-gray-400`} /></label>
-          <label className="block"><span className="mb-1 block text-xs font-bold text-gray-600">رابط صورتك</span>
-            <input value={draft.image} dir="ltr" placeholder="https://…" onChange={e => setDraft(d => ({ ...d, image: e.target.value }))} className={input} /></label>
+            <input value={email} readOnly dir="ltr" className={`${input} cursor-not-allowed bg-gray-50 text-gray-400`} /></label>
+          <div className="block"><span className="mb-1 block text-xs font-bold text-gray-600">صورتك</span>
+            <div className="flex items-center gap-3">
+              {draft.image ? <img src={draft.image} alt="" className="h-12 w-12 rounded-full object-cover" /> : <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-xs text-gray-400">بدون</span>}
+              <label className="cursor-pointer rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50">
+                {photoBusy ? 'جارٍ الرفع…' : 'اختار صورة'}
+                <input type="file" accept="image/*" className="hidden" disabled={photoBusy} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void uploadPhoto(file); }} />
+              </label>
+              {draft.image && <button type="button" onClick={() => void removePhoto()} disabled={photoBusy} className="text-xs font-bold text-red-500 hover:underline">إزالة</button>}
+            </div>
+          </div>
           <label className="block"><span className="mb-1 block text-xs font-bold text-gray-600">رقم الواتساب اللي بتبعت منه</span>
             <input value={draft.waNumber} dir="ltr" placeholder="201XXXXXXXXX" onChange={e => setDraft(d => ({ ...d, waNumber: e.target.value }))} className={input} /></label>
           <label className="block"><span className="mb-1 block text-xs font-bold text-gray-600">هدفك الشهري (من الإدارة)</span>
@@ -93,6 +121,8 @@ export function MySettingsSection({ staff, notify }: { staff: StaffMember; notif
           <Save size={15} /> {saving ? 'جارٍ الحفظ…' : 'حفظ التغييرات'}
         </button>
       </section>
+
+      <ChangeEmailCard currentEmail={email} notify={notify} onChanged={setEmail} />
 
       <ChangePasswordCard notify={notify} />
 

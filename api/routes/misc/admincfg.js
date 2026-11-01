@@ -14,7 +14,7 @@ const { hasPermission, PERMISSIONS, ROLES } = require('../../constants/permissio
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
-const { isPlainJsonObject, preserveStoredSecrets, redactSecrets } = require('../../lib/configSecrets');
+const { isPlainJsonObject, preserveStoredSecrets, redactSecrets, stripSavedHints } = require('../../lib/configSecrets');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { getMfaPolicy, saveMfaPolicy } = require('../../lib/mfaPolicy');
 const { invalidateIpWhitelist } = require('../../middleware/ipWhitelist');
@@ -73,14 +73,16 @@ router.get('/api/admin/sys-config', requireAuth, requireAdminOrStaff, requirePer
     const section = req.query.section;
     if (section) {
       const saved = await getSysConfig(section, req.tenantId);
-      return res.json(redactSecrets(saved ?? SYS_DEFAULTS[section] ?? null));
+      // hints: which secrets are saved (the screens say «محفوظ (••••1234)» instead of looking empty); the webhook verify token is read back
+      // because it is pasted into the provider's form, not typed here.
+      return res.json(redactSecrets(saved ?? SYS_DEFAULTS[section] ?? null, { hints: true, keepVerifyTokens: true }));
     }
     // Return all sections
     const keys = Object.keys(SYS_DEFAULTS);
     const vals = await Promise.all(keys.map(k => getSysConfig(k, req.tenantId)));
     const result = {};
     keys.forEach((k, i) => { result[k] = vals[i] ?? SYS_DEFAULTS[k]; });
-    res.json(redactSecrets(result));
+    res.json(redactSecrets(result, { hints: true, keepVerifyTokens: true }));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -97,10 +99,12 @@ router.get('/api/admin/sys-config/meta', requireAuth, requireAdminOrStaff, requi
 router.put('/api/admin/sys-config/:section', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
   try {
     const { section } = req.params;
-    const validationError = validateConfigSection(section, req.body);
+    // A screen sends back what it was shown, `__savedSecrets` included: not data, and not to be validated or stored.
+    const body = stripSavedHints(req.body);
+    const validationError = validateConfigSection(section, body);
     if (validationError) return res.status(400).json({ error: validationError });
     const stored = await getSysConfig(section, req.tenantId);
-    const safeValue = preserveStoredSecrets(stored, req.body);
+    const safeValue = preserveStoredSecrets(stored, body);
     await setSysConfig(section, safeValue, req.tenantId, req.user?.uid || req.user?.email);
     await publishConfigEvent(req, section);
     res.json({ ok: true });

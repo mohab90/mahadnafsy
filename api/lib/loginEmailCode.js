@@ -58,7 +58,7 @@ async function accountNeedsEmailCode({ tenantId, user, db = null }) {
  * A fresh code for the account, mailed to `email`; earlier ones stop working. Refused (429) when one was sent a moment ago, and when the mail
  * could not be sent — the row is burned then, so nobody is left waiting for a message that was never sent.
  */
-async function sendLoginCode(db, { tenantId, userId, email, name = '' }) {
+async function sendLoginCode(db, { tenantId, userId, email, name = '', subject = 'كود الدخول إلى النظام', lead = 'كود الدخول بتاعك:' }) {
   const address = String(email || '').trim().toLowerCase();
   if (!address) throw refuse(409, 'الحساب ده مالوش بريد إلكتروني مسجّل — اطلب من الإدارة تضيفه علشان كود الدخول يوصلك', 'EMAIL_CODE_NO_EMAIL');
   const [[recent]] = await db.query(
@@ -75,9 +75,9 @@ async function sendLoginCode(db, { tenantId, userId, email, name = '' }) {
      VALUES (?,?,?,?,?, NOW() + INTERVAL ? MINUTE)`,
     [id, tenantId, userId, address, hashCode(tenantId, userId, code), CODE_TTL_MINUTES]);
   try {
-    const sent = await require('./email').sendEmail(address, 'كود الدخول إلى النظام',
+    const sent = await require('./email').sendEmail(address, subject,
       `<p>أهلاً ${String(name || '').replace(/[<>&"]/g, '')}،</p>
-       <p>كود الدخول بتاعك:</p>
+       <p>${lead}</p>
        <div class="otp-box">${code}</div>
        <p style="color:#888;font-size:13px;text-align:center;">صالح ${CODE_TTL_MINUTES} دقايق ولمرة واحدة. لو مش إنت اللي بتحاول تدخل، متقولش الكود لأي حد وغيّر كلمة المرور.</p>`,
       { tenantId, category: 'otp' });

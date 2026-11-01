@@ -665,6 +665,10 @@ export const mysqlAdmin = {
   enrollmentWelcome:       (payload: { email: string; name: string; courseTitle: string; branch: string; courseIds: string[]; phone?: string }) =>
     apiFetch<{ ok: boolean; newAccount: boolean }>('/staff/enrollment-welcome', { method: 'POST', body: JSON.stringify(payload) }, A),
   updateMyProfile:         (data: { name?: string; phone?: string; image?: string | null }) => apiFetch<AR>('/staff/me', { method: 'PATCH', body: JSON.stringify(data) }, A),
+  requestMyEmailChange:    (newEmail: string, currentPassword: string) => apiFetch<{ ok: boolean; sentTo: string }>('/staff/me/email/request', { method: 'POST', body: JSON.stringify({ newEmail, currentPassword }) }, A),
+  confirmMyEmailChange:    (newEmail: string, code: string) => apiFetch<{ ok: boolean; email: string }>('/staff/me/email/confirm', { method: 'POST', body: JSON.stringify({ newEmail, code }) }, A),
+  setMyPhoto:              (dataUrl: string) => apiFetch<{ ok: boolean; image: string }>('/staff/me/photo', { method: 'POST', body: JSON.stringify({ dataUrl }) }, A),
+  removeMyPhoto:           () => apiFetch<{ ok: boolean }>('/staff/me/photo', { method: 'POST', body: JSON.stringify({ remove: true }) }, A),
   getMyPreferences:        ()             => apiFetch<{ waNumber?: string; waTemplates?: { id: string; title: string; body: string }[]; customTags?: string[] }>('/staff/me/preferences', {}, A),
   saveMyPreferences:       (data: { waNumber?: string; waTemplates?: { id: string; title: string; body: string }[]; customTags?: string[] }) => apiFetch<AR>('/staff/me/preferences', { method: 'PUT', body: JSON.stringify(data) }, A),
   // ── Messaging channels: who a message is sent from ────────────────────────

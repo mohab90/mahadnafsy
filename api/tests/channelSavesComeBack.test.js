@@ -93,9 +93,23 @@ test('merging with nothing typed leaves the credentials and the connection state
   assert.doesNotMatch(update.sql, /credentials_sealed|status = 'pending'/);
 });
 
-test('without «merge» the credentials are replaced whole, as before', async () => {
+test('an edit that sends the saved token back blank never wipes it: merging is the default (1 Nov 2026)', async () => {
+  // The form never receives a saved token, so an older screen sent it blank with the rest of the fields, and a replace-all stored the blank.
+  const db = updateDb({ metaPhoneId: '1098', metaWabaId: '2233', metaToken: TOKEN });
+  await channels.updateChannel('t1', 'c1', { credentials: { metaPhoneId: '1098', metaWabaId: '2233', metaToken: '' } }, db);
+  const touched = db.calls.find(call => /^UPDATE messaging_channels SET/.test(call.sql));
+  assert.equal(touched, undefined, 'nothing typed, nothing written');
+  const db2 = updateDb({ metaPhoneId: '1098', metaToken: TOKEN });
+  await channels.updateChannel('t1', 'c1', { credentials: { metaPhoneId: '55', metaToken: '' } }, db2);
+  assert.deepEqual(open(db2.calls.find(call => /^UPDATE messaging_channels SET/.test(call.sql)).params[0]), { metaPhoneId: '55', metaToken: TOKEN });
+  const db3 = updateDb({ metaPhoneId: '1098', metaToken: TOKEN });
+  await channels.updateChannel('t1', 'c1', { credentials: { metaToken: '••••••••' } }, db3);
+  assert.equal(db3.calls.find(call => /^UPDATE messaging_channels SET/.test(call.sql)), undefined, 'a masked echo is not a token');
+});
+
+test('only replaceCredentials: true replaces the credentials whole', async () => {
   const db = updateDb({ metaPhoneId: '1098', metaToken: 'old' });
-  await channels.updateChannel('t1', 'c1', { credentials: { metaPhoneId: '55', metaToken: 'new' } }, db);
+  await channels.updateChannel('t1', 'c1', { credentials: { metaPhoneId: '55', metaToken: 'new' }, replaceCredentials: true }, db);
   const update = db.calls.find(call => /^UPDATE messaging_channels SET/.test(call.sql));
   assert.deepEqual(open(update.params[0]), { metaPhoneId: '55', metaToken: 'new' });
 });

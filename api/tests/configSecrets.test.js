@@ -111,7 +111,16 @@ test('only the admin settings read asks for hints; the settings forms show them'
   const root = path.join(__dirname, '..', '..');
   const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
   assert.match(read('api/routes/config.js'), /redactSecrets\(await getTenantSetting\('settings', \{ tenantId: req\.tenantId, fallback: \{\} \}\), \{ hints: true, keepVerifyTokens: true \}\)/);
-  assert.doesNotMatch(read('api/routes/misc/admincfg.js'), /hints: true/, 'the system sections keep their own answers');
+  // The system sections (Paymob, the SMS provider, the lead sources) ask too since 1 Nov 2026: their keys never came back, so after a save every
+  // key box was empty and looked lost. What the screen sends back with the hints is stripped before it is validated or stored.
+  const system = read('api/routes/misc/admincfg.js');
+  assert.match(system, /redactSecrets\(saved \?\? SYS_DEFAULTS\[section\] \?\? null, \{ hints: true, keepVerifyTokens: true \}\)/);
+  assert.match(system, /const body = stripSavedHints\(req\.body\);/);
+  for (const [tab, key] of [['PaymentSettingsTab', 'api_key'], ['PaymentSettingsTab', 'hmac_secret'], ['LeadSourcesSettingsTab', 'page_access_token'], ['OtpSettingsTab', 'api_secret']]) {
+    const source = read(`admin/pages/dashboard/tabs/${tab}.tsx`);
+    assert.ok(source.includes(`savedSecretPlaceholder(`) && source.includes(`'${key}'`), `${tab} ${key}`);
+    assert.ok(source.includes('await load();'), `${tab} reads back after a save`);
+  }
   const messaging = read('admin/pages/dashboard/tabs/MessagingAgentTab.tsx');
   for (const section of ['whatsapp', 'messenger', 'instagram']) {
     assert.ok(messaging.includes(`savedSecretPlaceholder(chDraft.${section}.__savedSecrets, f.key, f.ph)`), section);
@@ -125,4 +134,15 @@ test('only the admin settings read asks for hints; the settings forms show them'
     const start = types.indexOf(`export interface ${name} {`);
     assert.ok(start >= 0 && types.slice(start, start + 400).includes('__savedSecrets?: Record<string, string | true>;'), name);
   }
+});
+
+test('a new row never inherits the secret of the row at its position, and a screen\'s hints are not data', () => {
+  const { preserveStoredSecrets, stripSavedHints } = require('../lib/configSecrets');
+  const stored = [{ id: 'a', secret: 'SECRET-A' }, { id: 'b', secret: 'SECRET-B' }];
+  // Row «a» is deleted, a new row is added, «b» is kept blank: b keeps its own secret, the new one has none.
+  const saved = preserveStoredSecrets(stored, [{ id: 'b', secret: '' }, { id: 'new', secret: '' }]);
+  assert.equal(saved[0].secret, 'SECRET-B');
+  assert.equal(saved[1].secret, '', 'not SECRET-B, which sat at index 1');
+  assert.deepEqual(stripSavedHints({ paymob: { api_key: '', __savedSecrets: { api_key: 'W999' } }, list: [{ __savedSecrets: { secret: true }, x: 1 }] }),
+    { paymob: { api_key: '' }, list: [{ x: 1 }] });
 });
