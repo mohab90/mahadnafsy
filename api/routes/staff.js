@@ -13,7 +13,7 @@ function routeError(res, error, message = 'route failed') {
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission, isOwnerRequest } = require('../middleware/auth');
 const { writeAuditEvent } = require('../lib/auditTrail');
 
 // The roles that can administer a tenant. Mirrors SUPER_ADMIN_ROLES in
@@ -189,7 +189,7 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     // Privilege escalation guard. Without it, manage_staff would be the
     // right to create an ADMIN and take over the tenant.
     const PRIVILEGED_ROLES = ['ADMIN', 'MANAGER'];
-    if (!req.isSuperAdmin && PRIVILEGED_ROLES.includes(role)) {
+    if ((!req.isSuperAdmin || !isOwnerRequest(req)) && PRIVILEGED_ROLES.includes(role)) {
       return res.status(403).json({ error: 'إنشاء حساب بصلاحية مدير أو أدمن يحتاج صلاحية المالك' });
     }
     const firebaseUid = s.firebaseUid || s.firebase_uid || null;
@@ -227,7 +227,8 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
         });
       }
     }
-    if (existingStaff && !req.isSuperAdmin
+    // An administrator's own row is theirs to edit (their name, phone, photo); another administrator's is the owner's.
+    if (existingStaff && (!req.isSuperAdmin || !isOwnerRequest(req)) && existingStaff.id !== req.staffRecord?.id
         && PRIVILEGED_ROLES.includes(String(existingStaff.role || '').toUpperCase())) {
       return res.status(403).json({
         error: 'تعديل حساب مدير يحتاج صلاحية المالك',

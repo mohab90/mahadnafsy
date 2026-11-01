@@ -21,6 +21,7 @@ const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../m
 const { financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { canonicalChannel } = require('../lib/paymentChannels');
 const { addDaysToDateOnly, cairoDayStartUtc, isValidDateOnly } = require('../lib/dates');
+const { hasPermission } = require('../constants/permissions');
 const { identitySpellings } = require('../lib/phoneNumber');
 
 const router = express.Router();
@@ -45,6 +46,14 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
       const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
       const scopeClause = financialScopeClause(scope, { branchColumn: 'p.branch_id', subscriberAlias: 's' });
       if (scopeClause.sql === ' AND 1=0') return res.json({ rows: [], total: 0, totalEgp: 0, facets: { channels: [], staff: [], types: [] } });
+      // view_orders (customer support, reception) is the right to look a client's payment up, not to read the institute's takings:
+      // `support1` listed all 36,683 payments with every client's name and phone (audit BUG-12). Without view_financial a search
+      // (client name, code, phone, receipt or transfer number — three characters at least) is required; without one the answer is empty. A rep
+      // or a branch desk, whose scope is already their own clients or branch, reads that without searching.
+      const readsEverything = req.isSuperAdmin || hasPermission(req.staffRecord, 'view_financial') || scope.kind !== 'all';
+      if (!readsEverything && String(req.query.q || '').trim().length < 3) {
+        return res.json({ rows: [], total: 0, totalEgp: 0, facets: { channels: [], staff: [], types: [] }, searchRequired: true });
+      }
       const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 50, 1), 200);
       const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
       const status = ['paid', 'pending', 'refunded', 'failed', 'all'].includes(req.query.status) ? req.query.status : 'paid';

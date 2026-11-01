@@ -49,6 +49,14 @@ function isInstituteOwner({ email, uid, tenantId } = {}) {
   if (String(tenantId || DEFAULT_TENANT_ID) !== DEFAULT_TENANT_ID) return false;
   return isAdminEmail(email) || (!!uid && ADMIN_UIDS.includes(String(uid)));
 }
+/**
+ * Is the caller the owner (ADMIN_EMAILS / ADMIN_UIDS of the original institute)? Only the owner is the super admin; the accounts with
+ * the ADMIN or MANAGER role run the whole institute (req.isSuperAdmin, full permissions) but cannot make, change or remove another
+ * administrator's account (1 Nov 2026: «خليني انا سوبر ادمن وخليهم هما ادمن»).
+ */
+function isOwnerRequest(req) {
+  return isInstituteOwner({ email: req?.user?.email, uid: req?.user?.uid, tenantId: req?.user?.tenant_id });
+}
 async function activeIdentity(tenantId, payload) {
   if (!payload.uid && !payload.email) return null;
   // By id first — the primary key. One query that said `id=? OR LOWER(TRIM(email))=?`
@@ -533,7 +541,7 @@ function requireAnyPermission(...permissions) {
 
 module.exports = {
   ADMIN_EMAILS, ADMIN_UIDS, PLATFORM_ADMIN_EMAILS, PLATFORM_ADMIN_UIDS,
-  ROLE_DEFAULT_PERMISSIONS_BE, isInstituteOwner, isPlatformAdminIdentity,
+  ROLE_DEFAULT_PERMISSIONS_BE, isInstituteOwner, isOwnerRequest, isPlatformAdminIdentity,
   hasSignedToken, optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
   requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows, requireChannel,

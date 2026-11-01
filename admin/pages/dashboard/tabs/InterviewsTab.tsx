@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../../../../shared/ui/Modal';
 import { CalendarCheck, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import PromptModal from '../../../../shared/ui/PromptModal';
 import HireModal from './interviews-sections/HireModal';
 import InterviewCard, {
@@ -191,6 +193,8 @@ const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = fa
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { isAdmin: isAdminAccount, currentStaff } = useSiteData();
+  const canRemoveApplicant = isAdminAccount || (currentStaff ? hasPermission(currentStaff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'manage_hr') : false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [filters, setFilters] = useState<InterviewFilterState>(emptyInterviewFilters);
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -539,7 +543,7 @@ const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = fa
         <>
           <div className="grid items-start gap-3 lg:grid-cols-2">
             {rows.map(row => (
-              <InterviewCard key={row.id} row={row} busy={busyId === row.id} actions={actions} />
+              <InterviewCard key={row.id} row={row} busy={busyId === row.id} actions={actions} canRemove={canRemoveApplicant} />
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-1 text-xs font-bold text-gray-500">

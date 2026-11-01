@@ -100,7 +100,7 @@ export interface InterviewActions {
  *
  * «خلي تصميم الانترفيو شبه طلب الانضمام» (17 Oct 2026).
  */
-const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: InterviewActions }> = ({ row, busy, actions }) => {
+const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: InterviewActions; /** Deleting an applicant needs manage_hr; the branch manager who reaches this screen through branch_hr has no right to. */ canRemove?: boolean }> = ({ row, busy, actions, canRemove = true }) => {
   const kind = kindOfApplicant(row.applicant_type, row.source_form);
   const scheduled = fmtDateTime(row.interview_at);
   const phoneResult = row.phone_interview_result ? PHONE_RESULTS[row.phone_interview_result] : null;
@@ -285,10 +285,10 @@ const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: Inter
             <XCircle size={13} /> رفض
           </button>
         )}
-        <button disabled={busy} onClick={() => actions.onRemove(row)} title="حذف نهائي من الانترفيوهات"
+        {canRemove && <button disabled={busy} onClick={() => actions.onRemove(row)} title="حذف نهائي من الانترفيوهات"
           className="mr-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40">
           <Trash2 size={12} /> حذف
-        </button>
+        </button>}
       </footer>
     </article>
   );

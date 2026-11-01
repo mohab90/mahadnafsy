@@ -15,7 +15,7 @@ const bcrypt = require('bcryptjs');
 const { toIdentity } = require('../../lib/phoneNumber');
 const { PERMISSIONS } = require('../../constants/permissions');
 const { assertGrantable, heldByTarget } = require('../../lib/permissionGrant');
-const { ADMIN_EMAILS } = require('../../middleware/auth');
+const { ADMIN_EMAILS, isOwnerRequest } = require('../../middleware/auth');
 const { sqlCairoToday } = require('../../lib/dates');
 const { requireRecruiting, joinUsInReach, outOfRecruitReach } = require('../../lib/branchHr');
 const { parseInterviewAt, webAddress } = require('../../lib/joinApplication');
@@ -380,7 +380,7 @@ router.post(
     // STAFF_ROLES includes ADMIN and MANAGER, and manage_hr is not the right to
     // create either — the two staff-creation routes already refuse it. Hiring
     // was the third door into a full-access account.
-    if (!req.isSuperAdmin && (role === 'ADMIN' || role === 'MANAGER')) {
+    if ((!req.isSuperAdmin || !isOwnerRequest(req)) && (role === 'ADMIN' || role === 'MANAGER')) {
       await conn.rollback();
       return res.status(403).json({
         error: 'التعيين بصلاحية مدير أو أدمن يحتاج صلاحية المالك',

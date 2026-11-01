@@ -43,7 +43,7 @@ const {
 } = require('./_shared');
 const { hrReach } = require('../../lib/branchHr');
 const { escapeHtml } = require('../../lib/html');
-const { requireAnyPermission } = require('../../middleware/auth');
+const { requireAnyPermission, isOwnerRequest } = require('../../middleware/auth');
 
 const router = Router();
 
@@ -71,7 +71,7 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
   // onboard staff, not the right to create an account that can take the tenant
   // over. Checked before any connection is taken.
   const requestedRole = String(role || 'other').toUpperCase();
-  if (!req.isSuperAdmin && ['ADMIN', 'MANAGER'].includes(requestedRole)) {
+  if ((!req.isSuperAdmin || !isOwnerRequest(req)) && ['ADMIN', 'MANAGER'].includes(requestedRole)) {
     return res.status(403).json({
       error: 'إنشاء حساب دخول بصلاحية مدير أو أدمن يحتاج صلاحية المالك',
       code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ROLE',
@@ -143,7 +143,7 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
       if (row && row.tenant_id !== tenantId) {
         return refuse(403, { error: 'Staff id belongs to another tenant', code: 'STAFF_TENANT_MISMATCH' });
       }
-      if (row && !req.isSuperAdmin) {
+      if (row && (!req.isSuperAdmin || !isOwnerRequest(req))) {
         if (['admin', 'manager'].includes(String(row.role || '').toLowerCase())) {
           return refuse(403, {
             error: 'تعديل حساب مدير يحتاج صلاحية المالك',

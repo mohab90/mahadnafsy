@@ -3,6 +3,8 @@ import { Mail, MessageCircle, Phone, UserRoundPen } from 'lucide-react';
 import { Modal } from '../../../../shared/ui/Modal';
 import { cairoDaysAhead } from '../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import { toDialable, waLink } from '../../../lib/whatsappLink';
 
 // «زر التواصل … كان ايه سبب المشكلة الحقيقي عمل ايه؟ يختار من قايمة: المشكلة انتهت ولا لسه فى تواصل
@@ -37,6 +39,8 @@ export function TicketContactButtons({ ticketId, subscriberId, personName, phone
   onLogged: (summary: string) => void;
   onError: (text: string) => void;
 }) {
+  const { isAdmin, currentStaff } = useSiteData();
+  const canEditClient = isAdmin || (currentStaff ? hasPermission(currentStaff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'manage_subscribers') : false);
   const [channel, setChannel] = useState<Channel | null>(null);
   const [outcome, setOutcome] = useState('answered');
   const [cause, setCause] = useState('');
@@ -68,8 +72,10 @@ export function TicketContactButtons({ ticketId, subscriberId, personName, phone
     if (!toDialable(value)) { onError('الرقم ده مش صحيح — اكتب رقم موبايل كامل'); return; }
     setSaving(true);
     try {
-      // On the client's file when there is one, so the next person has it too.
-      if (subscriberId) await mysqlAdmin.saveSubscriber({ id: subscriberId, name: personName || '', phone: value, changedFields: ['phone'] });
+      // On the client's file when there is one, so the next person has it too — if this account may edit clients (manage_subscribers);
+      // the sales rep and the accountant who reach this screen through the inbox were refused with «Permission denied», so for them
+      // the number is kept for this contact only.
+      if (subscriberId && canEditClient) await mysqlAdmin.saveSubscriber({ id: subscriberId, name: personName || '', phone: value, changedFields: ['phone'] });
       setSavedPhone(value); setTyping(false); setTyped('');
     } catch (error) {
       onError(error instanceof Error ? error.message : 'تعذر حفظ الرقم');

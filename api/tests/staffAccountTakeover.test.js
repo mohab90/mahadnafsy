@@ -88,7 +88,7 @@ test('hiring refuses a privileged role and someone else\'s login for a non-owner
   const h = handler(read('routes/hr/talent.js'), "'/api/admin/hr/applicants/:appId/hire'", null);
   const passwordWrite = h.indexOf('UPDATE users SET password_hash');
   assert.ok(passwordWrite > 0);
-  const roleGuard = h.indexOf("!req.isSuperAdmin && (role === 'ADMIN' || role === 'MANAGER')");
+  const roleGuard = h.indexOf("(!req.isSuperAdmin || !isOwnerRequest(req)) && (role === 'ADMIN' || role === 'MANAGER')");
   const loginGuard = h.indexOf('LOGIN_BELONGS_TO_ANOTHER_ACCOUNT');
   assert.ok(roleGuard > 0, 'manage_hr can hire straight into ADMIN or MANAGER again');
   assert.ok(loginGuard > 0, 'hiring can reset another account\'s password again');
@@ -100,7 +100,7 @@ test('hiring refuses a privileged role and someone else\'s login for a non-owner
 
 test('staff.js will not let a non-owner rewrite a manager\'s row or widen data scope', () => {
   const src = read('routes/staff.js');
-  assert.match(src, /existingStaff && !req\.isSuperAdmin\s*&& PRIVILEGED_ROLES\.includes/);
+  assert.match(src, /existingStaff && \(!req\.isSuperAdmin \|\| !isOwnerRequest\(req\)\)[^\n]*\n\s*&& PRIVILEGED_ROLES\.includes/);
   assert.match(src, /!req\.isSuperAdmin && dataScope !== null\s*&& dataScope !== normalizeDataScope\(existingStaff\?\.data_scope\)/);
 });
 
