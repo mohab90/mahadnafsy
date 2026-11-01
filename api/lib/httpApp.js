@@ -215,8 +215,16 @@ function timeRequests(req, res, next) {
 // The panel's counters (lead statistics, the follow-up bell, today's revenue) are held for a few seconds under
 // «figures:». Any write that succeeded after they were computed may have changed them — a status moved, a lead assigned or captured by the website
 // form — so the first one drops them, and the next read counts again.
+//
+// Not every write changes a figure. A student's open account page posts /api/me/heartbeat every minute, a lecture being watched patches its
+// progress, a staff session renews its token every half hour: with thirty people online that was a write every two seconds, each one
+// emptying the counters of everybody's screen, so the held figures were never held and every dashboard recounted its tables on every read
+// (1 Nov 2026: «السيستم بيفضل يعمل ريفريش كتير لكل الموظفين»). These writes touch no lead, client, payment, ticket or inbox count.
+const QUIET_WRITES = /^\/api\/(me\/(heartbeat|progress)|lectures\/[^/]+\/view|push\/(subscribe|test-send)|auth\/(refresh|logout)|staff\/me\/preferences|admin\/hr\/staff-messages\/mark-read|staff\/announcements\/[^/]+\/seen)\/?$/;
+const isQuietWrite = path => QUIET_WRITES.test(String(path || '').split('?')[0]);
+
 function dropFiguresAfterWrites(req, res, next) {
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && !isQuietWrite(req.originalUrl || req.url)) {
     res.on('finish', () => { if (res.statusCode < 400) cacheInvalidateLocal('figures:'); });
   }
   next();
@@ -371,4 +379,4 @@ function createHttpApp({ pool, brandAssetRoot }) {
   return app;
 }
 
-module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites, drainingAnswers };
+module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites, drainingAnswers, isQuietWrite };

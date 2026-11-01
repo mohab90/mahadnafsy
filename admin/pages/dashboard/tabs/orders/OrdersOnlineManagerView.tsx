@@ -9,12 +9,16 @@ import type { OrderActions } from './useOrderActions';
 import { useState } from 'react';
 import { LinkTransferDialog, type TransferLink } from './LinkTransferDialog';
 import { usePaymentsDesk } from './usePaymentsDesk';
+import { AddTransferModal, IncomingTransfersTable } from './IncomingTransfers';
 
 type LinkTarget = { id: string; name: string; amount: number; currency: string; method: string; reference: string; at: string };
 
 export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabProps; actions: OrderActions }) {
   const { canManageFinancial, notify, courses, bundles, daqqiSubSearch, setDaqqiSubSearch, daqqiAccDateFrom, setDaqqiAccDateFrom, daqqiAccDateTo, setDaqqiAccDateTo, omOrdReviewTab, setOmOrdReviewTab, reloadOrders, reloadSubscribers } = props;
-  const { paymentBoxes, navigate, approveMethod, setApproveMethod, canAcceptDirectly } = actions;
+  const { paymentBoxes, navigate, approveMethod, setApproveMethod, canAcceptDirectly, ledger } = actions;
+  // «حساب مسئول الأونلاين مش ظاهر فيه التحويلات»: the transfers that arrived, and «تحويل جديد», were only on the administrators' screen.
+  const [showTransfers, setShowTransfers] = useState(false);
+  const [addingTransfer, setAddingTransfer] = useState(false);
   const desk = usePaymentsDesk({ tab: omOrdReviewTab, search: daqqiSubSearch, from: daqqiAccDateFrom, to: daqqiAccDateTo });
   // Only the manager accepts a payment outright; everybody else ties it to the
   // transfer that brought the money, or rejects it (lib/paymentApprovalPolicy.js).
@@ -54,6 +58,22 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                       </div>
                     ))}
                   </div>
+                  {canManageFinancial && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => setShowTransfers(value => !value)}
+                        className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${showTransfers ? 'bg-violet-600 text-white border-violet-600' : 'text-violet-700 border-violet-200 hover:bg-violet-50'}`}>
+                        🏦 سجل التحويلات ({ledger.transfers.length})
+                      </button>
+                    </div>
+                  )}
+                  {showTransfers && canManageFinancial && (
+                    <IncomingTransfersTable transfers={ledger.transfers} loading={ledger.loading} canLink={false}
+                      onLink={() => undefined} onAdd={() => setAddingTransfer(true)} notify={notify} />
+                  )}
+                  {addingTransfer && (
+                    <AddTransferModal boxes={paymentBoxes} notify={notify} onClose={() => setAddingTransfer(false)}
+                      onSaved={async () => { setAddingTransfer(false); setShowTransfers(true); await ledger.reload(); }} />
+                  )}
                   {/* Review tabs */}
                   <div className="flex gap-2">
                     {([

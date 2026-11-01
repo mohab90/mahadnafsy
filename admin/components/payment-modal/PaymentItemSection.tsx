@@ -280,6 +280,31 @@ export function PaymentItemSection({ m }: { m: PaymentModalModel }) {
                         return <option key={v} value={v}>{lb}{base > 0 ? ` — ${base.toLocaleString('ar-EG-u-nu-latn')} ${d.currency}` : ''}</option>;
                       })}
                     </select>
+                    {d.currency === 'EGP' && (
+                      <label className="mt-2 block text-[11px] font-semibold text-gray-600">جنسية العميل (تحدد قايمة سعر الشهادة بالجنيه)
+                        <select
+                          value={d.certNationality}
+                          onChange={e => {
+                            const certNationality = e.target.value as typeof d.certNationality;
+                            const upd: Partial<PaymentDraft> = { certNationality };
+                            // The price filled from the list follows the nationality picked, unless the desk typed one of its own.
+                            const tiers = d.certType ? certCatalog.map[d.certType] : null;
+                            if (tiers && (!d.customExpected || Number(d.customExpected) === certBasePrice(d.certType, d.currency))) {
+                              const resident = Number(tiers.residentEGP) || Number(tiers.egyptianEGP) || 0;
+                              const egyptian = Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
+                              const next = certNationality === 'NON_EGYPTIAN_EGYPT' ? resident : certNationality === 'EGYPTIAN' ? egyptian : 0;
+                              upd.customExpected = next > 0 ? String(next) : '';
+                            }
+                            set(upd);
+                          }}
+                          className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-red-400"
+                        >
+                          <option value="">زي ما هو مسجّل للعميل</option>
+                          <option value="EGYPTIAN">🇪🇬 مصري</option>
+                          <option value="NON_EGYPTIAN_EGYPT">👤 غير مصري مقيم في مصر</option>
+                        </select>
+                      </label>
+                    )}
                     {d.certType && (
                       certBasePrice(d.certType, d.currency) > 0 ? (
                         <p className="mt-1 text-[11px] text-gray-600">

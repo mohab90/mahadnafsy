@@ -94,6 +94,9 @@ const PERMISSIONS = Object.freeze({
   // A client's own price at booking («سعر مختلف»): the managers, and whoever the
   // owner ticks it for (7 Oct 2026: «للمديرين ولحساب هنا فقط»).
   SET_CLIENT_PRICE:         'set_client_price',
+  // «تأكيد التحويلات» (1 Nov 2026): customer service confirms the transfers that arrive — records one, ties a payment to it, accepts or rejects the
+  // proof — without the rest of the financial screens (the register, the books, refunds, expenses), which manage_financial opens.
+  CONFIRM_TRANSFERS:        'confirm_transfers',
   APPROVE_REFUNDS:          'approve_refunds',
   VIEW_FINANCIAL:           'view_financial',
   MANAGE_FINANCIAL:         'manage_financial',
@@ -254,7 +257,7 @@ const ROLE_PERMS_BASE = {
     'view_subscribers', 'manage_subscribers',
     // The whole client database — see admin/constants/permissions.ts.
     'view_client_db',
-    'view_orders', 'manage_payments',
+    'view_orders', 'manage_payments', 'confirm_transfers',
     'manage_daqqi',
     'manage_inbox',
     'manage_certificates',

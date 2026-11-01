@@ -284,7 +284,8 @@ const Dashboard: React.FC = () => {
                     isOnlineManager,
                     isDaqqiManager,
                     isAdmin,
-                    canManageFinancial: hasPermission('manage_financial'),
+                    // «تأكيد التحويلات»: whoever confirms transfers (customer service) gets the link and accept buttons, not the rest of the finance screens.
+                    canManageFinancial: hasPermission('manage_financial') || hasPermission('confirm_transfers'),
                     notify,
                     courses,
                     bundles,

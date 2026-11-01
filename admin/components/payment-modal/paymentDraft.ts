@@ -14,6 +14,8 @@ export interface PaymentDraft {
   discountPct: string;      // % discount
   certType: string;
   certReqId: string;
+  /** «غير مصري مقيم في مصر»: prices a NEW certificate from the resident list and is kept on the client. '' = the client's own record. */
+  certNationality: '' | 'EGYPTIAN' | 'NON_EGYPTIAN_EGYPT';
   amount: string;
   currency: 'EGP' | 'SAR' | 'USD';
   paymentMethod: string;
@@ -93,6 +95,7 @@ export const blankPaymentDraft = (opts?: {
   discountPct: '',
   certType: '',
   certReqId: '',
+  certNationality: '',
   amount: '',
   currency: opts?.currency || 'EGP',
   paymentMethod: '',

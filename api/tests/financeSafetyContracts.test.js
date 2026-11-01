@@ -19,7 +19,8 @@ test('manual money workflows separate recording, approval and refund authority',
   assert.match(createPayment, /const scope = resolveFinancialScope\(req/);
   assert.match(createPayment, /financialRecordMatches\(scope, subRow\)/);
   assert.match(createPayment, /if \(isPaid && linkedLeadId\)/);
-  assert.match(approvePayment, /payments\/:id\/status'[\s\S]{0,180}requirePermission\('manage_financial'\)/);
+  // Approval is the finance permission's, or «تأكيد التحويلات» (customer service confirms the transfers that arrive, 1 Nov 2026); never a bare view right.
+  assert.match(approvePayment, /payments\/:id\/status'[\s\S]{0,180}requireAnyPermission\('manage_financial', 'confirm_transfers'\)/);
   assert.match(approvePayment, /\[status,\s*id,\s*payment\.transaction_id \|\| id,\s*tenantId,\s*payment\.branch_id \|\| null\]/);
   assert.match(approvePayment, /enqueueFinanceEvent\(/);
   assert.match(approvePayment, /const scope = resolveFinancialScope\(req/);

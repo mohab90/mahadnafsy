@@ -271,7 +271,8 @@ export function usePaymentModalModel({
     if (!tiers) return 0;
     if (currency === 'SAR') return Number(tiers.residentSAR) || 0;
     if (currency === 'USD') return Number(tiers.foreignUSD) || 0;
-    const nationality = certRequests.find(request => request.id === d.certReqId)?.nationality;
+    // An open request carries its client's nationality; a new certificate takes the one the desk picked.
+    const nationality = d.certReqId ? certRequests.find(request => request.id === d.certReqId)?.nationality : d.certNationality.toLowerCase();
     if (nationality === 'non_egyptian_egypt') return Number(tiers.residentEGP) || Number(tiers.egyptianEGP) || 0;
     return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
   };

@@ -58,6 +58,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_orders: 'إدارة الطلبات والمدفوعات',
   manage_payments: 'تسجيل وتعديل المدفوعات',
   set_client_price: 'تحديد سعر مختلف للعميل في الحجز',
+  confirm_transfers: 'تأكيد التحويلات (تسجيل تحويل وربطه بالدفعة)',
   approve_refunds: 'اعتماد أو رفض الاستردادات',
   view_financial: 'عرض النظام المحاسبي',
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',

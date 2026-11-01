@@ -6,6 +6,16 @@ import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerforman
 import { takePaymentAttribution } from './paymentAttribution';
 import { takePendingPhotos } from './paymentPhotos';
 import { noteReceipt } from './lastReceipt';
+import { PERMISSION_LABELS, type PermissionKey } from '../constants/permissions';
+
+/** «Permission denied: manage_financial» is what the server says; the person reading it needs to know what it means and whom to ask. */
+function arabicRefusal(message: unknown): string {
+  const text = String(message || '');
+  const match = /^Permission denied: ([a-z_]+)/i.exec(text);
+  if (!match) return text || 'مفيش صلاحية للإجراء ده';
+  const label = PERMISSION_LABELS[match[1] as PermissionKey];
+  return `مفيش عندك صلاحية${label ? ` «${label}»` : ''} — كلّم الإدارة تفعّلها لحسابك`;
+}
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -202,7 +212,7 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));
       if (res.status === 403 && b.code === 'MFA_REQUIRED') codeSessionIsOver();
-      throw new Error(b.error || `HTTP ${res.status}`);
+      throw new Error(res.status === 403 ? arabicRefusal(b.error) : (b.error || `HTTP ${res.status}`));
     }
     return res.json() as Promise<T>;
   } catch (err: unknown) {

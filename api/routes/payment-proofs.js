@@ -21,7 +21,7 @@ const { grantCourseSelections } = require('../lib/entitlements');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
 const { notifyPaymentOutcome } = require('../lib/paymentNotices');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
 const { discardObject, readProofImage, storeProofImage } = require('../lib/storedFiles');
 const { isJourneyState } = require('../lib/journeyStates');
@@ -284,7 +284,7 @@ router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
 });
 
 // Admin: list payment proofs (default: pending only)
-router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'confirm_transfers'), async (req, res) => {
   try {
     const tenantId = tenantIdFor(req);
     // A collection officer holds view_financial over their own clients: they
@@ -363,7 +363,7 @@ router.put('/api/me/lecture-notes/:lectureId', requireAuth, async (req, res) => 
 });
 
 // Admin: approve or reject a payment proof
-router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -663,7 +663,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
 });
 
 // Admin: get single payment proof image (with auth check)
-router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'confirm_transfers'), async (req, res) => {
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
     const [[row]] = await pool.query(

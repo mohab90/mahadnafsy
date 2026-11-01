@@ -844,6 +844,13 @@ async function recordSubscriberPayment(req, res) {
       });
       subRow.name = bookingIdentity.nameAr;
     }
+    // «ليه عند حجز شهادة جديدة مش بيظهر اوبشن الشهادات لغير المصريين المقيمين في مصر»: the certificate is priced by the CLIENT's
+    // nationality (lib/certificatePayments.js), and the desk had no way to say a client is a non-Egyptian living in Egypt. The booking
+    // can now carry it, and it is kept on the client, so this one and the next certificate are priced from the right list.
+    const certNationality = String(payment.certNationality || '').trim().toUpperCase();
+    if (safeType === 'CERTIFICATE' && ['EGYPTIAN', 'NON_EGYPTIAN_EGYPT'].includes(certNationality) && subscriber_id) {
+      await conn.query('UPDATE subscribers SET nationality=? WHERE id=? AND tenant_id=?', [certNationality, subscriber_id, paymentTenantId]);
+    }
     if (safeType === 'CERTIFICATE') {
       await applyCertificatePayment({
         id,

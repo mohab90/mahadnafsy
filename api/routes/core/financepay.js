@@ -17,7 +17,7 @@ const { applyCertificatePayment } = require('../../lib/certificatePayments');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { deleteTransfer, importTransfers, isCashMethod, linkTransfer, recordTransfer, updateTransfer } = require('../../lib/incomingTransfers');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../../lib/paymentRejection');
 const { notifyPaymentOutcome } = require('../../lib/paymentNotices');
@@ -29,7 +29,7 @@ const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprov
 // This is the only manual status transition endpoint for an existing payment.
 // Refunds are deliberately handled by the refund workflow because they require
 // approval and a reversing journal entry.
-router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -326,7 +326,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
 // ── Incoming transfers — what arrived, and which payment each one confirmed ──
 
 // The transfers on the ledger; ?unlinked=1 for the ones still free to confirm a payment.
-router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   try {
     const unlinked = String(req.query.unlinked || '') === '1';
     const [rows] = await pool.query(
@@ -355,7 +355,7 @@ router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, re
 });
 
 // Record a transfer as it arrived, before (or without) a payment to confirm.
-router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   try {
     if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
       return res.status(403).json({ error: 'تسجيل التحويلات الواردة شغل المسئول' });
@@ -439,7 +439,7 @@ router.post('/api/admin/incoming-transfers/import', requireAuth, requireAdminOrS
 
 // «في حساب 1010 وحساب 1079 دول حساب واحد … وحسابين 4645»: the ledger's accounts, which of them are one
 // account (lib/transferAccounts.js), and the one-click merge onto the account the settings list knows.
-router.get('/api/admin/incoming-transfers/accounts', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.get('/api/admin/incoming-transfers/accounts', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   if (!managesTransfers(req)) return res.status(403).json({ error: 'دمج الحسابات للمديرين', code: 'MANAGERS_ONLY' });
   try {
     const content = await getTenantSetting('content', { tenantId: req.tenantId, fallback: {} });

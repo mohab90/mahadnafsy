@@ -11,7 +11,7 @@ const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
 const { notifyPaymentOutcome } = require('../lib/paymentNotices');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { safeIsoString, cairoToday, dateOnlyInTimeZone } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
@@ -258,7 +258,7 @@ router.post('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermis
 // course and pays the commission. Approving money is what every other approval
 // route asks manage_financial for — proof review, payment status, pending
 // payments — and recording and approving stay separate duties.
-router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const { linkedTransferId } = req.body || {};

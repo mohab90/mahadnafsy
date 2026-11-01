@@ -4,7 +4,7 @@ const express = require('express');
 const router  = express.Router();
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { addDaysToDateOnly, cairoDayStartUtc, isValidDateOnly, safeDateOnly } = require('../lib/dates');
 const { BRANCHES, normalizeBranch } = require('../constants/branches');
 const { resolveFinancialScope } = require('../lib/financialScope');
@@ -168,7 +168,7 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
 
 // GET /api/admin/payments/review — Central payment review: all payments with full details
 // Supports: status=pending|paid|failed|all, paymentType, staffId, source, dateFrom, dateTo, search, page
-router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'confirm_transfers'), async (req, res) => {
   try {
     const { status, paymentType, staffId, source, branch, dateFrom, dateTo, search, page = 1, limit: qLimit = 100 } = req.query;
     if ((dateFrom && !isValidDateOnly(dateFrom)) || (dateTo && !isValidDateOnly(dateTo)) || (dateFrom && dateTo && dateFrom > dateTo)) {
