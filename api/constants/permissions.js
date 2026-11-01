@@ -520,6 +520,9 @@ function hasPermission(staffRecord, permission) {
     // opened every employee's file, salary and payroll past the branch's routes.
     if (permission === 'view_hr' || permission === 'manage_hr') return false;
   }
+  // Customer service confirms the transfers that arrive whatever its grid says (1 Nov 2026: «هنا هي اللي بتأكد التحويلات»): a grid saved before the
+  // box existed has no tick for it, and the account got «Permission denied» on every transfer. The box is not a way to take it away.
+  if (permission === 'confirm_transfers' && String(staffRecord.role || '').toLowerCase() === 'support') return true;
   const perms = resolvePermissions(staffRecord);
   if (perms === '*') return true;
   return perms.includes(permission);

@@ -511,6 +511,8 @@ export function hasPermission(
     // Their branch's HR only — the institute-wide HR boxes do not apply to them.
     if (permission === 'view_hr' || permission === 'manage_hr') return false;
   }
+  // The API holds the same line: customer service confirms transfers whatever its saved grid says.
+  if (permission === 'confirm_transfers' && String(staff.role || '').toLowerCase() === 'support') return true;
   const perms = resolvePermissions(staff);
   if (perms === '*') return true;
   return perms.includes(permission);

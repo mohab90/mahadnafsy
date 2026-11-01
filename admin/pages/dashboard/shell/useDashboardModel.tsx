@@ -411,6 +411,11 @@ export function useDashboardModel() {
   // Server handles scoping via DATA_SCOPE — no need to enumerate roles here
   const isNonAdminStaff = !isAdmin && !!staffSelf;
   const usesStaffScopedData = isNonAdminStaff || isOnlineManager;
+  // «حساب هنا شايف: قيد المراجعة 0، مؤكدة 500، التحويلات 0»: an employee's payments screen was the 500 newest payments of THEIR clients, every one
+  // marked paid (hooks useStaffOrders), so a pending payment never showed and 500 was only the size of the list. Whoever confirms transfers
+  // reads the institute's real list on that screen, with its real statuses, like the administration.
+  const confirmsTransfers = access.can('confirm_transfers') || access.can('manage_financial');
+  const readsOwnPayments = usesStaffScopedData && !(confirmsTransfers && activeTab === 'orders' && !isOnlineManager);
   // A write on a screen that pages from the server reloads no list (lib/crmChanged.ts).
   useEffect(() => {
     setStaffListsWanted(!isNonAdminStaff || !staffScreenPagesFromServer(activeTab));
@@ -520,8 +525,8 @@ export function useDashboardModel() {
   const effectiveSubs = subscribers;
   // An employee who keeps the accounts (customer service) reads the 500 newest payments of their clients from the server;
   // the online manager has his own desk (usePaymentsDesk).
-  const staffOrders = useStaffOrders(usesStaffScopedData && activeTab === 'orders' && !isOnlineManager, courses, bundles);
-  const effectiveOrders = usesStaffScopedData ? staffOrders : orders;
+  const staffOrders = useStaffOrders(readsOwnPayments && activeTab === 'orders' && !isOnlineManager, courses, bundles);
+  const effectiveOrders = readsOwnPayments ? staffOrders : orders;
   const branchFilteredEffectiveOrders = useMemo(() => branchQueryFilter
     ? effectiveOrders.filter((row) => {
       const orderPhone = String((row as { customerPhone?: string }).customerPhone || '');
@@ -585,9 +590,9 @@ export function useDashboardModel() {
     // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
     // After the full loads above, so a list a full load is bringing waits for it.
     // An employee's version of a screen that pages from the server does not read the lists the administration's does.
-    const skipped = usesStaffScopedData ? staffSkipsSiteLists(activeTab) : [];
+    const skipped = readsOwnPayments ? staffSkipsSiteLists(activeTab) : (usesStaffScopedData ? staffSkipsSiteLists(activeTab).filter(list => list !== 'orders') : []);
     void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));
-  }, [activeTab, clientsArePaged, usesStaffScopedData, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
+  }, [activeTab, clientsArePaged, usesStaffScopedData, readsOwnPayments, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
 
   // Drawn over every screen, so they ask for their own lists: the follow-up
   // drawer lists the loaded leads' follow-ups (its bell counts on the server —

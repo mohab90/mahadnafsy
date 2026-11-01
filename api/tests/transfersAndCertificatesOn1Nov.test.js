@@ -71,3 +71,19 @@ test('a new certificate carries the client\'s nationality and the client keeps i
   assert.ok(section.includes('<option value="NON_EGYPTIAN_EGYPT">👤 غير مصري مقيم في مصر</option>'));
   assert.ok(read('admin/components/payment-modal/paymentDraft.ts').includes("certNationality: '' | 'EGYPTIAN' | 'NON_EGYPTIAN_EGYPT';"));
 });
+
+test('customer service confirms transfers even when its saved grid never had the box (Hana\'s account)', () => {
+  const grid = JSON.stringify(['view_orders', 'manage_payments', 'manage_inbox', 'set_client_price']);
+  assert.equal(hasPermission({ role: 'SUPPORT', permissions_json: grid }, 'confirm_transfers'), true);
+  assert.equal(hasPermission({ role: 'SUPPORT', permissions_json: grid }, 'manage_financial'), false, 'and nothing else opens');
+  assert.equal(hasPermission({ role: 'SALES', permissions_json: grid }, 'confirm_transfers'), false);
+  assert.match(read('admin/constants/permissions.ts'), /permission === 'confirm_transfers' && String\(staff\.role \|\| ''\)\.toLowerCase\(\) === 'support'/);
+});
+
+test('whoever confirms transfers reads the real payments list with its statuses, not their own 500 paid rows', () => {
+  const model = read('admin/pages/dashboard/shell/useDashboardModel.tsx');
+  assert.match(model, /const confirmsTransfers = access\.can\('confirm_transfers'\) \|\| access\.can\('manage_financial'\);/);
+  assert.match(model, /const effectiveOrders = readsOwnPayments \? staffOrders : orders;/);
+  // the hook that fed the screen marks every row paid, which is why «قيد المراجعة» read 0 and «مؤكدة» read 500
+  assert.match(read('admin/pages/dashboard/useStaffOrders.ts'), /status: 'paid' as const/);
+});
