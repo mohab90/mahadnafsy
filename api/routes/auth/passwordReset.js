@@ -168,7 +168,17 @@ async function issueResetCode(req, rawIdentifier) {
   // itself fails. The response never says which channel was used (or
   // whether one was): that would let a guess distinguish a real account
   // from a made-up one.
-  const dialable = user.phone ? toDialable(user.phone) : '';
+  // An employee's reset code goes to the address on their staff record and nowhere else (1 Nov 2026: «لو موظف نسي الباسورد يبعتله على
+  // الايميل بتاعه بس»): not to the phone number on the account, which the employee — or whoever last edited it — may have typed. Customers
+  // keep WhatsApp first.
+  let isStaffAccount = false;
+  if (user.email) {
+    const [[staffRow]] = await pool.query(
+      'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND is_active=1 AND deleted_at IS NULL LIMIT 1',
+      [req.tenantId, String(user.email).toLowerCase().trim()]).catch(() => [[null]]);
+    isStaffAccount = Boolean(staffRow);
+  }
+  const dialable = !isStaffAccount && user.phone ? toDialable(user.phone) : '';
   if (dialable) {
     // Direct, not queued: a reset code is waited for on the screen.
     const sent = await sendWhatsApp(

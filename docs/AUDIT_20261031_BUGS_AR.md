@@ -26,7 +26,7 @@
 **الأثر على الإنتاج:** دفعات أول 2–3 ساعات من الشهر بالتوقيت المحلي بتتحسب في الشهر اللي قبله في كشف الحساب. صغير بس بيخلّي شاشتين مختلفتين.
 **المطلوب:** حد واحد مشترك (`cairoDayStartUtc`) في كشف الحساب والكوكبت وباقي تقارير الفترات.
 
-## BUG-04 · P2 · دور «المدير» (MANAGER) بينشئ حسابات ADMIN
+## BUG-04 · P2 · دور «المدير» (MANAGER) بينشئ حسابات ADMIN — **اتصلح: المالك وحده يعمل ويعدّل أدمن/مدير**
 **الخطوات:** سجّل دخول `manager@perf.test`، `POST /api/admin/staff` بجسم `{"name":"x","email":"probe@x.test","role":"admin"}`. **الفعلي:** 200 وصف اتعمل بـ`role=ADMIN`. **المتوقع حسب التعليق:** 403 «إنشاء حساب بصلاحية مدير أو أدمن يحتاج صلاحية المالك».
 **السبب:** الحارس `api/routes/staff.js:191-192` بيستثني `req.isSuperAdmin`، و`isSuperAdmin` بيتحط true لأي دور في `FULL_ACCESS_ROLES` = ADMIN + MANAGER (`api/constants/permissions.js:339`, `api/middleware/auth.js:349`). المدير أصلاً عنده صلاحيات كاملة، فمفيش تصعيد حقيقي؛ المشكلة إن الحارس والرسالة بيوهموا إن في فرق. (مسحت الصفين اللي اتعملوا من قاعدة المعمل.)
 **المطلوب:** قرارك: يا تفضل المدير = الأدمن (وتتغيّر الرسالة)، يا تقصر إنشاء ADMIN/MANAGER على المالك (`isInstituteOwner`).
@@ -70,7 +70,7 @@
 ## BUG-14 · P2 · endpoints أبطأ من ثانيتين على 601 ألف ليد (admin، warm)
 `/api/admin/reconciliation-dashboard` 3.5 ث (4.7 لحساب المحاسب) · `/api/admin/reports/management` 3.1 ث · `/api/admin/reports/campaign` 3.0 ث · `/api/admin/online-performance` 2.6 ث · `/api/admin/analytics/conversion-funnel` 2.1 ث (6 ث بارد) · `/api/admin/leads/crm-insights` 1.1 ث و622 كيلو. **الخطوات:** `node tools/lab/sweep.cjs . admin` ← الجدول «slowest». على الإنتاج (حوالي 150 ألف ليد حسب ملاحظاتك) أقل، لكن الاتجاه واضح.
 
-## BUG-15 · P2 · شاشات بتنزّل قوائم كاملة
+## BUG-15 · P2 (اتخفّض: على الشبكة 35–74 كيلوبايت بعد gzip) · شاشات بتنزّل قوائم كاملة
 `/api/admin/expenses` 2.1 ميجا · `/api/admin/payments` 1.1 ميجا · `/api/admin/orders` 787 كيلو (1.6 ث) · `/api/admin/export/payments` 3 ميجا · `/api/staff/subscribers?limit=...` 7.2 ميجا لو `limit` كبير (محدود). نفس بند 10 في `OPEN_PROBLEMS_20261031_AR.md`.
 
 ## BUG-16 · معلومة · أداة المعمل
