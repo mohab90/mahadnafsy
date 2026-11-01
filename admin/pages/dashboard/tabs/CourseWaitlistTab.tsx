@@ -116,7 +116,7 @@ export default function CourseWaitlistTab({ notify }: Props) {
               className="bg-white/15 border border-white/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
               {courses.map(c => <option key={c.id} value={c.id} className="text-gray-900">{c.title}</option>)}
             </select>
-            <button onClick={load} className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white px-3 py-2 rounded-xl text-sm">
+            <button onClick={load} aria-label="تحديث" className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white px-3 py-2 rounded-xl text-sm">
               <RefreshCw size={14} />
             </button>
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-white text-indigo-700 font-bold px-3 py-2 rounded-xl text-sm hover:bg-indigo-50">

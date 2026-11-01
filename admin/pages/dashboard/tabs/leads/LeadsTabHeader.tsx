@@ -66,7 +66,7 @@ export function LeadsTabHeader({
           </h2>
           {(canAdministerCrm || canExportLeads) && (
             <p className="mt-0.5 text-xs text-gray-500 md:text-sm">
-              {totalOfflineLeads} عميل محتمل ·{' '}
+              {totalOfflineLeads} عميل محتمل أوفلاين ·{' '}
               <span className={overdueCount > 0 ? 'text-red-600 font-bold' : ''}>{overdueCount} يحتاج متابعة عاجلة</span>
             </p>
           )}
