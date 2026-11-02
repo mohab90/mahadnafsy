@@ -20,7 +20,7 @@ function rememberedReferral(fromUrl: string): string {
 }
 
 const Auth: React.FC = () => {
-  useSeo({ title: 'تسجيل الدخول | معهد الدراسات النفسية', path: '/auth' });
+  useSeo({ title: 'تسجيل الدخول | معهد الدراسات النفسية', path: '/auth', noindex: true });
   // Someone arriving on a referral link is by definition a new visitor, so open
   // on the create-account form rather than making them find the toggle first.
   const [isLogin, setIsLogin] = useState(() => !new URLSearchParams(window.location.search).get('ref'));

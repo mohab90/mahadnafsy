@@ -70,7 +70,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
-  useSeo({ title: 'حسابي | معهد الدراسات النفسية', path: '/my-account' });
+  useSeo({ title: 'حسابي | معهد الدراسات النفسية', path: '/my-account', noindex: true });
   const { courses, bundles, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, mySubscriberId, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();

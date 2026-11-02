@@ -32,7 +32,10 @@ import { createRequire } from 'node:module';
 // The rendering is shared with the API, which serves the same pages fresh
 // between releases (api/routes/seo-pages.js) — one copy of the rules.
 const require = createRequire(import.meta.url);
-const { STATIC_PAGES, render, summarise, coursePage, bundlePage, absoluteImage, sitemapXml, extractStaticSeo } = require('../api/lib/seoPages.js');
+const {
+  STATIC_PAGES, render, summarise, coursePage, bundlePage, instructorPage, absoluteImage, sitemapXml, extractStaticSeo,
+  bodyHtml, itemListJsonLd, faqJsonLd, robotsTxt, plainText,
+} = require('../api/lib/seoPages.js');
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -73,11 +76,13 @@ function writePage(relUrl, html) {
   for (const c of courses) {
     const slug = c.slug || c.id;
     if (!slug) continue;
-    const page = coursePage({ ...c, slug }, SITE);
+    // The list carries no description; the course's own page does. Without it the page's text is the short blurb only.
+    const detail = await getJson(`/api/courses/${encodeURIComponent(slug)}`).catch(() => null);
+    const page = coursePage({ ...c, slug, description: detail?.description || c.description }, SITE);
     const html = render(shell, page);
     writePage(page.path, html);
     if (c.id && c.id !== slug) writePage(`/course/${c.id}`, html);
-    urls.push({ loc: page.path, priority: '0.8', changefreq: 'weekly' });
+    urls.push({ loc: page.path, priority: '0.8', changefreq: 'weekly', lastmod: c.updatedAt || c.createdAt });
     pages++;
   }
 
@@ -86,6 +91,16 @@ function writePage(relUrl, html) {
     const page = bundlePage(b, SITE, b.courses?.[0]?.thumbnail);
     writePage(page.path, render(shell, page));
     urls.push({ loc: page.path, priority: '0.8', changefreq: 'weekly' });
+    pages++;
+  }
+
+  // Each instructor's page: a name, a job title and a bio a search engine can match to a person.
+  const instructors = await getJson('/api/therapists?limit=200').catch(() => []);
+  for (const t of Array.isArray(instructors) ? instructors : []) {
+    if (!t.id || !t.name) continue;
+    const page = instructorPage(t, SITE);
+    writePage(page.path, render(shell, page));
+    urls.push({ loc: page.path, priority: '0.6', changefreq: 'monthly' });
     pages++;
   }
 
@@ -120,11 +135,29 @@ function writePage(relUrl, html) {
   const seoSources = readdirSync(pagesDir).filter(name => name.endsWith('.tsx'))
     .map(name => ({ file: name, text: readFileSync(join(pagesDir, name), 'utf8') }));
   const sections = extractStaticSeo(seoSources);
+  const faqs = await getJson('/api/faq').catch(() => []);
+  // The listing pages are the site's table of contents: their body is the links a crawler follows to the products.
+  const listings = {
+    '/courses': courses.map(c => [`/c/${c.slug || c.id}`, c.title]),
+    '/bundles': bundles.map(b => [`/bundle/${b.id}`, b.title]),
+    '/instructors': (Array.isArray(instructors) ? instructors : []).filter(t => t.id && t.name).map(t => [`/instructor/${t.id}`, t.name]),
+  };
   let sectionPages = 0;
   for (const [loc] of STATIC_PAGES) {
     if (loc === '/' || loc === '/community/events' || !sections[loc]) continue;
+    const heading = sections[loc].title.split(' | ')[0];
+    const description = sections[loc].description || sections[loc].title;
+    const faqList = loc === '/faq' && Array.isArray(faqs) ? faqs.filter(f => f.question && f.answer) : [];
+    let jsonLd = '';
+    if (listings[loc]?.length) jsonLd = itemListJsonLd(listings[loc].map(([href, title]) => ({ title, url: `${SITE}${href}` })), loc);
+    if (faqList.length) jsonLd = faqJsonLd(faqList, loc);
     writePage(loc, render(shell, {
-      url: `${SITE}${loc}`, title: sections[loc].title, description: sections[loc].description || sections[loc].title, type: 'website',
+      url: `${SITE}${loc}`, title: sections[loc].title, description, type: 'website', jsonLd,
+      body: bodyHtml({
+        heading, intro: description,
+        sections: faqList.map(f => [plainText(f.question), plainText(f.answer)]),
+        links: [...(listings[loc] || []), ['/', 'الرئيسية']],
+      }),
     }));
     sectionPages++;
   }
@@ -132,6 +165,7 @@ function writePage(relUrl, html) {
 
   const sitemap = sitemapXml(urls, SITE);
   writeFileSync(join(DIST, 'sitemap.xml'), sitemap);
+  writeFileSync(join(DIST, 'robots.txt'), robotsTxt(SITE));
 
   console.log(`seo: ${pages} product page(s) prerendered, sitemap has ${urls.length} url(s)`);
   console.log(`     ${courses.length} course(s), ${bundles.length} bundle(s), ${Array.isArray(events) ? events.length : 0} event(s), from ${API}`);

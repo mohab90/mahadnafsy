@@ -4,6 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlClient, mysqlCatalog } from '../lib/mysqlapi';
+import { useSeo } from '../lib/useSeo';
+import { courseSeoDescription, courseSeoTitle } from '../lib/seoText';
 import { CourseBookingCard, CourseHeroSection, scrollToLeadForm } from './course-details-sections/CourseHeroSection';
 import { PromoVideoSection } from './course-details-sections/PromoVideoSection';
 import { AboutSection, PainPointsSection } from './course-details-sections/PainPointsAndAboutSection';
@@ -314,39 +316,20 @@ const CourseDetails: React.FC = () => {
   }, [selectedLectureId, selectedLecture?.locked]);
 
   // ── SEO meta tags ───────────────────────────────────────────────────────
+  // The same title and description the prerendered page was served with (lib/seoText.ts, api/lib/seoPages.js), and the canonical
+  // and og:url that stopped every course telling Google it is a copy of the front page.
+  useSeo({
+    title: course ? courseSeoTitle(course as any) : '',
+    description: course ? courseSeoDescription(course as any) : undefined,
+    path: course ? `/c/${course.slug || course.id}` : undefined,
+    image: course?.thumbnail || undefined,
+    type: 'article',
+  });
   useEffect(() => {
-    if (!course) return;
-    const seoTitle = (course as any).seo_title || course.title || 'معهد الدراسات النفسية';
-    const seoDesc  = (course as any).seo_description || course.shortDescription?.replace(/<[^>]*>/g,'').slice(0,160) || '';
-    const seoKw    = (course as any).seo_keywords || '';
-    document.title = seoTitle + ' — معهد الدراسات النفسية';
-    const setMeta = (name: string, content: string) => {
-      let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
-      if (!el) { el = document.createElement('meta'); el.name = name; document.head.appendChild(el); }
-      el.content = content;
-    };
-    const setOg = (prop: string, content: string) => {
-      let el = document.querySelector(`meta[property="${prop}"]`) as HTMLMetaElement | null;
-      if (!el) { el = document.createElement('meta'); el.setAttribute('property', prop); document.head.appendChild(el); }
-      el.content = content;
-    };
-    if (seoDesc)  { setMeta('description', seoDesc); setOg('og:description', seoDesc); }
-    if (seoKw)    setMeta('keywords', seoKw);
-    setOg('og:title', seoTitle);
-    if (course.thumbnail) setOg('og:image', course.thumbnail);
-    setOg('og:type', 'article');
-    // The two that were missing, and the two that cost the most. `canonical`
-    // stayed on the homepage for the whole session, which tells Google this
-    // course is a duplicate of the front page; `og:url` did the same to every
-    // shared link. The prerendered HTML gets them right for crawlers that do
-    // not run JavaScript — this keeps them right once the app is navigating.
-    const url = `https://mahadnafsy.com/c/${course.slug || course.id}`;
-    setOg('og:url', url);
-    const canonical = document.head.querySelector('link[rel="canonical"]');
-    if (canonical) canonical.setAttribute('href', url);
-    return () => { document.title = 'معهد الدراسات النفسية'; };
+    const keywords = (course as any)?.seo_keywords;
+    if (!keywords) return;
+    document.head.querySelector('meta[name="keywords"]')?.setAttribute('content', keywords);
   }, [course]);
-
 
   // Detect course completion: all unlocked lectures have progress ≥ 90%
   useEffect(() => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, HelpCircle, Plus } from 'lucide-react';
-import { setCanonical } from '../lib/useSeo';
+import { useSeo } from '../lib/useSeo';
 import PageHeader from '../components/PageHeader';
 
 type Faq = { id: string; question: string; answer: string; category: string };
@@ -11,10 +11,9 @@ const Faq: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
 
+  useSeo({ title: 'الأسئلة الشائعة | معهد الدراسات النفسية', path: '/faq', description: 'إجابات على أكثر الأسئلة تكراراً عن الدبلومات والشهادات والدفع والتقسيط والدراسة في معهد الدراسات النفسية.' });
+
   useEffect(() => {
-    document.title = 'الأسئلة الشائعة | معهد الدراسات النفسية';
-    // Without this the canonical stays on whichever page loaded first.
-    setCanonical('/faq');
     fetch('/api/faq')
       .then(r => (r.ok ? r.json() : []))
       .then(rows => setList(Array.isArray(rows) ? rows : []))

@@ -104,7 +104,8 @@ const Home: React.FC = () => {
   const goalId = goals.some(g => g.id === goalPick) ? goalPick : (goals[0]?.id || '');
   const goalCourse = useMemo(() => (goalId ? recommendedCourse(courses, goalId) : null), [courses, goalId]);
 
-  useSeo({ title: 'الرئيسية | معهد الدراسات النفسية', path: '/', description: 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي — دبلومات معتمدة وتدريب عملي.' });
+  // The same title and description the page is served with (client/index.html), not a shorter one that replaces them once the app runs.
+  useSeo({ title: 'معهد الدراسات النفسية | دبلومات معتمدة في الصحة النفسية والعلاج النفسي', path: '/', description: 'معهد الدراسات النفسية — رواد التعليم النفسي منذ 2010. دبلومات معتمدة في الصحة النفسية، العلاج النفسي، الإرشاد الأسري. أكثر من 12,000 خريج في 15 دولة. سجّل الآن!' });
 
   // «كورس مميز بخصم» (home.featured.*), at the price checkout charges for it
   // (lib/usePrices). This strip used to take the rule off and then its own

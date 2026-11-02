@@ -8,15 +8,23 @@ import CourseCard from '../components/CourseCard';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg, cdnSrcSet } from '../lib/img';
-import { setCanonical } from '../lib/useSeo';
+import { useSeo, seoSummary } from '../lib/useSeo';
 
 const InstructorDetails: React.FC = () => {
   const { therapists, courses, currency, content } = useSiteData();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const instructor = therapists.find((t) => t.id === id);
-  useEffect(() => { setCanonical('/instructors'); }, []);
-  useEffect(() => { document.title = (instructor?.name || 'المحاضرون والخبراء') + ' | معهد الدراسات النفسية'; }, [instructor?.name]);
+  // The page's own address: it said /instructors, so every instructor told Google it was a copy of the list. The title is the one
+  // the prerendered page was served with (api/lib/seoPages.js instructorPage).
+  const instructorTitle = (instructor?.title || instructor?.specialty || '').trim();
+  useSeo({
+    title: (instructor?.name ? `${instructor.name}${instructorTitle ? ` — ${instructorTitle.length > 40 ? `${instructorTitle.slice(0, 39).trim()}…` : instructorTitle}` : ''}` : 'المحاضرون والخبراء') + ' | معهد الدراسات النفسية',
+    path: instructor ? `/instructor/${instructor.id}` : '/instructors',
+    description: instructor ? seoSummary(instructor.bio, `${instructor.name}${instructorTitle ? ` — ${instructorTitle}` : ''} من فريق معهد الدراسات النفسية.`) : undefined,
+    image: instructor?.image || undefined,
+    type: 'article',
+  });
 
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState('');

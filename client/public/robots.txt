@@ -1,4 +1,22 @@
 User-agent: *
 Allow: /
+Disallow: /auth
+Disallow: /my-account
+Disallow: /checkout
+Disallow: /pay
+Disallow: /payments
+Disallow: /standalone-payment
+Disallow: /success
+Disallow: /enroll
+Disallow: /ticket-rating
+Disallow: /consultation-rating
+Disallow: /consultation-reschedule
+Disallow: /rate/
+Disallow: /dashboard
+Disallow: /staff/
+Disallow: /client/
+Disallow: /lead/
+Disallow: /subscriber/
+Disallow: /therapist-portal
 
 Sitemap: https://mahadnafsy.com/sitemap.xml

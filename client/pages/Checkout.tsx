@@ -23,7 +23,7 @@ function reviewDueLabel(iso: string): string {
 }
 
 const Checkout: React.FC = () => {
-  useSeo({ title: 'إتمام الاشتراك | معهد الدراسات النفسية', path: '/checkout' });
+  useSeo({ title: 'إتمام الاشتراك | معهد الدراسات النفسية', path: '/checkout', noindex: true });
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();

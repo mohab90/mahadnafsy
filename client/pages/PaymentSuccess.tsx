@@ -106,7 +106,7 @@ const PaymentSuccess: React.FC = () => {
   }, [playHref, navigate]);
 
   useEffect(() => {
-    setCanonical('/success');
+    setCanonical('/success', true);
     document.title = outcome === 'declined'
       ? 'لم تتم عملية الدفع | معهد الدراسات النفسية'
       : 'تم استلام طلبك | معهد الدراسات النفسية';

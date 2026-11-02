@@ -210,8 +210,8 @@ const CertificateVerify: React.FC = () => {
   useEffect(() => {
     document.title = 'التحقق من شهادة | معهد الدراسات النفسية';
     // Without this the canonical stays on whichever page loaded first.
-    setCanonical('/certificate');
-  }, []);
+    setCanonical('/certificate', Boolean(code));
+  }, [code]);
 
   useEffect(() => {
     if (!code) { setOutcome(null); return undefined; }

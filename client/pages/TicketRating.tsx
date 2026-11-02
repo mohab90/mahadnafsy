@@ -31,7 +31,7 @@ const TicketRating: React.FC = () => {
   useEffect(() => {
     document.title = 'تقييم الدعم | معهد الدراسات النفسية';
     // Without this the canonical stays on whichever page loaded first.
-    setCanonical('/ticket-rating');
+    setCanonical('/ticket-rating', true);
     if (!id || !token) { setNotFound(true); setLoading(false); return; }
     fetch(`/api/ticket-csat/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`)
       .then(r => (r.ok ? r.json() : Promise.reject()))

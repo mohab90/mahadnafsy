@@ -23,7 +23,7 @@ const RateRound: React.FC = () => {
 
   useEffect(() => {
     document.title = 'قيّم الكورس | معهد الدراسات النفسية';
-    setCanonical('/rate');
+    setCanonical('/rate', true);
     mysqlClient.getSelfRating(roundId, s, t)
       .then(data => { setForm(data as unknown as Form); if ((data as unknown as Form).alreadyRated) setDone(true); })
       .catch(error => setFailed(error instanceof Error ? error.message : 'اللينك ده مش شغال'));

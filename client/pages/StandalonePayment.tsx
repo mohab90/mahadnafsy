@@ -55,7 +55,7 @@ const StandalonePayment: React.FC = () => {
   useEffect(() => {
     document.title = 'الدفع السريع | معهد الدراسات النفسية';
     // Without this the canonical stays on whichever page loaded first.
-    setCanonical('/pay');
+    setCanonical('/pay', true);
   }, []);
 
   const handlePay = async (event: React.FormEvent) => {

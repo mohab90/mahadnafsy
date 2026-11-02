@@ -52,8 +52,8 @@ test('the generator rewrites every tag that identifies a page', () => {
   // A product is an article, not the site's front page.
   assert.match(gen, /content="article"/);
   // And each product gets its own directory, which is what makes nginx serve it.
-  assert.match(gen, /path: `\/c\/\$\{slug\}`/);
-  assert.match(gen, /path: `\/bundle\/\$\{bundle\.id\}`/);
+  assert.match(gen, /const path = `\/c\/\$\{slug\}`;/);
+  assert.match(gen, /const path = `\/bundle\/\$\{bundle\.id\}`;/);
   assert.match(gen, /writePage\(page\.path, /);
   assert.match(gen, /mkdirSync\(dir, \{ recursive: true \}\)/);
 });

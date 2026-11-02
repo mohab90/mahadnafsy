@@ -32,7 +32,7 @@ const ConsultationRating: React.FC = () => {
 
   useEffect(() => {
     document.title = 'تقييم الاستشارة | معهد الدراسات النفسية';
-    setCanonical('/consultation-rating');
+    setCanonical('/consultation-rating', true);
     if (!id || !token) { setNotFound(true); setLoading(false); return; }
     fetch(endpoint)
       .then(r => (r.ok ? r.json() : Promise.reject()))

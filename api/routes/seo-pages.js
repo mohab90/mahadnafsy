@@ -61,8 +61,8 @@ async function loadShell() {
 
 const courses = tenantId => cached(`courses-seo:${tenantId}`, CATALOG_TTL_MS, async () => {
   const [rows] = await pool.query(
-    `SELECT id, slug, title, seo_title, seo_description, short_description, LEFT(description, 2000) AS description,
-            thumbnail, updated_at, created_at
+    `SELECT id, slug, course_code, title, seo_title, seo_description, seo_keywords, short_description, LEFT(description, 2000) AS description,
+            instructor, level, hours, duration, thumbnail, updated_at, created_at
        FROM courses
       WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL
       ORDER BY sort_order ASC, created_at DESC LIMIT 1000`, [tenantId]);
@@ -83,6 +83,13 @@ const bundles = tenantId => cached(`bundles-seo:${tenantId}`, CATALOG_TTL_MS, as
   return rows;
 });
 
+// The instructors the site shows (the same rows /api/therapists lists), for the sitemap.
+const instructors = tenantId => cached(`therapists:${tenantId}:seo`, CATALOG_TTL_MS, async () => {
+  const [rows] = await pool.query(
+    'SELECT id, name, title, specialty, bio, image, created_at FROM therapists WHERE is_active=1 AND tenant_id=? ORDER BY sort_order ASC LIMIT 200', [tenantId]);
+  return rows;
+});
+
 // Under the community routes' own prefix, so saving an event drops it too.
 const events = tenantId => cached(`community:${tenantId}:events-seo`, CATALOG_TTL_MS, async () => {
   const [rows] = await pool.query(
@@ -99,6 +106,9 @@ async function sitemapUrls(tenantId) {
   }
   for (const bundle of await bundles(tenantId)) {
     urls.push({ loc: `/bundle/${bundle.id}`, priority: '0.8', changefreq: 'weekly', lastmod: bundle.updated_at || bundle.created_at });
+  }
+  for (const instructor of await instructors(tenantId).catch(() => [])) {
+    urls.push({ loc: `/instructor/${instructor.id}`, priority: '0.6', changefreq: 'monthly', lastmod: instructor.created_at });
   }
   for (const event of await events(tenantId).catch(() => [])) {
     const slug = event.slug || event.id;

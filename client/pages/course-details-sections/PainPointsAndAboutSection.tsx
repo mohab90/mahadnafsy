@@ -114,7 +114,7 @@ export const AboutSection: React.FC<{ content: Record<string, string>; descripti
           ref={body}
           className={`max-w-none overflow-hidden break-words text-base leading-loose text-muted-body [&_a]:font-bold [&_a]:text-primary-700 [&_h2]:mt-5 [&_h2]:text-xl [&_h2]:font-black [&_h2]:text-ink [&_h3]:mt-4 [&_h3]:font-black [&_h3]:text-ink [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-2xl [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pr-5 [&_strong]:text-ink [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_ul]:list-disc [&_ul]:pr-5 ${tall && !open ? 'max-h-[420px]' : ''}`}
         >
-          <SafeHtml html={description || ''} />
+          <SafeHtml html={description || ''} demoteHeadings />
           {showExtra && (
             <p className="mt-4">
               {content['courseDetails.about.extraParagraph'] || 'تم تصميم هذا المنهج ليناسب المعايير الدولية في التدريب النفسي، حيث نركز على الجانب التطبيقي بنسبة 70% مقابل 30% للجانب النظري. ستحصل على حقيبة تدريبية كاملة تحتوي على المقاييس، استمارات التقييم، ودليل المعالج.'}

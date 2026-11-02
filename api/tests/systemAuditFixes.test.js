@@ -54,5 +54,5 @@ test('on a phone the floating buttons ride above a bar pinned to the foot of the
 });
 
 test('the not-found page has a title of its own', () => {
-  assert.match(read('client/App.tsx'), /const NotFound: React\.FC = \(\) => \{[\s\S]{0,160}useSeo\(\{ title: 'الصفحة غير موجودة \| معهد الدراسات النفسية' \}\);/);
+  assert.match(read('client/App.tsx'), /const NotFound: React\.FC = \(\) => \{[\s\S]{0,160}useSeo\(\{ title: 'الصفحة غير موجودة \| معهد الدراسات النفسية', noindex: true \}\);/);
 });

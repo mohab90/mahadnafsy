@@ -85,11 +85,12 @@ test('its page names it, canonicalises to it, and tells Google it is a course', 
   // The app's page, not an API answer: the API's script-forbidding CSP is taken off it.
   assert.ok((res.removed || []).includes('Content-Security-Policy'));
   const html = res.body;
-  assert.match(html, /<title>العلاج المعرفي \| معهد الدراسات النفسية<\/title>/);
+  // No seo_title written: the name, what it is, and who it is from.
+  assert.match(html, /<title>العلاج المعرفي \| دبلومة معتمدة أونلاين \| معهد الدراسات النفسية<\/title>/);
   assert.match(html, /<link rel="canonical" href="https:\/\/mahadnafsy\.com\/c\/cbt"/);
   assert.match(html, /<meta property="og:image" content="https:\/\/mahadnafsy\.com\/uploads\/cbt\.jpg"/);
   assert.match(html, /content="دبلومة &lt;العلاج&gt; المعرفي السلوكي"/);
-  const ld = JSON.parse(html.match(/<script type="application\/ld\+json">(\{"@context":"https:\/\/schema\.org","@type":"Course".*?)<\/script>/)[1]);
+  const ld = JSON.parse(html.match(/<script type="application\/ld\+json" data-page-ld="\/c\/cbt">(\{"@context":"https:\/\/schema\.org","@type":"Course".*?)<\/script>/)[1]);
   assert.equal(ld.name, 'العلاج المعرفي');
   assert.equal(ld.provider['@type'], 'EducationalOrganization');
   assert.equal(ld.offers, undefined, 'no price: it follows the visitor\'s country');

@@ -45,7 +45,7 @@ const ConsultationReschedule: React.FC = () => {
 
   useEffect(() => {
     document.title = 'تأجيل الاستشارة | معهد الدراسات النفسية';
-    setCanonical('/consultation-reschedule');
+    setCanonical('/consultation-reschedule', true);
     if ((!requestId && !consultationId) || !token) { setNotFound(true); setLoading(false); return; }
     fetch(endpoint)
       .then(r => (r.ok ? r.json() : Promise.reject()))

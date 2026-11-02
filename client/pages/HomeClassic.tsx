@@ -59,7 +59,8 @@ const HomeClassic: React.FC = () => {
   const timer = useOfferCountdown(content);
   const offerShown = offerIsShown(content);
 
-  useSeo({ title: 'الرئيسية | معهد الدراسات النفسية', path: '/', description: 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي — دبلومات معتمدة وتدريب عملي.' });
+  // The same title and description the page is served with (client/index.html), not a shorter one that replaces them once the app runs.
+  useSeo({ title: 'معهد الدراسات النفسية | دبلومات معتمدة في الصحة النفسية والعلاج النفسي', path: '/', description: 'معهد الدراسات النفسية — رواد التعليم النفسي منذ 2010. دبلومات معتمدة في الصحة النفسية، العلاج النفسي، الإرشاد الأسري. أكثر من 12,000 خريج في 15 دولة. سجّل الآن!' });
 
   // Gallery images — stored as JSON string in content
   const galleryImages: string[] = (() => {

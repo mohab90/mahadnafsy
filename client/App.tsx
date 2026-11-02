@@ -305,7 +305,7 @@ const WaFloat: React.FC = () => {
 /** 404 Not Found page */
 const NotFound: React.FC = () => {
   // Without a title of its own the tab kept the last page's.
-  useSeo({ title: 'الصفحة غير موجودة | معهد الدراسات النفسية' });
+  useSeo({ title: 'الصفحة غير موجودة | معهد الدراسات النفسية', noindex: true });
   return (
   <div className="flex min-h-[60vh] flex-col items-center justify-center bg-paper px-4 py-16 text-center">
     <p className="mb-2 text-8xl font-black leading-none text-primary-100">404</p>

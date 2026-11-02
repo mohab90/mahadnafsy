@@ -28,7 +28,7 @@ const authAr: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 const Enrollment: React.FC = () => {
-  useSeo({ title: 'التسجيل في الكورس | معهد الدراسات النفسية', path: '/enroll' });
+  useSeo({ title: 'التسجيل في الكورس | معهد الدراسات النفسية', path: '/enroll', noindex: true });
   const { courses, bundles, currency, content, authUser } = useSiteData();
   const priceList = usePriceList();
   // The two discounts marketing sets (التسويق ← الخصومات); the server prices with the same ones.
