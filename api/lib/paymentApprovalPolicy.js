@@ -15,7 +15,8 @@ const { isCashMethod } = require('./incomingTransfers');
  * Held here so the orders route and the payments route cannot drift apart: this
  * was enforced for one recorder's role, in one of the two.
  */
-const DIRECT_APPROVER_ROLES = new Set(['admin', 'manager']);
+// Customer service accepts outright too (2 Nov 2026: the manager's control on its pages, except deleting).
+const DIRECT_APPROVER_ROLES = new Set(['admin', 'manager', 'support']);
 
 function approverRoleOf(req) {
   return String(req?.staffRecord?.role || '').toLowerCase();

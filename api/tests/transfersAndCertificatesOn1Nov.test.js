@@ -33,7 +33,7 @@ test('the routes a transfer is confirmed through accept it, and the managers\' c
     const line = transfers.split('\n').find(row => row.startsWith(route));
     assert.ok(line && line.includes("requireAnyPermission('manage_financial', 'confirm_transfers')"), route);
   }
-  for (const route of ["router.post('/api/admin/incoming-transfers/import',", "router.post('/api/admin/incoming-transfers/merge-accounts',", "router.put('/api/admin/incoming-transfers/:id',", "router.delete('/api/admin/incoming-transfers/:id',"]) {
+  for (const route of ["router.post('/api/admin/incoming-transfers/import',", "router.post('/api/admin/incoming-transfers/merge-accounts',", "router.delete('/api/admin/incoming-transfers/:id',"]) {
     const line = transfers.split('\n').find(row => row.startsWith(route));
     assert.ok(line && !line.includes('confirm_transfers'), `${route} stays with the finance permission`);
   }
@@ -86,4 +86,19 @@ test('whoever confirms transfers reads the real payments list with its statuses,
   assert.match(model, /const effectiveOrders = readsOwnPayments \? staffOrders : orders;/);
   // the hook that fed the screen marks every row paid, which is why «قيد المراجعة» read 0 and «مؤكدة» read 500
   assert.match(read('admin/pages/dashboard/useStaffOrders.ts'), /status: 'paid' as const/);
+});
+
+test('customer service has the manager\'s hands on the pages it sees, and still cannot delete (2 Nov 2026)', () => {
+  const permissions = read('admin/pages/unified-client/useUnifiedClientPermissions.ts');
+  assert.match(permissions, /const isOnlineManager = currentStaff\?\.role === 'online_manager' \|\| isCustomerService;/);
+  assert.match(read('admin/pages/UnifiedClientPage.tsx'), /isAdmin=\{isAdmin \|\| isCustomerService\}/);
+  // the hero header's delete button is still the owner's list: isAdmin && canDelete, and canDelete is false for anyone off it
+  assert.match(read('admin/pages/unified-client/UnifiedClientHeroHeader.tsx'), /\{isAdmin && canDelete && \(/);
+  assert.match(read('api/routes/admin/subscribers.js'), /staffRole === 'online_manager'\s*\n\s*\|\| staffRole === 'support'/);
+  assert.match(read('api/lib/paymentApprovalPolicy.js'), /new Set\(\['admin', 'manager', 'support'\]\)/);
+  const transfers = read('api/routes/core/financepay.js');
+  assert.match(transfers, /const correctsTransfers = req => managesTransfers\(req\)/);
+  const deleteLine = transfers.split('\n').find(row => row.startsWith("router.delete('/api/admin/incoming-transfers/:id'"));
+  assert.ok(deleteLine && !deleteLine.includes('confirm_transfers'), 'deleting a transfer is not customer service\'s');
+  assert.match(transfers, /router\.delete\('\/api\/admin\/incoming-transfers\/:id'[\s\S]{0,400}managesTransfers\(req\)/);
 });

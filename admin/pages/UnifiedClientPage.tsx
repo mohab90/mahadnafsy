@@ -83,7 +83,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   useEnsureLectures();
   useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']); // nor these, since 11 Oct 2026 (siteLists.ts)
 
-  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData } = useUnifiedClientPermissions({ isAdmin, currentStaff });
+  const { isCustomerService, isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData } = useUnifiedClientPermissions({ isAdmin, currentStaff });
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -257,7 +257,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         heroCourseCount={heroCourseCount}
         lastCommDate={lastCommDate}
         canManageCourseAccess={canManageCourseAccess}
-        isAdmin={isAdmin}
+        isAdmin={isAdmin || isCustomerService}
         onDashboard={() => goBack('/dashboard')}
         onList={() => navigate(isSub ? '/dashboard/subscribers' : '/dashboard')}
         onCopyClientLink={() => {

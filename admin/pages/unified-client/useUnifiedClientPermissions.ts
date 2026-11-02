@@ -16,7 +16,10 @@ export function useUnifiedClientPermissions(params: {
 }) {
   const { isAdmin, currentStaff } = params;
 
-  const isOnlineManager = currentStaff?.role === 'online_manager';
+  // Customer service runs the clients' pages with the online manager's hands «عاوز هنا يبقى عندها نفس التحكم بتاع المدير في الصفحات اللي بتظهرلها ماعدا المسح» (2 Nov 2026): the login, the stop / activate button, the
+  // edit tab. Deleting stays with the owner's list (canDelete below), and so do the corrections of a recorded payment.
+  const isCustomerService = String(currentStaff?.role || '').toLowerCase() === 'support';
+  const isOnlineManager = currentStaff?.role === 'online_manager' || isCustomerService;
   const isCollectionManager = currentStaff?.role === 'collection' || currentStaff?.role === 'manager';
 
   // Read the permission the server checks, not a list of role names. This was
@@ -26,7 +29,7 @@ export function useUnifiedClientPermissions(params: {
   //
   // Never collection, whatever its grid holds: «زر صلاحية الكورسات وتفاصيل
   // الكورسات مينفعش يظهر للتحصيل ابدا» — and the routes refuse the role.
-  const canManageCourseAccess = isAdmin || (currentStaff?.role !== 'collection' && hasPermission(currentStaff ? {
+  const canManageCourseAccess = isAdmin || isCustomerService || (currentStaff?.role !== 'collection' && hasPermission(currentStaff ? {
     role: currentStaff.role as RoleKey,
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   } : null, 'manage_financial'));
@@ -60,6 +63,7 @@ export function useUnifiedClientPermissions(params: {
 
   return {
     currentStaff,
+    isCustomerService,
     canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData,
     isOnlineManager,
     isCollectionManager,

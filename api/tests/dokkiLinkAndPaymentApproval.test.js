@@ -42,11 +42,12 @@ const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../lib/paymentApprovalP
 const asRole = role => ({ staffRecord: { role }, isSuperAdmin: false });
 
 test('the manager and the admin accept outright; everyone else links a transfer, cash excepted', () => {
-  for (const role of ['manager', 'admin', 'MANAGER']) {
+  // Customer service since 2 Nov 2026: «نفس التحكم بتاع المدير في الصفحات اللي بتظهرلها ماعدا المسح».
+  for (const role of ['manager', 'admin', 'MANAGER', 'support', 'SUPPORT']) {
     assert.equal(mustLinkTransfer(asRole(role), 'فودافون كاش 2020'), false, `${role} accepts directly`);
   }
   assert.equal(mustLinkTransfer({ staffRecord: { role: 'sales' }, isSuperAdmin: true }, 'تحويل بنكي'), false, 'the super admin too');
-  for (const role of ['accountant', 'daqqi_manager', 'online_manager', 'sales_collection_manager', 'support']) {
+  for (const role of ['accountant', 'daqqi_manager', 'online_manager', 'sales_collection_manager']) {
     assert.equal(mustLinkTransfer(asRole(role), 'فودافون كاش 2020'), true, `${role} links a wallet transfer`);
     assert.equal(mustLinkTransfer(asRole(role), 'انستا باي'), true, `${role} links an instapay transfer`);
     assert.equal(mustLinkTransfer(asRole(role), 'نقدي'), false, `${role} counts cash, nothing to link`);
@@ -81,7 +82,7 @@ test('a desk payment is approved, rejected and linked through the payments route
   assert.doesNotMatch(tab, /notify\('error', '[^']*تحقق من أن الطلب/);
   assert.match(tab, /notify\('error', messageOf\(error, 'تعذر تأكيد الدفعة\.'\)\)/);
   // Accept is the manager's button; link is everyone's.
-  assert.match(tab, /const canAcceptDirectly = isAdmin \|\| approverRole === 'manager';/);
+  assert.match(tab, /const canAcceptDirectly = isAdmin \|\| approverRole === 'manager' \|\| approverRole === 'support';/);
   assert.match(tab, /\{canAcceptDirectly && \(\s*<button onClick=\{\(\) => handleConfirmOrder\(row\)\}/);
   assert.match(tab, /🔗 ربط/);
 });

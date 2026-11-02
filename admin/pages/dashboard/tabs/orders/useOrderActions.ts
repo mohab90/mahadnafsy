@@ -30,7 +30,7 @@ export function useOrderActions(props: OrdersTabProps) {
   // financial permission confirms against the transfer that brought the money
   // («🔗 ربط») — the server holds the same line (lib/paymentApprovalPolicy.js).
   const approverRole = String(currentStaff?.role || '').toLowerCase();
-  const canAcceptDirectly = isAdmin || approverRole === 'manager';
+  const canAcceptDirectly = isAdmin || approverRole === 'manager' || approverRole === 'support';
 
   // One list, two tables behind it. /api/admin/orders returns the orders table and,
   // after it, every payment a person recorded at a desk (source «crm»): an

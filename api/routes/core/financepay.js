@@ -384,8 +384,10 @@ const renamed = (aliases, method) => aliases[String(method || '').trim()] || met
 // The managers' correction of a transfer somebody entered wrong: the old values
 // go to the audit trail (lib/incomingTransfers.js updateTransfer / deleteTransfer).
 const managesTransfers = req => req.isSuperAdmin || ['admin', 'manager'].includes(String(req.staffRecord?.role || '').toLowerCase());
-router.put('/api/admin/incoming-transfers/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
-  if (!managesTransfers(req)) return res.status(403).json({ error: 'تعديل التحويلات للمديرين', code: 'MANAGERS_ONLY' });
+// Correcting a transfer is customer service's too; deleting one is not (managesTransfers).
+const correctsTransfers = req => managesTransfers(req) || String(req.staffRecord?.role || '').toLowerCase() === 'support';
+router.put('/api/admin/incoming-transfers/:id', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
+  if (!correctsTransfers(req)) return res.status(403).json({ error: 'تعديل التحويلات للمديرين', code: 'MANAGERS_ONLY' });
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();

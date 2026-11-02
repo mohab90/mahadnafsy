@@ -695,6 +695,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       req.isSuperAdmin
       || FULL_ACCESS_ROLES.includes(staffRole)
       || staffRole === 'online_manager'
+      || staffRole === 'support'
       || isInstituteOwner({ email: req.user?.email, uid: req.user?.uid, tenantId: req.tenantId })
     );
     if (credentialUpdate && !canUpdateCredentials) {

@@ -9,7 +9,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../../lib/fin
 const { logLeadEvent } = require('../../lib/crm');
 const { sanitize } = require('../../lib/helpers');
 const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { requireDeleteRight } = require('../../lib/deleteRights');
 const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
@@ -122,7 +122,7 @@ const refuseCollection = (req, res, message) => {
   return false;
 };
 
-router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   if (refuseCollection(req, res, 'صلاحية الكورسات مش من شغل التحصيل')) return;
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
