@@ -73,3 +73,6 @@ mahadnafsy_db_*.sql
 
 # Release settings kept on the owner's machine (the staging password for the E2E, a GitHub token)
 deploy/release.local.env
+
+# the question bank of the course whose slug is «schema» (api/tools/course-quiz-bank/schema.json)
+!api/tools/course-quiz-bank/schema.json
