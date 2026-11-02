@@ -99,7 +99,7 @@ test('the course published is in the sitemap and has its page; the draft has nei
   assert.doesNotMatch(sitemap.body, /draft-it/);
   const page = await call(router, '/api/seo/page/:kind(c|course|bundle)/:key', { params: { kind: 'c', key: 'family-therapy-it' } });
   assert.equal(page.statusCode, 200);
-  assert.match(page.body, /<title>العلاج الأسري \| معهد الدراسات النفسية<\/title>/);
+  assert.match(page.body, /<title>العلاج الأسري \| دبلومة معتمدة أونلاين \| معهد الدراسات النفسية<\/title>/);
   assert.match(page.body, /"@type":"Course"/);
   const draft = await call(router, '/api/seo/page/:kind(c|course|bundle)/:key', { params: { kind: 'c', key: 'draft-it' } });
   assert.equal(draft.statusCode, 404);
