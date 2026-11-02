@@ -36,7 +36,8 @@ async function signInStudent(page: Page) {
   await identifier.waitFor({ state: 'visible', timeout: 20_000 });
   await identifier.fill(STUDENT_EMAIL);
   await page.locator('input[type="password"]').first().fill(STUDENT_PASSWORD);
-  await page.getByRole('button', { name: /^دخول$/ }).first().click();
+  // The page's own submit button (the sign-in page has a «تسجيل الدخول» tab as well as the button, so the name alone is ambiguous).
+  await page.locator('form[novalidate] button[type="submit"]').first().click();
   await expect.poll(async () => (await page.context().cookies()).some(c => c.name === 'authToken' && !!c.value),
     { timeout: 20_000, message: 'no session cookie after signing in' }).toBe(true);
   await expect(page).not.toHaveURL(/\/auth(\?|$)/, { timeout: 20_000 });

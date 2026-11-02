@@ -54,14 +54,17 @@ test('every spelling of the number is asked for, and the email counts too', asyn
   assert.ok(query.params.includes('mona@example.com'), 'the email, case and spaces aside');
 });
 
-test('a real newcomer still becomes a lead', async () => {
+test('a real newcomer is asked about as a client first, and is not stopped by it', async () => {
   const conn = fakeConn();
   const seen = [];
   const original = conn.query;
   conn.query = async (sql, params) => { seen.push(String(sql)); return original(sql, params); };
-  // no client, and the lead lookup finds none: reaches the INSERT (the code-number and rep helpers are the real ones, which need a database)
-  await assert.rejects(ensureLeadForUser(conn, { tenantId: 't', user: { id: 'u2', name: 'جديد', phone: '1099999999' } }), () => true);
-  assert.ok(seen.some(sql => /FROM subscribers/.test(sql)), 'it asked whether the person is a client first');
+  // No client: it goes on to the lead lookup and the INSERT. The code-number and sales-rep helpers are the real ones and may or may not reach a
+  // database where this runs (CI has one, a laptop does not), so only the order of the questions is asserted, not how the write ends.
+  await ensureLeadForUser(conn, { tenantId: 't', user: { id: 'u2', name: 'جديد', phone: '1099999999' } }).catch(() => null);
+  const asked = seen.findIndex(sql => /FROM subscribers/.test(sql));
+  assert.ok(asked >= 0, 'it asked whether the person is a client first');
+  assert.equal(asked, 0, 'before anything else');
 });
 
 test('the forgotten-password code finds a client by every spelling of the number and goes where it was asked for', () => {

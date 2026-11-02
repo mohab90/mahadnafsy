@@ -42,7 +42,7 @@ test.describe('Student payment journey', () => {
     await identifier.waitFor({ state: 'visible', timeout: 20_000 });
     await identifier.fill(TEST_EMAIL);
     await page.locator('input[type="password"]').first().fill(TEST_PASSWORD);
-    await page.getByRole('button', { name: /^دخول$/ }).first().click();
+    await page.locator('form[novalidate] button[type="submit"]').first().click();
 
     // Signed in: the session cookie is set and the app leaves the login page.
     await expect.poll(async () => (await page.context().cookies()).some(c => c.name === 'authToken' && !!c.value),
