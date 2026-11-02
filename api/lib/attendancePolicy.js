@@ -7,7 +7,7 @@
 //   • working day 11:00–18:30               → lateness is minutes after the
 //                                             start, early leave minutes before
 //                                             the end
-//   • lateness tiers: >10 min ¼ day, >30 ½, >120 a whole day (and the same
+//   • lateness tiers: >5 min ¼ day (2 h of the 8), >30 ½ (4 h), >130 a whole day (and the same
 //     tiers for leaving early, unless the policy turns that off)
 //   • a monthly morning permission (arrive up to 2 h late) and evening one
 //     (leave up to 1.5 h early): any HR approved as LATE_PERMIT / EARLY_LEAVE
@@ -20,7 +20,7 @@
 // Pure: no database. lib/attendanceImport.js feeds it and writes the result.
 
 const DEFAULT_TIERS = Object.freeze([
-  { over: 10, days: 0.25 }, { over: 30, days: 0.5 }, { over: 120, days: 1 },
+  { over: 5, days: 0.25 }, { over: 30, days: 0.5 }, { over: 130, days: 1 },
 ]);
 
 const toMinutes = value => {

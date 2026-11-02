@@ -3,7 +3,7 @@
  * The fingerprint sheet, end to end against a real MariaDB: a month's device
  * export is matched on each employee's device number, judged under the
  * company policy (Friday off, 11:00–18:30, the monthly morning permission,
- * lateness >10 min ¼ day, >30 ½, >120 a day), written to attendance, and
+ * lateness >5 min ¼ day, >30 ½, >130 a day), written to attendance, and
  * payroll deducts exactly those days at the basic salary HR typed on the
  * employee. Runs only with DB_* (or TEST_DB_*).
  */

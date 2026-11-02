@@ -138,7 +138,9 @@ function detectLayout(rows) {
   // No headings: the attlog. The number is the first cell; the stamp is the
   // first cell holding a date and a time.
   const sample = rows.find(row => row.length >= 2) || [];
-  const stampCol = sample.findIndex(cell => /\d{4}[-/]\d{1,2}[-/]\d{1,2}.*\d{1,2}:\d{2}/.test(String(cell)));
+  // Saved from Excel the stamp is a date number («46296.4366» = 1 Oct 2026 10:29), which the cell's own format hid.
+  const isSerialStamp = cell => typeof cell === 'number' && cell >= 36526 && cell < 73051 && cell % 1 !== 0;
+  const stampCol = sample.findIndex(cell => /\d{4}[-/]\d{1,2}[-/]\d{1,2}.*\d{1,2}:\d{2}/.test(String(cell)) || isSerialStamp(cell));
   if (stampCol > 0) return { headerRow: -1, bio: 0, name: -1, dateTime: stampCol, date: -1, time: -1, in: -1, out: -1 };
   return null;
 }

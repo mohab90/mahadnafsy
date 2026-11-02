@@ -31,6 +31,9 @@ const latinDigits = value => value
 // 50KB it was saved as a broken image — every transfer receipt over ~37 KB, and
 // every event picture. The JSON body itself stops at 10 MB (httpApp.js).
 const MAX_IMAGE_LEN = 8_000_000;
+// A whole file sent inside the JSON (the fingerprint sheet is an .xlsx as base64, an attendance CSV is text) is the other long string. Cut at 50KB an
+// .xlsx over ~37 KB reached its route as a broken zip and was refused as «مش Excel سليم» (2 Nov 2026, بصمه شهر 10.xlsx = 64 KB). The route checks the size.
+const FILE_FIELDS = new Set(['fileBase64', 'csv', 'csvText']);
 const IMAGE_DATA_URL = /^data:image\/[a-z+.-]+;base64,/i;
 
 /** Deep-walk a value and sanitize strings. */
@@ -41,7 +44,7 @@ function deepSanitize(value, depth = 0, key = '') {
     let v = value.replace(/\0/g, '');
     if (key && NUMERIC_KEY.test(key)) v = latinDigits(v);
     // Cap length
-    const cap = IMAGE_DATA_URL.test(v) ? MAX_IMAGE_LEN : MAX_FIELD_LEN;
+    const cap = IMAGE_DATA_URL.test(v) || FILE_FIELDS.has(key) ? MAX_IMAGE_LEN : MAX_FIELD_LEN;
     if (v.length > cap) v = v.slice(0, cap);
     return v;
   }

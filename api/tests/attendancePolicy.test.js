@@ -1,7 +1,7 @@
 'use strict';
 // The company's attendance rules (lib/attendancePolicy.js), as the owner set
-// them: Friday off; 11:00–18:30; lateness over 10 minutes costs a quarter day,
-// over 30 half a day, over two hours the whole day; a monthly morning
+// them: Friday off; 11:00–18:30; lateness over 5 minutes costs a quarter day (2 h),
+// over 30 half a day (4 h), over 130 the whole day; a monthly morning
 // permission of two hours and an evening one of an hour and a half.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -15,13 +15,13 @@ const POLICY = {
 const NO_PERMITS = { ...POLICY, morning_permits_per_month: 0, evening_permits_per_month: 0 };
 const day = (result, date) => result.days.find(d => d.date === date);
 
-test('the tiers: exactly 10 minutes is free, 11 a quarter, 31 a half, 121 the day', () => {
-  assert.equal(tierDays(10, DEFAULT_TIERS), 0);
-  assert.equal(tierDays(11, DEFAULT_TIERS), 0.25);
+test('the tiers: exactly 5 minutes is free, 6 a quarter, 31 a half, 131 the day', () => {
+  assert.equal(tierDays(5, DEFAULT_TIERS), 0);
+  assert.equal(tierDays(6, DEFAULT_TIERS), 0.25);
   assert.equal(tierDays(30, DEFAULT_TIERS), 0.25);
   assert.equal(tierDays(31, DEFAULT_TIERS), 0.5);
-  assert.equal(tierDays(120, DEFAULT_TIERS), 0.5);
-  assert.equal(tierDays(121, DEFAULT_TIERS), 1);
+  assert.equal(tierDays(130, DEFAULT_TIERS), 0.5);
+  assert.equal(tierDays(131, DEFAULT_TIERS), 1);
 });
 
 test('Friday is off; a working day with no punch is an absence; the month is judged only up to today', () => {
@@ -37,8 +37,8 @@ test('first and last punch of the day; lateness and early leave both use the tie
   const r = evaluateMonth({
     policy: NO_PERMITS, month: '2026-10', lastDate: '2026-10-07',
     punches: {
-      '2026-10-01': ['11:10', '13:00', '18:30'], // 10 min late: free
-      '2026-10-03': ['11:11', '18:30'],          // quarter
+      '2026-10-01': ['11:05', '13:00', '18:30'], // 5 min late: free
+      '2026-10-03': ['11:06', '18:30'],          // quarter (2 h)
       '2026-10-04': ['11:45', '18:30'],          // half
       '2026-10-05': ['13:30', '18:30'],          // whole day
       '2026-10-06': ['11:00', '17:45'],          // left 45 min early: half
@@ -46,7 +46,7 @@ test('first and last punch of the day; lateness and early leave both use the tie
     },
   });
   assert.deepEqual(['01', '03', '04', '05', '06', '07'].map(d => day(r, `2026-10-${d}`).deductionDays), [0, 0.25, 0.5, 1, 0.5, 1]);
-  assert.equal(day(r, '2026-10-01').checkIn, '11:10');
+  assert.equal(day(r, '2026-10-01').checkIn, '11:05');
   assert.equal(day(r, '2026-10-01').checkOut, '18:30');
   assert.equal(r.summary.deductionDays, 3.25);
 });
@@ -104,4 +104,10 @@ test('one punch is flagged for HR and costs nothing; days already decided are le
 test('days before the hire date are not absences', () => {
   const r = evaluateMonth({ policy: NO_PERMITS, month: '2026-10', firstDate: '2026-10-04', lastDate: '2026-10-05' });
   assert.deepEqual(r.days.map(d => d.date), ['2026-10-04', '2026-10-05']);
+});
+
+test('the owner\'s rule at the edges: 5 min free, 6 costs 2 h, 31 costs 4 h, 131 costs the whole day', () => {
+  const punches = { '2026-10-01': ['11:05', '18:30'], '2026-10-04': ['11:06', '18:30'], '2026-10-05': ['11:31', '18:30'], '2026-10-06': ['13:11', '18:30'], '2026-10-07': ['13:10', '18:30'] };
+  const r = evaluateMonth({ policy: NO_PERMITS, month: '2026-10', punches, lastDate: '2026-10-07' });
+  assert.deepEqual(['01', '04', '05', '06', '07'].map(d => day(r, `2026-10-${d}`).deductionDays), [0, 0.25, 0.5, 1, 0.5]);
 });

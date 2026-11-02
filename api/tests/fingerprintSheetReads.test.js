@@ -64,3 +64,33 @@ test('a zip that is not a workbook, or a file that is not a zip, is a 400 with a
     assert.throws(() => readXlsx(buffer), error => error.statusCode === 400 && error.code === 'NOT_A_WORKBOOK' && /Excel/.test(error.message));
   }
 });
+
+// ── «بصمه شهر 10.xlsx»: the device's attlog saved from Excel — no headings, the number first, the time as an Excel date number ──
+const { readDeviceSheet } = require('../lib/attendanceSheet');
+const { deepSanitize } = require('../middleware/sanitize');
+
+const attlogSheet = rows => `<worksheet><sheetData>${rows.map((cells, i) => `<row r="${i + 1}">${cells.map((v, c) => `<c r="${'ABCDEF'[c]}${i + 1}"><v>${v}</v></c>`).join('')}</row>`).join('')}</sheetData></worksheet>`;
+const workbookOf = rows => zip([['xl/workbook.xml', WORKBOOK], ['xl/_rels/workbook.xml.rels', RELS], ['xl/worksheets/sheet1.xml', attlogSheet(rows)]]);
+
+test('an attlog saved as .xlsx (number, date-number time, 1, 0, 1, 0) is read into punches, the month before and after dropped', () => {
+  // 46296 = 1 Oct 2026; .4375 = 10:30. 46327 = 1 Nov 2026.
+  const buffer = workbookOf([[143, 46296.4375, 1, 0, 1, 0], [143, 46296.77083, 1, 0, 1, 0], [21, 46297.46875, 1, 0, 1, 0], [21, 46327.5, 1, 0, 1, 0]]);
+  const sheet = readDeviceSheet(buffer, { filename: 'بصمه شهر 10.xlsx', month: '2026-10' });
+  assert.deepEqual(sheet.punches, [
+    { bioNo: '143', name: '', date: '2026-10-01', time: '10:30' },
+    { bioNo: '143', name: '', date: '2026-10-01', time: '18:30' },
+    { bioNo: '21', name: '', date: '2026-10-02', time: '11:15' },
+  ]);
+  assert.equal(sheet.skipped.outsideMonth, 1);
+});
+
+test('the body sanitiser does not cut a file sent as base64 (it cut every .xlsx over ~37 KB, so the zip arrived broken)', () => {
+  const sheetRows = Array.from({ length: 3000 }, (_, i) => [1 + (i % 29), 46296 + i / 100, 1, 0, 1, 0]);
+  const base64 = workbookOf(sheetRows).toString('base64');
+  assert.ok(base64.length > 50_000, 'a realistic size');
+  const body = deepSanitize({ fileBase64: `data:application/octet-stream;base64,${base64}`, filename: 'x.xlsx', note: 'n'.repeat(60_000) });
+  assert.equal(body.fileBase64.length, base64.length + 'data:application/octet-stream;base64,'.length);
+  assert.equal(body.note.length, 50_000, 'an ordinary text field is still capped');
+  const buffer = Buffer.from(body.fileBase64.replace(/^data:[^,]*,/, ''), 'base64');
+  assert.equal(readXlsx(buffer)[0].rows.length, 3000);
+});

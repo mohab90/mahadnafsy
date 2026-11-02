@@ -46,7 +46,7 @@ const fromPolicy = (policy?: Policy): Draft => ({
   evening_permit_minutes: Number(policy?.evening_permit_minutes ?? 90),
   morning_permits_per_month: Number(policy?.morning_permits_per_month ?? 1),
   evening_permits_per_month: Number(policy?.evening_permits_per_month ?? 1),
-  late_tiers_json: policy?.late_tiers_json ?? [{ over: 10, days: 0.25 }, { over: 30, days: 0.5 }, { over: 120, days: 1 }],
+  late_tiers_json: policy?.late_tiers_json ?? [{ over: 5, days: 0.25 }, { over: 30, days: 0.5 }, { over: 130, days: 1 }],
   early_leave_tiered: Number(policy?.early_leave_tiered ?? 1),
 });
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];

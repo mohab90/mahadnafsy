@@ -13,7 +13,7 @@ const DEFAULT_POLICY = Object.freeze({
   overtime_multiplier: 1.5,
   audit_retention_days: 2555,
   // Friday off, 11:00–18:30, a monthly morning permission of 2 h and evening
-  // one of 1.5 h, lateness >10 min ¼ day, >30 ½, >2 h a whole day — the
+  // one of 1.5 h, lateness >5 min ¼ day (2 h), >30 ½ (4 h), >130 a whole day — the
   // institute's own rules (migration 243), used until HR saves a policy.
   weekend_days_json: [5],
   work_start_time: '11:00:00',
@@ -22,7 +22,7 @@ const DEFAULT_POLICY = Object.freeze({
   evening_permit_minutes: 90,
   morning_permits_per_month: 1,
   evening_permits_per_month: 1,
-  late_tiers_json: [{ over: 10, days: 0.25 }, { over: 30, days: 0.5 }, { over: 120, days: 1 }],
+  late_tiers_json: [{ over: 5, days: 0.25 }, { over: 30, days: 0.5 }, { over: 130, days: 1 }],
   early_leave_tiered: 1,
 });
 const ATTENDANCE_POLICY_COLUMNS = `work_start_time,work_end_time,morning_permit_minutes,evening_permit_minutes,
