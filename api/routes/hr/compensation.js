@@ -767,6 +767,85 @@ router.get('/api/staff/me/payslip', requireAuth, async (req, res) => {
   } catch (e) { hrError(res, e); }
 });
 
+// «خلي كل موظف يشوف كل التفاصيل بتاعت الراتب بتاعه غيابات واذونات وغيره»: one employee's own month in one answer — every day the fingerprint judged (arrival,
+// leaving, minutes late, the permission used, the part of the day deducted), the leave and permission requests of the month, the bonuses recorded for it with what
+// was required and reached, and the payslip once the month's payroll is approved. Only ever the signed-in employee's own rows.
+router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
+  try {
+    const staff = await _resolveStaffByUser(req);
+    if (!staff) return res.status(404).json({ error: 'Staff record not found' });
+    const now = cairoYearMonth();
+    const month = Number(req.query.month) || now.month;
+    const year = Number(req.query.year) || now.year;
+    if (!(month >= 1 && month <= 12 && year >= 2000 && year <= 2100)) return res.status(400).json({ error: 'اختار الشهر' });
+    const first = `${year}-${String(month).padStart(2, '0')}-01`;
+    const last = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    const [[days], [leaves], [bonuses], [[payslip]]] = await Promise.all([
+      pool.query(
+        `SELECT date, status, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, source, leave_id, notes
+           FROM attendance_logs WHERE tenant_id=? AND staff_id=? AND date BETWEEN ? AND ? ORDER BY date`,
+        [req.tenantId, staff.id, first, last]),
+      pool.query(
+        `SELECT id, type, status, start_date, end_date, start_time, end_time, total_days, reason, admin_note
+           FROM leaves WHERE tenant_id=? AND staff_id=? AND start_date<=? AND end_date>=? AND status IN ('PENDING','APPROVED','REJECTED')
+          ORDER BY start_date`,
+        [req.tenantId, staff.id, last, first]),
+      pool.query(
+        `SELECT id, type, amount, currency, status, reason, target_value, achieved_value, target_unit
+           FROM employee_bonuses WHERE tenant_id=? AND staff_id=? AND for_month=? AND for_year=? AND status IN ('PENDING','APPROVED')
+          ORDER BY created_at`,
+        [req.tenantId, staff.id, month, year]),
+      pool.query(
+        `SELECT pi.base_salary, pi.total_allowances, pi.commission, pi.bonus, pi.bonus_note, pi.late_deductions, pi.absence_deductions,
+                pi.advance_deductions, pi.other_deductions, pi.deductions_note, pi.net_salary, pi.attendance_days, pi.absent_days, pi.late_minutes,
+                pr.status AS run_status
+           FROM payroll_items pi JOIN payroll_runs pr ON pr.id=pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
+          WHERE pi.tenant_id=? AND pi.staff_id=? AND pr.month=? AND pr.year=? AND pr.status IN ('APPROVED','PAID') LIMIT 1`,
+        [req.tenantId, staff.id, month, year]),
+    ]);
+    const dateOnly = value => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10));
+    const hhmm = value => (value ? String(value).slice(0, 5) : null);
+    const rows = days.map(d => ({
+      date: dateOnly(d.date), status: d.status, checkIn: hhmm(d.check_in), checkOut: hhmm(d.check_out),
+      lateMinutes: Number(d.late_minutes) || 0, earlyLeaveMinutes: Number(d.early_leave_minutes) || 0,
+      deductionDays: d.deduction_days == null ? 0 : Number(d.deduction_days), permit: d.permit_used || null,
+      flag: d.review_flag || null, source: d.source, onLeave: Boolean(d.leave_id), note: d.notes || null,
+    }));
+    const money = value => Number(value) || 0;
+    res.json({
+      month, year,
+      summary: {
+        present: rows.filter(d => d.status !== 'ABSENT').length,
+        absent: rows.filter(d => d.status === 'ABSENT').length,
+        lateDays: rows.filter(d => d.lateMinutes > 0).length,
+        lateMinutes: rows.reduce((sum, d) => sum + d.lateMinutes, 0),
+        deductionDays: Math.round(rows.reduce((sum, d) => sum + d.deductionDays, 0) * 100) / 100,
+        oneStamp: rows.filter(d => d.flag).length,
+      },
+      days: rows,
+      leaves: leaves.map(l => ({
+        id: l.id, type: l.type, status: l.status, from: dateOnly(l.start_date), to: dateOnly(l.end_date),
+        startTime: l.start_time, endTime: l.end_time, totalDays: money(l.total_days), reason: l.reason || null, adminNote: l.admin_note || null,
+      })),
+      bonuses: bonuses.map(b => ({
+        id: b.id, type: b.type, amount: money(b.amount), currency: b.currency, status: b.status, note: b.reason || null,
+        targetValue: b.target_value == null ? null : money(b.target_value), achievedValue: b.achieved_value == null ? null : money(b.achieved_value),
+        targetUnit: b.target_unit || null,
+      })),
+      payslip: payslip ? {
+        status: payslip.run_status, base: money(payslip.base_salary), allowances: money(payslip.total_allowances), commission: money(payslip.commission),
+        bonus: money(payslip.bonus), bonusNote: payslip.bonus_note || null,
+        lateDeduction: money(payslip.late_deductions), absenceDeduction: money(payslip.absence_deductions),
+        advanceDeduction: money(payslip.advance_deductions), otherDeduction: money(payslip.other_deductions), deductionsNote: payslip.deductions_note || null,
+        net: money(payslip.net_salary),
+      } : null,
+    });
+  } catch (error) {
+    logger.error('[staff/me/month-detail]', error.message);
+    hrError(res, error);
+  }
+});
+
 router.get('/api/staff/me/commissions', requireAuth, async (req, res) => {
   try {
     const staff = await _resolveStaffByUser(req);

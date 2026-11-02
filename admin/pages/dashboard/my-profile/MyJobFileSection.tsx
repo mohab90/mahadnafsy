@@ -3,6 +3,7 @@ import { BadgeCheck, Building2, CalendarCheck2, Gavel, Smile, Wallet } from 'luc
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import MyHrFilePanel from '../staff-settings/MyHrFilePanel';
+import { MyMonthDetail } from './MyMonthDetail';
 import type { MyDisciplinary, MyHrSnapshot } from './useMyHr';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
@@ -138,6 +139,8 @@ export function MyJobFileSection({ hr, disciplinary, setDisciplinary, notify }: 
           </Card>
         </div>
       )}
+
+      <MyMonthDetail />
 
       <Card icon={Gavel} title="التنبيهات والجزاءات" tone="bg-rose-50 text-rose-600">
         {disciplinary.length === 0 ? (
