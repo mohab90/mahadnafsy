@@ -80,7 +80,7 @@ test('the video count is gated on the same permission the screen checks', () => 
   const route = codeOnly(read('api/routes/core/content.js'));
 
   // Both writes: setting a new enrolment's limit, and changing an existing one.
-  assert.match(route, /router\.put\('\/api\/admin\/subscribers\/:id\/course-access\/:enrollmentId'[\s\S]{0,140}requirePermission\('manage_financial'\)/);
+  assert.match(route, /router\.put\('\/api\/admin\/subscribers\/:id\/course-access\/:enrollmentId'[\s\S]{0,140}requireAnyPermission\('manage_financial', 'confirm_transfers'\)/);
   assert.match(route, /router\.post\('\/api\/admin\/enrollments'[\s\S]{0,140}requirePermission\('manage_financial'\)/);
   assert.ok(!route.includes("requirePermission('manage_courses')"),
     'a client-account action is gated on the catalogue-authoring permission again');
