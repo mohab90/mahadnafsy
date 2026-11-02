@@ -3,7 +3,7 @@ import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { LogIn, RefreshCw, Search, ShieldAlert, Globe, Monitor, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { downloadCsv } from '../../../../../shared/csv';
-import { type LoginEvent, STATE_META, deviceLabel, fmtTime } from './loginUi';
+import { type LoginEvent, STATE_META, branchChip, deviceLabel, fmtTime } from './loginUi';
 
 // Every sign-in attempt, whoever it was for — the second mode of the sign-in page
 // (LoginAccountsPanel). A login row is an authentication event, not a CRM record,
@@ -50,9 +50,9 @@ export function LoginHistoryPanel() {
   useEffect(() => { void load(); }, [load]);
 
   const exportCsv = () => {
-    const header = ['التاريخ', 'العميل', 'الرقم', 'البريد', 'IP', 'الجهاز', 'الحالة', 'السبب'];
+    const header = ['التاريخ', 'العميل', 'الرقم', 'الفرع', 'البريد', 'IP', 'الجهاز', 'الحالة', 'السبب'];
     const body = rows.map(r => [
-      fmtTime(r.created_at), r.name || '', r.phone || '', r.email || '', r.ip || '', deviceLabel(r.user_agent),
+      fmtTime(r.created_at), r.name || '', r.phone || '', branchChip(r.client_kind, r.branch_label).text, r.email || '', r.ip || '', deviceLabel(r.user_agent),
       STATE_META[r.state]?.label || r.status, r.reason_label || '',
     ]);
     downloadCsv(`login-history-${cairoDateOnly()}`, [header, ...body]);
@@ -151,6 +151,7 @@ export function LoginHistoryPanel() {
                 <th className="py-2.5 px-3 font-semibold">التاريخ والوقت</th>
                 <th className="py-2.5 px-3 font-semibold">العميل</th>
                 <th className="py-2.5 px-3 font-semibold">الرقم</th>
+                <th className="py-2.5 px-3 font-semibold">الفرع</th>
                 <th className="py-2.5 px-3 font-semibold">IP</th>
                 <th className="py-2.5 px-3 font-semibold">الجهاز</th>
                 <th className="py-2.5 px-3 font-semibold">الحالة</th>
@@ -159,9 +160,9 @@ export function LoginHistoryPanel() {
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
-                <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">جارٍ التحميل…</td></tr>
+                <tr><td colSpan={8} className="py-10 text-center text-gray-400 text-sm">جارٍ التحميل…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
+                <tr><td colSpan={8} className="py-10 text-center text-gray-400 text-sm">
                   <Monitor size={30} className="mx-auto mb-2 opacity-40" />
                   لا توجد تسجيلات دخول مطابقة
                 </td></tr>
@@ -175,6 +176,9 @@ export function LoginHistoryPanel() {
                       <p className="text-[11px] text-gray-400">{r.email || '—'}{r.client_code ? ` · ${r.client_code}` : ''}</p>
                     </td>
                     <td className="py-2.5 px-3 text-xs font-mono text-gray-600" dir="ltr">{r.phone || '—'}</td>
+                    <td className="py-2.5 px-3">
+                      {(() => { const chip = branchChip(r.client_kind, r.branch_label); return (<><span className={`text-[11px] px-2 py-0.5 rounded-lg font-bold ${chip.cls}`}>{chip.text}</span>{r.also_lead ? <span className="block text-[10px] text-red-600 mt-0.5" title="ليد مفتوح بنفس الرقم أو الإيميل — مكرر">ليد مكرر</span> : null}</>); })()}
+                    </td>
                     <td className="py-2.5 px-3 text-xs font-mono text-gray-600" dir="ltr">{r.ip || '—'}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-600" title={r.user_agent || ''}>{deviceLabel(r.user_agent)}</td>
                     <td className="py-2.5 px-3">

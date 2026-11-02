@@ -1,3 +1,4 @@
+import { isCoursePayment } from '../../../lib/agreedPrice';
 import React, { useState, useCallback, useEffect } from 'react';
 import { cairoDateOnly, cairoWeekStart, cairoDaysAhead } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
@@ -263,7 +264,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
       // told reception «متبقي 0» for a client who has paid nothing. Same
       // predicate as useOverviewDerived, ClientDbTab and FinancialTab.
       const paid = (s.paymentHistory || []).reduce((sum, p) => (
-        p.currency === 'EGP' && (!p.status || p.status === 'paid') ? sum + Number(p.amount) : sum
+        p.currency === 'EGP' && (!p.status || p.status === 'paid') && isCoursePayment(p) ? sum + Number(p.amount) : sum
       ), 0);
       return { subscriberId: s.id, name: s.name, phone: s.phone, bookedAt: s.createdAt, amountPaid: paid };
     });
@@ -298,7 +299,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
       ...newSubs.map(s => {
         const chosenCourseId = daqqiAddClientsCourseSel[s.id] || round.courseId;
         const paid = (s.paymentHistory || [])
-          .filter(p => p.currency === 'EGP' && (!p.status || p.status === 'paid') && (!p.courseId || p.courseId === chosenCourseId))
+          .filter(p => p.currency === 'EGP' && (!p.status || p.status === 'paid') && isCoursePayment(p) && (!p.courseId || p.courseId === chosenCourseId))
           .reduce((sum, p) => sum + Number(p.amount), 0);
         return { subscriberId: s.id, name: s.name, phone: s.phone, bookedAt: s.createdAt || cairoDateOnly(), amountPaid: paid };
       }),
@@ -920,7 +921,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
               phone: paySubject?.phone,
               email: paySubject?.email,
               branch: paySubject?.branch,
-              enrolledCourseIds: paySubject?.enrolledCourseIds,
+              enrolledCourseIds: paySubject?.enrolledCourseIds, enrolledBundleIds: paySubject?.enrolledBundleIds,
               paymentHistory: paySubject?.paymentHistory,
               customPrices: paySubject?.customPrices,
               priorPaid: paySubject?.priorPaid,

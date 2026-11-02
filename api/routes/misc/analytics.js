@@ -128,6 +128,7 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdminOrS
 // ones nobody's account matches) beside it.
 
 const { reasonLabel } = require('../../lib/loginReasons');
+const { clientKinds } = require('../../lib/loginClientKind');
 const SIGN_IN_OK = ['success', '2fa_success'];
 // A password step that asked for a code and was followed by the code within ten minutes finished.
 const TWO_FA_WINDOW_MS = 10 * 60 * 1000;
@@ -216,11 +217,24 @@ router.get('/api/admin/security/accounts', requireAuth, requireAdmin, async (req
         [req.tenantId, ids]);
       for (const row of lasts) lastOf.set(String(row.user_id), row);
     }
+    // Who each account is in the client base, by the number in every spelling and by the email (lib/loginClientKind.js), not only by the
+    // firebase_uid link a client gets the first time they open their own page.
+    const kinds = await clientKinds(pool, {
+      tenantId: req.tenantId,
+      people: rows.map(row => ({ key: String(row.id), phone: row.phone, email: row.email, subscriberId: row.subscriber_id })),
+    });
     const out = rows.map(row => {
       const c = counts.get(String(row.id)) || {};
+      const kind = kinds.get(String(row.id)) || {};
       const last = lastOf.get(String(row.id)) || null;
       return {
         ...row,
+        subscriber_id: row.subscriber_id || kind.subscriber_id || null,
+        client_code: row.client_code || kind.client_code || null,
+        name: row.name || kind.name || null,
+        client_kind: kind.kind || 'none',
+        branch_label: kind.branch_label || '—',
+        also_lead: Boolean(kind.also_lead),
         login_count: Math.max(Number(row.login_count) || 0, Number(c.ok) || 0),
         failed_7d: Number(c.failed_7d) || 0,
         ips_7d: Number(c.ips_7d) || 0,
@@ -329,7 +343,22 @@ router.get('/api/admin/security/login-history', requireAuth, requireAdmin, async
         WHERE ${where}
         ORDER BY h.id DESC LIMIT ?`,
       [...params, limit]);
-    res.json(rows.map(row => shapeEvent(row, rows.filter(other => other.user_id && other.user_id === row.user_id && other.id > row.id))));
+    const kinds = await clientKinds(pool, {
+      tenantId: req.tenantId,
+      people: rows.map(row => ({ key: String(row.id), phone: row.phone, email: row.email, subscriberId: row.subscriber_id })),
+    });
+    res.json(rows.map(row => {
+      const kind = kinds.get(String(row.id)) || {};
+      return {
+        ...shapeEvent(row, rows.filter(other => other.user_id && other.user_id === row.user_id && other.id > row.id)),
+        subscriber_id: row.subscriber_id || kind.subscriber_id || null,
+        client_code: row.client_code || kind.client_code || null,
+        name: row.name || kind.name || null,
+        client_kind: kind.kind || 'none',
+        branch_label: kind.branch_label || '—',
+        also_lead: Boolean(kind.also_lead),
+      };
+    }));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

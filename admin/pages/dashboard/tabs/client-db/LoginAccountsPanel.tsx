@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Search, ShieldAlert, UserCheck, PhoneOff, Users, Wallet, ChevronDown, ChevronLeft, Ban, CheckCircle2, Unlock, Globe } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
-import { type AttemptState, type LoginEvent, STATE_META, deviceLabel, fmtTime } from './loginUi';
+import { type AttemptState, type LoginEvent, STATE_META, branchChip, deviceLabel, fmtTime } from './loginUi';
 import { LoginHistoryPanel } from './LoginHistoryPanel';
 
 // «حسابات الدخول» and «سجل تسجيلات الدخول» in one page (16 Oct 2026).
@@ -35,6 +35,9 @@ interface AccountRow {
   last_status: AttemptState | null;
   last_reason: string | null;
   last_attempt_at: string | null;
+  client_kind?: 'client' | 'lead' | 'none';
+  branch_label?: string;
+  also_lead?: boolean;
 }
 
 interface Stats { total?: number; without_phone?: number; verified?: number; locked?: number; never?: number }
@@ -146,7 +149,7 @@ export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId, notify
   };
 
   const num = (n: number | undefined) => (n ?? 0).toLocaleString('ar-EG-u-nu-latn');
-  const columns = 9;
+  const columns = 10;
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -209,6 +212,7 @@ export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId, notify
                 <tr className="text-gray-500 text-right border-b border-gray-100">
                   <th className="py-2.5 px-3 font-semibold">العميل</th>
                   <th className="py-2.5 px-3 font-semibold">الرقم</th>
+                  <th className="py-2.5 px-3 font-semibold">الفرع</th>
                   <th className="py-2.5 px-3 font-semibold">مرات الدخول</th>
                   <th className="py-2.5 px-3 font-semibold">آخر محاولة</th>
                   <th className="py-2.5 px-3 font-semibold">IP</th>
@@ -243,6 +247,9 @@ export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId, notify
                         <td className="py-2.5 px-3">
                           {r.phone ? <span className="font-mono text-xs" dir="ltr">{r.phone}</span>
                             : <span className="text-xs font-bold leading-none text-red-400" title="مفيش رقم" aria-label="مفيش رقم">—</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {(() => { const chip = branchChip(r.client_kind, r.branch_label); return (<><span className={`text-[11px] px-2 py-0.5 rounded-lg font-bold ${chip.cls}`}>{chip.text}</span>{r.also_lead ? <span className="block text-[10px] text-red-600 mt-0.5" title="ليد مفتوح بنفس الرقم أو الإيميل — مكرر">ليد مكرر</span> : null}</>); })()}
                         </td>
                         <td className="py-2.5 px-3 text-xs text-gray-700">
                           <span className="font-bold">{num(r.login_count ?? 0)}</span>

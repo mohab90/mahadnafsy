@@ -78,6 +78,14 @@ export function clientItems(
   // A track the client was enrolled in is the track, even when no payment or
   // saved price names it: 11 clients showed the courses inside one instead.
   (subscriber.enrolledBundleIds || []).forEach(id => { if (id) keys.add(`bundle:${id}`); });
+  // A client who holds every course of a track holds the track: the rule the payment dialog always had, now in the one place both the table and
+  // the dialog read, so they cannot say two things.
+  const enrolledSet = new Set(subscriber.enrolledCourseIds || []);
+  for (const bundle of bundles) {
+    const key = `bundle:${bundle.id}`;
+    const ids = (bundle.courses || []).map(course => course.id);
+    if (!keys.has(key) && ids.length > 1 && ids.every(id => enrolledSet.has(id))) keys.add(key);
+  }
   const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
     .flatMap(item => bundles.find(bundle => `bundle:${bundle.id}` === item)?.courses?.map(course => course.id) || []));
   (subscriber.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });
@@ -133,7 +141,9 @@ export function agreedPriceFor(
   const custom = Number(subscriber.customPrices?.[item]) || 0;
   if (custom > 0) return custom;
   const booked = (subscriber.paymentHistory || [])
-    .filter(payment => (isCollected(payment) || payment.status === 'pending') && itemKeyOf(payment) === item
+    // Only the item's own money: a certificate or a carnet names the course too (the «الكورس المرتبط»), and the price it recorded is not the
+    // course's — it was read as the course's agreed price, so one client's «متبقي» differed between the table and the booking button.
+    .filter(payment => (isCollected(payment) || payment.status === 'pending') && isCoursePayment(payment) && itemKeyOf(payment) === item
       && (!currency || payment.currency === currency))
     .reduce((max, payment) => Math.max(max, Number(payment.courseExpected) || 0), 0);
   if (booked > 0) return Math.max(booked, paidFor(subscriber, item, currency));

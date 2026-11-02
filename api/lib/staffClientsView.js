@@ -148,7 +148,8 @@ function agreedPriceFor(client, item, catalogue, currency) {
   const custom = Number(client.customPrices?.[item]) || 0;
   if (custom > 0) return custom;
   const booked = (client.paymentHistory || [])
-    .filter(payment => (isCollected(payment) || payment.status === 'pending') && itemKeyOf(payment) === item && (!currency || payment.currency === currency))
+    // Only the item's own money, as admin/lib/agreedPrice.ts: a certificate or a carnet names the course too and its price is not the course's.
+    .filter(payment => (isCollected(payment) || payment.status === 'pending') && isCoursePayment(payment) && itemKeyOf(payment) === item && (!currency || payment.currency === currency))
     .reduce((max, payment) => Math.max(max, Number(payment.courseExpected) || 0), 0);
   if (booked > 0) return Math.max(booked, paidFor(client, item, currency));
   return catalogue;
@@ -163,6 +164,13 @@ function clientItems(client, catalogue, fallbackCurrency) {
   });
   Object.keys(client.customPrices || {}).forEach(item => { if (!item.startsWith('multi:')) keys.add(item); });
   (client.enrolledBundleIds || []).forEach(id => { if (id) keys.add(`bundle:${id}`); });
+  // Every course of a track held = the track (admin/lib/agreedPrice.ts clientItems).
+  const enrolledSet = new Set(client.enrolledCourseIds || []);
+  for (const [bundleId, bundle] of catalogue.bundles) {
+    const key = `bundle:${bundleId}`;
+    const ids = bundle?.courseIds || [];
+    if (!keys.has(key) && ids.length > 1 && ids.every(id => enrolledSet.has(id))) keys.add(key);
+  }
   const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
     .flatMap(item => catalogue.bundles.get(item.slice(7))?.courseIds || []));
   (client.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });

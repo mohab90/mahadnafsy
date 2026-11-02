@@ -29,14 +29,21 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = n
            FROM (
              SELECT tenant_id, subscriber_id,
                     CASE
-                      WHEN course_id IS NOT NULL THEN CONCAT(COALESCE(payment_type,'COURSE'), ':course:', course_id)
                       WHEN bundle_id IS NOT NULL THEN CONCAT(COALESCE(payment_type,'COURSE'), ':bundle:', bundle_id)
+                      WHEN course_id IS NOT NULL THEN COALESCE(
+                        (SELECT CONCAT(COALESCE(payments.payment_type,'COURSE'), ':bundle:', MIN(e.bundle_id)) FROM enrollments e
+                          WHERE e.tenant_id=payments.tenant_id AND e.subscriber_id=payments.subscriber_id AND e.course_id=payments.course_id
+                            AND e.bundle_id IS NOT NULL AND e.status='active' HAVING COUNT(*) > 0),
+                        CONCAT(COALESCE(payment_type,'COURSE'), ':course:', course_id))
                      ELSE CONCAT(COALESCE(payment_type,'OTHER'), ':payment:', id)
                      END AS entitlement_key,
                      MAX(COALESCE(course_expected,0) * COALESCE(fx_rate_to_egp,0)) AS expected,
                      SUM(CASE WHEN status='paid' THEN COALESCE(amount_egp,0) ELSE 0 END) AS paid
                 FROM payments
                WHERE tenant_id=? AND deleted_at IS NULL
+                 -- The course's and the track's own money only: a certificate, a carnet, a book or a consultation names the course too and is not owed on it
+                 -- (2 Nov 2026), and a course inside a track the client holds is the track's line — one price, paid once.
+                 AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
                GROUP BY tenant_id, subscriber_id, entitlement_key, currency
               HAVING expected > 0
            ) entitlement_balances

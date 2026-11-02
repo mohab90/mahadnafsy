@@ -6,12 +6,18 @@
 
 const zlib = require('zlib');
 
+// What the reader tells a person who uploaded something that is not a workbook: a 400 with a sentence, not a 500 that the screen can only call
+// «تعذر قراءة الشيت».
+const notAWorkbook = () => Object.assign(
+  new Error('الملف ده مش Excel (.xlsx) سليم. افتحه في Excel واحفظه تاني كـ «Excel Workbook» (.xlsx) أو كـ CSV وارفعه.'),
+  { statusCode: 400, code: 'NOT_A_WORKBOOK' });
+
 function unzip(buffer, wanted) {
   let end = -1;
   for (let at = buffer.length - 22; at >= Math.max(0, buffer.length - 65557); at--) {
     if (buffer.readUInt32LE(at) === 0x06054b50) { end = at; break; }
   }
-  if (end < 0) throw new Error('not an .xlsx file');
+  if (end < 0) throw notAWorkbook();
   const count = buffer.readUInt16LE(end + 10);
   let offset = buffer.readUInt32LE(end + 16);
   const parts = new Map();
@@ -22,7 +28,9 @@ function unzip(buffer, wanted) {
     const extraLength = buffer.readUInt16LE(offset + 30);
     const commentLength = buffer.readUInt16LE(offset + 32);
     const local = buffer.readUInt32LE(offset + 42);
-    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength);
+    // Some exporters (fingerprint-device software among them) write the part names with Windows backslashes («xl\workbook.xml»), a leading
+    // slash or other capitals: one spelling for all of them, or the workbook was «not found» and the upload failed with a 500.
+    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength).replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
     offset += 46 + nameLength + extraLength + commentLength;
     if (!wanted(name)) continue;
     const start = local + 30 + buffer.readUInt16LE(local + 26) + buffer.readUInt16LE(local + 28);
@@ -44,10 +52,10 @@ const columnIndex = ref => [...((ref.match(/^[A-Z]+/) || ['A'])[0])].reduce((n, 
 function readXlsx(buffer) {
   const parts = unzip(buffer, name => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(name));
   const workbook = parts.get('xl/workbook.xml');
-  if (!workbook) throw new Error('not an .xlsx file');
+  if (!workbook) throw notAWorkbook();
   const shared = [...(parts.get('xl/sharedStrings.xml') || '').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m => runsText(m[1]));
   const targets = new Map([...(parts.get('xl/_rels/workbook.xml.rels') || '').matchAll(/<Relationship\b[^>]*>/g)]
-    .map(m => [attr(m[0], 'Id') || '', (attr(m[0], 'Target') || '').replace(/^\/?(xl\/)?/, 'xl/')]));
+    .map(m => [attr(m[0], 'Id') || '', (attr(m[0], 'Target') || '').replace(/\\/g, '/').replace(/^\/?(xl\/)?/i, 'xl/').toLowerCase()]));
   const tabs = [];
   for (const [tag] of workbook.matchAll(/<sheet\b[^>]*>/g)) {
     const xml = parts.get(targets.get(attr(tag, 'r:id') || '') || '');

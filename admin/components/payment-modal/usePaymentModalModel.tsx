@@ -231,7 +231,7 @@ export function usePaymentModalModel({
 
   // What the client holds and has paid towards each (payment-modal/clientHoldings.ts): refunds and failed payments are
   // not money collected, and a course counts as held by its enrolment, its money, its agreed price or its housing.
-  const { payHistory, coursePayMap, enrolledOptions, heldCids } = clientHoldings(subject, courses, bundles, d.currency);
+  const { payHistory, coursePayMap, enrolledOptions, heldCids, moneyFor } = clientHoldings(subject, courses, bundles, d.currency);
 
   // The totals bar: every course and track they hold, at the price agreed.
   // It summed only bookings that had recorded a price — a quarter had none —
@@ -336,7 +336,7 @@ export function usePaymentModalModel({
     const itemService = d.paymentType === 'carneh' || d.paymentType === 'book';
     const chosenService = itemService ? extraOptions.find(option => option.label === d.itemTitle) : undefined;
     const servicePrice = itemService ? (chosenService ? priceIn(chosenService, d.currency) : 0) || _amtPaid : 0;
-    const prevPaid = itemService ? 0 : payHistory.filter(p => p.currency === d.currency && (!p.courseId || p.courseId === d.courseId)).reduce((s, p) => s + Number(p.amount), 0);
+    const prevPaid = itemService ? 0 : (moneyFor(d.courseId)?.paid ?? 0);
     const extraTotalForPrint = (d.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).reduce((s, i) => s + Number(i.amount), 0);
     const newTotal = prevPaid + _amtPaid + extraTotalForPrint;
     const remaining = itemService ? Math.max(0, servicePrice - newTotal) : (_effPx > 0 ? Math.max(0, _effPx - newTotal) : 0);
@@ -456,7 +456,7 @@ export function usePaymentModalModel({
   const extraOptions = d.paymentType === 'carneh' ? extraItems.carnets : d.paymentType === 'book' ? extraItems.books : [];
 
   return {
-    mode, subject, draft, setDraft, onSubmit, onClose, requirePaymentApproval, lockPrice, branchOptions, instituteName, subjectOptions, subjectSearch, onSubjectChange, branchLabel, courses, bundles, content, authUser, isAdmin, staffMembers, daqqiRounds, currentStaff, canSetPrice, certCatalog, extraItems, printData, setPrintData, submitting, setSubmitting, submitError, setSubmitError, driveOn, photos, setPhotos, photoOnFile, setPhotoOnFile, photoBusy, setPhotoBusy, photoError, setPhotoError, ownEmail, asksWhoBroughtIt, broughtBy, setBroughtBy, upgradeFrom, setUpgradeFrom, d, set, catalogPricing, setCatalogPricing, pricingError, setPricingError, housingOpen, setHousingOpen, tracksOnly, setTracksOnly, bookingRounds, setBookingRounds, personName, phoneNow, setPhoneNow, phone2Now, setPhone2Now, personPhone, personPhone2, sysPrice, courseLabel, tierBooking, itemPricing, tierOptions, chosenTier, tierPct, tierPx, bookingBranch, housesClients, storeHasRounds, housingRounds, canHouse, housingRound, chooseTier, extraTierPrice, pickCourse, _sysPx, _agreedPx, _basePx, _customExp, _discPct, _clientPx, _effPx, _hasDiscount, _amtPaid, noteField, _extraTotal, _grandTotal, _remaining, payHistory, coursePayMap, enrolledOptions, heldCids, tracksHolding, retakeOpen, setRetakeOpen, retakeOptions, canRetake, upgradeCandidates, upgrading, upgradeSource, payTotalExpected, payTotalPaid, payRemaining, certRequests, certBasePrice, paymentMethods, hasIdentity, subjectChosen, tierProblem, egyptianId, identityProblem, certificatesTyped, photoNeed, photoMissing, pickPhoto, isValid, buildPrintData, handleSubmit, isCourse, isCert, isConsultation, isBookOrCarneh, extraOptions,
+    mode, subject, draft, setDraft, onSubmit, onClose, requirePaymentApproval, lockPrice, branchOptions, instituteName, subjectOptions, subjectSearch, onSubjectChange, branchLabel, courses, bundles, content, authUser, isAdmin, staffMembers, daqqiRounds, currentStaff, canSetPrice, certCatalog, extraItems, printData, setPrintData, submitting, setSubmitting, submitError, setSubmitError, driveOn, photos, setPhotos, photoOnFile, setPhotoOnFile, photoBusy, setPhotoBusy, photoError, setPhotoError, ownEmail, asksWhoBroughtIt, broughtBy, setBroughtBy, upgradeFrom, setUpgradeFrom, d, set, catalogPricing, setCatalogPricing, pricingError, setPricingError, housingOpen, setHousingOpen, tracksOnly, setTracksOnly, bookingRounds, setBookingRounds, personName, phoneNow, setPhoneNow, phone2Now, setPhone2Now, personPhone, personPhone2, sysPrice, courseLabel, tierBooking, itemPricing, tierOptions, chosenTier, tierPct, tierPx, bookingBranch, housesClients, storeHasRounds, housingRounds, canHouse, housingRound, chooseTier, extraTierPrice, pickCourse, _sysPx, _agreedPx, _basePx, _customExp, _discPct, _clientPx, _effPx, _hasDiscount, _amtPaid, noteField, _extraTotal, _grandTotal, _remaining, payHistory, coursePayMap, moneyFor, enrolledOptions, heldCids, tracksHolding, retakeOpen, setRetakeOpen, retakeOptions, canRetake, upgradeCandidates, upgrading, upgradeSource, payTotalExpected, payTotalPaid, payRemaining, certRequests, certBasePrice, paymentMethods, hasIdentity, subjectChosen, tierProblem, egyptianId, identityProblem, certificatesTyped, photoNeed, photoMissing, pickPhoto, isValid, buildPrintData, handleSubmit, isCourse, isCert, isConsultation, isBookOrCarneh, extraOptions,
   };
 }
 

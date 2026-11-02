@@ -13,7 +13,8 @@ const { branchIdForBranch, normalizeBranch } = require('./branches');
 const { logLeadEvent } = require('./crm');
 const { getNextSalesRep, SINGLE_LEAD_LOADS_TTL_MS } = require('./leadAssignment');
 const { leadPhoneClause } = require('./leadMatching');
-const { completeForBranch, toIdentity } = require('./phoneNumber');
+const { completeForBranch, toIdentity, matchingSpellings } = require('./phoneNumber');
+const { logClientEvent } = require('./clientHistory');
 const { attributionValues, fillAttributionSql } = require('./visitAttribution');
 
 // The one form clients are kept in (lib/phoneNumber.js toIdentity), so the desk
@@ -66,6 +67,24 @@ async function fileLead({ tenantId, name, phone, notes, source, branch, attribut
         await conn.commit();
         transactionStarted = false;
         return { id: existing.id, existing: true };
+      }
+    }
+    // One number, one person (2 Nov 2026: «مينفعش أبداً إيميل أو رقم تليفون يكون مكرر»): a number a CLIENT already holds is that client, not a new lead —
+    // the form's words go on the client's history, where whoever serves them reads it, and no second record is made.
+    const clientSpellings = matchingSpellings(completeForBranch(phone, branch)).filter(Boolean);
+    if (clientSpellings.length) {
+      const [[client]] = await conn.query(
+        `SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND phone_digits IN (${clientSpellings.map(() => '?').join(',')}) LIMIT 1`,
+        [tenantId, ...clientSpellings]
+      );
+      if (client) {
+        await logClientEvent(conn, {
+          tenantId, subscriberId: client.id, action: 'public_form_again', actor: origin,
+          label: `عميل مسجّل عندنا بعت نموذج تاني من الموقع${note ? `: ${note}` : ''}`,
+        });
+        await conn.commit();
+        transactionStarted = false;
+        return { id: null, existing: true, clientId: client.id };
       }
     }
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

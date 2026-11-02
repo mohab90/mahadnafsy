@@ -152,9 +152,11 @@ test('after a payment the rounds are read back, not patched in the browser', () 
 test('the payment dialog sees a course held by money, a price, a prior payment or the round', () => {
   const modal = paymentModalSource();
   assert.match(modal, /heldItemIds\?: string\[\];/);
-  assert.match(modal, /const enrolledIds: string\[\] = \[\.\.\.new Set\(\[\.\.\.\(subject\.enrolledCourseIds \|\| \[\]\), \.\.\.heldByMoney\]\)\];/);
-  assert.match(modal, /\(Number\(subject\.priorPaid\?\.\[cid\]\) \|\| 0\) \+ payHistory\.filter/);
-  assert.match(modal, /\(coursePayMap\[d\.courseId\]\?\.paid \?\? 0\) \+ \(Number\(subject\.priorPaid\?\.\[d\.courseId\]\) \|\| 0\)/);
+  // What it holds is clientItems' reading (enrolments, a held track, money, an agreed price, «مدفوع قبل السيستم»), plus the round's course.
+  assert.match(modal, /enrolledCourseIds: subject\.enrolledCourseIds \|\| \[\],/);
+  assert.match(modal, /priorPaid: subject\.priorPaid,/);
+  assert.match(modal, /for \(const id of subject\.heldItemIds \|\| \[\]\) \{/);
+  assert.match(modal, /const alreadyPaid = moneyFor\(d\.courseId\)\?\.paid \?\? 0;/);
   const dokki = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
   assert.match(dokki, /heldItemIds: \(\(\) => \{/);
   assert.match(dokki, /priorPaid: paySubject\?\.priorPaid,/);

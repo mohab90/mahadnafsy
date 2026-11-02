@@ -31,7 +31,7 @@ const PaymentModal: React.FC<PaymentModalProps> = (props) => {
     setPrintData, submitting, submitError, driveOn, photos, photoOnFile, photoBusy, photoError, asksWhoBroughtIt,
     broughtBy, setBroughtBy, setUpgradeFrom, d, set, tracksOnly, setTracksOnly, personName, courseLabel, tierBooking,
     chosenTier, tierPct, bookingBranch, _effPx, _hasDiscount, _amtPaid, noteField, _extraTotal, _grandTotal,
-    _remaining, coursePayMap, enrolledOptions, tracksHolding, retakeOpen, setRetakeOpen, retakeOptions, canRetake,
+    _remaining, moneyFor, enrolledOptions, tracksHolding, retakeOpen, setRetakeOpen, retakeOptions, canRetake,
     upgradeCandidates, upgrading, payTotalExpected, payTotalPaid, payRemaining, paymentMethods, certificatesTyped,
     photoNeed, pickPhoto, isValid, handleSubmit, isCourse, isCert, extraOptions,
   } = m;
@@ -229,7 +229,7 @@ const PaymentModal: React.FC<PaymentModalProps> = (props) => {
             )}
             {/* ⚡ Quick "all remaining" for installment */}
             {d.bookingType === 'installment' && d.courseId && (() => {
-              const alreadyPaid = (coursePayMap[d.courseId]?.paid ?? 0) + (Number(subject.priorPaid?.[d.courseId]) || 0);
+              const alreadyPaid = moneyFor(d.courseId)?.paid ?? 0;
               // Against the price agreed. It used the catalogue, so «كل
               // المتبقي» asked a client booked at a discount for list price.
               const bal = _effPx > 0 ? Math.max(0, _effPx - alreadyPaid) : 0;

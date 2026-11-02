@@ -10,6 +10,8 @@ export interface SubjectInfo {
   /** A course placed in another branch than the client's: a payment for it is that branch's (lib/coursePlacement.ts). */
   coursePlacements?: Record<string, string>;
   enrolledCourseIds?: string[];
+  /** The tracks the client is enrolled in: a track is paid once, and the courses inside it are not items of their own (clientHoldings.ts). */
+  enrolledBundleIds?: string[];
   paymentHistory?: PaymentHistoryEntry[];
   extraCertificateRequests?: ExtraCertificateRequest[];
   branch?: string;

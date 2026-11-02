@@ -370,6 +370,8 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
     const sets = [];
     const params = [];
     const changed = [];
+    let repriceFor;
+    let priceTyped;
     const text = (key, column, label, max = 255) => {
       if (b[key] === undefined) return;
       const value = sanitize(String(b[key] ?? ''), max).trim() || null;
@@ -390,7 +392,13 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
     if (b.nationality !== undefined) {
       const nationality = b.nationality ? String(b.nationality).toUpperCase() : null;
       if (nationality && !CERT_NATS.includes(nationality)) { await conn.rollback(); return res.status(400).json({ error: 'جنسية غير معروفة' }); }
-      if (nationality !== (request.nationality || null)) { sets.push('nationality=?'); params.push(nationality); changed.push('الجنسية'); }
+      if (nationality !== (request.nationality || null)) {
+        sets.push('nationality=?'); params.push(nationality); changed.push('الجنسية');
+        // The group sets the price list that applies («لو كان دخلها غلط» — a client entered as Egyptian who is a non-Egyptian resident, or a Saudi):
+        // with no price typed, the request is repriced from the list in its own currency, and a request that has not been paid yet moves to
+        // the currency of the new group's list too. A price typed in the same save wins.
+        repriceFor = nationality;
+      }
     }
     if (b.courseId !== undefined) {
       const courseId = String(b.courseId || '').trim() || null;
@@ -401,11 +409,33 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
       const value = Number(b[key]);
       if (!Number.isFinite(value) || value < 0) { await conn.rollback(); return res.status(400).json({ error: `${label} لازم يكون رقم` }); }
       if (value === Number(request[column] || 0)) continue;
-      if (linkedPayment) { await conn.rollback(); return res.status(409).json({ error: `${label} مربوط بدفعة متسجلة — بيتعدل من الدفعة نفسها` }); }
+      // What was paid stays with the payment that carries it; the PRICE is the certificate's and is the managers' to correct even after it was paid
+      // (its payments' expected price follows below).
+      if (linkedPayment && column === 'paid_amount') { await conn.rollback(); return res.status(409).json({ error: `${label} مربوط بدفعة متسجلة — بيتعدل من الدفعة نفسها` }); }
       sets.push(`${column}=?`); params.push(value); changed.push(label);
+      if (column === 'price') priceTyped = value;
+    }
+    if (repriceFor !== undefined && priceTyped === undefined) {
+      const pricing = await loadPricing(req.tenantId);
+      const type = String(b.type !== undefined ? b.type : request.type).toUpperCase();
+      if (!linkedPayment) {
+        const resolved = resolveCertificatePrice({ type, nationality: repriceFor, pricingConfig: pricing });
+        if (resolved.price) {
+          sets.push('price=?'); params.push(resolved.price); changed.push('السعر');
+          if (resolved.currency && resolved.currency !== (request.currency || 'EGP')) { sets.push('currency=?'); params.push(resolved.currency); changed.push('العملة'); }
+          priceTyped = resolved.price;
+        }
+      } else {
+        const listed = basePriceForCurrency(pricing, type, request.currency || 'EGP', repriceFor) || 0;
+        if (listed > 0 && listed !== Number(request.price || 0)) { sets.push('price=?'); params.push(listed); changed.push('السعر'); priceTyped = listed; }
+      }
     }
     if (!sets.length) { await conn.rollback(); return res.json({ ok: true, changed: [] }); }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, request.id, req.tenantId]);
+    if (priceTyped !== undefined && linkedPayment) {
+      await conn.query(
+        'UPDATE payments SET course_expected=? WHERE certificate_request_id=? AND tenant_id=? AND deleted_at IS NULL', [priceTyped, request.id, req.tenantId]);
+    }
     // «الاسم بالإنجليزي أنا مدخله قبل كده من صفحة الشهادات»: an English name typed on a request is the client's name, so it fills the blank on
     // their file too — the institute's certificate and every other one read it from there.
     const typedNameEn = b.nameEn === undefined ? '' : sanitize(String(b.nameEn ?? ''), 255).trim();

@@ -118,8 +118,12 @@ async function buildWeeklyBranchReport({ tenantId, week, today = cairoToday() },
            FROM (
              SELECT subscriber_id,
                     CASE
-                      WHEN course_id IS NOT NULL THEN CONCAT(COALESCE(payment_type,'COURSE'), ':course:', course_id)
                       WHEN bundle_id IS NOT NULL THEN CONCAT(COALESCE(payment_type,'COURSE'), ':bundle:', bundle_id)
+                      WHEN course_id IS NOT NULL THEN COALESCE(
+                        (SELECT CONCAT(COALESCE(payments.payment_type,'COURSE'), ':bundle:', MIN(e.bundle_id)) FROM enrollments e
+                          WHERE e.tenant_id=payments.tenant_id AND e.subscriber_id=payments.subscriber_id AND e.course_id=payments.course_id
+                            AND e.bundle_id IS NOT NULL AND e.status='active' HAVING COUNT(*) > 0),
+                        CONCAT(COALESCE(payment_type,'COURSE'), ':course:', course_id))
                       ELSE CONCAT(COALESCE(payment_type,'OTHER'), ':payment:', id)
                     END AS entitlement_key,
                     -- An EGP row saved before rates were stored has no rate; its rate is 1.
@@ -128,6 +132,8 @@ async function buildWeeklyBranchReport({ tenantId, week, today = cairoToday() },
                     MIN(date) AS first_at
                FROM payments
               WHERE tenant_id = ? AND deleted_at IS NULL AND date < ?
+                -- Course and track money only; a certificate, a carnet, a book or a consultation is not owed on the course (2 Nov 2026).
+                AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
               GROUP BY subscriber_id, entitlement_key, currency
              HAVING expected > 0
            ) entitlements

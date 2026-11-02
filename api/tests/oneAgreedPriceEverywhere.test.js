@@ -67,7 +67,10 @@ test('every screen reads that rule', () => {
   assert.match(admin, /paidFor\(subscriber, item, currency\) \+ \(Number\(subscriber\.priorPaid\?\.\[item\]\) \|\| 0\)/);
   const modal = paymentModalSource();
   // The instalment list and «كل المتبقي» used the catalogue.
-  assert.match(modal, /const px = agreedPriceFor\(subject, cid, isBnd/);
+  // 2 Nov 2026: the dialog's lines ARE clientItems' lines (the table's function), so the two cannot disagree; its own agreed-price read is only for a
+  // course the Dokki desk says the client holds.
+  assert.match(modal, /const items = clientItems\(\{/);
+  assert.match(modal, /const px = agreedPriceFor\(subject, id, priceIn\(entry\?\.price, currency\), currency\);/);
   assert.match(modal, /const bal = _effPx > 0 \? Math\.max\(0, _effPx - alreadyPaid\) : 0;/);
   // The filters and the total read the table's own items (onlineSectionReview.test.js).
   assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /const items = clientItems\(subscriber, courses, bundles, clientCurrency\(subscriber\)\);/);
