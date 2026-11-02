@@ -25,7 +25,7 @@ const { findLeadByContact } = require('./leadMatching');
 const { getNextClientCode } = require('./mappers');
 const { getNextSalesRep } = require('./leadAssignment');
 const { branchIdForBranch, defaultDigitalBranch } = require('./branches');
-const { toIdentity } = require('./phoneNumber');
+const { toIdentity, matchingSpellings } = require('./phoneNumber');
 const { attributionValues, fillAttributionSql } = require('./visitAttribution');
 
 /**
@@ -39,13 +39,19 @@ async function ensureLeadForUser(conn, { tenantId, user, branch, attribution = n
   if (!phone && !email) return { created: false, leadId: null, reason: 'no contact' };
 
   // Already a client? Then they are not a new lead — they are further along.
-  const [[client]] = await conn.query(
-    `SELECT id FROM subscribers
-      WHERE tenant_id=? AND deleted_at IS NULL
-        AND ((? IS NOT NULL AND phone=?) OR (? IS NOT NULL AND LOWER(TRIM(email))=?))
-      LIMIT 1`,
-    [tenantId, phone, phone, email, email],
-  );
+  //
+  // By every spelling the number is stored in (subscribers.phone_digits), not by `phone = <identity>`: 7,114 of the 14,241 clients on
+  // production hold 01XXXXXXXXX and only 4,957 the bare 1XXXXXXXXX this compared with, so a client who signed in for the first time
+  // was a stranger to this check and was filed a second time as a new lead «تسجيل دخول» (2 Nov 2026: «اي عميل بيعمل تسجيل دخول السيستم
+  // بيحسبه كأنه عميل جديد وبيظهر كأنه مكرر»). The email is compared as typed, case and spaces aside.
+  const spellings = matchingSpellings(user?.phone).filter(Boolean);
+  const terms = [];
+  const clientParams = [tenantId];
+  if (spellings.length) { terms.push(`phone_digits IN (${spellings.map(() => '?').join(',')})`); clientParams.push(...spellings); }
+  if (email) { terms.push('LOWER(TRIM(email))=?'); clientParams.push(email); }
+  const [[client]] = terms.length
+    ? await conn.query(`SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND (${terms.join(' OR ')}) LIMIT 1`, clientParams)
+    : [[null]];
   if (client) return { created: false, leadId: null, reason: 'already a client' };
 
   const existing = await findLeadByContact(conn, { tenantId, phone: user?.phone, email: user?.email });

@@ -30,7 +30,10 @@ test('the conversion tool is a report until --apply, never shortens a longer exp
   assert.match(tool, /const APPLY = process\.argv\.includes\('--apply'\);/);
   assert.match(tool, /const INCLUDE_OPEN = process\.argv\.includes\('--include-open-ended'\);/);
   assert.match(tool, /if \(INCLUDE_OPEN\) changes\.push\(\{ row, target \}\);/);
-  assert.match(tool, /new Date\(row\.expiry_date\)\.getTime\(\) > target\.getTime\(\)\) groups\.longer\.push/, 'a later expiry stands');
+  assert.match(tool, /new Date\(row\.expiry_date\)\.getTime\(\) > target\.getTime\(\)\) \{\s+groups\.longer\.push\(\{ row, target \}\);\s+if \(EXACT\)/, 'a later expiry stands unless --exact is given');
+  // 2 Nov 2026: online clients, and the track's own months for an enrollment that came with a track.
+  assert.match(tool, /branch_id LIKE 'branch-online%'/);
+  assert.match(tool, /Number\(row\.bundle_months\) > 0 \? Number\(row\.bundle_months\)/);
   assert.match(tool, /fs\.writeFileSync\(backup,/);
   assert.match(tool, /AND expiry_date = \?'/, 'each update only while the expiry is what was read');
   assert.match(tool, /--reinstate-revoked-by=/, 'a revoked enrollment is re-opened only for the actor the owner names');

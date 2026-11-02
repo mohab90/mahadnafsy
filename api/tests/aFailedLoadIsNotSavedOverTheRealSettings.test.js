@@ -72,8 +72,8 @@ test('signing in lands on the customer\'s courses, and a referral survives the v
   assert.match(auth, /const landing = safeRedirect && safeRedirect !== '\/' \? safeRedirect : '\/my-account';/);
   assert.ok(!/navigate\('\/'\)/.test(auth), 'nobody is dropped on the home page after signing in');
   assert.match(auth, /sessionStorage\.setItem\(REFERRAL_KEY/);
-  assert.match(auth, /verifyWaOtp\(waPhone\.trim\(\), waCode, waName\.trim\(\) \|\| undefined, referralCode \|\| undefined\)/);
-  assert.match(read('api/routes/auth/whatsappLogin.js'), /ref: req\.body\?\.ref/);
+  // The referral rides on the sign-up (WhatsApp sign-in, which carried it too, is off since 2 Nov 2026).
+  assert.match(auth, /\.\.\.\(referralCode \? \{ ref: referralCode \} : \{\}\)/);
 });
 
 test('every field of the contact form is named by its label', () => {

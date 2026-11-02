@@ -115,6 +115,8 @@ export interface Bundle {
   titleEn?: string;
   /** Training hours the track's certificate prints. */
   hours?: number;
+  /** Months of access a subscription to the track gets; empty = each course's own (a year). */
+  accessMonths?: number;
   slug?: string;
   videoUrl?: string;
   thumbnail?: string;

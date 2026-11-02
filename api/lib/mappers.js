@@ -230,6 +230,8 @@ function mapBundle(r, allCourses = []) {
     seo_keywords: r.seo_keywords || undefined,
     // The training hours the track's certificate prints (bundles.hours), as a course's do.
     hours: r.hours != null && Number(r.hours) > 0 ? Number(r.hours) : undefined,
+    // The months of access a subscription to the track gets, when it names its own (bundles.access_months).
+    ...('access_months' in r && Number(r.access_months) > 0 ? { accessMonths: Number(r.access_months) } : {}),
     courses,
   };
 }

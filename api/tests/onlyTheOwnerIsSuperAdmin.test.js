@@ -39,7 +39,7 @@ test('customer service reads the payments register as before (1 Nov 2026: the se
 test('an employee who forgot the password gets the code by email, at the address on their staff record, never on WhatsApp', () => {
   const src = read('routes/auth/passwordReset.js');
   assert.match(src, /FROM staff WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\)=\? AND is_active=1 AND deleted_at IS NULL/);
-  assert.match(src, /const dialable = !isStaffAccount && user\.phone \? toDialable\(user\.phone\) : '';/);
+  assert.match(src, /const dialable = !identifierIsEmail && !isStaffAccount && \(user\.phone \|\| phoneIdentity\) \? toDialable\(user\.phone \|\| phoneIdentity\) : '';/);
   // and the mail goes to the account's own address, not to anything the request carried
   assert.match(src, /sendEmail\(user\.email, 'رمز إعادة تعيين كلمة المرور'/);
 });

@@ -23,10 +23,15 @@ function fakeConn() {
     rows,
     async query(sql, params) {
       if (/^SELECT id, device_hash FROM customer_devices/.test(sql)) return [rows.filter(row => row.user_id === params[1])];
+      if (/^SELECT id FROM customer_devices WHERE tenant_id=\? AND user_id=\? AND last_seen_at </.test(sql)) {
+        const [, userId, before] = params;
+        return [rows.filter(row => row.user_id === userId && row.last_seen_at < before).sort((x, y) => x.last_seen_at - y.last_seen_at).slice(0, 1).map(row => ({ id: row.id }))];
+      }
+      if (/^DELETE FROM customer_devices/.test(sql)) { rows.splice(rows.findIndex(row => row.id === params[0]), 1); return [{}]; }
       if (/^UPDATE customer_devices/.test(sql)) { Object.assign(rows.find(row => row.id === params[2]), { last_ip: params[0] }); return [{}]; }
       if (/^INSERT INTO customer_devices/.test(sql)) {
         const [id, , userId, deviceHash, lastIp] = params;
-        rows.push({ id, user_id: userId, device_hash: deviceHash, last_ip: lastIp });
+        rows.push({ id, user_id: userId, device_hash: deviceHash, last_ip: lastIp, last_seen_at: new Date() });
         return [{}];
       }
       throw new Error(`unexpected query: ${sql}`);
@@ -121,4 +126,21 @@ test('customers are counted at every sign-in, staff never; the screen shows the 
   assert.match(screen, /\['DEVICE_LIMIT', 'ACCOUNT_SHARING_LOCKED'\]\.includes/);
   const migration = read('api/migrations/221_v26_customer_devices.sql');
   assert.match(migration, /UNIQUE KEY uq_customer_device \(tenant_id, user_id, device_hash\)/);
+});
+
+test('a place not used for a month is given to the new device; a place in use is not', async () => {
+  const conn = fakeConn();
+  assert.equal((await signIn(conn, browser('41.1.1.1'))).result.deviceCount, 1);
+  const laptop = browser('41.2.2.2');
+  assert.equal((await signIn(conn, laptop)).result.deviceCount, 2);
+  // both in use: the third is refused, as before
+  await assert.rejects(signIn(conn, browser('41.3.3.3')), error => error.code === 'DEVICE_LIMIT');
+  // the first phone has not signed in for 40 days (or its cookies were cleared and it is a different device now)
+  conn.rows[0].last_seen_at = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+  const result = (await signIn(conn, browser('41.4.4.4'))).result;
+  assert.equal(result.deviceCount, 2, 'it took the stale place, so there are still two');
+  assert.equal(conn.rows.length, 2);
+  // and the laptop, in use, is still the account's
+  assert.equal(conn.rows.some(row => row.last_ip === '41.2.2.2'), true);
+  await assert.rejects(signIn(conn, browser('41.5.5.5')), error => error.code === 'DEVICE_LIMIT');
 });

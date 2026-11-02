@@ -27,6 +27,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
   const [bundleTitle, setBundleTitle] = useState('');
   const [bundleTitleEn, setBundleTitleEn] = useState('');
   const [bundleHours, setBundleHours] = useState('');
+  const [bundleAccessMonths, setBundleAccessMonths] = useState('');
   const [bundleSlug, setBundleSlug] = useState('');
   const [bundleVideoUrl, setBundleVideoUrl] = useState('');
   const [bundleShortDesc, setBundleShortDesc] = useState('');
@@ -46,6 +47,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
     setBundleTitle('');
     setBundleTitleEn('');
     setBundleHours('');
+    setBundleAccessMonths('');
     setBundleSlug('');
     setBundleVideoUrl('');
     setBundleShortDesc('');
@@ -88,6 +90,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
   setBundleTitle(row.title);
   setBundleTitleEn(row.titleEn || '');
   setBundleHours(row.hours ? String(row.hours) : '');
+  setBundleAccessMonths(row.accessMonths ? String(row.accessMonths) : '');
   setBundleSlug(row.slug || '');
   setBundleVideoUrl(row.videoUrl || '');
   setBundleShortDesc(row.shortDescription || '');
@@ -126,6 +129,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
     title: bundleTitle,
     titleEn: bundleTitleEn.trim() || undefined,
     hours: Number(bundleHours) > 0 ? Number(bundleHours) : undefined,
+    accessMonths: Number(bundleAccessMonths) > 0 ? Number(bundleAccessMonths) : undefined,
     slug: rawSlug || undefined,
     videoUrl: bundleVideoUrl.trim() || undefined,
     shortDescription: bundleShortDesc.trim() || undefined,
@@ -193,6 +197,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="عنوان المسار (عربي)" value={bundleTitle} onChange={(e) => setBundleTitle(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="اسم المسار بالإنجليزية (English Name)" value={bundleTitleEn} onChange={(e) => setBundleTitleEn(e.target.value)} />
           <input type="number" min={0} step="0.5" className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="ساعات التدريب اللي بتطلع في شهادة المسار (مثال: 120)" value={bundleHours} onChange={(e) => setBundleHours(e.target.value)} />
+          <input type="number" min={0} max={120} step="1" className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="مدة فتح الفيديوهات بالشهور من تاريخ الاشتراك (فاضي = سنة، أو مدة كل كورس)" aria-label="مدة الصلاحية بالشهور" value={bundleAccessMonths} onChange={(e) => setBundleAccessMonths(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط URL المسار (slug) مثال: psychology-track" value={bundleSlug} onChange={(e) => setBundleSlug(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-1" placeholder="رابط فيديو تعريفي (YouTube embed)" value={bundleVideoUrl} onChange={(e) => setBundleVideoUrl(e.target.value)} />
           <div className="md:col-span-2 flex flex-wrap items-center gap-3 border border-gray-200 rounded-xl bg-white p-3">

@@ -90,8 +90,14 @@ async function grantCourseEntitlement({
     // Read defensively: granting access must not fail because a duration lookup came back in an unexpected shape.
     const durationResult = await conn.query(
       'SELECT access_months FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, tenantId]);
-    const accessMonths = Number(durationResult?.[0]?.[0]?.access_months) > 0
+    let accessMonths = Number(durationResult?.[0]?.[0]?.access_months) > 0
       ? Number(durationResult[0][0].access_months) : DEFAULT_ACCESS_MONTHS;
+    // A track that names its own window (bundles.access_months — a year and a half for «المعالج النفسي المحترف» and «العلاج النفسي المتكامل»)
+    // gives it to the courses it enrols: the client subscribed to the track.
+    if (bundleId) {
+      const trackResult = await conn.query('SELECT access_months FROM bundles WHERE id=? AND tenant_id=? LIMIT 1', [bundleId, tenantId]);
+      if (Number(trackResult?.[0]?.[0]?.access_months) > 0) accessMonths = Number(trackResult[0][0].access_months);
+    }
     const [[existing]] = await conn.query(
       `SELECT id,status,access_type,lecture_limit FROM enrollments
         WHERE tenant_id=? AND subscriber_id=? AND course_id=? LIMIT 1 FOR UPDATE`,

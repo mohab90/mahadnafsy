@@ -20,7 +20,7 @@ test('a number that already has an account is told how to get in', () => {
   const auth = authRouteSource();
   const message = auth.match(/const PHONE_TAKEN_MESSAGE = '([^']+)';/);
   assert.ok(message, 'one wording for both signup routes');
-  assert.match(message[1], /الدخول برقم الواتساب/);
+  assert.match(message[1], /نسيت كلمة المرور/);
   // One handler serves both sign-up addresses (routes/auth/registration.js).
   assert.equal(auth.split("{ error: PHONE_TAKEN_MESSAGE, code: 'PHONE_ALREADY_REGISTERED' }").length - 1, 1);
   assert.doesNotMatch(auth, /error: 'رقم الهاتف مستخدم بالفعل'/);

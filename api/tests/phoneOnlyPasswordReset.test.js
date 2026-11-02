@@ -15,7 +15,7 @@ test('a subscriber with no login can start a reset with their WhatsApp number', 
   // client. The phone branch did not, so a paying customer who typed their
   // number got the silent anti-enumeration "ok" and no code ever arrived —
   // "just use forgot password" was impossible for them.
-  assert.match(forgot, /FROM subscribers[\s\S]{0,200}WHERE tenant_id=\? AND phone = \?/);
+  assert.match(forgot, /FROM subscribers[\s\S]{0,260}phone_digits IN \(\$\{clientSpellings\.map/);
   assert.match(forgot, /INSERT IGNORE INTO users[\s\S]{0,240}phone, password_hash/);
   assert.match(forgot, /auto-created users record for subscriber by phone/);
   // The new row must be unusable except through the code that follows.

@@ -24,6 +24,7 @@ const {
   claimWhatsAppIdentity,
   normalizeWhatsAppNumber,
   isPlausibleNumber,
+  identitySpellings,
   requireAuth,
   invalidateIdentity,
   otpLimiter,
@@ -55,10 +56,12 @@ const router = Router();
 const phoneKey = (value) => toIdentity(value).replace(/^966(?=5\d{8}$)/, '');
 const samePhone = (a, b) => Boolean(phoneKey(a)) && phoneKey(a) === phoneKey(b);
 
-const PHONE_TAKEN_MESSAGE = 'الرقم ده عليه حساب عندنا بالفعل. ادخل من «الدخول برقم الواتساب» وهيوصلك كود على نفس الرقم، ومن غير كلمة مرور.';
+const PHONE_TAKEN_MESSAGE = 'الرقم ده عليه حساب عندنا بالفعل. ادخل برقم الواتساب وكلمة المرور، ولو نسيتها اضغط «نسيت كلمة المرور» وهيوصلك كود على نفس الرقم.';
 
+// Both ways in are required at sign-up (2 Nov 2026: «عند انشاء حساب ضروري يسجل الاتنين ايميل ورقم واتس»): the address is where the code goes when
+// the person signs in or forgets with it, the number is where it goes when they use that.
 const validateSignup = validateBody({
-  email:    v => v === undefined || v === null || v === '' || isEmail(v) || 'البريد الإلكتروني غير صحيح',
+  email:    v => isEmail(v) || 'البريد الإلكتروني مطلوب وصحيح',
   phone:    v => isPlausibleNumber(normalizeWhatsAppNumber(v)) || 'رقم الهاتف (واتساب) مطلوب وصحيح',
   password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
 });
@@ -130,10 +133,14 @@ async function signup(req, res) {
     // another account must reject the signup rather than silently proceeding
     // without one — that would hand out credentials for an account nothing
     // can ever sign into (email sign-in is optional and may not exist here).
-    const [[phoneTaken]] = await conn.execute(
-      'SELECT id FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
-      [tenantId, normalizeWhatsAppNumber(phone)]
-    );
+    // By every spelling the number is stored under, as the sign-in finds it: an account the desk or an import made holds 01XXXXXXXXX.
+    const takenSpellings = identitySpellings(phone);
+    const [[phoneTaken]] = takenSpellings.length
+      ? await conn.execute(
+        `SELECT id FROM users WHERE tenant_id=? AND phone IN (${takenSpellings.map(() => '?').join(',')}) LIMIT 1`,
+        [tenantId, ...takenSpellings]
+      )
+      : [[null]];
     if (phoneTaken) return res.status(409).json({ error: PHONE_TAKEN_MESSAGE, code: 'PHONE_ALREADY_REGISTERED' });
     await conn.beginTransaction();
     transactionStarted = true;

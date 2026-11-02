@@ -59,20 +59,17 @@ test('checkout survives a customer who has no email address', () => {
   assert.match(checkout, /subscribers\.find\(s => s\.id === mySubscriberId\)/);
 });
 
-test('the WhatsApp sign-in step reports its own outcome', () => {
+test('the sign-in page has no WhatsApp-code way in, and every step of the forgotten-password flow reports its own outcome', () => {
   const auth = read('client/pages/Auth.tsx');
-  const verifyForm = auth.slice(
-    auth.indexOf('onSubmit={handleWaVerify}'),
-    auth.indexOf('تغيير الرقم')
-  );
-  assert.notEqual(verifyForm, '', 'could not locate the WhatsApp verify form');
-  // Without a notice block the step failed in total silence: the API accepted
-  // the code, the handler threw, the catch swallowed it, and nothing on screen
-  // changed while the customer was in fact already signed in.
-  assert.match(verifyForm, /\{notice && \(/);
-  // `result` must be bound before it is read — this shipped as a ReferenceError
-  // because the build strips types and never type-checks.
-  assert.match(auth, /const result = await mysqlAuth\.verifyWaOtp\(/);
+  // 2 Nov 2026: «والغي تسجيل دخول بالواتس اب» — an email or a number with the password; the code only resets a forgotten password.
+  assert.doesNotMatch(auth, /requestWaOtp|verifyWaOtp|waMode|الدخول برقم الواتساب/);
+  assert.doesNotMatch(read('client/lib/mysqlapi.ts'), /whatsapp\/request-otp|whatsapp\/verify-otp/);
+  // Each step of the reset shows the notice, or it failed in total silence while the customer waited for a code.
+  const forgot = auth.slice(auth.indexOf('onSubmit={handleForgotPassword}'));
+  for (const handler of ['handleForgotPassword', 'handleVerifyOtp', 'handleResetPassword']) {
+    const form = forgot.slice(forgot.indexOf(`onSubmit={${handler}}`));
+    assert.match(form.slice(0, 2500), /<NoticeBox notice=\{notice\} \/>/, handler);
+  }
 });
 
 test('contact success is shown only after the public API persists the message', () => {

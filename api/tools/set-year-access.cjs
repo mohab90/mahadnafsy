@@ -11,6 +11,13 @@
  *                                                        # and give the ones with NO expiry a year from their subscription day
  *   node tools/set-year-access.cjs --apply --reinstate-revoked-by="<who>"
  *                                                        # and re-open the enrollments THAT actor revoked, while their year is still ahead
+ *   node tools/set-year-access.cjs --apply --exact       # and SHORTEN the ones that run longer than their window (see below)
+ *   node tools/set-year-access.cjs --all-branches        # include Dokki / Tagamoa (the default is the online clients)
+ *
+ * 2 Nov 2026, «صلاحية فتح الفيديوهات لعملاء الأونلاين سنة لكل الكورسات والمسارات إلا المعالج النفسي المحترف والعلاج النفسي المتكامل سنة ونص من تاريخ
+ * اشتراكهم»: the window is the track's own months for an enrollment that came with a track (bundles.access_months, migration 354 sets 18 for those two),
+ * else the course's, else 12. Online clients only unless --all-branches. Without --exact a longer window (an extension someone granted) is left; with it the
+ * window becomes exactly enrolled_at + months — the report counts how many that shortens and how many end at once, which is the thing to read first.
  *
  * The expiry becomes enrolled_at + the course's own months (courses.access_months) or 12; an expiry that is already LATER is never
  * shortened (an admin's extension stands). Only enrollments with status 'active' are touched.
@@ -31,6 +38,8 @@ const mysql = require('mysql2/promise');
 
 const APPLY = process.argv.includes('--apply');
 const INCLUDE_OPEN = process.argv.includes('--include-open-ended');
+const EXACT = process.argv.includes('--exact');
+const ALL_BRANCHES = process.argv.includes('--all-branches');
 const REINSTATE_BY = (process.argv.find(arg => arg.startsWith('--reinstate-revoked-by=')) || '').slice('--reinstate-revoked-by='.length) || null;
 const DEFAULT_MONTHS = 12;
 const TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
@@ -51,21 +60,25 @@ const addMonths = (value, months) => {
     password: process.env.DB_PASSWORD, database: process.env.DB_NAME, dateStrings: false, timezone: 'Z',
   });
   const [rows] = await db.query(
-    `SELECT e.id, e.subscriber_id, e.course_id, e.enrolled_at, e.expiry_date, c.access_months, s.name, s.client_code
+    `SELECT e.id, e.subscriber_id, e.course_id, e.bundle_id, e.enrolled_at, e.expiry_date, c.access_months, b.access_months AS bundle_months, s.name, s.client_code
        FROM enrollments e
        JOIN courses c ON c.id = e.course_id AND c.tenant_id = e.tenant_id
+       LEFT JOIN bundles b ON b.id = e.bundle_id AND b.tenant_id = e.tenant_id
        LEFT JOIN subscribers s ON s.id = e.subscriber_id AND s.tenant_id = e.tenant_id
-      WHERE e.tenant_id = ? AND e.status = 'active' AND e.enrolled_at IS NOT NULL`, [TENANT]);
+      WHERE e.tenant_id = ? AND e.status = 'active' AND e.enrolled_at IS NOT NULL${ALL_BRANCHES ? '' : " AND e.branch_id LIKE 'branch-online%'"}`, [TENANT]);
   const now = Date.now();
-  const groups = { already: [], extend: [], longer: [], openEnded: [], openEndedLapsed: [] };
+  const groups = { already: [], extend: [], longer: [], openEnded: [], openEndedLapsed: [], shortenedAtOnce: [] };
   const changes = [];
   for (const row of rows) {
-    const months = Number(row.access_months) > 0 ? Number(row.access_months) : DEFAULT_MONTHS;
+    const months = Number(row.bundle_months) > 0 ? Number(row.bundle_months) : Number(row.access_months) > 0 ? Number(row.access_months) : DEFAULT_MONTHS;
     const target = addMonths(row.enrolled_at, months);
     if (!row.expiry_date) {
       (target.getTime() <= now ? groups.openEndedLapsed : groups.openEnded).push({ row, target });
       if (INCLUDE_OPEN) changes.push({ row, target });
-    } else if (new Date(row.expiry_date).getTime() > target.getTime()) groups.longer.push({ row, target });
+    } else if (new Date(row.expiry_date).getTime() > target.getTime()) {
+      groups.longer.push({ row, target });
+      if (EXACT) { changes.push({ row, target }); if (target.getTime() <= now) groups.shortenedAtOnce.push({ row, target }); }
+    }
     else if (new Date(row.expiry_date).getTime() === target.getTime()) groups.already.push({ row, target });
     else { groups.extend.push({ row, target }); changes.push({ row, target }); }
   }
@@ -73,7 +86,7 @@ const addMonths = (value, months) => {
   console.log(`enrollments active: ${rows.length}`);
   console.log(`  already a year from subscription ............ ${groups.already.length}`);
   console.log(`  expire EARLIER than that (will be extended) .. ${groups.extend.length}`);
-  console.log(`  expire LATER than that (left alone) .......... ${groups.longer.length}`);
+  console.log(`  expire LATER than that ${EXACT ? '(SHORTENED by --exact)' : '(left alone)'} ....... ${groups.longer.length}${EXACT ? `, of which ${groups.shortenedAtOnce.length} would end AT ONCE` : ''}`);
   console.log(`  no expiry, a year from subscription still ahead ${groups.openEnded.length}`);
   console.log(`  no expiry, a year from subscription ALREADY PAST ${groups.openEndedLapsed.length}  <- converting these ends their access now`);
   if (groups.openEndedLapsed.length) {

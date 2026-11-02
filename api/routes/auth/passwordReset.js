@@ -22,7 +22,9 @@ const {
   isEmail,
   normalizeWhatsAppNumber,
   toDialable,
+  identitySpellings,
 } = require('./_shared');
+const { matchingSpellings } = require('../../lib/phoneNumber');
 
 const router = Router();
 
@@ -88,7 +90,11 @@ async function issueResetCode(req, rawIdentifier) {
       }
     }
   } else {
-    const [[existingUser]] = await pool.query('SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1 LIMIT 1', [req.tenantId, phoneIdentity]);
+    // Every spelling the number is stored under (an account an import or the desk made holds 01XXXXXXXXX), as the sign-in does.
+    const userSpellings = identitySpellings(rawIdentifier);
+    const [[existingUser]] = userSpellings.length
+      ? await pool.query(`SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND phone IN (${userSpellings.map(() => '?').join(',')}) AND is_active = 1 LIMIT 1`, [req.tenantId, ...userSpellings])
+      : [[null]];
     if (existingUser) {
       user = existingUser;
     } else {
@@ -97,13 +103,36 @@ async function issueResetCode(req, rawIdentifier) {
       // customer who types their WhatsApp number gets the silent "ok" below and
       // no code ever arrives — so "just use forgot password" could not work for
       // them however many times they tried.
-      const [[sub]] = await pool.query(
-        `SELECT id, name, email, phone FROM subscribers
-          WHERE tenant_id=? AND phone = ? AND is_active = 1 AND deleted_at IS NULL
-          LIMIT 1`,
-        [req.tenantId, phoneIdentity]
-      );
-      if (sub) {
+      //
+      // Found by the digits of every spelling it may be stored in (subscribers.phone_digits): `phone = <identity>` found only the 4,957
+      // clients stored as 1XXXXXXXXX and missed the 7,114 stored as 01XXXXXXXXX, so for most clients «نسيت كلمة المرور» by number
+      // answered «ok» and sent nothing (2 Nov 2026: «بعض العملاء مش بيعرفوا يعملوا تسجيل دخول»).
+      const clientSpellings = matchingSpellings(rawIdentifier);
+      const [[sub]] = clientSpellings.length
+        ? await pool.query(
+          `SELECT id, name, email, phone FROM subscribers
+            WHERE tenant_id=? AND phone_digits IN (${clientSpellings.map(() => '?').join(',')}) AND is_active = 1 AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1`,
+          [req.tenantId, ...clientSpellings]
+        )
+        : [[null]];
+      // The client already has a login by the email on their file but never gave a number to it (509 of the 1,985 accounts on production have no number):
+      // the number on the client's file joins that account — the code about to be sent to it is the proof — instead of a second account being refused
+      // by the unique email and no code going anywhere.
+      if (sub && sub.email) {
+        const [[byEmail]] = await pool.query(
+          'SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND email=? AND is_active=1 LIMIT 1',
+          [req.tenantId, String(sub.email).toLowerCase().trim()]
+        );
+        if (byEmail) {
+          if (!byEmail.phone) {
+            await pool.query("UPDATE users SET phone=? WHERE id=? AND tenant_id=? AND (phone IS NULL OR phone='')", [phoneIdentity, byEmail.id, req.tenantId]);
+          }
+          user = { ...byEmail, phone: byEmail.phone || phoneIdentity };
+          logger.info('[forgot-password] the number on a client file joined the account of their email:', phoneIdentity);
+        }
+      }
+      if (sub && !user) {
         // Locked, un-guessable hash: the only way in is the OTP they are about
         // to receive. Email stays NULL when the subscriber has none — phone is
         // the identity here.
@@ -119,6 +148,7 @@ async function issueResetCode(req, rawIdentifier) {
           'SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
           [req.tenantId, phoneIdentity]
         );
+        if (!createdUser) logger.warn('[forgot-password] the number is already on another account, no code sent:', phoneIdentity);
         if (createdUser) {
           user = createdUser;
           logger.info('[forgot-password] auto-created users record for subscriber by phone:', phoneIdentity);
@@ -178,7 +208,9 @@ async function issueResetCode(req, rawIdentifier) {
       [req.tenantId, String(user.email).toLowerCase().trim()]).catch(() => [[null]]);
     isStaffAccount = Boolean(staffRow);
   }
-  const dialable = !isStaffAccount && user.phone ? toDialable(user.phone) : '';
+  // The code goes where the person asked for it (2 Nov 2026: «اما يروحله واتس اب او علي الايميل علي حسب هو دخل ايه»): an address typed ← that
+  // address, a number typed ← WhatsApp on that number, with the account's proven email as the fallback if WhatsApp refuses.
+  const dialable = !identifierIsEmail && !isStaffAccount && (user.phone || phoneIdentity) ? toDialable(user.phone || phoneIdentity) : '';
   if (dialable) {
     // Direct, not queued: a reset code is waited for on the screen.
     const sent = await sendWhatsApp(
@@ -262,10 +294,13 @@ router.post('/api/auth/verify-otp', resetOtpLimiter, async (req, res) => {
     account = byEmail || { id: null, email: safeEmail };
   } else {
     const phoneIdentity = normalizeWhatsAppNumber(rawIdentifier);
-    const [[byPhone]] = await pool.query(
-      'SELECT id, email FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
-      [req.tenantId, phoneIdentity]
-    );
+    const verifySpellings = identitySpellings(rawIdentifier);
+    const [[byPhone]] = verifySpellings.length
+      ? await pool.query(
+        `SELECT id, email FROM users WHERE tenant_id=? AND phone IN (${verifySpellings.map(() => '?').join(',')}) AND is_active=1 LIMIT 1`,
+        [req.tenantId, ...verifySpellings]
+      )
+      : [[null]];
     // Deliberately fall through to the ordinary "code incorrect or expired"
     // rejection below rather than a distinct error — an unresolvable phone
     // must not read differently from a wrong code, or it becomes a way to

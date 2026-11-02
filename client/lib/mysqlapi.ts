@@ -401,22 +401,8 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
-  // WhatsApp sign-in. requestWaOtp always resolves ok:true even for an unknown
-  // number — the API deliberately won't reveal which numbers have accounts.
-  requestWaOtp: (phone: string) =>
-    apiFetch<{ ok: boolean; expiresInMinutes: number }>('/auth/whatsapp/request-otp', { method: 'POST', body: JSON.stringify({ phone }) }),
-  /**
-   * Verifying a code both signs in and registers: a number with no account gets
-   * one here. `name` is used only when the account is being created, so a
-   * returning customer can never be renamed by a stale form value.
-   * `created` says which of the two just happened.
-   */
-  verifyWaOtp: (phone: string, code: string, name?: string, ref?: string) =>
-    apiFetch<{
-      ok: boolean; created: boolean;
-      user: { uid: string; email: string; displayName: string; phone: string };
-      emailCodeRequired?: boolean; pendingToken?: string; emailHint?: string; resendAfterSeconds?: number;
-    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name, ...(ref ? { ref } : {}) }) }),
+  // Signing in by a WhatsApp code was switched off on 2 Nov 2026 (routes/auth/whatsappLogin.js answers 410): the way in is an email or a number
+  // with the password, and a forgotten password is reset with a code sent on the channel the person typed.
   // The second step of an important account's sign-in: the code sent to its email (api/lib/loginEmailCode.js). The session is the httpOnly
   // cookie the API sets; the body carries no token.
   verifyLoginEmailCode: (pendingToken: string, code: string) =>

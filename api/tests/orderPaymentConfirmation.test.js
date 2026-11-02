@@ -77,6 +77,7 @@ test('confirmOrderPayment: creates a real payment row, posts the journal, and ma
     { match: 'FROM enrollments', rows: [] },
     // Enrolment now reads the course's access duration so it can stamp an end date.
     { match: 'SELECT access_months FROM courses', rows: [{ access_months: null }] },
+    { match: 'SELECT access_months FROM bundles', rows: [{ access_months: null }] },
     { match: 'INSERT INTO enrollments', rows: {} },
     { match: 'INSERT INTO entitlement_events', rows: {} },
     { match: "UPDATE orders SET status='paid'", rows: {} },
@@ -123,6 +124,7 @@ test('confirmOrderPayment: enrolls in every course of a bundle order', async () 
     { match: 'FROM enrollments', rows: [] },
     // Enrolment now reads the course's access duration so it can stamp an end date.
     { match: 'SELECT access_months FROM courses', rows: [{ access_months: null }] },
+    { match: 'SELECT access_months FROM bundles', rows: [{ access_months: null }] },
     { match: 'INSERT INTO enrollments', rows: {} },
     { match: 'INSERT INTO entitlement_events', rows: {} },
     { match: "UPDATE orders SET status='paid'", rows: {} },
@@ -152,6 +154,7 @@ test('confirmOrderPayment: linking a transfer carries its payment method/transac
     { match: 'FROM enrollments', rows: [] },
     // Enrolment now reads the course's access duration so it can stamp an end date.
     { match: 'SELECT access_months FROM courses', rows: [{ access_months: null }] },
+    { match: 'SELECT access_months FROM bundles', rows: [{ access_months: null }] },
     { match: 'INSERT INTO enrollments', rows: {} },
     { match: 'INSERT INTO entitlement_events', rows: {} },
     { match: "UPDATE orders SET status='paid'", rows: {} },
@@ -197,6 +200,7 @@ test('confirmOrderPayment: converts the linked lead when the subscriber came fro
     { match: 'FROM enrollments', rows: [] },
     // Enrolment now reads the course's access duration so it can stamp an end date.
     { match: 'SELECT access_months FROM courses', rows: [{ access_months: null }] },
+    { match: 'SELECT access_months FROM bundles', rows: [{ access_months: null }] },
     { match: 'INSERT INTO enrollments', rows: {} },
     { match: 'INSERT INTO entitlement_events', rows: {} },
     { match: "UPDATE orders SET status='paid'", rows: {} },

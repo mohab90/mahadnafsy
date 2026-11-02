@@ -16,6 +16,7 @@ const { getClientIp } = require('./clientContext');
 
 const DEVICE_COOKIE = 'mahadDevice';
 const MAX_CUSTOMER_DEVICES = Math.max(1, Number(process.env.CUSTOMER_MAX_DEVICES) || 2);
+const STALE_DEVICE_DAYS = Math.max(1, Number(process.env.CUSTOMER_DEVICE_STALE_DAYS) || 30);
 const COOKIE_MAX_AGE_SECONDS = 5 * 365 * 24 * 60 * 60;
 const DEVICE_LIMIT_MESSAGE = `انت فتحت حسابك من أكتر من جهاز. الحساب مسموح عليه ${MAX_CUSTOMER_DEVICES === 2 ? 'جهازين' : `${MAX_CUSTOMER_DEVICES} أجهزة`} بس — `
   + 'لو غيّرت جهازك تواصل مع الدعم يفتحلك الجهاز الجديد.';
@@ -72,7 +73,18 @@ async function registerCustomerDevice(conn, { tenantId, userId, req }) {
       [ip, userAgent, known.id]);
     return { deviceCount: devices.length, known: true };
   }
-  if (devices.length >= MAX_CUSTOMER_DEVICES) throw deviceLimitError();
+  if (devices.length >= MAX_CUSTOMER_DEVICES) {
+    // A place not used for STALE_DEVICE_DAYS is a phone the customer has moved on from (or a browser whose cookies were cleared, which
+    // is a new «device» every time): the new device takes it. Measured over 14 days on production, 32 customers were refused 305 times
+    // with «تواصل مع الدعم» (2 Nov 2026). Two devices in use together are still two, so account sharing is not made easier.
+    const staleBefore = Date.now() - STALE_DEVICE_DAYS * 24 * 60 * 60 * 1000;
+    const [[stale]] = await conn.query(
+      'SELECT id FROM customer_devices WHERE tenant_id=? AND user_id=? AND last_seen_at < ? ORDER BY last_seen_at ASC LIMIT 1',
+      [tenantId, userId, new Date(staleBefore)]);
+    if (!stale) throw deviceLimitError();
+    await conn.query('DELETE FROM customer_devices WHERE id=? AND tenant_id=?', [stale.id, tenantId]);
+    devices.splice(devices.findIndex(device => device.id === stale.id), 1);
+  }
   await conn.query(
     'INSERT INTO customer_devices (id, tenant_id, user_id, device_hash, last_ip, user_agent) VALUES (?,?,?,?,?,?)',
     [uuidv4(), tenantId, userId, deviceHash, ip, userAgent]);

@@ -22,6 +22,14 @@ const { accountNeedsEmailCode, startEmailCodeStep } = require('../../lib/loginEm
 
 const router = Router();
 
+// Signing in by a WhatsApp code is switched off (2 Nov 2026: «والغي تسجيل دخول بالواتس اب … هو كدا كدا اما بالايميل او بالرقم والباسورد»): the way in is an
+// email or a number with the password, and a forgotten password is reset by a code sent on the channel typed (routes/auth/passwordReset.js). The
+// routes stay mounted and answer 410, so an old page open in a browser is told, not given an error; AUTH_WHATSAPP_LOGIN=1 turns them back on.
+const whatsappLoginOn = () => process.env.AUTH_WHATSAPP_LOGIN === '1';
+router.use('/api/auth/whatsapp', (req, res, next) => (whatsappLoginOn()
+  ? next()
+  : res.status(410).json({ error: 'الدخول بكود الواتساب اتلغى. ادخل بالإيميل أو رقم الواتساب وكلمة المرور، ولو نسيتها اضغط «نسيت كلمة المرور».', code: 'WHATSAPP_LOGIN_OFF' })));
+
 // ── Forgot Password + OTP + 2FA ───────────────────────────────────────────────
 // POST /api/auth/forgot-password — send 6-digit OTP via email
 // ── WhatsApp sign-in ─────────────────────────────────────────────────────────
