@@ -68,7 +68,8 @@ export function can(viewer: Viewer, permission: string): boolean {
 function canUseChannel(viewer: Viewer, channel: 'inbox' | 'whatsapp'): boolean {
   if (viewer.role === 'sales') return true;
   if (viewer.role === 'collection') return channel === 'whatsapp';
-  if (channel === 'whatsapp' && (viewer.role === 'reception_daqqi' || viewer.role === 'daqqi_manager')) return true;
+  // The Dokki desk and its manager, customer service and HR have «واتسابي» on their own numbers (api/constants/permissions.js WHATSAPP_ROLES).
+  if (channel === 'whatsapp' && ['reception_daqqi', 'daqqi_manager', 'support', 'hr'].includes(viewer.role)) return true;
   return can(viewer, 'manage_inbox');
 }
 

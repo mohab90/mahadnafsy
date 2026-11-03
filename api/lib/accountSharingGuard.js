@@ -58,12 +58,16 @@ async function enforceSharingLimit({ tenantId, userId, email }) {
   if (!tenantId || !userId || !email) return { locked: false, distinctDevices: 0, until: null };
   try {
     const [[stat]] = await pool.query(
-      `SELECT COUNT(DISTINCT device_hash) AS distinct_devices
-         FROM login_history
-        WHERE tenant_id=? AND email=? AND status IN ('success','2fa_success')
-          AND device_hash IS NOT NULL
-          AND created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)`,
-      [tenantId, String(email).toLowerCase().trim(), WINDOW_HOURS]
+      // Nothing before the moment a person on the staff lifted the lock counts again (users.sharing_reset_at): lifting it used to leave the same devices in
+      // the window, so the next sign-in locked the account straight back.
+      `SELECT COUNT(DISTINCT h.device_hash) AS distinct_devices
+         FROM login_history h
+         LEFT JOIN users u ON u.id=? AND u.tenant_id=h.tenant_id
+        WHERE h.tenant_id=? AND h.email=? AND h.status IN ('success','2fa_success')
+          AND h.device_hash IS NOT NULL
+          AND h.created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
+          AND (u.sharing_reset_at IS NULL OR h.created_at >= u.sharing_reset_at)`,
+      [userId, tenantId, String(email).toLowerCase().trim(), WINDOW_HOURS]
     );
     const distinctDevices = Number(stat?.distinct_devices || 0);
     if (distinctDevices <= MAX_DISTINCT_DEVICES) return { locked: false, distinctDevices, until: null };

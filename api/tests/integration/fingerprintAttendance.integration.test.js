@@ -117,10 +117,10 @@ test('payroll deducts the judged days at the basic salary typed on the employee'
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   const [items] = await pool.query('SELECT staff_id, base_salary, late_deductions, absence_deductions, calculation_details FROM payroll_items WHERE tenant_id=?', [T]);
   const mona = items.find(i => i.staff_id === 'fp-mona');
-  const daily = 6500 / 26; // 250
+  const daily = 6500 / 30; // a day is a thirtieth of the salary (3 Nov 2026); the columns keep two decimals
   assert.equal(Number(mona.base_salary), 6500);
-  assert.equal(Number(mona.late_deductions), daily * 0.75, 'three quarters of a day');
-  assert.equal(Number(mona.absence_deductions), daily * 1, 'one absent day');
+  assert.ok(Math.abs(Number(mona.late_deductions) - daily * 0.75) < 0.01, 'three quarters of a day');
+  assert.ok(Math.abs(Number(mona.absence_deductions) - daily) < 0.01, 'one absent day');
   const details = typeof mona.calculation_details === 'string' ? JSON.parse(mona.calculation_details) : mona.calculation_details;
   assert.equal(details.salarySource, 'staff_file');
   assert.equal(details.lateDeductionDays, 0.75);

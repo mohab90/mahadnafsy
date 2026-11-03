@@ -887,7 +887,8 @@
    "orders",
    "ratings",
    "refund_requests",
-   "service_hub"
+   "service_hub",
+   "whatsapp_web"
   ]
  },
  "reception_daqqi": {
@@ -973,7 +974,8 @@
    "offboarding",
    "staff_announcements",
    "staff_performance",
-   "tasks_board"
+   "tasks_board",
+   "whatsapp_web"
   ],
   "gate": [
    "activity",
@@ -993,7 +995,8 @@
    "staff_home",
    "staff_performance",
    "staff_settings",
-   "tasks_board"
+   "tasks_board",
+   "whatsapp_web"
   ],
   "bar": null
  },

@@ -65,7 +65,7 @@ test('customer service works both branches\' clients and its three desks, and no
   // The same eleven, some of them folded into the bar's menus (15 Oct 2026): العملاء, الخدمات, الجودة.
   const tabs = [...bar.matchAll(/\{ key: '([a-z_]+)'/g)].map(m => m[1]).sort();
   // «خليهم يشوفو الاستشارات … جزء الدعم والجودة كله»; «التقييمات» since 8 Oct 2026.
-  assert.deepEqual(tabs, ['daqqi_schedule', 'daqqi_clients', 'online_clients', 'client', 'orders', 'customer_inbox', 'refund_requests', 'cert_requests', 'consultations', 'ratings', 'service_hub'].sort());
+  assert.deepEqual(tabs, ['daqqi_schedule', 'daqqi_clients', 'online_clients', 'client', 'orders', 'customer_inbox', 'refund_requests', 'cert_requests', 'consultations', 'ratings', 'service_hub', 'whatsapp_web'].sort());
   for (const p of ['view_consultations', 'manage_consultations', 'view_contacts', 'manage_contacts']) {
     assert.ok(perms.has(p), `support cannot open ${p}`);
   }

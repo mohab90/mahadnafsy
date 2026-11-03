@@ -49,12 +49,14 @@ test('an expense must name its box, and its amount comes out of that box', () =>
   assert.match(form, /\(!needsBox \|\| !!expenseDraft\.boxMethod\)/, 'the form will not save a new expense with no box');
 });
 
-test('«واتسابي» is open to the Dokki desk and its manager, and to nobody else by this rule', () => {
+test('«واتسابي» is open to the Dokki desk and its manager, customer service and HR, and to nobody else by this rule', () => {
   const { canUseChannel } = require('../constants/permissions');
   for (const role of ['reception_daqqi', 'daqqi_manager']) {
     assert.equal(canUseChannel({ role, permissions_json: '[]' }, 'whatsapp'), true, role);
   }
   assert.equal(canUseChannel({ role: 'reception_daqqi', permissions_json: '[]' }, 'inbox'), false, 'the shared inbox still goes by manage_inbox');
+  // 3 Nov 2026: customer service and HR have it too ("زر واتسابي يظهر لموظفين الدقي ولخدمة العملاء والـ HR").
+  for (const role of ['support', 'hr']) assert.equal(canUseChannel({ role, permissions_json: '[]' }, 'whatsapp'), true, role);
   assert.equal(canUseChannel({ role: 'reception_tagamoa', permissions_json: '[]' }, 'whatsapp'), false, 'not asked for the Tagamoa desk');
   const nav = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'DashboardNavigation.tsx'), 'utf8');
   const desk = nav.slice(nav.indexOf('{isReceptionDaqqi && !isDaqqiManager'), nav.indexOf('Customer service horizontal nav'));

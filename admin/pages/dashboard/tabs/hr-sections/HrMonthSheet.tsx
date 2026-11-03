@@ -3,20 +3,23 @@
 // department, basic salary, attendance, free day, deductions, the net (or an estimate before the run), the required / reached / bonus of the month
 // and an edit button that opens every part of the employee's month.
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { Award, CalendarCheck, Loader2, Pencil, Save, Upload, Wallet } from 'lucide-react';
+import { Award, CalendarCheck, Gavel, Loader2, Pencil, Save, Upload, Wallet } from 'lucide-react';
 import { cairoMonthOnly } from '../../../../../shared/cairoDate';
+import { departmentRank } from '../../../../../shared/staffDepartment';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hrLabels';
 import { fmtMoney } from './hrFormat';
 import { useAutoResizableColumns } from '../../../../components/useAutoResizableColumns';
 import HrFingerprintUpload from './HrFingerprintUpload';
 import HrMonthEditModal from './HrMonthEditModal';
+import HrPenaltyModal from './HrPenaltyModal';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type AttendanceRow = {
   id: string; name: string; department_name?: string | null; biometric_user_no?: string | null; base_salary?: number | null;
   present_days?: number; absent_days?: number; late_days?: number; total_late_minutes?: number;
   leave_days?: number; deduction_days?: number | string; flagged_days?: number; free_days_used?: number; free_days_allowed?: number;
+  excused_days?: number; leave_balance?: { entitlement: number; used: number; remaining: number };
 };
 type Run = { id: string; month: number | string; year: number | string; status: string; employee_count?: number };
 type Item = {
@@ -38,9 +41,7 @@ const BONUS_STATUS_AR: Record<string, string> = { PENDING: 'مستني الاع�
 
 const num = (value: unknown) => Number(value) || 0;
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
-// Where each department sits in the sheet (the same order the server uses, api/lib/staffDepartment.js); the rest follow by name.
-const DEPARTMENT_ORDER = ['الدقي', 'التجمع', 'المبيعات', 'التحصيل أونلاين', 'الدعم الفني', 'الموارد البشرية', 'الحسابات', 'الإدارة'];
-const WORK_DAYS = 26; // the policy's work_days_per_month default, used only for the estimate
+const PAY_MONTH_DAYS = 30; // a day's pay is the month's salary over thirty (api/lib/payrollCalc.js)
 
 export default function HrMonthSheet({ notify, canManageFinance, canManagePayroll }: { notify: Notify; canManageFinance: boolean; canManagePayroll: boolean }) {
   const [month, setMonth] = useState(cairoMonthOnly());
@@ -54,6 +55,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
   const [calculating, setCalculating] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [penalising, setPenalising] = useState(false);
   const tableRef = useAutoResizableColumns('hr-month-sheet');
 
   const load = useCallback(async () => {
@@ -143,7 +145,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
       : null;
     // Before the run: what the month would cost at the basic salary, so the column is never just «not calculated».
     const estimate = !item && row.base_salary
-      ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / WORK_DAYS) * (num(row.absent_days) + num(row.deduction_days)))
+      ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / PAY_MONTH_DAYS) * (num(row.absent_days) + num(row.deduction_days)))
       : null;
     // The salary with the month's additions and before any deduction: base + allowances + commission + teaching + bonus; before the run, base + the bonus typed here.
     const gross = item
@@ -158,8 +160,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
       const name = entry.row.department_name || 'أخرى';
       byDepartment.set(name, [...(byDepartment.get(name) || []), entry]);
     }
-    const rank = (name: string) => { const at = DEPARTMENT_ORDER.indexOf(name); return at === -1 ? DEPARTMENT_ORDER.length : at; };
-    return [...byDepartment.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ar'));
+    return [...byDepartment.entries()].sort((a, b) => departmentRank(a[0]) - departmentRank(b[0]) || a[0].localeCompare(b[0], 'ar'));
   }, [rows]);
   const totals = useMemo(() => rows.reduce((acc, { row, item }) => ({
     absent: acc.absent + num(row.absent_days), late: acc.late + num(row.late_days),
@@ -179,6 +180,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
             : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">مفيش مسير رواتب للشهر ده لسه — دوس «احسب المسير»</span>}
           <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm" />
           <button type="button" onClick={() => setShowUpload(true)} className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"><Upload size={13} /> رفع شيت البصمة</button>
+          <button type="button" onClick={() => setPenalising(true)} className="flex items-center gap-1 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-bold text-white"><Gavel size={13} /> خصم جزاء من المدير</button>
           <button type="button" onClick={() => void calculate()} disabled={calculating || run?.status === 'APPROVED' || run?.status === 'PAID'} className="flex items-center gap-1 rounded-xl bg-slate-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
             {calculating ? <Loader2 size={13} className="animate-spin" /> : <Award size={13} />} {run ? 'أعد حساب المسير' : 'احسب المسير'}
           </button>
@@ -218,6 +220,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                 <th className="px-3 py-2">تأخير</th>
                 <th className="px-3 py-2">إجازات</th>
                 <th className="px-3 py-2">يوم مجاني</th>
+                <th className="px-3 py-2">رصيد الإجازات</th>
                 <th className="px-3 py-2">أيام خصم</th>
                 <th className="px-3 py-2">عمولة ومكافأة</th>
                 <th className="px-3 py-2">الخصومات</th>
@@ -233,7 +236,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
               {groups.map(([department, members]) => (
                 <Fragment key={department}>
                   <tr className="bg-indigo-50/60">
-                    <td colSpan={17} className="px-3 py-1.5 text-xs font-extrabold text-indigo-900">
+                    <td colSpan={18} className="px-3 py-1.5 text-xs font-extrabold text-indigo-900">
                       {department} <span className="mr-2 font-semibold text-indigo-700">{n(members.length)} موظف</span>
                       <span className="mr-2 font-semibold text-indigo-700">إجمالي الرواتب بعد المكافأة {fmtMoney(members.reduce((sum, member) => sum + (member.gross || 0), 0))}</span>
                       {members.some(member => member.item) && <span className="mr-2 font-semibold text-emerald-700">الصافي {fmtMoney(members.reduce((sum, member) => sum + num(member.item?.net_salary), 0))}</span>}
@@ -253,10 +256,16 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                     <td className="px-3 py-2 text-gray-700">{row.department_name || <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2 tabular-nums">{row.base_salary ? fmtMoney(num(row.base_salary)) : <span className="text-xs font-bold text-red-600">فاضي</span>}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-700">{n(num(row.present_days))}</td>
-                    <td className={`px-3 py-2 tabular-nums ${num(row.absent_days) ? 'font-bold text-red-600' : 'text-gray-300'}`}>{n(num(row.absent_days))}</td>
+                    <td className={`px-3 py-2 tabular-nums ${num(row.absent_days) ? 'font-bold text-red-600' : 'text-gray-300'}`}>
+                      {n(num(row.absent_days))}
+                      {num(row.excused_days) > 0 && <span className="mr-1 text-[10px] font-normal text-gray-500">{n(num(row.excused_days))} بإذن · {n(num(row.absent_days) - num(row.excused_days))} بدون</span>}
+                    </td>
                     <td className="px-3 py-2 tabular-nums text-gray-700">{num(row.late_days) ? `${n(num(row.late_days))} يوم · ${n(num(row.total_late_minutes))} د` : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-gray-700">{num(row.leave_days) ? n(num(row.leave_days)) : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-sky-700">{num(row.free_days_allowed) || num(row.free_days_used) ? `${n(num(row.free_days_used))} من ${n(num(row.free_days_allowed))}` : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-3 py-2 tabular-nums text-sky-700" title="٢١ يوم في السنة؛ اليوم المجاني والإجازة الاعتيادية والغياب «من رصيد الإجازات» كل واحد بيخصم يوم">
+                      {row.leave_balance ? `${n(row.leave_balance.remaining)} من ${n(row.leave_balance.entitlement)}` : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className={`px-3 py-2 tabular-nums ${num(row.deduction_days) ? 'font-bold text-amber-700' : 'text-gray-300'}`}>{num(row.deduction_days) ? n(num(row.deduction_days)) : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-700">{item && (num(item.commission) + num(item.bonus_amount)) ? `+${fmtMoney(num(item.commission) + num(item.bonus_amount))}` : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-red-600">{deductions ? `−${fmtMoney(deductions)}` : '—'}</td>
@@ -271,7 +280,12 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                         onChange={e => edit(row.id, { targetValue: e.target.value })} />
                       {unit && <span className="mr-1 text-[11px] text-gray-400">{UNIT_AR[unit]}</span>}
                     </td>
-                    <td className="px-3 py-2"><input type="number" min={0} disabled={locked} className={cell} value={draftOf(row.id, 'achievedValue')} onChange={e => edit(row.id, { achievedValue: e.target.value })} /></td>
+                    <td className="px-3 py-2">
+                      <input type="number" min={0} disabled={locked} className={cell} value={draftOf(row.id, 'achievedValue')} onChange={e => edit(row.id, { achievedValue: e.target.value })} />
+                      {Number(draftOf(row.id, 'targetValue') || bonus?.standing.target) > 0 && draftOf(row.id, 'achievedValue') !== '' && (
+                        <span className="mr-1 text-[11px] font-bold text-indigo-600">{n(Math.round((Number(draftOf(row.id, 'achievedValue')) / Number(draftOf(row.id, 'targetValue') || bonus?.standing.target)) * 100))}٪</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <input type="number" min={0} disabled={locked} className={cell} value={draftOf(row.id, 'amount')} placeholder={bonus?.standing.bonus != null ? String(bonus.standing.bonus) : ''}
                         onChange={e => edit(row.id, { amount: e.target.value })} />
@@ -285,12 +299,13 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                   })}
                 </Fragment>
               ))}
-              {rows.length === 0 && <tr><td colSpan={17} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={18} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
             </tbody>
           </table>
         </div>
       )}
 
+      {penalising && <HrPenaltyModal employees={attendance} month={month} notify={notify} onClose={() => setPenalising(false)} onSaved={() => void load()} />}
       {showUpload && <HrFingerprintUpload month={month} notify={notify} onClose={() => setShowUpload(false)} onImported={imported => { setMonth(imported); void load(); }} />}
       {editing && (
         <HrMonthEditModal staffId={editing.id} name={editing.name} month={month} canEditSalary={canManageFinance} notify={notify}

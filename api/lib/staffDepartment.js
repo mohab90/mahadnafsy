@@ -8,13 +8,13 @@ const BY_ROLE = Object.freeze({
   tagamoa_manager: 'التجمع', reception_tagamoa: 'التجمع',
   sales: 'المبيعات', sales_collection_manager: 'المبيعات',
   collection: 'التحصيل أونلاين', online_manager: 'التحصيل أونلاين',
-  support: 'الدعم الفني', hr: 'الموارد البشرية', accountant: 'الحسابات',
+  support: 'خدمة العملاء', hr: 'الموارد البشرية', accountant: 'الحسابات',
   admin: 'الإدارة', manager: 'الإدارة',
   consultant: 'المستشارون والمحاضرون', expert: 'المستشارون والمحاضرون', trainer: 'المستشارون والمحاضرون', instructor: 'المستشارون والمحاضرون',
 });
 
-/** The order the month sheet lists its departments in; the rest follow alphabetically. */
-const DEPARTMENT_ORDER = Object.freeze(['الدقي', 'التجمع', 'المبيعات', 'التحصيل أونلاين', 'الدعم الفني', 'الموارد البشرية', 'الحسابات', 'الإدارة']);
+/** The order the month sheet and the directory list the departments in (shared/staffDepartment.ts is the same table); the rest follow alphabetically. */
+const DEPARTMENT_ORDER = Object.freeze(['المبيعات', 'التحصيل أونلاين', 'الدقي', 'التجمع', 'الإدارة', 'الموارد البشرية', 'الحسابات', 'خدمة العملاء']);
 
 /** The department an employee sits in: the one HR named, else the one their job says, else «أخرى». */
 function departmentOf({ departmentName = null, role = null } = {}) {

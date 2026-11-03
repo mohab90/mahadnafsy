@@ -21,6 +21,7 @@ type MonthDetail = {
   month: number; year: number;
   summary: { present: number; absent: number; lateDays: number; lateMinutes: number; deductionDays: number; oneStamp: number };
   days: Day[]; leaves: Leave[]; bonuses: Bonus[]; payslip: Payslip | null;
+  leaveBalance?: { entitlement: number; used: number; remaining: number };
 };
 
 const STATUS_AR: Record<string, [string, string]> = {
@@ -35,7 +36,8 @@ const REQUEST_AR: Record<string, string> = { PENDING: 'مستني الرد', APP
 const FLAG_AR: Record<string, string> = { missing_check_out: 'بصمة حضور بس', missing_check_in: 'بصمة انصراف بس' };
 const UNIT_AR: Record<string, string> = { clients: 'عميل', bookings: 'حجز', egp: 'جنيه' };
 const permitText = (permit: string | null) => (permit
-  ? permit.split('+').map(p => (p.includes('morning') ? 'إذن صباحي' : p.includes('evening') ? 'إذن مسائي' : p)).join(' + ') : '');
+  ? permit.split('+').map(p => (p.includes('morning') ? 'إذن صباحي' : p.includes('evening') ? 'إذن مسائي' : p === 'free_day' ? 'يوم مجاني'
+    : p === 'leave_balance' ? 'من رصيد الإجازات' : p === 'excused' ? 'غياب بإذن' : p)).join(' + ') : '');
 const egp = (value: number) => `${Number(value || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م`;
 const num = (value: number) => Number(value || 0).toLocaleString('ar-EG-u-nu-latn');
 const dayLabel = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: CAIRO_TIME_ZONE });
@@ -91,6 +93,9 @@ export function MyMonthDetail() {
                   <div key={label} className={`rounded-xl px-2 py-3 ${tone}`}><div className="text-xl font-black">{num(value)}</div><div className="text-[10px] font-bold opacity-80">{label}</div></div>
                 ))}
               </div>
+              {detail.leaveBalance && (
+                <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">رصيد إجازاتك لسنة {detail.year}: باقي {num(detail.leaveBalance.remaining)} من {num(detail.leaveBalance.entitlement)} يوم (اليوم المجاني الشهري والإجازة الاعتيادية والغياب «من الرصيد» بيخصموا منه).</p>
+              )}
               {detail.summary.oneStamp > 0 && (
                 <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">{num(detail.summary.oneStamp)} يوم فيهم بصمة واحدة بس — الموارد البشرية بتراجعهم ومش بيتخصم عليهم من غير مراجعة.</p>
               )}

@@ -21,6 +21,7 @@ type ArchivedClient = {
   deleted_at?: string;
   created_at?: string;
   total_paid?: number;
+  archived_by?: string | null;
 };
 
 const fmtDate = (value?: string) => (value ? String(value).slice(0, 10) : '—');
@@ -120,6 +121,7 @@ export default function ArchivedClientsTab({ notify }: { notify: Notify }) {
                 <th className="px-4 py-3 text-right font-bold">إجمالي المدفوع</th>
                 <th className="px-4 py-3 text-right font-bold">تاريخ التسجيل</th>
                 <th className="px-4 py-3 text-right font-bold">تاريخ الأرشفة</th>
+                <th className="px-4 py-3 text-right font-bold">اللي أرشفه</th>
                 <th className="px-4 py-3 text-right font-bold">إجراء</th>
               </tr>
             </thead>
@@ -140,6 +142,7 @@ export default function ArchivedClientsTab({ notify }: { notify: Notify }) {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.created_at)}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.deleted_at)}</td>
+                  <td className="px-4 py-3 text-xs text-gray-700">{row.archived_by || <span className="text-gray-400" title="اتأرشف قبل ما السيستم يسجّل اللي أرشف">غير مسجّل</span>}</td>
                   <td className="px-4 py-3">
                     <button
                       disabled={busy === row.id}

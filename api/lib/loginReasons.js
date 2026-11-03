@@ -7,7 +7,7 @@ const REASONS = Object.freeze({
   account_not_found: 'مفيش حساب بالبيانات دي',
   password_not_set: 'الحساب ملوش كلمة مرور — يدخل بكود الواتساب أو «نسيت كلمة المرور»',
   sharing_locked: 'الحساب موقوف مؤقتاً (دخول من أجهزة أو شبكات كتير)',
-  sharing_limit_locked: 'دخل صح بس الحساب اتوقف بعدها (شبكات كتير)',
+  sharing_limit_locked: 'دخل صح بس الحساب اتوقف بعدها (أجهزة كتير)',
   device_limit: 'وصل للحد الأقصى من الأجهزة',
   wa_otp_invalid: 'كود الواتساب غلط أو منتهي',
   email_code_wrong: 'كود الإيميل غلط',

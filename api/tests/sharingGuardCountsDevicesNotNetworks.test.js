@@ -19,8 +19,8 @@ require.cache[dbPath] = {
   exports: {
     pool: {
       query: async (sql, params = []) => {
-        if (/COUNT\(DISTINCT device_hash\)/.test(sql)) {
-          const rows = history.filter(row => row.email === params[1] && row.device_hash && ['success', '2fa_success'].includes(row.status));
+        if (/COUNT\(DISTINCT (h\.)?device_hash\)/.test(sql)) {
+          const rows = history.filter(row => row.email === params[2] && row.device_hash && ['success', '2fa_success'].includes(row.status));
           return [[{ distinct_devices: new Set(rows.map(row => row.device_hash)).size }]];
         }
         if (/^UPDATE users/.test(sql.trim())) { updates.push(params); return [{ affectedRows: 1 }]; }

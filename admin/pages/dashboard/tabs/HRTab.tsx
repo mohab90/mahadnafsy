@@ -3,7 +3,7 @@ import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Users, Briefcase, Search, BarChart3, UserPlus,
-  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint,
+  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint, GraduationCap,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -19,21 +19,22 @@ import HrLeavesPanel from './hr-sections/HrLeavesPanel';
 import HrRequestsInbox from './hr-sections/HrRequestsInbox';
 import HrStaffBasicsPanel from './hr-sections/HrStaffBasicsPanel';
 import HrMonthSheet from './hr-sections/HrMonthSheet';
+import HrInstructorPayPanel from './hr-sections/HrInstructorPayPanel';
 import HrStaffCard, { type StaffBasics, type StaffMonth } from './hr-sections/HrStaffCard';
+import { departmentOfRole, departmentRank, isLecturerRole } from '../../../../shared/staffDepartment';
 import { ROLE_LABELS, ROLE_COLORS } from './hr-sections/hrLabels';
 import { fmtMoney } from './hr-sections/hrFormat';
 
 // «خلي الاساسي لما افتح هو دليل الموظفين … الحضور مع كشف المرتبات في تاب واحدة
 // … الاجازات مع طلبات الموظفين». Six tabs; the old addresses still open the tab
 // that holds them now (/dashboard/hr/leaves → the requests, /payroll → attendance).
-const HR_SECTIONS = ['directory', 'requests', 'attendance', 'basics', 'performance', 'recruitment'] as const;
+const HR_SECTIONS = ['directory', 'requests', 'attendance', 'basics', 'performance', 'lecturers', 'recruitment'] as const;
 type HrSection = typeof HR_SECTIONS[number];
 const SECTION_ALIASES: Record<string, HrSection> = { leaves: 'requests', payroll: 'attendance' };
 const sectionFor = (param?: string): HrSection =>
   (HR_SECTIONS as readonly string[]).includes(param || '') ? param as HrSection : SECTION_ALIASES[param || ''] || 'directory';
 
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
-const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
 const OnboardingPanel = React.lazy(() => import('./hr-sections/OnboardingPanel'));
 
 const STAFF_PAGE = 50;
@@ -154,15 +155,24 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   // Memoized because `|| []` mints a fresh array on every render whenever
   // staffMembers is nullish, which defeated the three memos below entirely —
   // they listed safeStaff as a dependency and so recomputed every render.
-  const safeStaff = useMemo<StaffMember[]>(() => staffMembers || [], [staffMembers]);
+  const allStaff = useMemo<StaffMember[]>(() => staffMembers || [], [staffMembers]);
+  // 3 Nov 2026: the lecturers (paid by the lecture) are not employees of the directory; they have their own tab, «المحاضرون وأجورهم».
+  const safeStaff = useMemo(() => allStaff.filter(s => !isLecturerRole(s.role)), [allStaff]);
 
+  // By department — sales, collection, Dokki, the administrative departments, customer service, the rest — and by name inside each.
   const filtered = useMemo(() => safeStaff.filter(s => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
     if (roleFilter !== 'all' && s.role !== roleFilter) return false;
     if (search) { const q = search.toLowerCase(); return s.name.toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q) || (s.phone || '').includes(q); }
     return true;
-  }), [safeStaff, search, roleFilter, statusFilter]);
+  }).sort((a, b) => departmentRank(departmentOfRole(a.role)) - departmentRank(departmentOfRole(b.role)) || a.name.localeCompare(b.name, 'ar')),
+  [safeStaff, search, roleFilter, statusFilter]);
 
+  const departmentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const member of filtered) counts.set(departmentOfRole(member.role), (counts.get(departmentOfRole(member.role)) || 0) + 1);
+    return counts;
+  }, [filtered]);
   useEffect(() => { setStaffShown(STAFF_PAGE); }, [search, roleFilter, statusFilter]);
   const shownStaff = useMemo(() => filtered.slice(0, staffShown), [filtered, staffShown]);
 
@@ -250,6 +260,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           ['attendance', 'الحضور والمرتبات', CalendarCheck],
           ['basics', 'الرواتب والبصمة والتارجت', Fingerprint],
           ['performance', 'الأداء والتارجت', BarChart3],
+          ['lecturers', 'المحاضرون وأجورهم', GraduationCap],
           ['recruitment', 'التوظيف', Briefcase],
         ] as const).map(([key, label, Icon]) => (
           <button key={key} type="button" onClick={() => setSubTab(key)}
@@ -305,13 +316,25 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                   {safeStaff.length === 0 ? 'ابدأ بإضافة أول موظف من الزر أعلى الصفحة' : 'جرّب تغيير البحث أو الفلاتر'}
                 </p>
               </div>
-            ) : shownStaff.map(member => (
-              <HrStaffCard key={member.id} member={member}
-                basics={basicsById.get(member.id)} month={monthById.get(member.id)}
-                performance={perfByStaff.get(member.id)} showPay={canManageFinance}
-                onOpen={() => navigate(`/staff/${member.id}`)}
-                onEdit={() => navigate(`/staff/${member.id}?tab=settings`)} />
-            ))}
+            ) : shownStaff.map((member, index) => {
+              const department = departmentOfRole(member.role);
+              const startsDepartment = index === 0 || departmentOfRole(shownStaff[index - 1].role) !== department;
+              return (
+                <React.Fragment key={member.id}>
+                  {startsDepartment && (
+                    <h3 className="col-span-full mt-2 flex items-center gap-2 border-b border-gray-200 pb-1 text-sm font-extrabold text-gray-800">
+                      {department}
+                      <span className="rounded-full bg-slate-100 px-2 text-xs font-bold tabular-nums text-slate-600">{departmentCounts.get(department)}</span>
+                    </h3>
+                  )}
+                  <HrStaffCard member={member}
+                    basics={basicsById.get(member.id)} month={monthById.get(member.id)}
+                    performance={perfByStaff.get(member.id)} showPay={canManageFinance}
+                    onOpen={() => navigate(`/staff/${member.id}`)}
+                    onEdit={() => navigate(`/staff/${member.id}?tab=settings`)} />
+                </React.Fragment>
+              );
+            })}
           </div>
           {filtered.length > shownStaff.length && (
             <div className="flex justify-center">
@@ -327,8 +350,10 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       {subTab === 'recruitment' && (
         <React.Suspense fallback={<div className="py-12 text-center text-sm text-gray-400">جاري تحميل قسم التوظيف...</div>}>
           <div className="space-y-4">
+            {/* The applicants themselves are in «انضمام الموظفين» and «انترفيوهات الموظفين» (and the hire is done there); this tab holds the jobs and the new hires' steps,
+                so the same candidates are not drawn a third time. */}
+            <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">المتقدمين والمقابلات والتعيين في «انضمام الموظفين» و«انترفيوهات الموظفين» — هنا الوظايف المفتوحة وخطوات الموظف الجديد.</p>
             <JobPostingsPanel notify={notify} />
-            <RecruitmentPipelinePanel notify={notify} />
             <OnboardingPanel notify={notify} />
           </div>
         </React.Suspense>
@@ -396,13 +421,15 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         </div>
       )}
 
+      {subTab === 'lecturers' && <HrInstructorPayPanel notify={notify} canManage={canManagePayroll} />}
+
       {subTab === 'basics' && <HrStaffBasicsPanel notify={notify} canEditSalary={canManageFinance} />}
       {subTab === 'attendance' && (
         <div className="space-y-5">
           <HrMonthSheet notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
           <HrPolicyPanel notify={notify} />
           <div className="flex items-center gap-2 pt-1 text-sm font-extrabold text-gray-700"><Wallet size={16} /> اعتمادات المرتبات والسلف</div>
-          <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
+          <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} />
         </div>
       )}
 

@@ -243,6 +243,9 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const canSeeArchive = isAdmin || authUser?.permissions === '*'
     || (Array.isArray(authUser?.permissions) && authUser.permissions.includes('delete_subscribers'));
   const [search, setSearch] = useState('');
+  // This table holds the pages the screen has loaded; a person the loaded pages do not hold is found by «البحث في قاعدة البيانات كاملة» above it, which asks the
+  // server. A bare «لا توجد نتائج» under two results found there read as a contradiction (3 Nov 2026).
+  const emptyMessage = search.trim().length >= 2 ? 'مفيش حد بالاسم ده في الجدول المحمّل — النتايج الكاملة في «البحث في قاعدة البيانات كاملة» فوق' : 'لا توجد نتائج';
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl' | 'registration'>('all');
   const [branchFilter, setBranchFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
@@ -664,7 +667,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       <div className={isMobile ? '' : 'bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden'}>
         {isMobile ? (
           <div className="space-y-2.5">
-            {pageRows.length === 0 && <p className="rounded-2xl border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-400">لا توجد نتائج</p>}
+            {pageRows.length === 0 && <p className="rounded-2xl border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-400">{emptyMessage}</p>}
             {pageRows.map(c => {
               const rowKey = `${c.type}-${c.id}`;
               const { isRegistration, typeLabel, typeColor } = describeRow(c);
@@ -707,7 +710,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                 <tr>
                   <td colSpan={10} className="text-center py-16 text-gray-400">
                     <Users size={32} className="mx-auto mb-2 opacity-30" />
-                    <p>لا توجد نتائج</p>
+                    <p>{emptyMessage}</p>
                   </td>
                 </tr>
               )}

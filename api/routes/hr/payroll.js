@@ -13,6 +13,7 @@ const { readDeviceSheet } = require('../../lib/attendanceSheet');
 const { importAttendanceMonth } = require('../../lib/attendanceImport');
 const { freeDaysFor } = require('../../lib/attendancePolicy');
 const { departmentOf } = require('../../lib/staffDepartment');
+const { leaveBalances } = require('../../lib/leaveBalance');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
@@ -164,7 +165,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
 
     // Get all active staff with salary structures
     const [employees] = await conn.query(`
-      SELECT s.id AS staff_id, s.name, s.commission_rate, s.base_salary AS staff_base_salary,
+      SELECT s.id AS staff_id, s.name, s.commission_rate, s.commission_type, s.base_salary AS staff_base_salary,
         ss.base_salary, ss.housing_allowance, ss.transport_allowance,
         ss.food_allowance, ss.other_fixed, ss.deduction_social_insurance, ss.deduction_tax,
         ss.other_allowances_json,ss.currency AS salary_currency
@@ -358,7 +359,6 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       const line = computePayrollLine(emp, {
         salaryFx,
         baseSalary,
-        workDaysPerMonth,
         workdayMinutes,
         attendance: attStats,
         crmCommission: ccMap[emp.staff_id] || null,
@@ -1014,6 +1014,7 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
       SELECT s.id, s.name, s.role, s.image, d.name AS department_name,
         COUNT(CASE WHEN a.status IN ('PRESENT','LATE') THEN 1 END) AS present_days,
         COUNT(CASE WHEN a.status='ABSENT' THEN 1 END) AS absent_days,
+        COUNT(CASE WHEN a.status='ABSENT' AND a.permit_used='excused' THEN 1 END) AS excused_days,
         COUNT(CASE WHEN a.status='LATE' THEN 1 END) AS late_days,
         COALESCE(SUM(a.late_minutes),0) AS total_late_minutes,
         COUNT(CASE WHEN a.status='LEAVE' THEN 1 END) AS leave_days,
@@ -1021,6 +1022,7 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
         COALESCE(SUM(a.deduction_days),0) AS deduction_days,
         COUNT(a.review_flag) AS flagged_days,
         COUNT(CASE WHEN a.permit_used='free_day' THEN 1 END) AS free_days_used,
+        COUNT(CASE WHEN a.permit_used='leave_balance' THEN 1 END) AS balance_days_used,
         s.biometric_user_no, s.base_salary, s.free_days_per_month, COALESCE(s.hire_date, s.joined_at) AS hired,
         COUNT(a.id) AS total_records
       FROM staff s
@@ -1033,8 +1035,11 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
     // The free days each employee has this month (the policy's once six months are worked, or the number HR typed on the employee).
     const monthKey = `${y}-${String(m).padStart(2, '0')}`;
     const policy = await getEffectiveHrPolicy(pool, req.tenantId, `${monthKey}-01`);
+    // The year's leave balance (21 days; a free day, an annual leave and an absence marked «من رصيد الإجازات» each spend one).
+    const balances = await leaveBalances(pool, { tenantId: req.tenantId, year: y, entitlement: Number(policy.annual_leave_days) || 21 });
     res.json(rows.map(({ hired, ...row }) => ({
       ...row,
+      leave_balance: balances.get(row.id) || { entitlement: Number(policy.annual_leave_days) || 21, annualLeaveDays: 0, freeDays: 0, balanceDays: 0, used: 0, remaining: Number(policy.annual_leave_days) || 21 },
       // HR has not filled departments in: the job says where the employee sits (lib/staffDepartment.js).
       department_name: departmentOf({ departmentName: row.department_name, role: row.role }),
       base_salary: row.base_salary == null ? null : Number(row.base_salary),

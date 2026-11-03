@@ -5,7 +5,7 @@
 // nobody notices until someone complains.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { computePayrollLine } = require('../lib/payrollCalc');
+const { computePayrollLine, PAY_MONTH_DAYS } = require('../lib/payrollCalc');
 
 const EMP = {
   housing_allowance: 1000,
@@ -35,14 +35,14 @@ test('absence is charged at the daily rate, and unpaid leave counts as absence',
     ...CTX, attendance: { absent_days: 2, unpaid_leave_days: 1 },
   });
   assert.equal(r.absentDays, 3);                  // 2 absent + 1 unpaid leave
-  assert.equal(r.dailyRate, 10000 / 26);
-  assert.equal(r.absenceDeduction, (10000 / 26) * 3);
+  assert.equal(r.dailyRate, 10000 / 30);
+  assert.equal(r.absenceDeduction, (10000 / 30) * 3);
 });
 
 test('lateness is charged per minute, not per day', () => {
   const r = computePayrollLine(EMP, { ...CTX, attendance: { late_minutes: 120 } });
-  assert.equal(r.minuteRate, 10000 / (26 * 480));
-  assert.equal(r.lateDeduction, (10000 / (26 * 480)) * 120);
+  assert.equal(r.minuteRate, 10000 / (30 * 480));
+  assert.equal(r.lateDeduction, (10000 / (30 * 480)) * 120);
   // Two hours late must cost far less than a full absent day.
   assert.ok(r.lateDeduction < r.dailyRate);
 });
@@ -119,7 +119,7 @@ test('the FX factor scales fixed amounts but never the attendance rates', () => 
   assert.equal(r.dedSocial, 800);
   assert.equal(r.dedTax, 1200);
   // baseSalary arrives already converted, so the daily rate must not double again
-  assert.equal(r.dailyRate, 10000 / 26);
+  assert.equal(r.dailyRate, 10000 / 30);
 });
 
 test('missing or malformed fields degrade to zero instead of NaN', () => {
@@ -189,12 +189,20 @@ test('a zero workday length cannot break the per-minute rate', () => {
   }
 });
 
-test('a valid policy is still used as given, not replaced by the fallback', () => {
-  // The guard must not quietly override a real value: a 20-day month has to
-  // charge absence at a twentieth, not a twenty-sixth.
-  const line = computePayrollLine(EMP, {
-    ...CTX, workDaysPerMonth: 20, baseSalary: 10000, attendance: { absent_days: 1 },
-  });
-  assert.equal(line.dailyRate, 500);
-  assert.equal(line.absenceDeduction, 500);
+test('3 Nov 2026: a day is a thirtieth of the salary, whatever the policy says about working days', () => {
+  for (const workDaysPerMonth of [20, 26, 31]) {
+    const line = computePayrollLine(EMP, {
+      ...CTX, workDaysPerMonth, baseSalary: 9000, attendance: { absent_days: 1 },
+    });
+    assert.equal(line.dailyRate, 300);
+    assert.equal(line.absenceDeduction, 300);
+  }
+  assert.equal(PAY_MONTH_DAYS, 30);
+});
+
+test('a target earner is not paid a percentage of what they collected', () => {
+  const sales = { totalSales: 40000, crmCommission: null };
+  assert.equal(computePayrollLine({ ...EMP, commission_type: 'TARGET', commission_rate: 10 }, { ...CTX, ...sales }).commission, 0);
+  assert.equal(computePayrollLine({ ...EMP, commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000);
+  assert.equal(computePayrollLine({ ...EMP, commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000, 'a row from before commission_type keeps its rate');
 });

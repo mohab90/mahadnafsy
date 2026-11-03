@@ -203,6 +203,11 @@ router.post('/api/admin/leads/move-to-archive', requireAuth, requireAdmin, requi
       moved += Number(result.affectedRows || 0);
     }
     logger.info('[move-to-archive]', { tenantId: req.tenantId, moved, createdBefore: createdBefore || null, actor: req.user?.email || null });
+    // Who sent a batch to the archive, by name, in the audit trail (3 Nov 2026: «اي حاجة تروح الأرشيف لازم تحدد الموظف اللي عمل كدا»).
+    await require('../../../lib/auditTrail').writeAuditEvent({
+      action: 'lead.moved_to_archive', entityType: 'lead_batch', entityId: createdBefore || 'all', severity: 'warning',
+      metadata: { moved, createdBefore: createdBefore || null, by: signerName(req) }, req,
+    }).catch(() => {});
     res.json({ ok: true, moved });
   } catch (e) { logger.error('[move-to-archive]', e.message); sendRouteError(res, e); }
 });

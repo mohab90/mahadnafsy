@@ -584,6 +584,7 @@ export function DashboardNavigation(props: Props) {
                   // a caller is looked up among every person the institute holds,
                   // and the desk sees the payments to answer about them.
                   { key: 'client', label: 'قاعدة البيانات', icon: UserSearch },
+                  { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
                   { key: 'orders', label: 'المدفوعات', icon: CreditCard },
                   { group: 'clients', label: 'العملاء', icon: Users, items: [
                     { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },

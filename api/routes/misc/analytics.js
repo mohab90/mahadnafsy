@@ -310,7 +310,8 @@ router.post('/api/admin/security/accounts/:id/unlock', requireAuth, requireAdmin
   try {
     const [[user]] = await pool.query('SELECT id, email, name, sharing_locked_until FROM users WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
     if (!user) return res.status(404).json({ error: 'الحساب غير موجود' });
-    await pool.query('UPDATE users SET sharing_locked_until=NULL, sharing_lock_reason=NULL WHERE id=? AND tenant_id=?', [user.id, req.tenantId]);
+    // The count starts over from now, or the next sign-in finds the same devices in the log and locks the account again.
+    await pool.query('UPDATE users SET sharing_locked_until=NULL, sharing_lock_reason=NULL, sharing_reset_at=NOW() WHERE id=? AND tenant_id=?', [user.id, req.tenantId]);
     invalidateIdentity(req.tenantId, user.id, user.email);
     logger.info(`[security] account ${user.id} sharing lock lifted by ${req.user?.id || 'unknown'}`);
     res.json({ ok: true, message: `اتفك إيقاف حساب ${user.name || user.email || ''}` });

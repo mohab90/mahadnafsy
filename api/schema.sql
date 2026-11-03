@@ -6101,6 +6101,7 @@ CREATE TABLE `users` (
   `sharing_locked_until` datetime DEFAULT NULL COMMENT 'Temporary suspension after logins from too many distinct IPs',
   `sharing_lock_reason` varchar(160) DEFAULT NULL,
   `sharing_lock_count` int(11) NOT NULL DEFAULT 0 COMMENT 'How many times this account has been auto-locked for sharing',
+  `sharing_reset_at` datetime DEFAULT NULL COMMENT 'When the sharing lock was last lifted by hand; sign-ins before it are not counted by the device guard.',
   `phone` varchar(32) DEFAULT NULL COMMENT 'Normalised WhatsApp number (digits only, no leading zeros)',
   `phone_verified_at` datetime DEFAULT NULL,
   `mfa_grace_started_at` datetime DEFAULT NULL,

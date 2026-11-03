@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DASHBOARD_MENU_GROUPS, isTabKey, type TabKey } from '../navigation';
 import { branchMatchesFilter, branchSlugToFilter } from '../branchWorkspaceFilters';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { StaffPermission, OrderItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -227,6 +227,9 @@ export function useDashboardModel() {
     setLeadsFollowupFilter,
   } = useLeadFilters();
   const navigate = useNavigate();
+  // An employee's or a client's page is drawn UNDER the menu bar (App.tsx UnderTheMenu) with no tab of its own: the lists and the polling of the overview, the tab
+  // the address defaults to, must not start for it.
+  const onProfilePage = /^\/(client|staff)\//.test(useLocation().pathname);
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   // Through tabForUrl, as the URL effect below does: /dashboard/my_clients is
   // online_clients. Taken raw, the first render after the panel mounts on that
@@ -333,7 +336,7 @@ export function useDashboardModel() {
       setOnlineUsers((rows as { uid: string; name?: string; email?: string; lastActiveAt: string }[])
         .map(u => ({ uid: u.uid, email: u.email, displayName: u.name, lastActiveAt: u.lastActiveAt })));
     }).catch(() => { /* presence store down: the panel keeps its last answer */ });
-  }, 60000, isAdmin && activeTab === 'overview');
+  }, 60000, isAdmin && activeTab === 'overview' && !onProfilePage);
 
 
   const {
@@ -582,6 +585,7 @@ export function useDashboardModel() {
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
   const clientsArePaged = staffClientsArePaged(activeTab);
   useEffect(() => {
+    if (onProfilePage) return;
     if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
     else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
     // «عملائي» for an employee reads a page at a time from the server: no full list, in the context or out of it.
@@ -592,7 +596,7 @@ export function useDashboardModel() {
     // An employee's version of a screen that pages from the server does not read the lists the administration's does.
     const skipped = readsOwnPayments ? staffSkipsSiteLists(activeTab) : (usesStaffScopedData ? staffSkipsSiteLists(activeTab).filter(list => list !== 'orders') : []);
     void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));
-  }, [activeTab, clientsArePaged, usesStaffScopedData, readsOwnPayments, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
+  }, [onProfilePage, activeTab, clientsArePaged, usesStaffScopedData, readsOwnPayments, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
 
   // Drawn over every screen, so they ask for their own lists: the follow-up
   // drawer lists the loaded leads' follow-ups (its bell counts on the server —

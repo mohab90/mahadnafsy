@@ -7,6 +7,9 @@ const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
 const { cairoToday, cairoYearMonth } = require('../../lib/dates');
 const { notifyBranchManagers } = require('../../lib/branchHr');
+const { PAY_MONTH_DAYS } = require('../../lib/payrollCalc');
+const { leaveBalanceOf } = require('../../lib/leaveBalance');
+const { isOwnerRequest } = require('../../middleware/auth');
 
 router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -435,6 +438,46 @@ router.put('/api/admin/hr/month-bonuses', requireAuth, requireAdminOrStaff, requ
   } finally { conn.release(); }
 });
 
+// «ضيف زر فوق اضيف فيه خصم جزاء من المدير»: a penalty the manager orders for an employee's month — an amount, or a number of days at the day's pay (a thirtieth of
+// the basic salary) — with the reason written. It is an employee_bonuses 'deduction' row (source='MANAGER_PENALTY'), so payroll takes it like any deduction. The
+// owner's order is final the moment it is given; anyone else's waits for a second person's approval, as every adjustment does.
+router.post('/api/admin/hr/month-penalties', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  try {
+    const period = sheetMonth(req.body || {});
+    const staffId = String(req.body?.staffId || '');
+    const reason = String(req.body?.reason ?? '').trim().slice(0, 500);
+    const days = req.body?.days === '' || req.body?.days == null ? null : Number(req.body.days);
+    const given = req.body?.amount === '' || req.body?.amount == null ? null : Number(req.body.amount);
+    if (!period || !staffId) return res.status(400).json({ error: 'اختار الشهر والموظف' });
+    if (!reason) return res.status(400).json({ error: 'اكتب سبب الجزاء' });
+    if ((given === null) === (days === null)) return res.status(400).json({ error: 'اكتب مبلغ أو عدد أيام، مش الاتنين' });
+    if (given !== null && !(Number.isFinite(given) && given > 0 && given <= 10_000_000)) return res.status(400).json({ error: 'المبلغ لازم يكون رقم أكبر من صفر' });
+    if (days !== null && !(Number.isFinite(days) && days > 0 && days <= 31)) return res.status(400).json({ error: 'عدد الأيام لازم يكون من ربع يوم لحد 31' });
+    if (req.staffRecord?.id === staffId) return res.status(409).json({ error: 'لا يجوز إضافة مكافأة أو خصم لنفسك', code: 'HR_SELF_MUTATION' });
+    const [[staff]] = await pool.query(
+      'SELECT id, name, base_salary FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [req.tenantId, staffId]);
+    if (!staff) return res.status(404).json({ error: 'الموظف مش موجود' });
+    if (days !== null && !(Number(staff.base_salary) > 0)) return res.status(409).json({ error: `الراتب الأساسي لـ ${staff.name} فاضي — اكتب مبلغ بدل الأيام` });
+    const amount = given ?? Math.round((Number(staff.base_salary) / PAY_MONTH_DAYS) * days * 100) / 100;
+    const actor = req.staffRecord?.id || req.user?.uid || null;
+    const approved = isOwnerRequest(req);
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO employee_bonuses (id, tenant_id, staff_id, type, amount, currency, reason, for_month, for_year, created_by, status, approved_by, approved_at, source)
+       VALUES (?,?,?,'deduction',?,'EGP',?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, staffId, amount, days !== null ? `${reason} (${days} يوم)` : reason, period.month, period.year, req.staffRecord?.id || null,
+        approved ? 'APPROVED' : 'PENDING', approved ? actor : null, approved ? new Date() : null, 'MANAGER_PENALTY']);
+    await writeAuditEvent({
+      action: 'hr.manager_penalty.created', entityType: 'employee_bonus', entityId: id, severity: 'warning',
+      metadata: { staff_id: staffId, amount, days, month: period.month, year: period.year, approved }, req,
+    });
+    res.json({ ok: true, id, amount, status: approved ? 'APPROVED' : 'PENDING' });
+  } catch (error) {
+    logger.error('[hr/month-penalties]', error.message);
+    hrError(res, error);
+  }
+});
+
 router.put('/api/admin/hr/bonuses/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
@@ -812,8 +855,11 @@ router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
       flag: d.review_flag || null, source: d.source, onLeave: Boolean(d.leave_id), note: d.notes || null,
     }));
     const money = value => Number(value) || 0;
+    const leaveBalance = await leaveBalanceOf(pool, {
+      tenantId: req.tenantId, staffId: staff.id, year, entitlement: Number((await getEffectiveHrPolicy(pool, req.tenantId, first)).annual_leave_days) || 21,
+    });
     res.json({
-      month, year,
+      month, year, leaveBalance,
       summary: {
         present: rows.filter(d => d.status !== 'ABSENT').length,
         absent: rows.filter(d => d.status === 'ABSENT').length,

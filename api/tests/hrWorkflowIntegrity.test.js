@@ -305,15 +305,16 @@ test('HR recruiting UI uses schema-valid employment types and persists join-us a
   const jobs = source('../admin/pages/dashboard/tabs/JobPostingsPanel.tsx');
   const hr = source('../admin/pages/dashboard/tabs/HRTab.tsx');
   const joinUs = source('../admin/pages/dashboard/tabs/JoinUsAdminTab.tsx');
-  const pipeline = source('../admin/pages/dashboard/tabs/hr-sections/RecruitmentPipelinePanel.tsx');
+  const hire = source('../admin/pages/dashboard/tabs/interviews-sections/HireModal.tsx');
   const onboarding = source('../admin/pages/dashboard/tabs/hr-sections/OnboardingPanel.tsx');
   const crmState = source('../admin/context/site-data-hooks/useCrmCoreState.ts');
   assert.match(jobs, /\['intern', 'تدريب'\]/);
   assert.doesNotMatch(jobs, /\['remote'|\['internship'/);
-  assert.match(hr, /subTab === 'recruitment'[\s\S]{0,500}<JobPostingsPanel/);
+  assert.match(hr, /subTab === 'recruitment'[\s\S]{0,900}<JobPostingsPanel/);
   assert.match(joinUs, /convertedApplicantId/);
-  assert.match(pipeline, /\/api\/admin\/hr\/applicants/);
-  assert.match(pipeline, /\/hire/);
+  // 3 Nov 2026: the HR tab no longer draws the applicants a third time; they are in «انضمام الموظفين» and the interviews page, where the hire is done.
+  assert.doesNotMatch(hr, /RecruitmentPipelinePanel/);
+  assert.match(hire, /hireHrApplicant/);
   assert.match(onboarding, /\/api\/admin\/hr\/onboarding\/start/);
   assert.match(onboarding, /\/api\/admin\/hr\/onboarding\/items/);
   assert.match(crmState, /mysqlAdmin\.updateJoinUs/);

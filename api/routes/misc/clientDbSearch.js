@@ -15,7 +15,9 @@
 const express = require('express');
 const { pool } = require('../../lib/db');
 const logger = require('../../lib/logger');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, invalidateIdentity } = require('../../middleware/auth');
+const { candidatesFor, linkSiteAccount } = require('../../lib/siteAccountLink');
+const { actorName } = require('../../lib/clientHistory');
 const { financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
 const { leadScope } = require('../../lib/leadAccess');
 const { SEARCH_MIN_CHARS, foldText } = require('../../lib/searchText');
@@ -113,6 +115,41 @@ router.get('/api/admin/client-db/search', requireAuth, requireAdminOrStaff, requ
     logger.error('[client-db-search]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// «مفيش كورسات كأنها حساب جديد»: the client records a site account may belong to (by name), and the link a member of the staff makes (lib/siteAccountLink.js).
+router.get('/api/admin/site-accounts/:userId/candidates', requireAuth, requireAdminOrStaff, requirePermission('view_client_db'), async (req, res) => {
+  try {
+    const found = await candidatesFor(pool, { tenantId: req.tenantId, userId: req.params.userId });
+    if (!found) return res.status(404).json({ error: 'حساب الموقع مش موجود' });
+    res.json({ account: { id: found.user.id, name: found.user.name, email: found.user.email, phone: found.user.phone }, candidates: found.candidates });
+  } catch (e) {
+    logger.error('[site-account-candidates]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/site-accounts/:userId/link', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  const conn = await pool.getConnection();
+  let started = false;
+  try {
+    const subscriberId = String(req.body?.subscriberId || '');
+    if (!subscriberId) return res.status(400).json({ error: 'اختار العميل' });
+    await conn.beginTransaction();
+    started = true;
+    const result = await linkSiteAccount(conn, { tenantId: req.tenantId, userId: req.params.userId, subscriberId, force: req.body?.force === true, actor: actorName(req) });
+    if (!result.ok) {
+      await conn.rollback(); started = false;
+      return res.status(result.status).json({ error: result.error, code: result.code });
+    }
+    await conn.commit(); started = false;
+    invalidateIdentity(req.tenantId, req.params.userId);
+    res.json({ ok: true, clientCode: result.clientCode, already: Boolean(result.already) });
+  } catch (e) {
+    if (started) await conn.rollback().catch(() => {});
+    logger.error('[site-account-link]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 // GET /api/admin/client-lookup?q= — «بحث»: the button at the foot of every screen.

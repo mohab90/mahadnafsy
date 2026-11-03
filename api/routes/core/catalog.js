@@ -19,6 +19,7 @@ const { assertWritable } = require('../../lib/periodLock');
 const { syncLeadDealValue } = require('../../lib/paymobFinalise');
 const { logLeadEvent } = require('../../lib/crm');
 const { reconvertLeadOfRestoredClient, reopenLeadOfArchivedClient } = require('../../lib/leadState');
+const { actorName, logClientEvent } = require('../../lib/clientHistory');
 const { MAX_CUSTOMER_DEVICES, clearCustomerDevices, listCustomerDevices } = require('../../lib/customerDevices');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
@@ -96,6 +97,8 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
       [req.params.id, req.tenantId]
     );
     await reopenLeadOfArchivedClient({ tenantId: req.tenantId, subscriberId: sub.id, actor: req.user?.email || null, db: conn });
+    // «اي حاجة تروح الارشيف لازم تحدد مين الموظف اللي عمل كدا»: the archive says who put the client there, in their history and in the archive list.
+    await logClientEvent(conn, { tenantId: req.tenantId, subscriberId: sub.id, action: 'archived', label: 'أرشفة العميل', actor: actorName(req) });
 
     const account = customerAccountMatch(sub);
     if (account) {
@@ -132,6 +135,8 @@ router.get('/api/admin/subscribers/archived', requireAuth, requireAdminOrStaff, 
     const [rows] = await pool.query(
       `SELECT s.id, s.client_code, s.name, s.email, s.phone, s.branch,
               s.deleted_at, s.created_at,
+              (SELECT a.actor FROM activity_logs a WHERE a.tenant_id=s.tenant_id AND a.entity='subscriber' AND a.entity_id=s.id AND a.action='archived'
+                ORDER BY a.created_at DESC LIMIT 1) AS archived_by,
               (SELECT COALESCE(SUM(p.amount),0) FROM payments p
                 WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id AND p.deleted_at IS NULL) AS total_paid
          FROM subscribers s
@@ -160,6 +165,7 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
       [req.params.id, req.tenantId]
     );
     await reconvertLeadOfRestoredClient({ tenantId: req.tenantId, subscriberId: sub.id, actor: req.user?.email || null, db: conn });
+    await logClientEvent(conn, { tenantId: req.tenantId, subscriberId: sub.id, action: 'restored', label: 'استعادة العميل من الأرشيف', actor: actorName(req) });
     // Archiving also disabled their sign-in, so restoring has to give it back
     // or the customer is listed as active and still cannot log in.
     // Exactly the rule the archive used, or the customer is restored to the

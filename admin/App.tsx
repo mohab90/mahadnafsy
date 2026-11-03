@@ -35,6 +35,13 @@ const NotForLecturers: React.FC<{ children: React.ReactNode }> = ({ children }) 
   return <>{children}</>;
 };
 
+/** An employee's or a client's page opens UNDER the dashboard's menu bar («شريط القائمة اللي فوق بيختفي … يبقى ثابت والصفحة من تحته»); a lecturer has no dashboard, so gets the page alone. */
+const UnderTheMenu: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAdmin, currentStaff } = useSiteData();
+  if (!isAdmin && currentStaff && LECTURER_ROLES.includes(String(currentStaff.role || '').toLowerCase())) return <>{children}</>;
+  return <Dashboard page={children} />;
+};
+
 /** Requires the user to be logged-in staff or admin. Otherwise shows Auth. */
 const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { authUser, isAdmin, staffMembers } = useSiteData();
@@ -203,10 +210,10 @@ const AppShell: React.FC = () => {
               <StaffRoute><NotForLecturers><Dashboard /></NotForLecturers></StaffRoute>
             } />
             <Route path="/staff/:id" element={
-              <StaffRoute><StaffProfile /></StaffRoute>
+              <StaffRoute><UnderTheMenu><StaffProfile /></UnderTheMenu></StaffRoute>
             } />
             <Route path="/client/:code" element={
-              <StaffRoute><NotForLecturers><ClientProfile /></NotForLecturers></StaffRoute>
+              <StaffRoute><NotForLecturers><UnderTheMenu><ClientProfile /></UnderTheMenu></NotForLecturers></StaffRoute>
             } />
             <Route path="/lecturer-portal" element={
               <StaffRoute><LecturerPortal /></StaffRoute>

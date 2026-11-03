@@ -79,7 +79,7 @@ const CONTACT_TYPES = { call: 'CALL', whatsapp: 'WHATSAPP', email: 'EMAIL', meet
 async function scopedSubscriber(req, db = pool, lock = false) {
   const scope = subscriberTimelineScope(req);
   const [[subscriber]] = await db.query(
-    `SELECT s.id, s.lead_id, s.crm_json FROM subscribers s
+    `SELECT s.id, s.lead_id, s.crm_json, s.phone_digits, s.email FROM subscribers s
       WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL${scope.sql} LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
     [req.params.id, req.tenantId, ...scope.params]);
   return subscriber || null;
@@ -91,14 +91,27 @@ router.get('/api/staff/subscribers/:id/communications',
     try {
       const subscriber = await scopedSubscriber(req);
       if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
+      // «لما ادخل مش بلاقي تاريخ على سجل التواصل»: the contacts were read only through subscribers.lead_id, so a client whose lead was made apart from the
+      // record (a sheet import, a second sign-up, the same person asked about again) showed an empty history while their calls sat on that lead. Every lead of the
+      // same number or e-mail is the same person's history.
+      const sameLeadIds = new Set(subscriber.lead_id ? [subscriber.lead_id] : []);
+      const email = String(subscriber.email || '').trim().toLowerCase();
+      const digits = String(subscriber.phone_digits || '');
+      if (digits.length >= 7 || (email && !email.endsWith('@lead.local'))) {
+        const [sameLeads] = await pool.query(
+          `SELECT id FROM leads WHERE tenant_id=? AND (${digits.length >= 7 ? 'phone_digits=?' : '1=0'} OR ${email && !email.endsWith('@lead.local') ? 'LOWER(TRIM(email))=?' : '1=0'}) LIMIT 20`,
+          [req.tenantId, ...(digits.length >= 7 ? [digits] : []), ...(email && !email.endsWith('@lead.local') ? [email] : [])]);
+        for (const lead of sameLeads) sameLeadIds.add(lead.id);
+      }
+      const leadIds = [...sameLeadIds];
       const [rows] = await pool.query(
         `SELECT c.id, c.type, c.date, c.notes, c.outcome, c.next_follow_up, c.direction, c.lead_id,
                 c.subscriber_id, c.created_at, st.name AS staff_name
            FROM communications c
            LEFT JOIN staff st ON st.id=c.staff_id AND st.tenant_id=c.tenant_id
-          WHERE c.tenant_id=? AND (c.subscriber_id=? OR (? IS NOT NULL AND c.lead_id=?))
+          WHERE c.tenant_id=? AND (c.subscriber_id=?${leadIds.length ? ' OR c.lead_id IN (?)' : ''})
           ORDER BY c.date DESC LIMIT 300`,
-        [req.tenantId, subscriber.id, subscriber.lead_id, subscriber.lead_id]);
+        [req.tenantId, subscriber.id, ...(leadIds.length ? [leadIds] : [])]);
       const seen = new Set(rows.map(row => row.id));
       const legacy = (parseCrm(subscriber.crm_json).communications || [])
         .filter(entry => entry && entry.id && !seen.has(entry.id))

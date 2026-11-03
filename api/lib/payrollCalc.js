@@ -16,7 +16,6 @@
  * @param {object} ctx
  *  - salaryFx            FX factor applied to fixed amounts
  *  - baseSalary          already FX-converted base
- *  - workDaysPerMonth    from HR policy
  *  - workdayMinutes      from HR policy
  *  - attendance          { absent_days, late_minutes, present_days, unpaid_leave_days }
  *  - crmCommission       { amt, cnt } | null — authoritative when cnt > 0
@@ -25,11 +24,12 @@
  *  - instructorEarnings  teaching fees
  *  - bonus, deduction    manual adjustments
  */
+const PAY_MONTH_DAYS = 30;
+
 function computePayrollLine(emp = {}, ctx = {}) {
   const {
     salaryFx = 1,
     baseSalary = 0,
-    workDaysPerMonth = 26,
     workdayMinutes = 480,
     attendance = {},
     crmCommission = null,
@@ -52,24 +52,13 @@ function computePayrollLine(emp = {}, ctx = {}) {
   const absentDays = (Number(attendance.absent_days) || 0) + unpaidLeaveDays;
   const lateMins   = parseInt(attendance.late_minutes) || 0;
 
-  // The divisors are guarded here rather than trusted from the caller.
-  //
-  // The route reads them as `Number(policy.work_days_per_month || 26)`, which
-  // looks like a fallback and is not one: work_days_per_month is DECIMAL, and
-  // mysql2 hands DECIMAL back as a string — so a stored zero arrives as "0.00",
-  // which is truthy, skips the `|| 26`, and becomes 0. The daily rate is then
-  // Infinity, and Infinity × 0 absent days is NaN, which passes through
-  // Math.max(0, NaN) as NaN. Every payslip in the run comes out NaN.
-  //
-  // The policy route does reject a zero on save, so this is not reachable
-  // today. It is guarded anyway because the arithmetic is where money is
-  // decided, and a guard that only works when the column type cooperates is
-  // not one worth relying on.
-  const safeWorkDays = Number(workDaysPerMonth) > 0 ? Number(workDaysPerMonth) : 26;
+  // 3 Nov 2026, «احسب دايما الراتب على 30 يوم»: the day's pay is the month's salary over thirty, whatever the month's length or its working days. A constant
+  // also leaves no stored value that could turn the daily rate into Infinity (a DECIMAL "0.00" once did, and every payslip of the run came out NaN). The
+  // policy's work_days_per_month only counts the days a month is expected to have a record (the unmarked-days warning). The minutes of a day are still guarded.
   const safeWorkMinutes = Number(workdayMinutes) > 0 ? Number(workdayMinutes) : 480;
 
-  const dailyRate  = baseSalary / safeWorkDays;
-  const minuteRate = baseSalary / (safeWorkDays * safeWorkMinutes);
+  const dailyRate  = baseSalary / PAY_MONTH_DAYS;
+  const minuteRate = baseSalary / (PAY_MONTH_DAYS * safeWorkMinutes);
   const absenceDeduction = dailyRate * absentDays;
   // Days the policy's tiers judged (¼, ½, a whole day) cost that fraction of
   // the daily rate; minutes on older rows are still charged per minute.
@@ -84,7 +73,10 @@ function computePayrollLine(emp = {}, ctx = {}) {
     commissionCount = crmCommission.cnt;
     commissionSource = 'crm_commissions';
   } else {
-    commission = totalSales * ((parseFloat(emp.commission_rate) || 0) / 100);
+    // A target earner (staff.commission_type = 'TARGET') is paid by the month's bonus, never by a percentage of what they collected: a rate left on the staff
+    // row from before must not turn their sales into a commission.
+    const rate = emp.commission_type === 'TARGET' ? 0 : (parseFloat(emp.commission_rate) || 0);
+    commission = totalSales * (rate / 100);
     commissionCount = null;
     commissionSource = 'flat_rate';
   }
@@ -132,4 +124,4 @@ function computePayrollLine(emp = {}, ctx = {}) {
   };
 }
 
-module.exports = { computePayrollLine };
+module.exports = { computePayrollLine, PAY_MONTH_DAYS };

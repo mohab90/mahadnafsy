@@ -525,7 +525,7 @@ export function hasPermission(
 // both screens refused them. Everyone else still needs manage_inbox.
 // The Dokki desk and its manager have «واتسابي» too (29 Oct 2026: «في رسيبشن الدقي ومدير الدقي محتاج يظهرلهم تاب واتسابي»): their own number, in the
 // system, like the sales and collection reps. The shared inbox stays on manage_inbox.
-const DOKKI_WHATSAPP_ROLES = ['reception_daqqi', 'daqqi_manager'];
+const WHATSAPP_ROLES = ['reception_daqqi', 'daqqi_manager', 'support', 'hr']; // mirrors api/constants/permissions.js
 export function canUseChannel(
   staff: { role: RoleKey; permissions?: PermissionKey[] } | null | undefined,
   channel: 'inbox' | 'whatsapp',
@@ -533,7 +533,7 @@ export function canUseChannel(
   const role = String(staff?.role || '').toLowerCase();
   if (role === 'sales') return true;
   if (role === 'collection') return channel === 'whatsapp';
-  if (channel === 'whatsapp' && DOKKI_WHATSAPP_ROLES.includes(role)) return true;
+  if (channel === 'whatsapp' && WHATSAPP_ROLES.includes(role)) return true;
   return hasPermission(staff, 'manage_inbox' as PermissionKey);
 }
 

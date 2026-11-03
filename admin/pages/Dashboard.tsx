@@ -18,7 +18,8 @@ const LeadSalesNotificationsPanel = React.lazy(() => import('./dashboard/tabs/le
 // The shell: the menu, the screen the tab names and the overlays drawn over every screen. Its state and wiring —
 // the tab, the lists each screen loads, the badges, the payment handlers — are useDashboardModel's
 // (dashboard/shell/useDashboardModel.tsx).
-const Dashboard: React.FC = () => {
+// `page` is an employee's or a client's page (App.tsx UnderTheMenu): it takes the place of the tab's screen, under the same menu bar.
+const Dashboard: React.FC<{ page?: React.ReactNode }> = ({ page }) => {
   const {
     courses, bundles, therapists, subscribers, leads, siteDaqqiRounds, staffMembers, consultations, communityPosts,
     communityLibraryItems, communityVideos, communityEvents, content, isAdmin, addSubscriber, updateSubscriber,
@@ -117,7 +118,8 @@ const Dashboard: React.FC = () => {
 
         <div className="grid grid-cols-1 gap-6 items-start">
           <section className="space-y-6 min-w-0 overflow-hidden">
-            <DashboardTabContainer
+            {page}
+            {!page && <DashboardTabContainer
               activeTab={activeTab}
               isAdmin={isAdmin}
               canOpenTab={canOpenTab}
@@ -478,7 +480,7 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            </DashboardTabContainer>
+            </DashboardTabContainer>}
           </section>
         </div>
       </div>

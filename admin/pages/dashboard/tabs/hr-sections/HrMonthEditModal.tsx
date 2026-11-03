@@ -20,12 +20,18 @@ type Basics = {
 };
 
 const STATUS_OPTIONS: [string, string][] = [
-  ['PRESENT', 'حاضر'], ['LATE', 'متأخر'], ['ABSENT', 'غائب'], ['HALF_DAY', 'نص يوم'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'],
+  ['PRESENT', 'حاضر'], ['LATE', 'متأخر'], ['ABSENT', 'غياب بدون إذن'], ['ABSENT_EXCUSED', 'غياب بإذن'], ['LEAVE_BALANCE', 'غياب من رصيد الإجازات (بدون خصم)'],
+  ['HALF_DAY', 'نص يوم'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'],
 ];
 const field = 'w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm disabled:bg-gray-50';
 const hhmm = (value: string | null) => (value ? String(value).slice(0, 5) : '');
 const dateOnly = (value: string) => String(value).slice(0, 10);
-const statusOf = (log: Log) => (log.status === 'HOLIDAY' && log.permit_used === 'free_day' ? 'FREE_DAY' : log.status);
+const statusOf = (log: Log) => {
+  if (log.status === 'HOLIDAY' && log.permit_used === 'free_day') return 'FREE_DAY';
+  if (log.status === 'HOLIDAY' && log.permit_used === 'leave_balance') return 'LEAVE_BALANCE';
+  if (log.status === 'ABSENT' && log.permit_used === 'excused') return 'ABSENT_EXCUSED';
+  return log.status;
+};
 const weekday = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: CAIRO_TIME_ZONE });
 
 type DayDraft = { status: string; check_in: string; check_out: string; deduction: string; notes: string };

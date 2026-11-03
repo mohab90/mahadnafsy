@@ -9,6 +9,7 @@ const { outOfReach, requireHr, staffInReach, staffReachSql, notifyBranchManagers
 const { toNumbers } = require('../../lib/mappers');
 const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
 const { normalizePolicy, tierDays, toMinutes } = require('../../lib/attendancePolicy');
+const { leaveBalanceOf } = require('../../lib/leaveBalance');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -539,7 +540,9 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     if (!staff_id || !validDateOnly(date)) return res.status(400).json({ error: 'staff_id and valid date are required' });
     if (!(await staffInReach(conn, req, staff_id))) return outOfReach(res);
     // FREE_DAY is the paid day off every employee of six months has each month: stored as a HOLIDAY marked free_day, so a fingerprint re-upload counts it.
-    const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY'];
+    // 3 Nov 2026, «الغياب دا باذن او بدون او من رصيد الاجازات»: an absence is told apart on the day. ABSENT is without permission; ABSENT_EXCUSED is an ABSENT row
+    // marked 'excused'; both cost the day. LEAVE_BALANCE is a HOLIDAY marked 'leave_balance': it costs nothing and spends a day of the year's 21.
+    const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY','ABSENT_EXCUSED','LEAVE_BALANCE'];
     if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid attendance status' });
     const manualDeduction = req.body.deduction_days === undefined || req.body.deduction_days === '' || req.body.deduction_days === null ? null : Number(req.body.deduction_days);
     if (manualDeduction !== null && !(Number.isFinite(manualDeduction) && manualDeduction >= 0 && manualDeduction <= 1)) {
@@ -549,7 +552,9 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
       return res.status(400).json({ error: 'Time must use HH:mm format' });
     }
     const freeDay = status === 'FREE_DAY';
-    const safeStatus = freeDay ? 'HOLIDAY' : (status || 'PRESENT');
+    const fromBalance = status === 'LEAVE_BALANCE';
+    const safeStatus = freeDay || fromBalance ? 'HOLIDAY' : status === 'ABSENT_EXCUSED' ? 'ABSENT' : (status || 'PRESENT');
+    const permit = freeDay ? 'free_day' : fromBalance ? 'leave_balance' : status === 'ABSENT_EXCUSED' ? 'excused' : null;
     // Calculate lateness against the employee schedule, then the tenant policy.
     let lateMin = 0;
     if (check_in) {
@@ -588,9 +593,20 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
       return res.status(404).json({ error: 'Staff record not found' });
     }
     const [[existing]] = await conn.query(
-      'SELECT leave_id FROM attendance_logs WHERE tenant_id=? AND staff_id=? AND date=? LIMIT 1 FOR UPDATE',
+      'SELECT leave_id, permit_used FROM attendance_logs WHERE tenant_id=? AND staff_id=? AND date=? LIMIT 1 FOR UPDATE',
       [req.tenantId, staff_id, date]
     );
+    if (fromBalance) {
+      const entitlement = Number((await getEffectiveHrPolicy(conn, req.tenantId, date)).annual_leave_days);
+      const balance = await leaveBalanceOf(conn, { tenantId: req.tenantId, staffId: staff_id, year: Number(date.slice(0, 4)), entitlement });
+      // The day being re-saved is already inside `used`.
+      const available = balance.remaining + (existing?.permit_used === 'leave_balance' ? 1 : 0);
+      if (available < 1) {
+        await conn.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ error: `رصيد الإجازات خلص: استُخدم ${balance.used} من ${balance.entitlement} يوم السنة دي`, code: 'LEAVE_BALANCE_EMPTY' });
+      }
+    }
     if (existing?.leave_id) {
       await conn.rollback();
       transactionStarted = false;
@@ -606,7 +622,7 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
          total_hours=VALUES(total_hours), late_minutes=VALUES(late_minutes), early_leave_minutes=VALUES(early_leave_minutes),
          deduction_days=VALUES(deduction_days), permit_used=VALUES(permit_used), review_flag=NULL,
          status=VALUES(status), notes=VALUES(notes), source='MANUAL_ENTRY'`,
-      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, lateMin, earlyMin, deductionDays, freeDay ? 'free_day' : null, safeStatus, notes||null]
+      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, lateMin, earlyMin, deductionDays, permit, safeStatus, notes||null]
     );
     await conn.commit();
     transactionStarted = false;

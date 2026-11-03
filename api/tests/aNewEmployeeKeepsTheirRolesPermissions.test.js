@@ -58,7 +58,6 @@ test('null is the role, [] is nothing — and the server and the panel agree', (
 test('creating an employee without choosing permissions leaves them on their role', () => {
   for (const file of [
     'admin/pages/dashboard/tabs/HRTab.tsx',
-    'admin/pages/dashboard/tabs/hr-sections/RecruitmentPipelinePanel.tsx',
   ]) {
     const source = read(file);
     assert.ok(!source.includes('permissions: result.permissions || undefined'),

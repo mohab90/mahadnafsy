@@ -84,9 +84,10 @@ test('the Facebook verify token is stored under the key the webhook compares', (
 });
 
 test('the hire dialog’s name and phone reach the staff row', () => {
-  const panel = codeOnly(read('admin/pages/dashboard/tabs/hr-sections/RecruitmentPipelinePanel.tsx'));
-  assert.ok(panel.includes('name: result.name'), 'the dialog collected it and sent nothing');
-  assert.ok(panel.includes('phone: result.phone'));
+  // The hire dialog (the one place left that hires, 3 Nov 2026) asks for the e-mail, the role and a password only: the name and the phone are the applicant's own.
+  const panel = codeOnly(read('admin/pages/dashboard/tabs/interviews-sections/HireModal.tsx'));
+  assert.ok(panel.includes('hireHrApplicant(applicant.id, {'));
+  assert.ok(!panel.includes('name: result.name'), 'the dialog asks for no name that it could drop');
 
   const route = codeOnly(read('api/routes/hr/talent.js'));
   assert.ok(route.includes('String(req.body.name || \'\').trim() || a.name'),
