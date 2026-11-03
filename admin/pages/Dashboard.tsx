@@ -117,7 +117,8 @@ const Dashboard: React.FC<{ page?: React.ReactNode }> = ({ page }) => {
         />
 
         <div className="grid grid-cols-1 gap-6 items-start">
-          <section className="space-y-6 min-w-0 overflow-hidden">
+          {/* A page under the bar must not clip its own sticky headers (overflow-hidden would), and they stick below the bar, not behind it. */}
+          <section className={page ? 'space-y-6 min-w-0 [&_.sticky]:top-[84px]' : 'space-y-6 min-w-0 overflow-hidden'}>
             {page}
             {!page && <DashboardTabContainer
               activeTab={activeTab}
