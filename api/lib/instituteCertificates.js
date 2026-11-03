@@ -51,9 +51,12 @@ async function candidatePairs(db, tenantId) {
   viaTrack.forEach(row => addTrack(row.subscriber_id, row.bundle_id));
   // «مدفوع قبل السيستم»: most of Dokki's clients paid before the system existed.
   const [prior] = await db.query(
-    `SELECT m.subscriber_id, m.item_key FROM client_item_money m JOIN subscribers s ON s.id=m.subscriber_id AND s.tenant_id=m.tenant_id
-      WHERE m.tenant_id=? AND s.deleted_at IS NULL AND m.prior_paid > 0`, [tenantId]);
+    'SELECT subscriber_id, item_key FROM client_item_money WHERE tenant_id=? AND prior_paid > 0', [tenantId]);
+  // A client taken to the archive has no certificate coming: their ids, apart (no join, so no two collations meet).
+  const [archived] = await db.query('SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NOT NULL', [tenantId]);
+  const archivedIds = new Set(archived.map(row => row.id));
   for (const row of prior) {
+    if (archivedIds.has(row.subscriber_id)) continue;
     if (row.item_key.startsWith('bundle:')) addTrack(row.subscriber_id, row.item_key.slice(7)); else addCourse(row.subscriber_id, row.item_key);
   }
   const [certified] = await db.query('SELECT subscriber_id, course_id FROM course_completions WHERE tenant_id=?', [tenantId]);

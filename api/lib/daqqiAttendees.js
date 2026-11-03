@@ -109,7 +109,7 @@ async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = fa
             -- «المدفوع 0» for 1,609 of the 1,919 Dokki clients. Returned apart so the
             -- revenue figures, which are period collections, do not count it.
             COALESCE((SELECT m.prior_paid FROM client_item_money m
-                       WHERE m.tenant_id = da.tenant_id AND m.subscriber_id = da.subscriber_id AND m.item_key = dr.course_id), 0) AS prior_paid
+                       WHERE m.tenant_id = da.tenant_id COLLATE utf8mb4_unicode_ci AND m.subscriber_id = da.subscriber_id COLLATE utf8mb4_unicode_ci AND m.item_key = dr.course_id COLLATE utf8mb4_unicode_ci), 0) AS prior_paid
        FROM daqqi_attendees da
        JOIN daqqi_rounds dr
          ON dr.id=da.round_id AND dr.tenant_id=da.tenant_id

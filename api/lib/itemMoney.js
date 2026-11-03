@@ -94,14 +94,18 @@ async function replaceItemMoney(db, { tenantId, subscriberId, customPrices = {},
   if (rows.length) await db.query('INSERT INTO client_item_money (tenant_id, subscriber_id, item_key, agreed_price, prior_paid) VALUES ?', [rows]);
 }
 
+// Every comparison with another table's column names the collation of THIS table's columns on the other side: a database holds text columns in more than one collation
+// (production has utf8mb4_general_ci ones), and MariaDB refuses to compare two columns of different ones. It is on the other table's value, so this table's key stays usable.
+const UNICODE = 'COLLATE utf8mb4_unicode_ci';
+
 /** SQL for «paid before the system» of one item, for a query that has the client as `${clientAlias}` and the item as `${itemSql}` (a column or a bound value). */
 function priorPaidSql(clientAlias, itemSql) {
-  return `COALESCE((SELECT m.prior_paid FROM client_item_money m WHERE m.tenant_id = ${clientAlias}.tenant_id AND m.subscriber_id = ${clientAlias}.id AND m.item_key = ${itemSql}), 0)`;
+  return `COALESCE((SELECT m.prior_paid FROM client_item_money m WHERE m.tenant_id = ${clientAlias}.tenant_id ${UNICODE} AND m.subscriber_id = ${clientAlias}.id ${UNICODE} AND m.item_key = ${itemSql} ${UNICODE}), 0)`;
 }
 
 /** SQL for the whole of a client's «paid before the system», for a query that has the client as `${clientAlias}`. */
 function priorPaidTotalSql(clientAlias) {
-  return `COALESCE((SELECT SUM(m.prior_paid) FROM client_item_money m WHERE m.tenant_id = ${clientAlias}.tenant_id AND m.subscriber_id = ${clientAlias}.id), 0)`;
+  return `COALESCE((SELECT SUM(m.prior_paid) FROM client_item_money m WHERE m.tenant_id = ${clientAlias}.tenant_id ${UNICODE} AND m.subscriber_id = ${clientAlias}.id ${UNICODE}), 0)`;
 }
 
 module.exports = { loadItemMoney, moneyOf, withItemMoney, withoutItemMoney, priorPaidTotals, setItemMoney, replaceItemMoney, priorPaidSql, priorPaidTotalSql };

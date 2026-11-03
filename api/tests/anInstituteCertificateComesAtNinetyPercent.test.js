@@ -22,7 +22,8 @@ test('every client with money in and no certificate is a candidate — a course 
       const flat = String(sql).replace(/\s+/g, ' ');
       if (/SELECT DISTINCT p\.subscriber_id, p\.course_id/.test(flat)) return [[{ subscriber_id: 's-1', course_id: 'c-1' }, { subscriber_id: 's-2', course_id: 'c-1' }]];
       if (/SELECT DISTINCT p\.subscriber_id, p\.bundle_id/.test(flat)) return [[{ subscriber_id: 's-3', bundle_id: 'b-2' }]];
-      if (/FROM client_item_money m JOIN subscribers s/.test(flat)) return [[{ subscriber_id: 's-4', item_key: 'c-9' }, { subscriber_id: 's-4', item_key: 'bundle:b-1' }]];
+      if (/FROM client_item_money WHERE/.test(flat)) return [[{ subscriber_id: 's-4', item_key: 'c-9' }, { subscriber_id: 's-4', item_key: 'bundle:b-1' }, { subscriber_id: 's-gone', item_key: 'c-7' }]];
+      if (/FROM subscribers WHERE tenant_id=\? AND deleted_at IS NOT NULL/.test(flat)) return [[{ id: 's-gone' }]];
       if (/FROM course_completions/.test(flat)) return [[{ subscriber_id: 's-2', course_id: 'c-1' }]];
       return [[]];
     },

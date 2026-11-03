@@ -36,30 +36,30 @@ function subTypeSql(alias) {
 }
 
 /** The three populations with the caller's reach; a population the caller may not see is absent. */
-function populations(req, tenantId) {
+function populations(req) {
   const staff = req.staffRecord || null;
   const holds = permission => req.isSuperAdmin || hasPermission(staff, permission);
   const out = {};
   const subScope = financialScopeClause(resolveFinancialScope(req, { allowAssigned: true }), { branchColumn: 's.branch_id', subscriberAlias: 's' });
   if (subScope.sql !== ' AND 1=0') {
-    out.subscriber = { where: `s.tenant_id = ? AND s.deleted_at IS NULL${subScope.sql}`, params: [tenantId, ...subScope.params] };
+    out.subscriber = { where: `s.deleted_at IS NULL${subScope.sql}`, params: subScope.params };
   }
   const range = leadScope(req, 'l');
   if (!range.none && holds('view_leads')) {
     // Not the ones that became clients, are archived, hidden or merged, nor a person already a client by number (the screen drew them once).
     out.lead = {
-      where: `l.tenant_id = ? AND l.deleted_at IS NULL AND l.hidden = 0 AND l.merged_into_lead_id IS NULL AND l.status NOT IN ${CONVERTED_SQL} AND l.status <> 'archived'${range.sql}
-              AND NOT EXISTS (SELECT 1 FROM subscribers s2 WHERE s2.tenant_id = l.tenant_id AND s2.deleted_at IS NULL AND l.phone_digits <> '' AND s2.phone_digits = l.phone_digits)`,
-      params: [tenantId, ...range.params],
+      where: `l.deleted_at IS NULL AND l.hidden = 0 AND l.merged_into_lead_id IS NULL AND l.status NOT IN ${CONVERTED_SQL} AND l.status <> 'archived'${range.sql}
+              AND NOT EXISTS (SELECT 1 FROM subscribers s2 WHERE s2.tenant_id = l.tenant_id AND s2.deleted_at IS NULL AND l.phone_digits <> '' AND s2.phone_digits = l.phone_digits COLLATE utf8mb4_unicode_ci)`,
+      params: range.params,
     };
   }
   if (holds('view_leads')) {
     // Accounts that signed up on the site and are neither a client nor a member of the staff.
     out.registration = {
-      where: `u.tenant_id = ? AND u.is_active = 1
+      where: `u.is_active = 1
               AND NOT EXISTS (SELECT 1 FROM subscribers s WHERE s.tenant_id = u.tenant_id AND s.firebase_uid = u.id)
               AND NOT EXISTS (SELECT 1 FROM staff st WHERE st.tenant_id = u.tenant_id AND st.deleted_at IS NULL AND st.email <> '' AND st.email = u.email)`,
-      params: [tenantId],
+      params: [],
     };
   }
   return out;
@@ -67,14 +67,14 @@ function populations(req, tenantId) {
 
 router.get('/api/admin/client-db/summary', requireAuth, requireAdminOrStaff, requirePermission('view_client_db'), async (req, res) => {
   try {
-    const pop = populations(req, req.tenantId);
+    const pop = populations(req);
     const [subs, leads, registrations] = await Promise.all([
       pop.subscriber ? pool.query(
         `SELECT COUNT(*) AS total, COALESCE(SUM(${subTypeSql('s')} = 'online'), 0) AS online, COALESCE(SUM(${subTypeSql('s')} = 'daqqi'), 0) AS daqqi,
                 COALESCE(SUM(${subTypeSql('s')} = 'regular'), 0) AS regular
-           FROM subscribers s WHERE ${pop.subscriber.where}`, pop.subscriber.params) : [[{ total: 0, online: 0, daqqi: 0, regular: 0 }]],
-      pop.lead ? pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE ${pop.lead.where}`, pop.lead.params) : [[{ total: 0 }]],
-      pop.registration ? pool.query(`SELECT COUNT(*) AS total FROM users u WHERE ${pop.registration.where}`, pop.registration.params) : [[{ total: 0 }]],
+           FROM subscribers s WHERE s.tenant_id = ? AND ${pop.subscriber.where}`, [req.tenantId, ...pop.subscriber.params]) : [[{ total: 0, online: 0, daqqi: 0, regular: 0 }]],
+      pop.lead ? pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ? AND ${pop.lead.where}`, [req.tenantId, ...pop.lead.params]) : [[{ total: 0 }]],
+      pop.registration ? pool.query(`SELECT COUNT(*) AS total FROM users u WHERE u.tenant_id = ? AND ${pop.registration.where}`, [req.tenantId, ...pop.registration.params]) : [[{ total: 0 }]],
     ]);
     const s = subs[0][0];
     const summary = {
@@ -103,7 +103,7 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), PAGE_MAX);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const order = SORTS[String(req.query.sort || 'date_desc')] || SORTS.date_desc;
-    const pop = populations(req, req.tenantId);
+    const pop = populations(req);
 
     const parts = [];
     if (pop.subscriber && ['all', 'subscriber', 'subscriber_online', 'subscriber_daqqi', 'subscriber_regular'].includes(type)) {
@@ -114,10 +114,10 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
       if (course) { filters.push('EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id = s.tenant_id AND e.subscriber_id = s.id AND e.course_id = ?)'); params.push(course); }
       if (q) { const match = personMatch(q, 's', { withPhone2: true }); filters.push(match.sql); params.push(...match.params); }
       parts.push({
-        sql: `SELECT 'subscriber' AS kind, s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.client_type, 'مشترك' AS status, s.created_at,
-                     COALESCE(s.assigned_sales_name, '') AS sales_name
-                FROM subscribers s WHERE ${pop.subscriber.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
-        params: [...pop.subscriber.params, ...params],
+        sql: `SELECT 'subscriber' AS kind, s.id COLLATE utf8mb4_unicode_ci AS id, s.client_code COLLATE utf8mb4_unicode_ci AS client_code, s.name COLLATE utf8mb4_unicode_ci AS name, s.phone COLLATE utf8mb4_unicode_ci AS phone, s.email COLLATE utf8mb4_unicode_ci AS email, s.branch COLLATE utf8mb4_unicode_ci AS branch,
+                     s.client_type COLLATE utf8mb4_unicode_ci AS client_type, 'مشترك' AS status, s.created_at, COALESCE(s.assigned_sales_name, '') COLLATE utf8mb4_unicode_ci AS sales_name
+                FROM subscribers s WHERE s.tenant_id = ? AND ${pop.subscriber.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
+        params: [req.tenantId, ...pop.subscriber.params, ...params],
       });
     }
     // A course filter is about what a client bought: a lead has none, and a sign-up has none.
@@ -129,10 +129,10 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
       if (branch) { filters.push("UPPER(COALESCE(l.branch, '')) = ?"); params.push(branch); }
       if (q) { const match = personMatch(q, 'l'); filters.push(match.sql); params.push(...match.params); }
       parts.push({
-        sql: `SELECT 'lead' AS kind, l.id, l.client_code, l.name, l.phone, l.email, l.branch, l.client_type, l.status, l.created_at,
-                     COALESCE(l.assigned_sales_name, '') AS sales_name
-                FROM leads l WHERE ${pop.lead.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
-        params: [...pop.lead.params, ...params],
+        sql: `SELECT 'lead' AS kind, l.id COLLATE utf8mb4_unicode_ci AS id, l.client_code COLLATE utf8mb4_unicode_ci AS client_code, l.name COLLATE utf8mb4_unicode_ci AS name, l.phone COLLATE utf8mb4_unicode_ci AS phone, l.email COLLATE utf8mb4_unicode_ci AS email, l.branch COLLATE utf8mb4_unicode_ci AS branch,
+                     l.client_type COLLATE utf8mb4_unicode_ci AS client_type, l.status COLLATE utf8mb4_unicode_ci AS status, l.created_at, COALESCE(l.assigned_sales_name, '') COLLATE utf8mb4_unicode_ci AS sales_name
+                FROM leads l WHERE l.tenant_id = ? AND ${pop.lead.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
+        params: [req.tenantId, ...pop.lead.params, ...params],
       });
     }
     if (pop.registration && !course && !branch && ['all', 'registration'].includes(type)) {
@@ -140,14 +140,16 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
       const params = [];
       if (q) { const match = personMatch(q, 'u', { withCode: false }); filters.push(match.sql); params.push(...match.params); }
       parts.push({
-        sql: `SELECT 'registration' AS kind, u.id, NULL AS client_code, u.name, u.phone, u.email, NULL AS branch, NULL AS client_type, 'registration' AS status,
+        sql: `SELECT 'registration' AS kind, u.id COLLATE utf8mb4_unicode_ci AS id, NULL AS client_code, u.name COLLATE utf8mb4_unicode_ci AS name, u.phone COLLATE utf8mb4_unicode_ci AS phone, u.email COLLATE utf8mb4_unicode_ci AS email, NULL AS branch, NULL AS client_type, 'registration' AS status,
                      u.created_at, '' AS sales_name
-                FROM users u WHERE ${pop.registration.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
-        params: [...pop.registration.params, ...params],
+                FROM users u WHERE u.tenant_id = ? AND ${pop.registration.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
+        params: [req.tenantId, ...pop.registration.params, ...params],
       });
     }
     if (!parts.length) return res.json({ rows: [], total: 0 });
 
+    // Each text column of the union names one collation: the three tables do not all hold theirs in the same one on every database, and a UNION of two refuses (the
+    // release's staging run showed it for the new table's columns, 3 Nov 2026).
     const union = parts.map(part => part.sql).join(' UNION ALL ');
     const unionParams = parts.flatMap(part => part.params);
     const [[count], [page]] = await Promise.all([
