@@ -16,6 +16,7 @@
 const { uuidv4 } = require('./id');
 const { canonicalChannel } = require('./paymentChannels');
 const { applyAlias, loadBoxAliases, registerAlias } = require('./boxAliases');
+const { CATCH_ALL, currencyOfName, keyOf, loadBoxCatalog } = require('./boxCatalog');
 
 const GENERAL = '__general__';
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -28,8 +29,8 @@ const PAID = "(p.status = 'paid' OR p.status IS NULL)";
  * less what was withdrawn from it and the expenses recorded against it, and plus what was transferred in (lib/boxWithdrawals.js). `since` limits all of it
  * to what was entered after it.
  */
-async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
-  const names = aliases || await loadBoxAliases(db, tenantId);
+async function sumsByBox(db, { tenantId, since = null, catalog = null }) {
+  const boxes = catalog || await loadBoxCatalog(db, tenantId);
   const [rows] = await db.query(
     `SELECT p.payment_method AS method, p.currency, SUM(p.amount) AS total
        FROM payments p
@@ -38,7 +39,7 @@ async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
     since ? [tenantId, since] : [tenantId]);
   const sums = new Map();
   for (const row of rows) {
-    const key = `${applyAlias(canonicalChannel(row.method), names)}|${row.currency || 'EGP'}`;
+    const key = keyOf(row.method, row.currency, boxes);
     sums.set(key, round2((sums.get(key) || 0) + Number(row.total)));
   }
   const [taken] = await db.query(
@@ -47,10 +48,10 @@ async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
       GROUP BY method, to_method, currency, kind`,
     since ? [tenantId, since] : [tenantId]);
   for (const row of taken) {
-    const out = `${applyAlias(row.method, names)}|${row.currency}`;
+    const out = keyOf(row.method, row.currency, boxes, { stored: true });
     sums.set(out, round2((sums.get(out) || 0) - Number(row.total)));
     if (row.kind === 'transfer' && row.to_method) {
-      const into = `${applyAlias(row.to_method, names)}|${row.currency}`;
+      const into = keyOf(row.to_method, row.currency, boxes, { stored: true });
       sums.set(into, round2((sums.get(into) || 0) + Number(row.total)));
     }
   }
@@ -61,7 +62,7 @@ async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
       GROUP BY box_method, currency`,
     since ? [tenantId, since] : [tenantId]);
   for (const row of spent) {
-    const key = `${applyAlias(canonicalChannel(row.method), names)}|${row.currency || 'EGP'}`;
+    const key = keyOf(row.method, row.currency, boxes);
     sums.set(key, round2((sums.get(key) || 0) - Number(row.total)));
   }
   return sums;
@@ -74,9 +75,17 @@ async function sumsByBox(db, { tenantId, since = null, aliases = null }) {
 async function currentBalances(db, { tenantId, lock = false }) {
   const [stored] = await db.query(
     `SELECT method, currency, opening_amount, baseline_at FROM box_balances WHERE tenant_id = ?${lock ? ' FOR UPDATE' : ''}`, [tenantId]);
-  const aliases = await loadBoxAliases(db, tenantId);
-  const baselines = new Map(stored.map(row => [`${row.method}|${row.currency}`, row]));
-  const everything = await sumsByBox(db, { tenantId, aliases });
+  const catalog = await loadBoxCatalog(db, tenantId);
+  // An opening typed under an old spelling (or in the wrong currency) is read in the box it belongs to; two that land together add up, the later baseline wins.
+  const baselines = new Map();
+  for (const row of stored) {
+    const key = row.method === GENERAL ? `${GENERAL}|${row.currency}` : keyOf(row.method, row.currency, catalog, { stored: true });
+    const seen = baselines.get(key);
+    if (!seen) { baselines.set(key, { ...row }); continue; }
+    const later = row.baseline_at && (!seen.baseline_at || new Date(row.baseline_at) > new Date(seen.baseline_at)) ? row.baseline_at : seen.baseline_at;
+    baselines.set(key, { ...seen, opening_amount: round2(Number(seen.opening_amount) + Number(row.opening_amount)), baseline_at: later });
+  }
+  const everything = await sumsByBox(db, { tenantId, catalog });
   // A box with a baseline counts only what came in after it: one grouped query per distinct baseline.
   const sinceCache = new Map();
   const balances = new Map();
@@ -86,7 +95,7 @@ async function currentBalances(db, { tenantId, lock = false }) {
     let sums = everything;
     if (base?.baseline_at) {
       const stamp = new Date(base.baseline_at).getTime();
-      if (!sinceCache.has(stamp)) sinceCache.set(stamp, await sumsByBox(db, { tenantId, since: base.baseline_at, aliases }));
+      if (!sinceCache.has(stamp)) sinceCache.set(stamp, await sumsByBox(db, { tenantId, since: base.baseline_at, catalog }));
       sums = sinceCache.get(stamp);
     }
     const opening = round2(base?.opening_amount);
@@ -107,8 +116,6 @@ async function configuredBoxes(db, tenantId) {
   const listed = String(content?.['finance.payment_methods'] || '').split('||').map(name => name.trim()).filter(Boolean);
   return [...new Set(listed.map(name => applyAlias(canonicalChannel(name), names)))];
 }
-
-const currencyOfName = name => (/سعود|ريال|sar/i.test(name) ? 'SAR' : /دولار|usd/i.test(name) ? 'USD' : 'EGP');
 
 const totalOf = (balances, currency) => round2([...balances].filter(([key]) => key.endsWith(`|${currency}`)).reduce((sum, [, value]) => sum + value.balance, 0));
 

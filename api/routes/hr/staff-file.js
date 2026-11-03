@@ -169,7 +169,7 @@ const TARGET_TYPES = new Set(['clients', 'bookings', 'egp']);
 router.get('/api/admin/hr/staff-basics', ...view, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, role, branch_id, base_salary, biometric_user_no, monthly_target, monthly_target_type, monthly_bonus
+      `SELECT id, name, role, branch_id, base_salary, biometric_user_no, monthly_target, monthly_target_type, monthly_bonus, free_days_per_month
          FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL ORDER BY name`, [req.tenantId]);
     res.json(rows.map(r => ({
       id: r.id, name: r.name, role: r.role, branchId: r.branch_id,
@@ -178,6 +178,8 @@ router.get('/api/admin/hr/staff-basics', ...view, async (req, res) => {
       targetType: TARGET_TYPES.has(r.monthly_target_type) ? r.monthly_target_type : null,
       targetValue: r.monthly_target == null ? null : Number(r.monthly_target),
       targetBonus: r.monthly_bonus == null ? null : Number(r.monthly_bonus),
+      // Free days a month for this employee; null = the HR policy's (one, once six months are worked).
+      freeDays: r.free_days_per_month == null ? null : Number(r.free_days_per_month),
     })));
   } catch (error) {
     logger.error('[staff-basics/get]', error.message);
@@ -212,6 +214,11 @@ router.put('/api/admin/hr/staff-basics', ...manage, async (req, res) => {
         return res.status(400).json({ error: 'الأرقام لازم تكون موجبة' });
       }
       fields[column] = value;
+    }
+    if (row.freeDays !== undefined) {
+      const days = row.freeDays === '' || row.freeDays === null ? null : Number(row.freeDays);
+      if (days !== null && !(Number.isInteger(days) && days >= 0 && days <= 31)) return res.status(400).json({ error: 'أيام الإجازة المجانية لازم تكون رقم صحيح من 0 لـ 31' });
+      fields.free_days_per_month = days;
     }
     if ('base_salary' in fields && !canPay) {
       return res.status(403).json({ error: 'تعديل الراتب محتاج صلاحية الحسابات' });

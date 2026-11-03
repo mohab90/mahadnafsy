@@ -8,6 +8,7 @@ const { writeAuditEvent } = require('../../lib/auditTrail');
 const { outOfReach, requireHr, staffInReach, staffReachSql, notifyBranchManagers } = require('../../lib/branchHr');
 const { toNumbers } = require('../../lib/mappers');
 const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
+const { normalizePolicy, tierDays, toMinutes } = require('../../lib/attendancePolicy');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -109,13 +110,16 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
       eveningCount: Number(req.body.evening_permits_per_month ?? DEFAULT_POLICY.evening_permits_per_month),
       tiers: Array.isArray(req.body.late_tiers_json) ? req.body.late_tiers_json : DEFAULT_POLICY.late_tiers_json,
       earlyTiered: req.body.early_leave_tiered === undefined ? 1 : (req.body.early_leave_tiered ? 1 : 0),
+      freeDays: Number(req.body.free_day_per_month ?? DEFAULT_POLICY.free_day_per_month),
+      freeAfterMonths: Number(req.body.free_day_after_months ?? DEFAULT_POLICY.free_day_after_months),
     };
     const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
     const tiersOk = att.tiers.length <= 6 && att.tiers.every(t => Number.isFinite(Number(t.over)) && Number(t.over) >= 0
       && Number(t.over) <= 600 && Number(t.days) > 0 && Number(t.days) <= 1);
     if (!HHMM.test(att.start) || !HHMM.test(att.end) || att.end <= att.start || !tiersOk
       || ![att.morningMin, att.eveningMin].every(v => Number.isInteger(v) && v >= 0 && v <= 480)
-      || ![att.morningCount, att.eveningCount].every(v => Number.isInteger(v) && v >= 0 && v <= 31)) {
+      || ![att.morningCount, att.eveningCount, att.freeDays].every(v => Number.isInteger(v) && v >= 0 && v <= 31)
+      || !(Number.isInteger(att.freeAfterMonths) && att.freeAfterMonths >= 0 && att.freeAfterMonths <= 120)) {
       return res.status(400).json({ error: 'مواعيد العمل أو الأذونات أو شرائح التأخير مش صحيحة' });
     }
     const values = {
@@ -159,13 +163,13 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
         (id,tenant_id,version,annual_leave_days,sick_leave_days,work_days_per_month,
          workday_minutes,grace_minutes,overtime_multiplier,audit_retention_days,
          weekend_days_json,effective_from,created_by,${ATTENDANCE_POLICY_COLUMNS})
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, version, values.annual, values.sick, values.workDays,
         values.workMinutes, values.grace, values.overtime, values.retention, JSON.stringify(weekend),
         effective_from, req.staffRecord?.id || req.user?.uid || null,
         `${att.start}:00`, `${att.end}:00`, att.morningMin, att.eveningMin, att.morningCount, att.eveningCount,
         JSON.stringify(att.tiers.map(t => ({ over: Number(t.over), days: Number(t.days) })).sort((a, b) => a.over - b.over)),
-        att.earlyTiered]
+        att.earlyTiered, att.freeDays, att.freeAfterMonths]
     );
     await writeAuditEvent({
       action: 'hr.policy.created',
@@ -517,12 +521,12 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
     const range = reportMonth(month, year);
     if (!range) return res.status(400).json({ error: 'month and year are invalid' });
     const [rows] = await pool.query(
-      `SELECT id, staff_id, branch, date, check_in, check_out, total_hours, late_minutes,
+      `SELECT id, staff_id, branch, date, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, leave_id,
               status, notes, source, import_batch_id, created_at, updated_at
        FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date>=? AND date<? ORDER BY date`,
       [staffId, req.tenantId, range.start, range.end]
     );
-    res.json(rows.map(row => toNumbers(row, ["total_hours"])));
+    res.json(rows.map(row => toNumbers(row, ["total_hours", "deduction_days"])));
   } catch (e) { hrError(res, e); }
 });
 
@@ -534,12 +538,18 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     const { staff_id, date, check_in, check_out, status, notes } = req.body;
     if (!staff_id || !validDateOnly(date)) return res.status(400).json({ error: 'staff_id and valid date are required' });
     if (!(await staffInReach(conn, req, staff_id))) return outOfReach(res);
-    const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE'];
+    // FREE_DAY is the paid day off every employee of six months has each month: stored as a HOLIDAY marked free_day, so a fingerprint re-upload counts it.
+    const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY'];
     if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid attendance status' });
+    const manualDeduction = req.body.deduction_days === undefined || req.body.deduction_days === '' || req.body.deduction_days === null ? null : Number(req.body.deduction_days);
+    if (manualDeduction !== null && !(Number.isFinite(manualDeduction) && manualDeduction >= 0 && manualDeduction <= 1)) {
+      return res.status(400).json({ error: 'الخصم لازم يكون من صفر ليوم كامل' });
+    }
     if ((check_in && !validClockTime(check_in)) || (check_out && !validClockTime(check_out))) {
       return res.status(400).json({ error: 'Time must use HH:mm format' });
     }
-    const safeStatus = status || 'PRESENT';
+    const freeDay = status === 'FREE_DAY';
+    const safeStatus = freeDay ? 'HOLIDAY' : (status || 'PRESENT');
     // Calculate lateness against the employee schedule, then the tenant policy.
     let lateMin = 0;
     if (check_in) {
@@ -559,6 +569,13 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
       if (duration < 0) return res.status(400).json({ error: 'check_out must be after check_in' });
       totalHours = Math.round(duration / 60 * 100) / 100;
     }
+    // What the day costs under the company policy (lib/attendancePolicy.js): the tiers on lateness and on leaving early. HR can type the number instead.
+    const rules = normalizePolicy(await getEffectiveHrPolicy(conn, req.tenantId, date));
+    const earlyMin = check_out && !['ABSENT', 'HOLIDAY'].includes(safeStatus) ? Math.max(0, rules.end - toMinutes(check_out)) : 0;
+    const judged = check_in && !['ABSENT', 'HOLIDAY'].includes(safeStatus);
+    const lateFromPolicy = judged ? Math.max(0, toMinutes(check_in) - rules.start) : 0;
+    const computedDeduction = !judged && !earlyMin ? 0 : Math.min(1, tierDays(lateFromPolicy, rules.tiers) + (rules.earlyTiered ? tierDays(earlyMin, rules.tiers) : 0));
+    const deductionDays = safeStatus === 'ABSENT' || safeStatus === 'HOLIDAY' ? 0 : (manualDeduction ?? computedDeduction);
     await conn.beginTransaction();
     transactionStarted = true;
     const [[ownedStaff]] = await conn.query(
@@ -583,12 +600,13 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
       });
     }
     await conn.query(
-      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, check_out, total_hours, late_minutes, status, notes, source)
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL_ENTRY')
+      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, status, notes, source)
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'MANUAL_ENTRY')
        ON DUPLICATE KEY UPDATE check_in=VALUES(check_in), check_out=VALUES(check_out),
-         total_hours=VALUES(total_hours), late_minutes=VALUES(late_minutes),
-         status=VALUES(status), notes=VALUES(notes)`,
-      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, lateMin, safeStatus, notes||null]
+         total_hours=VALUES(total_hours), late_minutes=VALUES(late_minutes), early_leave_minutes=VALUES(early_leave_minutes),
+         deduction_days=VALUES(deduction_days), permit_used=VALUES(permit_used), review_flag=NULL,
+         status=VALUES(status), notes=VALUES(notes), source='MANUAL_ENTRY'`,
+      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, lateMin, earlyMin, deductionDays, freeDay ? 'free_day' : null, safeStatus, notes||null]
     );
     await conn.commit();
     transactionStarted = false;

@@ -2637,6 +2637,8 @@ CREATE TABLE `hr_policy_versions` (
   `evening_permits_per_month` tinyint(3) unsigned NOT NULL DEFAULT 1,
   `late_tiers_json` varchar(500) NOT NULL DEFAULT '[{"over":5,"days":0.25},{"over":30,"days":0.5},{"over":130,"days":1}]',
   `early_leave_tiered` tinyint(1) NOT NULL DEFAULT 1,
+  `free_day_per_month` tinyint(3) unsigned NOT NULL DEFAULT 1,
+  `free_day_after_months` tinyint(3) unsigned NOT NULL DEFAULT 6,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_hr_policy_version` (`tenant_id`,`version`),
   KEY `idx_hr_policy_effective` (`tenant_id`,`effective_from`,`effective_to`)
@@ -5039,6 +5041,7 @@ CREATE TABLE `staff` (
   `monthly_target_type` varchar(10) DEFAULT NULL,
   `monthly_leads_target` int(11) DEFAULT NULL,
   `monthly_bonus` decimal(12,2) DEFAULT NULL,
+  `free_days_per_month` tinyint(3) unsigned DEFAULT NULL COMMENT 'Free days a month for this employee. NULL = the HR policy; 0 = none.',
   `preferences_json` text DEFAULT NULL,
   `department_id` varchar(36) DEFAULT NULL,
   `manager_id` varchar(36) DEFAULT NULL,

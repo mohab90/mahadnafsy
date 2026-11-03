@@ -22,7 +22,8 @@ const { SYSTEM_ACTORS, departmentOf, describeLabel } = require('../lib/activityD
 const { listEnv } = require('../lib/platformAccess');
 const { loadExpenseCategories, expenseCategory, expenseCategoryLabel } = require('../lib/expenseCategories');
 const { canonicalChannel } = require('../lib/paymentChannels');
-const { applyAlias, loadBoxAliases } = require('../lib/boxAliases');
+const { applyAlias } = require('../lib/boxAliases');
+const { loadBoxCatalog } = require('../lib/boxCatalog');
 const { advanceToInterview, convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
 const { requireRecruiting, joinUsReachSql, joinUsInReach, outOfRecruitReach } = require('../lib/branchHr');
@@ -66,7 +67,11 @@ function expenseDate(value) {
 // The box an expense was paid out of, named the way the boxes screen names it (lib/boxBalances.js); '' when none was given.
 async function expenseBox(db, tenantId, raw) {
   const name = String(raw || '').trim().slice(0, 191);
-  return name ? applyAlias(canonicalChannel(name), await loadBoxAliases(db, tenantId)) : '';
+  if (!name) return '';
+  const catalog = await loadBoxCatalog(db, tenantId);
+  // A name from the boxes list is already the box's own name (the two bank transfers read alike under the spelling rules, so they must not be re-read).
+  if (catalog.entries.some(entry => entry.key === name)) return name;
+  return applyAlias(canonicalChannel(name), catalog.aliases);
 }
 
 router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {

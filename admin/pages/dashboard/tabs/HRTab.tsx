@@ -14,7 +14,7 @@ import HrAppraisalsPanel from './hr-sections/HrAppraisalsPanel';
 import HrDisciplinaryPanel from './hr-sections/HrDisciplinaryPanel';
 import HrResignationsPanel from './hr-sections/HrResignationsPanel';
 import HrPayrollPanel from './hr-sections/HrPayrollPanel';
-import HrAttendancePanel from './hr-sections/HrAttendancePanel';
+import HrPolicyPanel from './hr-sections/HrPolicyPanel';
 import HrLeavesPanel from './hr-sections/HrLeavesPanel';
 import HrRequestsInbox from './hr-sections/HrRequestsInbox';
 import HrStaffBasicsPanel from './hr-sections/HrStaffBasicsPanel';
@@ -399,9 +399,9 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       {subTab === 'basics' && <HrStaffBasicsPanel notify={notify} canEditSalary={canManageFinance} />}
       {subTab === 'attendance' && (
         <div className="space-y-5">
-          <HrMonthSheet notify={notify} />
-          <HrAttendancePanel notify={notify} staff={safeStaff} />
-          <div className="flex items-center gap-2 pt-1 text-sm font-extrabold text-gray-700"><Wallet size={16} /> مسيرات الرواتب</div>
+          <HrMonthSheet notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
+          <HrPolicyPanel notify={notify} />
+          <div className="flex items-center gap-2 pt-1 text-sm font-extrabold text-gray-700"><Wallet size={16} /> اعتمادات المرتبات والسلف</div>
           <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
         </div>
       )}

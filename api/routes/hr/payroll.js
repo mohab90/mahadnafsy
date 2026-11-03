@@ -11,6 +11,7 @@ const { dateOnlyInTimeZone, cairoYearMonth } = require('../../lib/dates');
 const { toNumbers } = require('../../lib/mappers');
 const { readDeviceSheet } = require('../../lib/attendanceSheet');
 const { importAttendanceMonth } = require('../../lib/attendanceImport');
+const { freeDaysFor } = require('../../lib/attendancePolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
@@ -194,7 +195,11 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       }
     }
     const missingSalary = employees.filter(employee => employee.base_salary == null);
-    if (missingSalary.length) {
+    // «الصافي لسه ما اتحسبش»: ten employees with no basic salary stopped the whole month. The month sheet's button asks to calculate everyone who has a salary and
+    // to be told, by name, who was left out; the plain call still refuses.
+    const skippedNoSalary = req.body?.skip_missing_salary === true ? missingSalary.map(employee => ({ id: employee.staff_id, name: employee.name })) : [];
+    if (skippedNoSalary.length) employees.splice(0, employees.length, ...employees.filter(employee => employee.base_salary != null));
+    if (missingSalary.length && !skippedNoSalary.length) {
       await conn.rollback();
       transactionStarted = false;
       return res.status(409).json({
@@ -454,6 +459,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       // Employees with days in a closed month that nobody marked present, absent or
       // on leave. Review them before approving: none of those days was deducted.
       attendanceWarnings,
+      skippedNoSalary,
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -1013,7 +1019,8 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
         COALESCE(SUM(a.early_leave_minutes),0) AS total_early_minutes,
         COALESCE(SUM(a.deduction_days),0) AS deduction_days,
         COUNT(a.review_flag) AS flagged_days,
-        s.biometric_user_no,
+        COUNT(CASE WHEN a.permit_used='free_day' THEN 1 END) AS free_days_used,
+        s.biometric_user_no, s.base_salary, s.free_days_per_month, COALESCE(s.hire_date, s.joined_at) AS hired,
         COUNT(a.id) AS total_records
       FROM staff s
       LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
@@ -1022,7 +1029,14 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL${reach.sql}
       GROUP BY s.id ORDER BY s.name
     `, [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, req.tenantId, ...reach.params]);
-    res.json(rows);
+    // The free days each employee has this month (the policy's once six months are worked, or the number HR typed on the employee).
+    const monthKey = `${y}-${String(m).padStart(2, '0')}`;
+    const policy = await getEffectiveHrPolicy(pool, req.tenantId, `${monthKey}-01`);
+    res.json(rows.map(({ hired, ...row }) => ({
+      ...row,
+      base_salary: row.base_salary == null ? null : Number(row.base_salary),
+      free_days_allowed: freeDaysFor({ policy, month: monthKey, hired: hired ? String(hired instanceof Date ? hired.toISOString() : hired).slice(0, 10) : null, override: row.free_days_per_month }),
+    })));
   } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });
 

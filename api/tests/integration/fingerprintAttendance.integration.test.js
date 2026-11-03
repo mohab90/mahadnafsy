@@ -67,8 +67,8 @@ after(async () => { if (ENABLED) { await clean(); await pool.end(); } });
 
 test('HR enters salary, device number and target for everyone on one screen', { skip }, async () => {
   const saved = await call(staffFileRouter, 'put', '/api/admin/hr/staff-basics', { rows: [
-    { id: 'fp-mona', baseSalary: 6500, biometricNo: '7', targetType: 'bookings', targetValue: 12 },
-    { id: 'fp-ali', baseSalary: 5200, biometricNo: '9', targetType: 'clients', targetValue: 20 },
+    { id: 'fp-mona', baseSalary: 6500, biometricNo: '7', targetType: 'bookings', targetValue: 12, freeDays: 0 },
+    { id: 'fp-ali', baseSalary: 5200, biometricNo: '9', targetType: 'clients', targetValue: 20, freeDays: 0 },
     { id: 'fp-remote', baseSalary: 5000 },
   ] });
   assert.equal(saved.statusCode, 200, JSON.stringify(saved.body));
@@ -126,4 +126,25 @@ test('payroll deducts the judged days at the basic salary typed on the employee'
   assert.equal(details.lateDeductionDays, 0.75);
   const ali = items.find(i => i.staff_id === 'fp-ali');
   assert.equal(Number(ali.late_deductions), 0);
+});
+
+test('the free day: six months worked and the first absence of the month costs nothing; HR can change the number, and payroll can skip who has no salary', { skip }, async () => {
+  await call(staffFileRouter, 'put', '/api/admin/hr/staff-basics', { rows: [{ id: 'fp-mona', freeDays: null }] });
+  const preview = await call(payrollRouter, 'post', '/api/admin/hr/attendance/import-sheet', { fileBase64: sheet(), filename: 'att.csv', month: '2026-09', dryRun: true });
+  const mona = preview.body.employees.find(e => e.staffId === 'fp-mona');
+  assert.equal(mona.absent, 0, 'joined 2025-01-01: the 3rd is her free day');
+  const day3 = preview.body.days.find(d => d.staffId === 'fp-mona').days.find(d => d.date === '2026-09-03');
+  assert.deepEqual([day3.status, day3.permit, day3.deductionDays], ['HOLIDAY', 'free_day', 0]);
+  await call(staffFileRouter, 'put', '/api/admin/hr/staff-basics', { rows: [{ id: 'fp-mona', freeDays: 2 }] });
+  const two = (await call(payrollRouter, 'post', '/api/admin/hr/attendance/import-sheet', { fileBase64: sheet(), filename: 'att.csv', month: '2026-09', dryRun: true })).body;
+  assert.equal(two.employees.find(e => e.staffId === 'fp-mona').absent, 0);
+  // An employee with no basic salary stops a plain calculation; the month sheet's call skips them and says who.
+  await pool.query("UPDATE staff SET base_salary=NULL WHERE tenant_id=? AND id='fp-remote'", [T]);
+  const refused = await call(payrollRouter, 'post', '/api/admin/hr/payroll/calculate', { month: 8, year: 2026 });
+  assert.equal(refused.statusCode, 409);
+  assert.equal(refused.body.code, 'PAYROLL_SALARY_MISSING');
+  const skipped = await call(payrollRouter, 'post', '/api/admin/hr/payroll/calculate', { month: 8, year: 2026, skip_missing_salary: true });
+  assert.equal(skipped.statusCode, 200, JSON.stringify(skipped.body));
+  assert.deepEqual(skipped.body.skippedNoSalary.map(s => s.id), ['fp-remote']);
+  assert.ok(skipped.body.items.length >= 2 && !skipped.body.items.some(i => i.staff_id === 'fp-remote'));
 });

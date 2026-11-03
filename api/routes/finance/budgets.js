@@ -17,11 +17,10 @@ const {
 } = require('./_shared');
 const { requireAnyPermission } = require('../../middleware/auth');
 const { loadExpenseCategories, expenseCategoryLabel } = require('../../lib/expenseCategories');
-const { canonicalChannel } = require('../../lib/paymentChannels');
 const { hasPermission } = require('../../constants/permissions');
-const { GENERAL, configuredBoxes, currencyOfName, currentBalances, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
+const { CATCH_ALL, boxOf, loadBoxCatalog } = require('../../lib/boxCatalog');
+const { GENERAL, currentBalances, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
 const { PARTNERS, listWithdrawals, voidWithdrawal, withdraw } = require('../../lib/boxWithdrawals');
-const { applyAlias, loadBoxAliases } = require('../../lib/boxAliases');
 
 const router = Router();
 
@@ -178,7 +177,7 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
         ...(scope.branchId ? [scope.branchId] : [])]);
     // One box per channel: «فودافون كاش 7722» typed two ways is one box (lib/paymentChannels.js); two numbers the desk says are one box are read
     // as one through the aliases (lib/boxAliases.js).
-    const aliases = await loadBoxAliases(pool, req.tenantId);
+    const catalog = await loadBoxCatalog(pool, req.tenantId);
     const merged = new Map();
     const emptyBox = (method, currency) => ({
       method,
@@ -188,8 +187,8 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
       yesterday: { total: 0, count: 0 },
     });
     for (const row of rows) {
-      const method = applyAlias(canonicalChannel(row.method), aliases);
-      const currency = row.currency || 'EGP';
+      // The box the money is counted in (lib/boxCatalog.js): riyals on the riyal box, dollars on the dollar box, unlisted ones under «أخرى».
+      const { box: method, currency } = boxOf(row.method, row.currency, catalog);
       const box = merged.get(`${method}|${currency}`) || emptyBox(method, currency);
       for (const days of BOX_WINDOWS) {
         box.totals[days] = Math.round((box.totals[days] + (Number(row[`total_${days}`]) || 0)) * 100) / 100;
@@ -210,12 +209,11 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
         if (!merged.has(key)) merged.set(key, emptyBox(key.slice(0, key.lastIndexOf('|')), currencyOf(key)));
         merged.get(key).balance = value.balance;
       }
-      const shown = new Set([...merged.values()].map(box => box.method));
-      for (const name of await configuredBoxes(pool, req.tenantId)) {
-        if (shown.has(name)) continue;
-        const currency = currencyOfName(name);
-        merged.set(`${name}|${currency}`, { ...emptyBox(name, currency), balance: 0 });
+      // Every box in the settings list is here, at zero or not; with a list, «أخرى» (pounds) is too.
+      for (const entry of catalog.entries) {
+        if (!merged.has(`${entry.key}|${entry.currency}`)) merged.set(`${entry.key}|${entry.currency}`, { ...emptyBox(entry.key, entry.currency), balance: 0 });
       }
+      if (catalog.active && !merged.has(`${CATCH_ALL}|EGP`)) merged.set(`${CATCH_ALL}|EGP`, { ...emptyBox(CATCH_ALL, 'EGP'), balance: 0 });
       const currencies = [...new Set([...merged.values()].map(box => box.currency).concat([...current.keys()].map(currencyOf)))];
       balances = {
         canManage: Boolean(req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_financial')),
@@ -257,10 +255,11 @@ router.get('/api/admin/finance/box-options', requireAuth, requireAdminOrStaff, r
       const cut = key.lastIndexOf('|');
       options.set(key, { method: key.slice(0, cut), currency: key.slice(cut + 1), balance: seesBalances ? value.balance : null });
     }
-    const named = new Set([...options.values()].map(option => option.method));
-    for (const name of await configuredBoxes(pool, req.tenantId)) {
-      if (!named.has(name)) options.set(`${name}|${currencyOfName(name)}`, { method: name, currency: currencyOfName(name), balance: seesBalances ? 0 : null });
+    const catalog = await loadBoxCatalog(pool, req.tenantId);
+    for (const entry of catalog.entries) {
+      if (!options.has(`${entry.key}|${entry.currency}`)) options.set(`${entry.key}|${entry.currency}`, { method: entry.key, currency: entry.currency, balance: seesBalances ? 0 : null });
     }
+    if (catalog.active && !options.has(`${CATCH_ALL}|EGP`)) options.set(`${CATCH_ALL}|EGP`, { method: CATCH_ALL, currency: 'EGP', balance: seesBalances ? 0 : null });
     res.json([...options.values()].sort((a, b) => a.method.localeCompare(b.method, 'ar') || a.currency.localeCompare(b.currency)));
   } catch (e) {
     logger.error('[finance/box-options]', e.message);

@@ -15,7 +15,7 @@
 const { uuidv4 } = require('./id');
 const { cairoToday } = require('./dates');
 const { getEffectiveHrPolicy } = require('./hrPolicy');
-const { evaluateMonth } = require('./attendancePolicy');
+const { evaluateMonth, freeDaysFor } = require('./attendancePolicy');
 
 const foldName = value => String(value || '').trim().replace(/\s+/g, ' ').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').toLowerCase();
 const dateOnly = value => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10));
@@ -34,7 +34,7 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
   if (monthStart > today) throw Object.assign(new Error('الشهر ده لسه ما بدأش'), { statusCode: 400 });
 
   const [staff] = await db.query(
-    `SELECT id, name, biometric_user_no, COALESCE(hire_date, joined_at) AS hired
+    `SELECT id, name, biometric_user_no, free_days_per_month, COALESCE(hire_date, joined_at) AS hired
        FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL`, [tenantId]);
   const byBio = new Map(staff.filter(s => s.biometric_user_no).map(s => [String(s.biometric_user_no).trim(), s]));
   const byName = new Map();
@@ -64,7 +64,7 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
   const policy = await getEffectiveHrPolicy(db, tenantId, monthStart);
   const ids = [...perStaff.keys()];
   const [decided] = ids.length ? await db.query(
-    `SELECT staff_id, date FROM attendance_logs
+    `SELECT staff_id, date, permit_used FROM attendance_logs
       WHERE tenant_id=? AND staff_id IN (?) AND date BETWEEN ? AND ?
         AND (leave_id IS NOT NULL OR source='MANUAL_ENTRY')`, [tenantId, ids, monthStart, monthEnd]) : [[]];
   const [permits] = ids.length ? await db.query(
@@ -83,6 +83,9 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
       approvedPermits: permits.filter(p => p.staff_id === staffId)
         .map(p => ({ date: dateOnly(p.start_date), type: p.type, startTime: p.start_time, endTime: p.end_time })),
       skipDates: new Set(decided.filter(d => d.staff_id === staffId).map(d => dateOnly(d.date))),
+      // The month's free days, less the ones HR already gave by hand.
+      freeDays: Math.max(0, freeDaysFor({ policy, month, hired: who.hired ? dateOnly(who.hired) : null, override: who.free_days_per_month })
+        - decided.filter(d => d.staff_id === staffId && d.permit_used === 'free_day').length),
       firstDate: hired && hired > monthStart ? hired : monthStart,
       lastDate,
     });

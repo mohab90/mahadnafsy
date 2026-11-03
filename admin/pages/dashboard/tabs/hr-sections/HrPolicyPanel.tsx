@@ -26,6 +26,8 @@ type Policy = {
   evening_permits_per_month?: number;
   late_tiers_json?: { over: number; days: number }[];
   early_leave_tiered?: number;
+  free_day_per_month?: number;
+  free_day_after_months?: number;
 };
 type Draft = Omit<Policy, 'id' | 'version' | 'effective_to'>;
 
@@ -48,6 +50,8 @@ const fromPolicy = (policy?: Policy): Draft => ({
   evening_permits_per_month: Number(policy?.evening_permits_per_month ?? 1),
   late_tiers_json: policy?.late_tiers_json ?? [{ over: 5, days: 0.25 }, { over: 30, days: 0.5 }, { over: 130, days: 1 }],
   early_leave_tiered: Number(policy?.early_leave_tiered ?? 1),
+  free_day_per_month: Number(policy?.free_day_per_month ?? 1),
+  free_day_after_months: Number(policy?.free_day_after_months ?? 6),
 });
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const DAY_FRACTIONS: [number, string][] = [[0.25, 'ربع يوم'], [0.5, 'نص يوم'], [0.75, 'تلات تربع'], [1, 'يوم كامل']];
@@ -152,6 +156,8 @@ export default function HrPolicyPanel({ notify }: { notify: Notify }) {
               {numberField('evening_permit_minutes', 'الإذن المسائي (دقيقة)')}
               {numberField('morning_permits_per_month', 'أذونات صباحية في الشهر')}
               {numberField('evening_permits_per_month', 'أذونات مسائية في الشهر')}
+              {numberField('free_day_per_month', 'أيام إجازة مجانية في الشهر')}
+              {numberField('free_day_after_months', 'بعد كام شهر عمل')}
             </div>
             <div className="text-xs text-gray-600">
               أيام الإجازة الأسبوعية

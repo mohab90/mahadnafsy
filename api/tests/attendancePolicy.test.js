@@ -5,7 +5,7 @@
 // permission of two hours and an evening one of an hour and a half.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { evaluateMonth, tierDays, DEFAULT_TIERS } = require('../lib/attendancePolicy');
+const { evaluateMonth, tierDays, freeDaysFor, DEFAULT_TIERS } = require('../lib/attendancePolicy');
 
 const POLICY = {
   weekend_days_json: [5], work_start_time: '11:00:00', work_end_time: '18:30:00',
@@ -110,4 +110,19 @@ test('the owner\'s rule at the edges: 5 min free, 6 costs 2 h, 31 costs 4 h, 131
   const punches = { '2026-10-01': ['11:05', '18:30'], '2026-10-04': ['11:06', '18:30'], '2026-10-05': ['11:31', '18:30'], '2026-10-06': ['13:11', '18:30'], '2026-10-07': ['13:10', '18:30'] };
   const r = evaluateMonth({ policy: NO_PERMITS, month: '2026-10', punches, lastDate: '2026-10-07' });
   assert.deepEqual(['01', '04', '05', '06', '07'].map(d => day(r, `2026-10-${d}`).deductionDays), [0, 0.25, 0.5, 1, 0.5]);
+});
+
+test('the free day: one a month once six months are worked, spent on the first absences, editable per employee', () => {
+  const hired = date => freeDaysFor({ policy: POLICY, month: '2026-10', hired: date });
+  assert.equal(hired('2026-04-30'), 1, 'six months to the day');
+  assert.equal(hired('2026-05-01'), 0, 'a day short');
+  assert.equal(hired(null), 0, 'no hire date: HR sets the number');
+  assert.equal(freeDaysFor({ policy: POLICY, month: '2026-10', hired: '2026-09-01', override: 2 }), 2, 'HR gave this one two');
+  assert.equal(freeDaysFor({ policy: POLICY, month: '2026-10', hired: '2020-01-01', override: 0 }), 0, 'and this one none');
+  assert.equal(freeDaysFor({ policy: { ...POLICY, free_day_per_month: 2, free_day_after_months: 3 }, month: '2026-10', hired: '2026-07-31' }), 2, 'the policy\'s own numbers');
+  const r = evaluateMonth({ policy: NO_PERMITS, month: '2026-10', punches: { '2026-10-01': ['11:00', '18:30'] }, lastDate: '2026-10-05', freeDays: 1 });
+  assert.deepEqual(r.days.map(d => [d.date, d.status, d.permit]), [
+    ['2026-10-01', 'PRESENT', null], ['2026-10-03', 'HOLIDAY', 'free_day'], ['2026-10-04', 'ABSENT', null], ['2026-10-05', 'ABSENT', null],
+  ]);
+  assert.deepEqual([r.summary.absent, r.summary.freeDaysUsed, r.summary.present], [2, 1, 1]);
 });

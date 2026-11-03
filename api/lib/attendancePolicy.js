@@ -16,6 +16,9 @@
 //   • no punch on a working day             → ABSENT (payroll deducts the day)
 //   • one punch only                        → present, flagged for HR, no
 //                                             deduction guessed
+//   • free days: an employee who has worked the policy's months (six) gets one
+//     paid day off a month (editable, per employee too); it is spent on the
+//     month's first absent working day(s), which then cost nothing
 //
 // Pure: no database. lib/attendanceImport.js feeds it and writes the result.
 
@@ -53,6 +56,8 @@ function normalizePolicy(policy = {}) {
     eveningPerMonth: Number(policy.evening_permits_per_month ?? 1),
     tiers: parseTiers(policy.late_tiers_json ?? DEFAULT_TIERS),
     earlyTiered: policy.early_leave_tiered === undefined ? true : Boolean(Number(policy.early_leave_tiered)),
+    freeDays: Number(policy.free_day_per_month ?? 1),
+    freeAfterMonths: Number(policy.free_day_after_months ?? 6),
   };
 }
 
@@ -61,6 +66,22 @@ function tierDays(minutes, tiers) {
   let days = 0;
   for (const tier of tiers) if (minutes > tier.over) days = tier.days;
   return days;
+}
+
+/**
+ * The free days an employee has in `month`: their own number when HR set one, else the policy's once they have worked the policy's months
+ * (hired on or before the same day-of-month that many months before the month's last day). No hire date = not eligible until HR sets a number.
+ */
+function freeDaysFor({ policy, month, hired = null, override = null }) {
+  if (override !== null && override !== undefined && override !== '' && Number.isFinite(Number(override))) return Math.max(0, Math.floor(Number(override)));
+  const p = normalizePolicy(policy);
+  if (!hired || !p.freeDays) return 0;
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0));
+  // The same day-of-month N months earlier, held to that month's last day (31 Oct − 6 months = 30 Apr, not 1 May).
+  const earlier = new Date(Date.UTC(lastDay.getUTCFullYear(), lastDay.getUTCMonth() - p.freeAfterMonths, 1));
+  const needed = new Date(Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth(), Math.min(lastDay.getUTCDate(), new Date(Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth() + 1, 0)).getUTCDate())));
+  return String(hired).slice(0, 10) <= needed.toISOString().slice(0, 10) ? p.freeDays : 0;
 }
 
 /** Every date of the month, as YYYY-MM-DD, with its weekday (0 = Sunday). */
@@ -81,9 +102,10 @@ function monthDates(month) {
  *   approvedPermits [{ date, type: 'LATE_PERMIT'|'EARLY_LEAVE', startTime, endTime }]
  *   skipDates       Set of dates that are already decided (approved leave, manual entry)
  *   firstDate       first date to judge (hire date); lastDate last one (today)
+ *   freeDays        free days the employee has this month (freeDaysFor), less any already given by hand
  * @returns {{ days: object[], summary: object }}
  */
-function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skipDates = new Set(), firstDate = null, lastDate = null }) {
+function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skipDates = new Set(), firstDate = null, lastDate = null, freeDays = 0 }) {
   const p = normalizePolicy(policy);
   const permitsOn = new Map();
   for (const permit of approvedPermits) {
@@ -125,7 +147,13 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
     days.push(day);
   }
 
-  const judged = days.filter(d => d.status !== 'ABSENT' && !d.flag);
+  // The free days are spent on the first absences of the month: those days are paid.
+  let freeLeft = Math.max(0, Math.floor(Number(freeDays) || 0));
+  for (const d of days) {
+    if (freeLeft && d.status === 'ABSENT') { d.status = 'HOLIDAY'; d.permit = 'free_day'; freeLeft -= 1; }
+  }
+
+  const judged = days.filter(d => d.status !== 'ABSENT' && d.status !== 'HOLIDAY' && !d.flag);
   const deduction = (late, early) => Math.min(1, tierDays(late, p.tiers) + (p.earlyTiered ? tierDays(early, p.tiers) : 0));
   const effLate = d => Math.max(0, d.lateMinutes - d.approvedLate - (d.autoLate || 0));
   const effEarly = d => Math.max(0, d.earlyLeaveMinutes - d.approvedEarly - (d.autoEarly || 0));
@@ -159,7 +187,7 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
   spend('early', p.eveningPerMonth, p.eveningPermit);
 
   for (const d of days) {
-    if (d.status === 'ABSENT') continue;
+    if (d.status === 'ABSENT' || d.status === 'HOLIDAY') continue;
     if (d.flag) { d.deductionDays = 0; continue; }
     d.deductionDays = deduction(effLate(d), effEarly(d));
     d.effectiveLateMinutes = effLate(d);
@@ -169,7 +197,8 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
 
   const summary = {
     workDays: days.length,
-    present: days.filter(d => d.status !== 'ABSENT').length,
+    present: days.filter(d => d.status !== 'ABSENT' && d.status !== 'HOLIDAY').length,
+    freeDaysUsed: days.filter(d => d.permit === 'free_day').length,
     absent: days.filter(d => d.status === 'ABSENT').length,
     lateDays: days.filter(d => d.deductionDays > 0).length,
     deductionDays: Math.round(days.reduce((s, d) => s + d.deductionDays, 0) * 100) / 100,
@@ -188,4 +217,4 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
   };
 }
 
-module.exports = { evaluateMonth, normalizePolicy, tierDays, parseTiers, monthDates, toMinutes, DEFAULT_TIERS };
+module.exports = { evaluateMonth, freeDaysFor, normalizePolicy, tierDays, parseTiers, monthDates, toMinutes, DEFAULT_TIERS };

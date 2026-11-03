@@ -65,4 +65,4 @@ function canonicalChannel(method) {
   return digits ? `${name} ${digits.slice(-4)}` : name;
 }
 
-module.exports = { canonicalChannel, CASH_BOX };
+module.exports = { canonicalChannel, CASH_BOX, INVISIBLE };

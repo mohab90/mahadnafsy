@@ -24,9 +24,13 @@ const DEFAULT_POLICY = Object.freeze({
   evening_permits_per_month: 1,
   late_tiers_json: [{ over: 5, days: 0.25 }, { over: 30, days: 0.5 }, { over: 130, days: 1 }],
   early_leave_tiered: 1,
+  // One extra paid day off a month once six months have been worked (migration 357).
+  free_day_per_month: 1,
+  free_day_after_months: 6,
 });
 const ATTENDANCE_POLICY_COLUMNS = `work_start_time,work_end_time,morning_permit_minutes,evening_permit_minutes,
-            morning_permits_per_month,evening_permits_per_month,late_tiers_json,early_leave_tiered`;
+            morning_permits_per_month,evening_permits_per_month,late_tiers_json,early_leave_tiered,
+            free_day_per_month,free_day_after_months`;
 // LATE_PERMIT / EARLY_LEAVE are إذن تأخير and إذن انصراف مبكر. They ride the
 // same request-and-approve flow as leave because that is what they are — a
 // request a manager says yes or no to — but they are not days off, which is
