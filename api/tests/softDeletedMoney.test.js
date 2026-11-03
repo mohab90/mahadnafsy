@@ -131,13 +131,13 @@ test('no money is summed out of payments without honouring deleted_at', () => {
 test('the scan can actually see a breach', () => {
   // The guard above is a source scan, and a source scan that matches nothing
   // passes on everything. Break one and the scan has to notice.
-  const f = path.join(API, 'routes', 'analytics', 'dashboard.js');
+  const f = path.join(API, 'routes', 'analytics', 'dashboard.js'); // the institute's KPI summary (GET /api/admin/kpi/summary)
   const original = fs.readFileSync(f, 'utf8');
-  const guard = "FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND deleted_at IS NULL";
+  const guard = "FROM payments WHERE tenant_id=? AND date>=? AND status='paid' AND deleted_at IS NULL";
   assert.ok(original.includes(guard), 'the KPI query moved — repoint this mutation');
   try {
     fs.writeFileSync(f, original.replace(guard,
-      "FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed')"));
+      "FROM payments WHERE tenant_id=? AND date>=? AND status='paid'"));
     const broken = scan();
     // By file, not line: an import added above it should not break the probe.
     assert.ok(broken.some(hit => hit.startsWith('routes/analytics/dashboard.js:')),

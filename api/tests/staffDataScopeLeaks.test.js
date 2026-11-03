@@ -36,20 +36,17 @@ test("the institute's revenue is not readable by everyone with a staff login", (
   // view_dashboard — the permission that only means "is staff", which every
   // role holds down to «موظف»: a trainer's session cookie read the books.
   assert.ok(
-    route.includes("router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, requirePermission('view_financial')"),
-    'the KPI summary is open to a permission every employee holds'
+    !route.includes("router.get('/api/admin/dashboard/kpi'") && route.includes("router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePermission('view_reports')"),
+    'the institute\'s KPI summary is open to a permission every employee holds (the second KPI route was removed on 3 Nov 2026)'
   );
   // The premise: view_dashboard really is universal.
   const universal = holders('view_dashboard').map(h => h.role);
   assert.ok(universal.length >= 12, `view_dashboard should be near-universal, found ${universal.length} roles`);
   assert.ok(universal.includes('trainer') && universal.includes('other'));
 
-  // view_financial is not enough on its own either: a collection officer holds
-  // it and is scoped to the customers assigned to them, the Daqqi manager to a
-  // branch. A total cannot be narrowed, so the route refuses instead.
-  assert.ok(route.includes('const scope = resolveDataScope(req.staffRecord'));
-  assert.ok(route.includes("if (scope !== 'all')"));
-  assert.ok(route.includes('INSTITUTE_WIDE_SCOPE_REQUIRED'));
+  // The landing screen's revenue is the one that answers a narrower scope: it asks resolveFinancialScope (a branch manager's totals are their branch's).
+  // (The second KPI route, whose own all-scope refusal was pinned here, was removed on 3 Nov 2026 — nothing called it.)
+  assert.ok(route.includes("router.get('/api/admin/overview/revenue'") && route.includes('resolveFinancialScope(req, { allowAssigned: true })'));
   const financialScopes = new Set(holders('view_financial').map(h => h.scope));
   assert.ok(financialScopes.size > 1, 'if every view_financial holder were "all" this guard would be pointless');
 });
@@ -101,7 +98,7 @@ test('the scanner that found these still walks the whole route tree', () => {
   assert.ok(out.adminRoutes > 500, `expected the admin route tree, saw ${out.adminRoutes}`);
   assert.ok(out.readsScopedTable > 50, `expected the per-employee reads, saw ${out.readsScopedTable}`);
   // The three fixed above are gone from its output.
-  const fixed = ['GET /api/admin/dashboard/kpi', 'GET /api/admin/consultations/calendar', 'GET /api/admin/refund-requests'];
+  const fixed = ['GET /api/admin/dashboard/kpi', 'GET /api/admin/consultations/calendar', 'GET /api/admin/refund-requests']; // the first no longer exists at all
   const stillListed = out.findings.map(f => f.route).filter(r => fixed.includes(r));
   assert.deepEqual(stillListed, []);
 });

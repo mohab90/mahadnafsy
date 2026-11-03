@@ -360,65 +360,6 @@ router.post('/api/admin/reports/send-now', requireAuth, requireAdminOrStaff, req
 // ── FEATURE: Client Retention & Churn Risk ────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /api/admin/analytics/retention?months=3
-// Returns clients who have NOT made a payment in the last N months
-router.get('/api/admin/analytics/retention', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
-  try {
-    const months = parseInt(req.query.months || '3');
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - months);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-
-    // Active clients with at least 1 payment, but none recently
-    const [inactive] = await pool.query(`
-      -- status, total_paid and remaining_amount are not columns on subscribers:
-      -- is_active carries the state and the money is summed from payments. The
-      -- churn-risk report answered 500 on every open because of it. NULLS LAST
-      -- is Postgres syntax and is not valid in MySQL either — a NULL max date
-      -- sorts last here by putting the IS NULL test first. That test has to
-      -- name MAX() itself: MariaDB refuses an expression built on an aggregate
-      -- alias ("Reference not supported"), so the previous fix still answered 500.
-      SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.is_active,
-             COALESCE(pay.total_paid, 0) AS total_paid,
-             pay.last_payment_date,
-             DATEDIFF(NOW(), pay.last_payment_date) AS days_since_payment
-      FROM subscribers s
-      -- Each client's payments are summed once, then joined: joining the payments to every active client and grouping by
-      -- client took 1.4 s for 30,000 clients and 40,000 payments on the lab, this 0.5 s, same rows.
-      LEFT JOIN (SELECT subscriber_id, SUM(amount) AS total_paid, MAX(created_at) AS last_payment_date
-                   FROM payments WHERE tenant_id=? AND status = 'paid' AND deleted_at IS NULL
-                  GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id
-      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
-        AND (pay.last_payment_date IS NULL OR pay.last_payment_date < ?)
-      ORDER BY pay.last_payment_date IS NULL, days_since_payment DESC
-      LIMIT 500`, [req.tenantId, req.tenantId, cutoffStr]);
-
-    // Retention rate: active clients with recent payment / all active
-    const [[{ total_active }]] = await pool.query(`SELECT COUNT(*) AS total_active FROM subscribers WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL`, [req.tenantId]);
-    const atRisk = inactive.length;
-    const retentionRate = total_active > 0 ? Math.round((1 - atRisk / parseInt(total_active)) * 100) : 100;
-
-    // Monthly cohort retention (new clients per month who are still active)
-    const [cohorts] = await pool.query(`
-      SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') AS cohort,
-             COUNT(*) AS total,
-             SUM(CASE WHEN is_active=1 AND deleted_at IS NULL THEN 1 ELSE 0 END) AS still_active
-      FROM subscribers
-      WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-      GROUP BY cohort ORDER BY cohort`, [req.tenantId]);
-
-    res.json({
-      months,
-      cutoff: cutoffStr,
-      retentionRate,
-      atRisk: atRisk,
-      totalActive: parseInt(total_active),
-      inactiveClients: inactive,
-      cohorts: cohorts.map(c => ({ ...c, retentionRate: c.total > 0 ? Math.round(c.still_active / c.total * 100) : 0 })),
-    });
-  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
-});
-
 // GET /api/admin/analytics/churn-risk — clients most likely to churn
 router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
@@ -470,100 +411,9 @@ router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdminOrStaff, 
 // ── FEATURE: Staff Performance Rankings ────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /api/admin/analytics/staff-performance?from=&to=
-router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
-  try {
-    const from = req.query.from || cairoMonthStart(0);
-    const to   = req.query.to   || cairoToday();
-    // from/to are Cairo days; the columns below are UTC instants.
-    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
-
-    // Each figure is counted by itself, per staff member, and the four are joined to the staff list. The query this replaces
-    // joined the staff to their leads, clients and tasks side by side, so every lead was repeated once for each client-and-
-    // task pair of the same person: it took 26 s for a year on the lab (150,000 leads) and `leads_converted` counted those
-    // repeats — 175,448 «converted» for a rep with 1,687 — so the conversion rate and the score built on it were wrong.
-    const [staff] = await pool.query(`
-      SELECT st.id, st.name, st.email, st.role,
-        COALESCE(ls.total_leads, 0) AS total_leads, COALESCE(ls.leads_converted, 0) AS leads_converted,
-        COALESCE(ss.subscribers_managed, 0) AS subscribers_managed,
-        COALESCE(rv.revenue_generated, 0) AS revenue_generated,
-        COALESCE(ts.tasks_done, 0) AS tasks_done, COALESCE(ts.tasks_total, 0) AS tasks_total
-      FROM staff st
-      LEFT JOIN (SELECT assigned_sales_id AS sid, COUNT(*) AS total_leads, SUM(status='converted') AS leads_converted
-                   FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_sales_id IS NOT NULL
-                  GROUP BY assigned_sales_id) ls ON ls.sid = st.id
-      LEFT JOIN (SELECT assigned_sales_id AS sid, COUNT(*) AS subscribers_managed
-                   FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_sales_id IS NOT NULL
-                  GROUP BY assigned_sales_id) ss ON ss.sid = st.id
-      -- Revenue generated: the payments on their clients
-      LEFT JOIN (SELECT sub.assigned_sales_id AS sid, SUM(p.amount_egp) AS revenue_generated
-                   FROM payments p JOIN subscribers sub ON sub.id = p.subscriber_id AND sub.tenant_id = p.tenant_id
-                  WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
-                    AND sub.assigned_sales_id IS NOT NULL
-                  GROUP BY sub.assigned_sales_id) rv ON rv.sid = st.id
-      LEFT JOIN (SELECT assigned_to AS sid, COUNT(*) AS tasks_total, SUM(status='done') AS tasks_done
-                   FROM tasks WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_to IS NOT NULL
-                  GROUP BY assigned_to) ts ON ts.sid = st.id
-      WHERE st.tenant_id=? AND st.is_active = 1
-      ORDER BY revenue_generated DESC`,
-      [req.tenantId, fromUtc, toUtc, req.tenantId, fromUtc, toUtc, req.tenantId, fromUtc, toUtc, req.tenantId, fromUtc, toUtc, req.tenantId]
-    );
-
-    const result = staff.map(row => {
-      const s = { ...row, leads_converted: Number(row.leads_converted), tasks_done: Number(row.tasks_done) };
-      return {
-        ...s,
-        conversion_rate: s.total_leads > 0 ? Math.round(s.leads_converted / s.total_leads * 100 * 10) / 10 : 0,
-        task_completion_rate: s.tasks_total > 0 ? Math.round(s.tasks_done / s.tasks_total * 100) : 0,
-        revenue_generated: parseFloat(s.revenue_generated),
-        // Overall performance score (weighted)
-        performance_score: Math.round(
-          (s.total_leads > 0 ? (s.leads_converted / s.total_leads) * 35 : 0) +
-          (s.tasks_total > 0 ? (s.tasks_done / s.tasks_total) * 25 : 0) +
-          Math.min(parseFloat(s.revenue_generated) / 10000, 1) * 40
-        ),
-      };
-    });
-
-    result.sort((a, b) => b.performance_score - a.performance_score);
-
-    // Add rank
-    result.forEach((s, i) => { s.rank = i + 1; });
-
-    res.json({ period: { from, to }, staff: result });
-  } catch (e) { logger.error(e); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Expense Category Analytics ────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-
-// GET /api/admin/analytics/expenses?from=&to=
-router.get('/api/admin/analytics/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
-  try {
-    const from = req.query.from || `${cairoToday().slice(0, 4)}-01-01`;
-    const to   = req.query.to   || cairoToday();
-
-    const [byCategory] = await pool.query(`
-      SELECT category, COUNT(*) AS count, SUM(amount_egp) AS total
-      FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date BETWEEN ? AND ?
-      GROUP BY category ORDER BY total DESC`, [req.tenantId, from, to]);
-
-    const [monthly] = await pool.query(`
-      SELECT DATE_FORMAT(date,'%Y-%m') AS month, category, SUM(amount_egp) AS total
-      FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date BETWEEN ? AND ?
-      GROUP BY month, category ORDER BY month, total DESC`, [req.tenantId, from, to]);
-
-    const [[{ grand_total }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date BETWEEN ? AND ?`, [req.tenantId, from, to]);
-
-    res.json({
-      period: { from, to },
-      grandTotal: parseFloat(grand_total),
-      byCategory: byCategory.map(r => ({ ...r, total: parseFloat(r.total), pct: grand_total > 0 ? Math.round(r.total / grand_total * 100) : 0 })),
-      monthly,
-    });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
 
 // The "Notification Center" that used to live here (GET .../inbox, PUT
 // .../read-all, DELETE .../:id) read/wrote a second, parallel notifications

@@ -186,10 +186,8 @@ test('CRM tasks validate tenant-owned assignees and related records', () => {
 test('executive dashboards and funnel cache/query data per tenant', () => {
   const dashboard = read('routes/analytics/dashboard.js');
   const funnel = read('routes/funnel.js');
-  assert.match(dashboard, /dashboard_kpi_\$\{req\.tenantId\}/);
+  // (3 Nov 2026: the second KPI route (GET /api/admin/dashboard/kpi), read by no screen, is gone; /api/admin/kpi/summary is the institute's one.)
   assert.match(dashboard, /FROM payments WHERE tenant_id=\?/);
-  assert.match(dashboard, /FROM leads WHERE tenant_id=\?/);
-  assert.match(dashboard, /FROM subscribers WHERE tenant_id=\?/);
   assert.match(dashboard, /WHERE p\.tenant_id=\?/);
   assert.match(funnel, /cached\(`funnel:\$\{req\.tenantId\}/);
   assert.match(funnel, /const lw = \['l\.tenant_id=\?'/);

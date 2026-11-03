@@ -3,9 +3,7 @@
 /**
  * 30 Oct 2026, measured on the lab at production scale (150,000 leads, 60,000 orders, 40,000 payments):
  *
- *   GET /api/admin/analytics/staff-performance   4.2 s for a month, 26 s for a year -> 0.2 s, and `leads_converted` stopped
- *                                                 counting each lead once per client-and-task pair of the same rep
- *                                                 (175,448 «converted» for a rep with 1,687)
+ *   GET /api/admin/analytics/staff-performance   (removed on 3 Nov 2026 — read by no screen; GET /api/admin/leads/staff-performance is the per-rep source)
  *   GET /api/admin/payments/review               2.8 s -> 0.3 s (the online-orders dedupe: NOT EXISTS -> two LEFT JOINs)
  *   GET /api/admin/crm/stale-leads               4.0 s -> 1.4 s (communications joined once, not grouped per lead)
  *   tagamoa_* tabs                               every list came with each of the six: they were listed nowhere
@@ -42,12 +40,10 @@ test('a Tagamoa tab loads what the Dokki screen it draws loads, not every list',
   assert.equal(listsForTab('a_screen_nobody_listed'), SITE_LISTS);
 });
 
-test('staff performance counts each figure by itself, per person, and joins them to the staff list', () => {
+test('the duplicate staff-performance and retention analytics routes are gone; the per-rep and the hub ones are the sources', () => {
   const route = read('api/routes/misc/analytics.js');
-  const body = route.slice(route.indexOf("router.get('/api/admin/analytics/staff-performance'"), route.indexOf("router.get('/api/admin/analytics/expenses'"));
-  assert.ok(!/COUNT\(DISTINCT l\.id\)/.test(body), 'the leads were joined next to the clients and tasks again');
-  assert.ok(!/LEFT JOIN leads l ON/.test(body));
-  for (const alias of ['ls', 'ss', 'rv', 'ts']) assert.ok(body.includes(`) ${alias} ON ${alias}.sid = st.id`), alias);
+  for (const gone of ['/api/admin/analytics/staff-performance', '/api/admin/analytics/retention', '/api/admin/analytics/expenses']) assert.ok(!route.includes(`router.get('${gone}'`), gone);
+  assert.match(read('api/routes/admin/leads/insights.js'), /'\/api\/admin\/leads\/staff-performance'/);
 });
 
 test('the online orders without a twin payment are found by two LEFT JOINs, not NOT EXISTS', () => {
@@ -79,14 +75,10 @@ test('the campaign report starts its five independent reads together', () => {
   assert.equal((body.match(/await pool\.query/g) || []).length, 0, 'a read of the report is awaited alone again');
 });
 
-test('retention, churn risk and the revenue sources read each client\'s payments once', () => {
+test('churn risk reads each client\'s payments once (retention and the revenue sources are the analytics hub\'s alone since 3 Nov 2026)', () => {
   const analytics = read('api/routes/misc/analytics.js');
-  const retention = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/retention'"), analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"));
-  const churn = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"), analytics.indexOf("router.get('/api/admin/analytics/staff-performance'"));
-  assert.ok(!/LEFT JOIN payments p ON/.test(retention) && !/GROUP BY s\.id/.test(retention), 'retention joins the payments to every client again');
-  assert.ok(retention.includes('GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id'));
+  const churn = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"));
   assert.ok(!/\(SELECT MAX\(p\.created_at\) FROM payments p/.test(churn), 'churn risk is back to a subquery per client');
   assert.ok(churn.includes('FROM payments WHERE tenant_id=? GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id'));
-  const sources = read('api/routes/misc/reminders.js');
-  assert.ok(sources.includes('await Promise.all([\n      byTypeQuery, monthlyQuery, topClientsQuery, byBranchQuery, grandTotalQuery,'));
+  assert.ok(!read('api/routes/misc/reminders.js').includes("router.get('/api/admin/analytics/revenue-sources'"));
 });

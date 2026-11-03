@@ -48,7 +48,7 @@ test('hr/reports.js and analytics/dashboard.js leave stats read from `leaves`, n
   assert.doesNotMatch(hrReports, /FROM leave_requests/);
   assert.match(hrReports, /FROM leaves\s*\n\s*WHERE tenant_id=\?/);
   assert.doesNotMatch(dashboard, /FROM leave_requests/);
-  assert.match(dashboard, /FROM leaves WHERE tenant_id=\? AND status='PENDING'/);
+  // (The pending-leaves count lived in the removed second KPI route; the second KPI route (GET /api/admin/dashboard/kpi), read by no screen, is gone; /api/admin/kpi/summary is the institute's one.)
 });
 
 test('payroll actor-tracking uses the staff id with authenticated uid fallback and enforces separation of duties (HR-03)', () => {

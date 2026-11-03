@@ -4,6 +4,7 @@ import { Target, Trophy, Edit2, Save, X } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import type { SalesPerformanceRow } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -16,13 +17,20 @@ interface Goal {
 const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric', timeZone: CAIRO_TIME_ZONE });
 
 export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, leads, orders } = useSiteData();
+  const { staffMembers } = useSiteData();
+  // This month's leads, conversions and revenue per rep come from the server — the same answer «أداء المبيعات» draws (GET /admin/reports/sales-performance),
+  // not a count of the 500 leads and orders the browser happens to hold (3 Nov 2026: one source for the per-rep numbers).
+  const [perf, setPerf] = useState<SalesPerformanceRow[]>([]);
+  useEffect(() => {
+    let live = true;
+    mysqlAdmin.getSalesTeamPerformance().then(data => { if (live) setPerf(data.staff); }).catch(() => { if (live) setPerf([]); });
+    return () => { live = false; };
+  }, []);
   const [goals, setGoals] = useState<Record<string, Goal>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ monthlyTarget: string; monthlyLeadsTarget: string }>({ monthlyTarget: '', monthlyLeadsTarget: '' });
 
   const MONTH = cairoMonthOnly();
-  const monthStart = `${MONTH}-01`;
 
   useEffect(() => {
     let cancelled = false;
@@ -49,14 +57,14 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
 
   const stats = useMemo(() => salesStaff.map(s => {
     const g = goals[s.id];
-    const myLeads = leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart);
-    const myConverted = myLeads.filter(l => l.status === 'converted');
-    const myRevenue = orders.filter(o => o.staffId === s.id && (o.createdAt || '') >= monthStart && o.status === 'paid')
-                           .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+    const counted = perf.find(row => String(row.id) === String(s.id));
+    const myLeads = { length: Number(counted?.total_leads) || 0 };
+    const myConverted = { length: Number(counted?.converted_leads) || 0 };
+    const myRevenue = Number(counted?.revenue_egp) || 0;
     const revPct = g?.monthlyTarget ? Math.min(100, Math.round((myRevenue / g.monthlyTarget) * 100)) : null;
     const leadsPct = g?.monthlyLeadsTarget ? Math.min(100, Math.round((myLeads.length / g.monthlyLeadsTarget) * 100)) : null;
     return { ...s, myLeads: myLeads.length, myConverted: myConverted.length, myRevenue, goal: g, revPct, leadsPct };
-  }).sort((a, b) => (b.revPct || 0) - (a.revPct || 0)), [salesStaff, goals, leads, orders, monthStart]);
+  }).sort((a, b) => (b.revPct || 0) - (a.revPct || 0)), [salesStaff, goals, perf]);
 
   const totals = useMemo(() => ({
     revenue: stats.reduce((a, s) => a + s.myRevenue, 0),
