@@ -789,27 +789,6 @@ router.put('/api/staff/me/leaves/:id/cancel', requireAuth, async (req, res) => {
   } catch (e) { hrError(res, e); }
 });
 
-router.get('/api/staff/me/payslip', requireAuth, async (req, res) => {
-  try {
-    const staff = await _resolveStaffByUser(req);
-    if (!staff) return res.status(404).json({ error: 'Staff record not found' });
-    const m = Number(req.query.month) || cairoYearMonth().month;
-    const y = Number(req.query.year)  || cairoYearMonth().year;
-    const [[item]] = await pool.query(`
-      SELECT pi.*, pr.month, pr.year, pr.status AS run_status,
-             s.name AS staff_name, s.role, d.name AS department_name
-      FROM payroll_items pi
-      JOIN payroll_runs pr ON pr.id=pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
-      JOIN staff s ON s.id=pi.staff_id AND s.tenant_id=pi.tenant_id
-      LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=pi.tenant_id
-      WHERE pi.tenant_id=? AND pi.staff_id=? AND pr.month=? AND pr.year=? AND pr.status IN ('APPROVED','PAID')
-      LIMIT 1
-    `, [req.tenantId, staff.id, m, y]);
-    if (!item) return res.json(null);
-    res.json(item);
-  } catch (e) { hrError(res, e); }
-});
-
 // «خلي كل موظف يشوف كل التفاصيل بتاعت الراتب بتاعه غيابات واذونات وغيره»: one employee's own month in one answer — every day the fingerprint judged (arrival,
 // leaving, minutes late, the permission used, the part of the day deducted), the leave and permission requests of the month, the bonuses recorded for it with what
 // was required and reached, and the payslip once the month's payroll is approved. Only ever the signed-in employee's own rows.

@@ -18,8 +18,9 @@ test('the order is the newest subscription, then the registration day, then the 
   assert.match(rule[1], /,\s*s\.created_at\)/, 'a client with no course is placed by the day they registered');
 });
 
-test('all six client lists use it, and none is left on the registration day alone', () => {
-  assert.equal(source.split('ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC').length - 1, 6);
+test('all five client lists use it, and none is left on the registration day alone', () => {
+  // 3 Nov 2026: five, not six — «my-collection-clients», read by nothing, is gone.
+  assert.equal(source.split('ORDER BY ${NEWEST_SUBSCRIPTION} DESC, s.created_at DESC').length - 1, 5);
   // the only plain registration-day order left is the one that locks rows in order for the distribution
   const plain = source.match(/ORDER BY s\.created_at (DESC|ASC)/g) || [];
   assert.deepEqual(plain.filter(text => /DESC/.test(text)).length, 1, 'one more DESC list on registration day: the new-clients feed');

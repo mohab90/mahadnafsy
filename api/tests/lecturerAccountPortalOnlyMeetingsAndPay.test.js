@@ -255,7 +255,8 @@ test('the panel stops asking for what it was refused: /admin/content once, regis
   const api = read('admin/lib/mysqlapi.ts');
   assert.match(api, /if \(!admin \|\| adminContentRefused\) return apiFetch<AR>\('\/content'\)/);
   assert.match(api, /adminContentRefused = true/);
-  const clientDb = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');
-  assert.match(clientDb, /const canSeeRegistrations = isAdmin \|\| \(currentStaff \? hasPermission\(.*'view_leads'\)/);
-  assert.match(clientDb, /useEffect\(\(\) => \{ if \(canSeeRegistrations\) void loadRegistrations\(\); \}, \[canSeeRegistrations\]\)/);
+  // 3 Nov 2026: the client database asks the server for its page (api/routes/misc/clientDbList.js), which leaves the sign-ups out for whoever lacks view_leads —
+  // no request is made that would be refused.
+  const list = read('api/routes/misc/clientDbList.js');
+  assert.match(list, /if \(holds\('view_leads'\)\) \{\s+\/\/ Accounts that signed up on the site/);
 });

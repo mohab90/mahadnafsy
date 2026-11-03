@@ -558,7 +558,6 @@ router.delete('/api/admin/email-sequences/:id', requireAuth, requireAdmin, async
 // ══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/staff/me/leaves — employee submits own leave request
-// GET /api/staff/me/payslip?month=&year= — employee views own payslip
 // GET /api/staff/me/commissions?month=&year= — employee views own commissions
 // ── Wire email sequences into registration + enrollment triggers ───────────────
 // (Done via monkey-patch on pool post-insert — safer to call from the register handler above

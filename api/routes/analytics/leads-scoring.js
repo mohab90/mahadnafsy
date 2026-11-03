@@ -140,31 +140,4 @@ router.post('/api/admin/leads/scoring/recalculate', requireAuth, requireAdmin, a
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/admin/leads/scoring/leaderboard?limit= — top leads by score
-router.get('/api/admin/leads/scoring/leaderboard', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
-  try {
-    const limit = Math.min(200, parseInt(req.query.limit) || 50);
-    const scope = leadScope(req, 'l');
-    if (scope.none) return res.json({ leads: [], total: 0 });
-    const [rows] = await pool.query(`
-      SELECT l.id, l.name, l.phone, l.email, l.status, l.source, l.branch,
-             l.score, l.interest_level, l.next_follow_up_date AS follow_up_date, l.created_at,
-             l.enrolled_course_id,
-             c.title AS course_title,
-             l.assigned_sales_name
-      FROM leads l
-      LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ${TERMINAL_SQL}
-        ${scope.sql}
-      ORDER BY l.score DESC
-      LIMIT ?
-    `, [req.tenantId, ...scope.params, limit]);
-    const graded = rows.map(r => ({
-      ...r,
-      grade: r.score >= 70 ? 'A' : r.score >= 50 ? 'B' : r.score >= 30 ? 'C' : 'D'
-    }));
-    res.json({ leads: graded, total: graded.length });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
 module.exports = router;

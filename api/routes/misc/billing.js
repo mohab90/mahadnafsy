@@ -304,9 +304,4 @@ router.get('/api/admin/payments/:id/invoice-html',
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Advanced Sales Attribution & Conversion Funnel Analytics ─────
-// ═══════════════════════════════════════════════════════════════════════════
-
-// GET /api/admin/analytics/conversion-funnel?from=&to=
 module.exports = router;

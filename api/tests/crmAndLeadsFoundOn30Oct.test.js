@@ -61,29 +61,7 @@ test('migration 349 copies a follow-up date kept only in crm_json into the colum
 test('migration 348 gives the work queue its index in the order the query sorts', () => {
   const sql = read('api/migrations/348_v26_report_indexes.sql');
   assert.match(sql, /idx_leads_tenant_queue \(tenant_id, hidden, score DESC, created_at ASC\)/);
-  assert.match(read('api/routes/crm-ops.js'), /ORDER BY l\.score DESC,l\.created_at ASC/);
-});
-
-test('the work queue cuts the leads first and reads the message counts and sequences for those leads only', () => {
-  const route = read('api/routes/crm-ops.js');
-  const handler = route.slice(route.indexOf("'/api/admin/crm/work-queue'"));
-  assert.match(handler, /FROM communications WHERE tenant_id=\? AND lead_id IN \(\?\) GROUP BY lead_id/);
-  assert.match(handler, /FROM drip_enrollments[\s\S]*?lead_id IN \(\?\)/);
-  assert.doesNotMatch(handler, /FROM communications WHERE tenant_id=\? GROUP BY/, 'every communication of the tenant is aggregated again');
-  assert.match(handler, /communication_count: commByLead\.get\(lead\.id\)\?\.communication_count \?\? null/);
-});
-
-test('the work queue gives buildWorkQueue the same fields as before for a lead with and without messages', async () => {
-  const { buildWorkQueue } = require('../lib/crmWorkQueue');
-  const now = new Date('2026-10-30T09:00:00Z');
-  const lead = { id: 'a', status: 'interested', created_at: '2026-10-01', score: 80 };
-  const quiet = buildWorkQueue([{ ...lead, communication_count: null, last_communication_at: null, active_sequence_id: null }], { now, limit: 5 });
-  const talked = buildWorkQueue([{ ...lead, communication_count: 3, last_communication_at: '2026-10-29', active_sequence_id: 7 }], { now, limit: 5 });
-  assert.equal(quiet.items.length, 1);
-  // No message row at all (a lead the LEFT JOIN used to give NULLs) is a lead nobody has answered.
-  assert.ok(quiet.items[0].reasons.some(reason => reason === 'first_response_sla_breached' || reason === 'new_uncontacted'));
-  assert.ok(!talked.items[0].reasons.some(reason => reason === 'first_response_sla_breached' || reason === 'new_uncontacted'));
-  assert.ok(talked.items[0].reasons.includes('sequence_active'));
+  // The work-queue route (and lib/crmWorkQueue.js) were removed on 3 Nov 2026 — nothing called them; the index stays for the scored list.
 });
 
 test('CRM insights starts its independent reads together and ranges the reminders on the date column', () => {
@@ -103,7 +81,6 @@ test('the counts the board, the table, the stale list and the duplicate finder a
   const lists = read('api/routes/admin/leads/lists.js');
   assert.match(lists, /cached\(`figures:leads-board-counts:\$\{req\.tenantId\}:\$\{where\}:\$\{JSON\.stringify\(whereParams\)\}`, FIGURES_TTL/);
   assert.match(lists, /cached\(`figures:leads-table-total:/);
-  assert.match(read('api/routes/crm-ops.js'), /cached\(`figures:crm-stale-leads:\$\{req\.tenantId\}:\$\{sql\}:\$\{JSON\.stringify\(params\)\}`, 15 \* 1000/);
   assert.match(read('api/routes/admin/leads/dedup.js'), /cached\(`figures:lead-duplicates:\$\{req\.tenantId\}`, 30 \* 1000/);
   // «figures:» is what dropFiguresAfterWrites clears after every successful write.
   assert.match(read('api/lib/httpApp.js'), /cacheInvalidateLocal\('figures:'\)/);

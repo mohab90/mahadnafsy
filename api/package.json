@@ -26,7 +26,6 @@
     "smoke:crm-forecast": "node tools/crm-forecast-smoke.cjs",
     "smoke:crm-sequences": "node tools/crm-sequences-smoke.cjs",
     "smoke:crm-quotes": "node tools/crm-quotes-smoke.cjs",
-    "smoke:crm-performance": "node tools/crm-performance-smoke.cjs",
     "smoke:connector-inbox": "node tools/connector-inbox-smoke.cjs",
     "smoke:crm-coaching": "node tools/crm-coaching-smoke.cjs",
     "smoke:finance-operations": "node tools/finance-operations-smoke.cjs",

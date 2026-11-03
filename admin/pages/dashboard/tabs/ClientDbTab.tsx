@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { copyText } from '../../../../shared/copyText';
 import {
   Search, Users, UserCheck, UserPlus, MessageSquare,
@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
-import { mysqlAdmin, type RegistrationItem } from '../../../lib/mysqlapi';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -16,11 +16,8 @@ import { WholeDatabaseSearch } from './client-db/WholeDatabaseSearch';
 import ArchivedClientsTab from './ArchivedClientsTab';
 import { toDialable } from '../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
-import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
-import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
 import { cairoDay } from '../../../../shared/cairoDate';
-import { matchesSearch } from '../../../lib/clientSearch';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -104,10 +101,6 @@ const SUB_TYPE_COLOR: Record<string, string> = {
 
 export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
   const { subscribers, leads, courses, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin, authUser, currentStaff } = useSiteData();
-  // The table draws the loaded page of clients and leads — the same for the administration and for an employee (the
-  // server scopes it to the employee's own) — and «البحث في قاعدة البيانات كاملة» below it searches the rest on the server.
-  const effectiveSubs = subscribers;
-  const effectiveLeads = leads;
   const branches = useBranches();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -139,31 +132,23 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     // can simply take. Converting is also what issues the client code, which is why a self-registered visitor
     // appeared to have none.
     if (c.type === 'registration') { void convertThenBook(c); return; }
-    if (onBook) onBook(c.id, c.type);
+    // The payment window is opened from the loaded lists (Dashboard handleClientDbBook); a person past the first page is not in them, so their own page's payments tab opens.
+    const loaded = c.type === 'subscriber' ? subscribers.some(row => row.id === c.id) : leads.some(row => row.id === c.id);
+    if (onBook && loaded) onBook(c.id, c.type as 'subscriber' | 'lead');
     else navigate(`/client/${c.clientCode || c.id}`, { state: { openTab: 'payments' } });
   };
 
-  // Registrations are their own pool server-side (they are neither leads nor
-  // subscribers), so they need their own fetch to appear in this combined view.
-  // The standalone "التسجيلات" page is gone: it was a second place showing the
-  // same people with its own table and its own bespoke dialogs, and it is the
-  // client database people actually search.
-  const [registrations, setRegistrations] = useState<RegistrationItem[]>([]);
   const [regBusy, setRegBusy] = useState<string | null>(null);
-  const loadRegistrations = () =>
-    mysqlAdmin.listRegistrations().then(setRegistrations).catch(() => setRegistrations([]));
-  // The list needs view_leads; an account without it (customer support) asked anyway and collected a 403 on every visit.
-  const canSeeRegistrations = isAdmin || (currentStaff ? hasPermission(currentStaff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'view_leads') : false);
-  useEffect(() => { if (canSeeRegistrations) void loadRegistrations(); }, [canSeeRegistrations]);
+  // A write on a row (convert, archive) re-reads the page the screen is on.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const refreshPage = () => setRefreshTick(tick => tick + 1);
 
   const convertRegistration = async (id: string, to: 'online' | 'lead', name: string) => {
     setRegBusy(id);
     try {
       if (to === 'online') await mysqlAdmin.convertRegistrationToOnline(id, 'ONLINE_EGYPT');
       else await mysqlAdmin.convertRegistrationToLead(id);
-      // Drop it from the registration pool locally; the subscriber/lead it became
-      // arrives with the next context refresh.
-      setRegistrations(prev => prev.filter(r => r.id !== id));
+      refreshPage();
       notify('success', to === 'online'
         ? `تم تحويل ${name || 'العميل'} لعميل أونلاين`
         : `تم تحويل ${name || 'العميل'} لعميل محتمل`);
@@ -188,7 +173,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     setRegBusy(row.id);
     try {
       const { subscriberId } = await mysqlAdmin.convertRegistrationToOnline(row.id, 'ONLINE_EGYPT');
-      setRegistrations(prev => prev.filter(r => r.id !== row.id));
+      refreshPage();
       await reloadSubscribers();
       notify('success', `تم تحويل ${row.name || 'العميل'} لعميل أونلاين — افتح الدفع الآن`);
       if (onBook && subscriberId) onBook(String(subscriberId), 'subscriber');
@@ -204,7 +189,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     setRegBusy(userId);
     try {
       const { subscriberId } = await mysqlAdmin.convertRegistrationToOnline(userId, 'ONLINE_EGYPT');
-      setRegistrations(prev => prev.filter(r => r.id !== userId));
+      refreshPage();
       await reloadSubscribers();
       notify('success', `تم تحويل ${name || 'العميل'} لعميل أونلاين`);
       if (subscriberId) navigate(`/client/${subscriberId}`);
@@ -231,6 +216,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     try {
       const ok = row.type === 'lead' ? await deleteLead(row.id) : await deleteSubscriber(row.id);
       notify(ok ? 'success' : 'error', ok ? `تمت أرشفة ${row.name || label}` : 'تعذر الحذف');
+      if (ok) refreshPage();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذر الحذف');
     } finally { setRegBusy(null); }
@@ -249,202 +235,80 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl' | 'registration'>('all');
   const [branchFilter, setBranchFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
-  const [sort, setSort] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'amount_desc'>('date_desc');
+  const [sort, setSort] = useState<'date_desc' | 'date_asc' | 'name_asc'>('date_desc');
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
   // Multi-select
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const allClients: ClientRow[] = useMemo(() => {
-    const subPhones = new Set(
-      effectiveSubs.map(s => normPhone(s.phone)).filter(p => p.length >= 7)
-    );
-    const subEmails = new Set(
-      effectiveSubs
-        .map(s => (s.email || '').toLowerCase())
-        .filter(e => e && !e.endsWith('@lead.local'))
-    );
-
-    const rawSubs: ClientRow[] = effectiveSubs.map(s => ({
-      id: s.id,
-      clientCode: s.clientCode || '',
-      name: s.name,
-      phone: s.phone || '',
-      email: s.email || '',
-      type: 'subscriber' as const,
-      subType: getSubType(s.branch || '', (s as unknown as Record<string, string>).clientType),
-      clientType: (s as unknown as Record<string, string>).clientType || null,
-      status: 'مشترك',
-      branch: s.branch || '',
-      createdAt: s.createdAt || '',
-      // paymentHistory carries every non-deleted row with its status, and
-      // payments really do become 'refunded' and 'pending'. Unfiltered, a fully
-      // refunded client still read as having paid, exported that way, and ranked
-      // among the top payers. Same predicate the finance screens already use.
-      totalPaid: Math.round(
-        (s.paymentHistory || []).reduce(
-          (sum: number, p: { currency: string; amount: number; status?: string }) =>
-            (!p.status || p.status === 'paid' ? sum + toEgp(p.amount, p.currency) : sum),
-          0
-        )
-      ),
-      assignedSalesName: s.assignedSalesName || '',
-      nameEn: s.nameEn || '',
-      nationalId: s.nationalId || '',
-      personalPhotoUrl: s.personalPhotoUrl || '',
-      idPhotoUrl: s.idPhotoUrl || '',
-      courseIds: s.enrolledCourseIds || [],
-      courseNames: (() => {
-        // Extract bundle names from payment history
-        const bundleNames = (s.paymentHistory || [])
-          .map((p: { note?: string; itemTitle?: string }) => {
-            const txt = p.note || p.itemTitle || '';
-            const m = txt.match(/مسار(?:\s+تعليمي)?[:\s]+(.+)/);
-            return m ? `📦 ${m[1].trim()}` : null;
-          })
-          .filter((v): v is string => !!v);
-        const uniqueBundles = [...new Set(bundleNames)];
-        const courseNamesArr = (s.enrolledCourseIds || [])
-          .map((id: string) => courses.find(c => c.id === id)?.title)
-          .filter((t): t is string => !!t);
-        return [...uniqueBundles, ...courseNamesArr].join('، ');
-      })(),
-    }));
-
-    const rawLeads: ClientRow[] = effectiveLeads
-      .filter(l => {
-        const lp = normPhone(l.phone);
-        const le = (l.email || '').toLowerCase();
-        const dupSub =
-          (lp.length >= 7 && subPhones.has(lp)) ||
-          (le && !le.endsWith('@lead.local') && subEmails.has(le));
-        return !dupSub;
+  // The table and the numbers are the server's, over every client, lead and site sign-up in the caller's reach (api/routes/misc/clientDbList.js): this screen
+  // counted the 500 clients and 500 leads its browser had loaded and called that the whole database (3 Nov 2026).
+  const [rows, setRows] = useState<ClientRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [summary, setSummary] = useState({ total: 0, subscribers: 0, online: 0, daqqi: 0, leads: 0 });
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  useEffect(() => {
+    let alive = true;
+    void mysqlAdmin.adminGet<typeof summary>('/admin/client-db/summary').then(result => { if (alive) setSummary(result); }).catch(() => {});
+    return () => { alive = false; };
+  }, [refreshTick]);
+  useEffect(() => {
+    if (view !== 'clients') return undefined;
+    let alive = true;
+    setLoadingRows(true);
+    const query = new URLSearchParams({ type: typeFilter, sort, limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
+    if (branchFilter) query.set('branch', branchFilter);
+    if (courseFilter) query.set('course', courseFilter);
+    if (debouncedSearch.length >= 2) query.set('q', debouncedSearch);
+    mysqlAdmin.adminGet<{ rows: Array<Omit<ClientRow, 'type' | 'subType'> & { kind: ClientRow['type'] }>; total: number }>(`/admin/client-db/page?${query.toString()}`)
+      .then(result => {
+        if (!alive) return;
+        setRows(result.rows.map(({ kind, ...row }) => ({
+          ...row, type: kind, subType: kind === 'subscriber' ? getSubType(row.branch, row.clientType) : null,
+        })));
+        setTotal(result.total);
       })
-      .map(l => ({
-        id: l.id,
-        clientCode: l.clientCode || '',
-        name: l.name,
-        phone: l.phone || '',
-        email: l.email || '',
-        type: 'lead' as const,
-        clientType: (l as unknown as Record<string, string>).clientType || null,
-        subType: null,
-        status: l.status || 'new',
-        branch: l.branch || '',
-        createdAt: l.createdAt || '',
-        totalPaid: 0,
-        assignedSalesName: l.assignedSalesName || '',
-        courseIds: [l.enrolledCourseId, ...(l.interestedCourseIds || [])].filter(Boolean) as string[],
-        // An imported free-text course still counts as a course name here —
-        // otherwise the database view shows a blank for rows that do carry one.
-        courseNames: [l.enrolledCourseId, ...(l.interestedCourseIds || [])]
-          .filter(Boolean)
-          .map(id => (isRawCourse(id as string) ? rawCourseText(id as string) : courses.find(c => c.id === id)?.title))
-          .filter(Boolean)
-          .join('، '),
-      }));
+      .catch(error => { if (alive) { setRows([]); setTotal(0); notify('error', error instanceof Error ? error.message : 'تعذر تحميل قاعدة العملاء'); } })
+      .finally(() => { if (alive) setLoadingRows(false); });
+    return () => { alive = false; };
+  }, [view, typeFilter, branchFilter, courseFilter, sort, page, debouncedSearch, refreshTick, notify]);
 
-    // Self-registered accounts that are neither a subscriber nor a lead yet.
-    // They were invisible here entirely — someone who signed up on the site
-    // could not be found in the client database at all, which is the one place
-    // staff search when a caller says "I already have an account". Shown with
-    // whatever we know, and de-duplicated against both other sources.
-    const leadPhones = new Set(rawLeads.map(l => normPhone(l.phone)).filter(p => p.length >= 7));
-    const leadEmails = new Set(rawLeads.map(l => l.email.toLowerCase()).filter(Boolean));
-    const rawRegistrations: ClientRow[] = registrations
-      .filter(r => {
-        const rp = normPhone(r.phone || '');
-        const re = (r.email || '').toLowerCase();
-        const dup = (rp.length >= 7 && (subPhones.has(rp) || leadPhones.has(rp)))
-          || (re && (subEmails.has(re) || leadEmails.has(re)));
-        return !dup;
-      })
-      .map(r => ({
-        id: r.id,
-        clientCode: '',
-        name: r.name || '',
-        phone: r.phone || '',
-        email: r.email || '',
-        type: 'registration' as const,
-        clientType: null,
-        subType: null,
-        status: 'registration',
-        branch: '',
-        createdAt: r.created_at || '',
-        totalPaid: 0,
-        assignedSalesName: '',
-        courseIds: [],
-        courseNames: '',
-      }));
-
-    return [...rawSubs, ...rawLeads, ...rawRegistrations];
-  }, [effectiveSubs, effectiveLeads, courses, registrations]);
-
-  const allCourseOptions = useMemo(() => {
-    const ids = new Set(allClients.flatMap(c => c.courseIds));
-    return courses
-      .filter(c => ids.has(c.id))
-      .map(c => ({ id: c.id, title: c.title }))
-      .sort((a, b) => a.title.localeCompare(b.title, 'ar'));
-  }, [allClients, courses]);
-
-  const filtered = useMemo(() => {
-    return allClients
-      .filter(c => {
-        if (typeFilter === 'subscriber' && c.type !== 'subscriber') return false;
-        if (typeFilter === 'subscriber_online' && (c.type !== 'subscriber' || c.subType !== 'online')) return false;
-        if (typeFilter === 'subscriber_daqqi' && (c.type !== 'subscriber' || c.subType !== 'daqqi')) return false;
-        if (typeFilter === 'subscriber_regular' && (c.type !== 'subscriber' || c.subType !== 'regular')) return false;
-        if (typeFilter === 'lead' && c.type !== 'lead') return false;
-        if (typeFilter === 'lead_local' && (c.type !== 'lead' || !c.clientType?.includes('LOCAL'))) return false;
-        if (typeFilter === 'lead_intl' && (c.type !== 'lead' || !c.clientType?.includes('INTL'))) return false;
-        if (typeFilter === 'registration' && c.type !== 'registration') return false;
-        if (branchFilter && c.branch?.toUpperCase() !== branchFilter) return false;
-        if (courseFilter && !c.courseIds.includes(courseFilter)) return false;
-        // The same search as every other list (lib/clientSearch.ts).
-        if (!matchesSearch(search, { name: c.name, phone: c.phone, email: c.email, code: c.clientCode })) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        if (sort === 'name_asc') return a.name.localeCompare(b.name, 'ar');
-        if (sort === 'amount_desc') return b.totalPaid - a.totalPaid;
-        if (sort === 'date_asc') return a.createdAt.localeCompare(b.createdAt);
-        return b.createdAt.localeCompare(a.createdAt);
-      });
-  }, [allClients, search, typeFilter, branchFilter, courseFilter, sort]);
+  const allCourseOptions = useMemo(
+    () => courses.map(c => ({ id: c.id, title: c.title })).sort((a, b) => a.title.localeCompare(b.title, 'ar')),
+    [courses],
+  );
 
   // Always use settings branches; fall back to raw values only if settings empty
-  const branchOptions = useMemo(() => {
-    if (branches.length > 0) {
-      return branches.map(b => ({ value: b.id.toUpperCase(), label: b.label }));
-    }
-    return [...new Set(allClients.map(c => c.branch).filter(Boolean))]
-      .map(b => ({ value: b.toUpperCase(), label: b }));
-  }, [branches, allClients]);
+  const branchOptions = useMemo(
+    () => branches.map(b => ({ value: b.id.toUpperCase(), label: b.label })),
+    [branches],
+  );
 
   function branchLabel(branchRaw: string) {
     const up = (branchRaw || '').toUpperCase();
     return branchOptions.find(b => b.value === up)?.label || branchRaw || '—';
   }
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  function clearPicked() { setSelectedIds(new Set()); pickedRows.current.clear(); }
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const pageRows = rows;
   const pageRowKeys = pageRows.map(c => `${c.type}-${c.id}`);
   const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every(k => selectedIds.has(k));
-
-  const stats = useMemo(() => ({
-    total: allClients.length,
-    subscribers: allClients.filter(c => c.type === 'subscriber').length,
-    online: allClients.filter(c => c.subType === 'online').length,
-    daqqi: allClients.filter(c => c.subType === 'daqqi').length,
-    leads: allClients.filter(c => c.type === 'lead').length,
-  }), [allClients]);
+  // What was ticked on other pages stays ticked: the export and the copied numbers read these rows, not only the page on screen.
+  const pickedRows = useRef(new Map<string, ClientRow>());
+  const stats = summary;
 
   function toggleSelect(key: string) {
+    const row = rows.find(c => `${c.type}-${c.id}` === key);
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) { next.delete(key); pickedRows.current.delete(key); } else { next.add(key); if (row) pickedRows.current.set(key, row); }
       return next;
     });
   }
@@ -453,20 +317,20 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     if (allPageSelected) {
       setSelectedIds(prev => {
         const next = new Set(prev);
-        pageRowKeys.forEach(k => next.delete(k));
+        pageRowKeys.forEach(k => { next.delete(k); pickedRows.current.delete(k); });
         return next;
       });
     } else {
       setSelectedIds(prev => {
         const next = new Set(prev);
-        pageRowKeys.forEach(k => next.add(k));
+        pageRows.forEach(row => { next.add(`${row.type}-${row.id}`); pickedRows.current.set(`${row.type}-${row.id}`, row); });
         return next;
       });
     }
   }
 
   function exportSelectedCSV() {
-    const rows = filtered.filter(c => selectedIds.has(`${c.type}-${c.id}`));
+    const rows = [...pickedRows.current.values()];
     const header = ['الاسم', 'الكود', 'الهاتف', 'الإيميل', 'النوع', 'الفرع', 'الكورسات', 'المدفوع', 'المبيعات', 'التاريخ', 'الاسم بالإنجليزي', 'الرقم القومي', 'رابط الصورة الشخصية', 'رابط صورة الهوية'];
     // The values used to be joined raw, with only الكورسات wrapped in quotes and
     // the quotes inside it left undoubled. A course list with a comma in it
@@ -559,7 +423,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
               type="text"
               placeholder="اسم / هاتف / كود..."
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(0); setSelectedIds(new Set()); }}
+              onChange={e => { setSearch(e.target.value); setPage(0); clearPicked(); }}
               className="w-full border border-gray-200 rounded-lg pr-8 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
             />
           </div>
@@ -567,7 +431,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           {/* Type filter with online/daqqi distinction */}
           <select
             value={typeFilter}
-            onChange={e => { setTypeFilter(e.target.value as typeof typeFilter); setPage(0); setSelectedIds(new Set()); }}
+            onChange={e => { setTypeFilter(e.target.value as typeof typeFilter); setPage(0); clearPicked(); }}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
           >
             <option value="all">كل الأنواع</option>
@@ -585,7 +449,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           {branchOptions.length > 1 && (
             <select
               value={branchFilter}
-              onChange={e => { setBranchFilter(e.target.value); setPage(0); setSelectedIds(new Set()); }}
+              onChange={e => { setBranchFilter(e.target.value); setPage(0); clearPicked(); }}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
             >
               <option value="">كل الفروع</option>
@@ -599,7 +463,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           {allCourseOptions.length > 0 && (
             <select
               value={courseFilter}
-              onChange={e => { setCourseFilter(e.target.value); setPage(0); setSelectedIds(new Set()); }}
+              onChange={e => { setCourseFilter(e.target.value); setPage(0); clearPicked(); }}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 max-w-[160px]"
             >
               <option value="">كل الكورسات</option>
@@ -618,11 +482,10 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             <option value="date_desc">الأحدث أولاً</option>
             <option value="date_asc">الأقدم أولاً</option>
             <option value="name_asc">أبجدي</option>
-            <option value="amount_desc">الأعلى دفعاً</option>
           </select>
 
           <span className="text-xs text-gray-500 font-medium mr-auto">
-            {filtered.length.toLocaleString('ar-EG-u-nu-latn')} نتيجة
+            {total.toLocaleString('ar-EG-u-nu-latn')} نتيجة{loadingRows ? ' …' : ''}
           </span>
         </div>
       </div>
@@ -644,8 +507,8 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           </button>
           <button
             onClick={() => {
-              const phones = filtered
-                .filter(c => selectedIds.has(`${c.type}-${c.id}`) && c.phone)
+              const phones = [...pickedRows.current.values()]
+                .filter(c => c.phone)
                 .map(c => c.phone)
                 .join('\n');
               void copyText(phones).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم نسخ الأرقام' : 'تعذر النسخ — المتصفح منع الوصول للحافظة'));
@@ -655,7 +518,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             <MessageSquare size={13} /> نسخ الأرقام
           </button>
           <button
-            onClick={() => setSelectedIds(new Set())}
+            onClick={() => clearPicked()}
             className="text-gray-500 text-xs hover:text-gray-700 mr-auto"
           >
             إلغاء التحديد
@@ -860,7 +723,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
               السابق
             </button>
             <span className="text-xs text-gray-500">
-              صفحة {page + 1} من {totalPages} ({filtered.length.toLocaleString('ar-EG-u-nu-latn')} نتيجة)
+              صفحة {page + 1} من {totalPages} ({total.toLocaleString('ar-EG-u-nu-latn')} نتيجة)
             </span>
             <button
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}

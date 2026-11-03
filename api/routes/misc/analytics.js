@@ -12,65 +12,6 @@ const { sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFoll
 const { createNotification } = require('../../lib/notification');
 const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, sqlCairoWall } = require('../../lib/dates');
 
-router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
-  try {
-    const from = req.query.from || cairoMonthStart(2);
-    const to   = req.query.to   || cairoToday();
-    // from/to are Cairo days; the columns below are UTC instants.
-    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
-
-    const [byStatus] = await pool.query(`
-      SELECT status, COUNT(*) AS cnt FROM leads
-      WHERE tenant_id=? AND created_at >= ? AND created_at < ?
-      GROUP BY status`, [req.tenantId, fromUtc, toUtc]);
-
-    const statusMap = Object.fromEntries(byStatus.map(r => [r.status, parseInt(r.cnt)]));
-
-    const total = Object.values(statusMap).reduce((a, b) => a + b, 0);
-    const converted = statusMap['converted'] || 0;
-    const interested = statusMap['interested'] || 0;
-    const follow_up = statusMap['follow_up'] || 0;
-    const lost = statusMap['lost'] || 0;
-
-    // Source breakdown
-    const [bySource] = await pool.query(`
-      SELECT source, COUNT(*) AS cnt,
-             SUM(CASE WHEN status='converted' THEN 1 ELSE 0 END) AS conversions
-      FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?
-      GROUP BY source ORDER BY cnt DESC`, [req.tenantId, fromUtc, toUtc]);
-
-    // Staff performance
-    const [byStaff] = await pool.query(`
-      SELECT st.name AS staff_name,
-             COUNT(l.id) AS total_leads,
-             SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) AS conversions,
-             ROUND(SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) / COUNT(l.id) * 100, 1) AS conv_rate
-      FROM leads l
-      JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id=l.tenant_id
-      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?
-      GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [req.tenantId, fromUtc, toUtc]);
-
-    res.json({
-      period: { from, to },
-      funnel: {
-        total,
-        interested,
-        follow_up,
-        converted,
-        lost,
-        conversionRate: total > 0 ? Math.round(converted / total * 100 * 10) / 10 : 0,
-      },
-      bySource: bySource.map(r => ({
-        source: r.source,
-        total: parseInt(r.cnt),
-        conversions: parseInt(r.conversions),
-        convRate: r.cnt > 0 ? Math.round(r.conversions / r.cnt * 100 * 10) / 10 : 0,
-      })),
-      byStaff,
-    });
-  } catch (e) { logger.error(e); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
-});
-
 // GET /api/admin/analytics/revenue-forecast?months=3
 router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {

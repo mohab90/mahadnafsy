@@ -66,9 +66,8 @@ test('CRM due reminders preserve tenant and canonical role data boundaries', () 
   // defeat idx_leads_next_followup and full-scan leads on every reminder sweep.
   // Today is Cairo's, not the database's: the server runs in UTC, so CURDATE()
   // began the day at 02:00 or 03:00 Cairo time. See lib/dates.js.
-  assert.match(route, /WHERE l\.tenant_id = \? AND l\.next_follow_up_date >= \$\{sqlCairoToday\(\)\} AND l\.next_follow_up_date < \$\{sqlCairoToday\(\)\} \+ INTERVAL 1 DAY/);
-  assert.match(route, /leadScope\(req, 'l'\)/);
-  assert.match(route, /\$\{scope\.sql\}/);
+  // (The «due-today» route that read the day's follow-ups was removed on 3 Nov 2026 — nothing called it; the reminder sweep below is the one reader.)
+  assert.doesNotMatch(route, /\/api\/admin\/leads\/due-today/);
   assert.match(shared, /runFollowUpReminders\(tenantId/);
   assert.match(shared, /WHERE l\.tenant_id = \?/);
   assert.match(shared, /WHERE p\.tenant_id = \?/);
@@ -197,8 +196,7 @@ test('executive dashboards and funnel cache/query data per tenant', () => {
   assert.match(funnel, /l\.tenant_id=\?/);
   assert.match(funnel, /JOIN subscribers s ON s\.lead_id=l\.id AND s\.tenant_id=l\.tenant_id/);
   assert.match(funnel, /JOIN payments p ON p\.subscriber_id=s\.id AND p\.tenant_id=s\.tenant_id/);
-  assert.match(funnel, /message_outbox WHERE tenant_id=\?/);
-  assert.match(funnel, /WHERE rr\.tenant_id=\?/);
+  // (The action center and the support inbox, which read the outbox and the refund requests here, were removed on 3 Nov 2026 — nothing called them.)
 });
 
 test('employee subscriber lists cannot mix CRM ownership or payment history across tenants', () => {

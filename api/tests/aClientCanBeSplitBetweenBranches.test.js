@@ -16,7 +16,8 @@ test('every client list reaches a branch by its own clients and by the courses p
   assert.doesNotMatch(lists, /s\.branch IN \(\$\{branches\.map/, 'no scope clause reads the client\'s own branch alone');
   assert.ok((lists.match(/ownOrPlaced\(branches\)/g) || []).length >= 4);
   assert.match(lists, /params: \[\.\.\.branches, \.\.\.branches\]/, 'the branch filter binds the list twice');
-  assert.ok((lists.match(/coursePlacements: placementsBySub\.get\(r\.id\) \|\| \{\}/g) || []).length >= 5, 'every client list carries the placements');
+  // 3 Nov 2026: four lists, not five — «my-collection-clients», read by nothing, is gone.
+  assert.ok((lists.match(/coursePlacements: placementsBySub\.get\(r\.id\) \|\| \{\}/g) || []).length >= 4, 'every client list carries the placements');
   assert.match(lists, /router\.put\('\/api\/admin\/subscribers\/:id\/course-branch'/);
 });
 

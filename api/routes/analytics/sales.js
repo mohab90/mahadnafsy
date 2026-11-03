@@ -69,30 +69,6 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
   } catch (e) { logger.error('[route]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
-// GET /api/admin/reports/lead-funnel?from=&to=
-router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
-  try {
-    const from = req.query.from || cairoMonthStart(0);
-    const to   = req.query.to   || cairoToday();
-    // from/to are Cairo days; leads.created_at is a UTC instant.
-    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
-    const args = [req.tenantId, fromUtc, toUtc];
-    const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? GROUP BY status ORDER BY count DESC`, args);
-    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? GROUP BY source ORDER BY total DESC`, args);
-    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? GROUP BY branch ORDER BY total DESC`, args);
-    const total     = byStatus.reduce((s, r) => s + Number(r.count), 0);
-    const converted = byStatus.filter(r => isConvertedLeadStatus(r.status)).reduce((s, r) => s + Number(r.count), 0);
-    const lost      = byStatus.filter(r => r.status === 'lost').reduce((s, r) => s + Number(r.count), 0);
-    res.json({
-      from, to, total, converted, lost,
-      conversion_rate: total > 0 ? parseFloat((converted / total * 100).toFixed(1)) : 0,
-      byStatus,
-      bySource: bySource.map(s => ({ ...s, conversion_rate: s.total > 0 ? parseFloat((Number(s.converted) / s.total * 100).toFixed(1)) : 0 })),
-      byBranch: byBranch.map(b => ({ ...b, conversion_rate: b.total > 0 ? parseFloat((Number(b.converted) / b.total * 100).toFixed(1)) : 0 })),
-    });
-  } catch (e) { logger.error('[route]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Sales Goals / Targets ─────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════

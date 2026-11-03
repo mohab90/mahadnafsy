@@ -9,6 +9,7 @@ router.use(require('./misc/billing'));
 router.use(require('./misc/analytics'));
 router.use(require('./misc/reminders'));
 router.use(require('./misc/clientDbSearch'));
+router.use(require('./misc/clientDbList'));
 router.use(require('./misc/drivePhotos'));
 router.use(require('./misc/clientCertificateData'));
 router.use(require('./misc/receiptGaps'));

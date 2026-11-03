@@ -19,24 +19,6 @@ const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollo
 const { escapeHtml } = require('../../lib/html');
 const { sqlCairoToday, cairoToday, addDaysToDateOnly, cairoDayBoundsUtc, sqlCairoWall } = require('../../lib/dates');
 
-router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
-  try {
-    const scope = leadScope(req, 'l');
-    if (scope.none) return res.json({ date: null, count: 0, leads: [] });
-    const [leads] = await pool.query(`
-      SELECT l.id, l.name, l.phone, l.email, l.status, l.source,
-             l.next_follow_up_date, l.assigned_sales_id AS assigned_to,
-             st.name AS staff_name
-      FROM leads l
-      LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.next_follow_up_date >= ${sqlCairoToday()} AND l.next_follow_up_date < ${sqlCairoToday()} + INTERVAL 1 DAY
-        AND l.status NOT IN ${TERMINAL_SQL}
-        ${scope.sql}
-      ORDER BY l.name`, [req.tenantId, ...scope.params]);
-    res.json({ date: new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }), count: leads.length, leads });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
 // POST /api/admin/leads/reminders/send-now — manually trigger follow-up reminders
 router.post('/api/admin/leads/reminders/send-now', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   try {

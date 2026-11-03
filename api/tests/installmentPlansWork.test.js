@@ -40,9 +40,10 @@ test('every subscriber list reads them', () => {
   const lists = read('api/routes/admin/stafflists.js');
   // Four lists read them with the request's tenant; the staff list does so in the one function that shapes its rows
   // (the list and the paged «عملائي» share it).
-  assert.equal((lists.match(/const plansBySub = await installmentPlansBySubscriber\(req\.tenantId, ids\);/g) || []).length, 4);
+  // (3 Nov 2026: three and four — «my-collection-clients», read by nothing, is gone.)
+  assert.equal((lists.match(/const plansBySub = await installmentPlansBySubscriber\(req\.tenantId, ids\);/g) || []).length, 3);
   assert.equal((lists.match(/const plansBySub = await installmentPlansBySubscriber\(tenantId, ids\);/g) || []).length, 1);
-  assert.equal((lists.match(/withInstallmentPlans\(parseCrm\(r\.crm_json\), plansBySub\.get\(r\.id\)\)/g) || []).length, 5);
+  assert.equal((lists.match(/withInstallmentPlans\(parseCrm\(r\.crm_json\), plansBySub\.get\(r\.id\)\)/g) || []).length, 4);
 });
 
 test('an instalment is paid into a real box, and the reminder reads the table on Cairo\'s day', () => {

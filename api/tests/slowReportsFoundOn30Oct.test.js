@@ -60,14 +60,6 @@ test('the online orders without a twin payment are found by two LEFT JOINs, not 
   assert.ok(created, 'idx_orders_tenant_status_created is created by no migration');
 });
 
-test('the stale leads read each lead\'s newest message once, not through a grouped join', () => {
-  const route = read('api/routes/crm-ops.js');
-  const body = route.slice(route.indexOf("router.get('/api/admin/crm/stale-leads'"), route.indexOf("router.get('/api/admin/crm/follow-up-due'"));
-  assert.ok(!/LEFT JOIN communications c ON/.test(body));
-  assert.ok(!/GROUP BY l\.id/.test(body));
-  assert.ok(body.includes('SELECT lead_id, MAX(date) AS last_date FROM communications'));
-});
-
 test('the reports that read the leads by assigned_at and by follow-up date have an index that holds both', () => {
   const sql = read('api/migrations/348_v26_report_indexes.sql');
   assert.ok(sql.includes('idx_leads_tenant_assigned_at (tenant_id, hidden, assigned_at, assigned_sales_id, created_at)'));

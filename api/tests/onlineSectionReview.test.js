@@ -83,7 +83,7 @@ test('the online list is online clients only, and its numbers are the markets\' 
 
 test('every admin list sends the tracks a client was enrolled in', () => {
   const lists = read('api/routes/admin/stafflists.js');
-  assert.equal(lists.split('enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],').length - 1, 5);
+  assert.equal(lists.split('enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],').length - 1, 4); // four since 3 Nov 2026 («my-collection-clients» is gone)
   assert.match(lists, /SELECT subscriber_id,course_id,bundle_id,access_type,lecture_limit FROM enrollments/);
   assert.match(read('api/routes/admin/subscribers.js'), /\.\.\.crm, enrolledCourseIds, enrolledBundleIds, courseAccess,/);
   assert.match(read('admin/lib/agreedPrice.ts'), /\(subscriber\.enrolledBundleIds \|\| \[\]\)\.forEach\(id => \{ if \(id\) keys\.add\(`bundle:\$\{id\}`\); \}\);/);
