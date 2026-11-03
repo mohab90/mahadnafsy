@@ -4,7 +4,7 @@
 // Read by «أرصدة مستحقة», the payment reminders, and the period statement
 // (lib/financeStatement.js). Moved here from routes/crm-tools.js unchanged.
 const { pool } = require('./db');
-const { priorPaidTotal } = require('./agreedPrice');
+const { priorPaidTotalSql } = require('./itemMoney');
 
 async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = null) {
   const params = [tenantId, tenantId];
@@ -21,7 +21,7 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = n
     params.push(scope.staffId);
   }
   const [rows] = await pool.query(
-    `SELECT s.id, s.name, s.email, s.phone, s.client_code, s.assigned_sales_name, s.assigned_cs_name, s.crm_json,
+    `SELECT s.id, s.name, s.email, s.phone, s.client_code, s.assigned_sales_name, s.assigned_cs_name, ${priorPaidTotalSql('s')} AS prior_paid,
             b.total_expected, b.total_paid, b.total_expected - b.total_paid AS outstanding
        FROM subscribers s
        JOIN (
@@ -58,8 +58,8 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = n
   // Less what they paid before the system (lib/agreedPrice.js priorPaid): not a
   // payment row, so the sums above cannot see it, but it is not owed.
   return rows
-    .map(({ crm_json: crmJson, ...row }) => {
-      const prior = priorPaidTotal(crmJson);
+    .map(({ prior_paid: priorPaid, ...row }) => {
+      const prior = Number(priorPaid) || 0;
       return prior > 0
         ? { ...row, total_paid: Number(row.total_paid) + prior, outstanding: Number(row.outstanding) - prior }
         : row;

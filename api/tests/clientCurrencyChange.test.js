@@ -27,11 +27,23 @@ function fakeDb(answers) {
 }
 const find = (db, pattern) => db.calls.find(call => pattern.test(call.sql));
 const writes = db => db.calls.filter(call => /^(UPDATE|INSERT)/.test(call.sql));
+// What the client's rows hold after the change: the rows written to client_item_money, as the two maps.
+const moneyAfter = db => {
+  const insert = find(db, /^INSERT INTO client_item_money/);
+  const maps = { customPrices: {}, priorPaid: {} };
+  for (const [, , item, price, prior] of insert.params[0]) { if (price) maps.customPrices[item] = price; if (prior) maps.priorPaid[item] = prior; }
+  return maps;
+};
 
 const client = (overrides = {}, crm = {}) => [
   [/FROM subscribers WHERE id=\?/, [[{ id: 's1', name: 'عميل', branch: 'ONLINE_SAUDI', crm_json: JSON.stringify({
-    clientStatus: 'old_intl', market: 'saudi', customPrices: { c1: 790, 'bundle:b1': 1599 }, priorPaid: { c1: 400 }, ...crm,
+    clientStatus: 'old_intl', market: 'saudi', ...crm,
   }), ...overrides }]]],
+  // The prices and «مدفوع قبل السيستم» are rows of client_item_money (lib/itemMoney.js), not part of the blob.
+  [/FROM client_item_money WHERE/, [[
+    { subscriber_id: 's1', item_key: 'c1', agreed_price: 790, prior_paid: 400 },
+    { subscriber_id: 's1', item_key: 'bundle:b1', agreed_price: 1599, prior_paid: null },
+  ]]],
   [/SELECT currency FROM payments/, [[]]],
   [/SELECT currency, COUNT/, [[]]],
   [/FROM courses/, [[{ id: 'c1', title: 'الصحة النفسية', title_ar: null }]]],
@@ -49,8 +61,8 @@ test('a riyal client moved to pounds: market, branch, status and every figure fo
   const crm = JSON.parse(update.params[2]);
   assert.equal(crm.market, 'local');
   assert.equal(crm.clientStatus, 'old_local', 'the old-data tabs tell local from foreign by the status');
-  assert.deepEqual(crm.customPrices, { c1: 11455, 'bundle:b1': 23186 });
-  assert.deepEqual(crm.priorPaid, { c1: 5800 });
+  assert.deepEqual(moneyAfter(db), { customPrices: { c1: 11455, 'bundle:b1': 23186 }, priorPaid: { c1: 5800 } });
+  assert.equal(crm.customPrices, undefined, 'the blob no longer carries them');
   assert.ok(find(db, /^UPDATE enrollments SET branch_id=/), 'their courses follow the branch');
   assert.match(find(db, /^INSERT INTO activity_logs/).params[5], /من ريال إلى جنيه/);
 });
@@ -60,8 +72,7 @@ test('without «convert» the market moves and the figures stay as they are', as
   const result = await changeClientCurrency(db, args({ currency: 'EGP', convert: false }));
   assert.equal(result.converted, false);
   const crm = JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[2]);
-  assert.deepEqual(crm.customPrices, { c1: 790, 'bundle:b1': 1599 });
-  assert.deepEqual(crm.priorPaid, { c1: 400 });
+  assert.deepEqual(moneyAfter(db), { customPrices: { c1: 790, 'bundle:b1': 1599 }, priorPaid: { c1: 400 } });
   assert.match(find(db, /^INSERT INTO activity_logs/).params[5], /من غير تحويل/);
 });
 
@@ -133,7 +144,7 @@ test('the rate comes from a function of the two currencies, and only when there 
   const result = await changeClientCurrency(db, args({ currency: 'EGP', rates }));
   assert.deepEqual(asked, [['SAR', 'EGP']]);
   assert.equal(result.rate, 14.5);
-  assert.deepEqual(JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[2]).priorPaid, { c1: 5800 });
+  assert.deepEqual(moneyAfter(db).priorPaid, { c1: 5800 });
 
   asked.length = 0;
   await changeClientCurrency(fakeDb(client()), args({ currency: 'EGP', rates, convert: false }));

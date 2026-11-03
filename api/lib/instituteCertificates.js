@@ -23,11 +23,6 @@ const { hasPaidForBundle, hasPaidForCourse } = require('./coursePaid');
 
 const DELIVERY_STAGES = Object.freeze(['READY', 'PRINTED', 'AT_BRANCH', 'SHIPPED', 'DELIVERED', 'RETURNED']);
 
-function parseCrm(value) {
-  if (value && typeof value === 'object') return value;
-  try { return JSON.parse(value || '{}') || {}; } catch { return {}; }
-}
-
 /**
  * Every (client, course) and (client, track) with money in and no certificate yet.
  *
@@ -56,13 +51,10 @@ async function candidatePairs(db, tenantId) {
   viaTrack.forEach(row => addTrack(row.subscriber_id, row.bundle_id));
   // «مدفوع قبل السيستم»: most of Dokki's clients paid before the system existed.
   const [prior] = await db.query(
-    `SELECT id, crm_json FROM subscribers
-      WHERE tenant_id=? AND deleted_at IS NULL AND crm_json LIKE '%priorPaid%'`, [tenantId]);
+    `SELECT m.subscriber_id, m.item_key FROM client_item_money m JOIN subscribers s ON s.id=m.subscriber_id AND s.tenant_id=m.tenant_id
+      WHERE m.tenant_id=? AND s.deleted_at IS NULL AND m.prior_paid > 0`, [tenantId]);
   for (const row of prior) {
-    for (const [key, amount] of Object.entries(parseCrm(row.crm_json).priorPaid || {})) {
-      if (!(Number(amount) > 0)) continue;
-      if (key.startsWith('bundle:')) addTrack(row.id, key.slice(7)); else addCourse(row.id, key);
-    }
+    if (row.item_key.startsWith('bundle:')) addTrack(row.subscriber_id, row.item_key.slice(7)); else addCourse(row.subscriber_id, row.item_key);
   }
   const [certified] = await db.query('SELECT subscriber_id, course_id FROM course_completions WHERE tenant_id=?', [tenantId]);
   certified.forEach(row => pairs.delete(`${row.subscriber_id}|${row.course_id}`));

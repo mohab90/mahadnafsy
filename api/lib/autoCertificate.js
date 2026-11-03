@@ -21,6 +21,7 @@ const { pool } = require('./db');
 const { createNotification } = require('./notification');
 const { completeCourse } = require('./courseCompletion');
 const { PAID_SHARE } = require('./coursePaid');
+const { moneyOf } = require('./itemMoney');
 
 const WATCHED_THRESHOLD = 50;   // percent of the course's published lectures
 const PAID_THRESHOLD = PAID_SHARE; // share of the course price — one rule with staff completion and requests
@@ -43,7 +44,7 @@ const BATCH = 500;
  */
 const CANDIDATES_SQL = `
   SELECT e.id AS enrollment_id, e.subscriber_id, e.course_id, e.tenant_id,
-         s.name AS subscriber_name, s.crm_json,
+         s.name AS subscriber_name,
          c.title AS course_title, c.title_ar AS course_title_ar,
          c.price_egp,
          (SELECT COUNT(*) FROM course_lectures cl
@@ -100,7 +101,7 @@ function evaluate(row) {
 
 /**
  * The course paid for some other way: a track (bundle) that holds it, or the
- * money an old sheet recorded as already collected (crm_json.priorPaid, for
+ * money an old sheet recorded as already collected (client_item_money.prior_paid, for
  * the course or for such a track). As a share of what was owed for it.
  */
 async function otherPaidShare(db, row) {
@@ -113,11 +114,7 @@ async function otherPaidShare(db, row) {
       WHERE bc.tenant_id = ? AND bc.course_id = ?
       GROUP BY b.id, b.price_egp`,
     [row.subscriber_id, row.tenant_id, row.course_id]);
-  let prior = {};
-  try {
-    const crm = row.crm_json && typeof row.crm_json === 'object' ? row.crm_json : JSON.parse(row.crm_json || '{}');
-    prior = (crm && crm.priorPaid) || {};
-  } catch { prior = {}; }
+  const prior = (await moneyOf(db, { tenantId: row.tenant_id, subscriberId: row.subscriber_id })).priorPaid;
   const shares = [(Number(prior[String(row.course_id)]) || 0) / (Number(row.price_egp) || Infinity)];
   for (const track of tracks) {
     const price = Number(track.price_egp) || 0;

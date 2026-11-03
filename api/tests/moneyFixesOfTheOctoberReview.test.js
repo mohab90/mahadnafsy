@@ -29,7 +29,7 @@ test('money paid before the system counts towards opening the course', async () 
   const db = {
     async query(sql) {
       if (/FROM payments/.test(sql)) return [[]];
-      if (/FROM subscribers/.test(sql)) return [[{ crm_json: JSON.stringify({ priorPaid: { 'c-1': 3000 } }) }]];
+      if (/FROM client_item_money WHERE/.test(sql)) return [[{ subscriber_id: 's', item_key: 'c-1', agreed_price: null, prior_paid: 3000 }]];
       throw new Error(`unexpected query: ${sql}`);
     },
   };

@@ -19,6 +19,7 @@
 const { subscriberMarket } = require('./collectionDistribution');
 const { branchIdForBranch } = require('./branches');
 const { logClientEvent } = require('./clientHistory');
+const { moneyOf, replaceItemMoney, withItemMoney, withoutItemMoney } = require('./itemMoney');
 
 const CURRENCIES = ['EGP', 'SAR', 'USD'];
 const MARKET_OF = { EGP: 'local', SAR: 'saudi', USD: 'intl' };
@@ -72,7 +73,7 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   if (BRANCH_CLIENT.includes(String(subscriber.branch || '').toUpperCase())) {
     throw fail(409, 'ده عميل فرع — عملته بتتحدد بالفرع، وتغيير العملة للعملاء الأونلاين بس', 'BRANCH_CLIENT');
   }
-  const crm = parseCrm(subscriber.crm_json);
+  const crm = withItemMoney(parseCrm(subscriber.crm_json), await moneyOf(db, { tenantId, subscriberId }));
   const [[latest]] = await db.query(
     `SELECT currency FROM payments WHERE tenant_id=? AND subscriber_id=? AND status='paid' AND deleted_at IS NULL
       ORDER BY date DESC, created_at DESC LIMIT 1`, [tenantId, subscriberId]);
@@ -124,7 +125,8 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   if (dryRun) return result;
 
   await db.query('UPDATE subscribers SET branch=?, branch_id=?, crm_json=? WHERE id=? AND tenant_id=?',
-    [BRANCH_OF[market], branchIdForBranch(BRANCH_OF[market]), JSON.stringify(next), subscriberId, tenantId]);
+    [BRANCH_OF[market], branchIdForBranch(BRANCH_OF[market]), JSON.stringify(withoutItemMoney(next)), subscriberId, tenantId]);
+  await replaceItemMoney(db, { tenantId, subscriberId, customPrices, priorPaid });
   await db.query('UPDATE enrollments SET branch_id=? WHERE subscriber_id=? AND tenant_id=?',
     [branchIdForBranch(BRANCH_OF[market]), subscriberId, tenantId]);
   await logClientEvent(db, {

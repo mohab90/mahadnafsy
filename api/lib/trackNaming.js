@@ -18,6 +18,7 @@
 // takes the track's catalogue price.
 
 const { itemBalances, itemKey } = require('./agreedPrice');
+const { moneyOf, replaceItemMoney } = require('./itemMoney');
 const { logClientEvent } = require('./clientHistory');
 
 function parseCrm(value) {
@@ -68,11 +69,10 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
 
   // What each course costs them now, before any of it moves.
   const balances = await itemBalances(db, { tenantId, subscriberId });
-  const [[subscriber]] = await db.query(
-    'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subscriberId, tenantId]);
-  const crm = parseCrm(subscriber?.crm_json);
-  const customPrices = { ...(crm.customPrices || {}) };
-  const priorPaid = { ...(crm.priorPaid || {}) };
+  await db.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subscriberId, tenantId]);
+  const held = await moneyOf(db, { tenantId, subscriberId });
+  const customPrices = { ...held.customPrices };
+  const priorPaid = { ...held.priorPaid };
   const done = [];
   for (const { track, enrolmentIds } of plan) {
     await db.query(
@@ -107,9 +107,7 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
     });
     done.push({ trackId: track.id, title: track.title, courses: track.courses.length, paymentsMoved: moved.affectedRows || 0 });
   }
-  crm.customPrices = customPrices;
-  crm.priorPaid = priorPaid;
-  await db.query('UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?', [JSON.stringify(crm), subscriberId, tenantId]);
+  await replaceItemMoney(db, { tenantId, subscriberId, customPrices, priorPaid });
   return done;
 }
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const { agreedPrice } = require('./agreedPrice');
+const { moneyOf } = require('./itemMoney');
 
 // Share of the agreed price that must be in before a course counts as paid for —
 // the same for the automatic certificate (lib/autoCertificate.js), a completion
@@ -10,16 +11,11 @@ const { agreedPrice } = require('./agreedPrice');
 // «لاي عميل خلص فلوسه او 90 % من فلوسه» (8 Oct 2026) — was 95%.
 const PAID_SHARE = 0.9;
 
-function parseCrm(value) {
-  if (value && typeof value === 'object') return value;
-  try { return JSON.parse(value || '{}') || {}; } catch { return {}; }
-}
-
 /**
  * Has this client paid for this course — on the course itself or on a track
  * that holds it, by its payment rows (a refund takes its amount back; the
  * certificate, carnet or book paid for beside it is not the course) and by
- * «مدفوع قبل السيستم» (crm_json.priorPaid, the money of an old sheet's
+ * «مدفوع قبل السيستم» (client_item_money.prior_paid, the money of an old sheet's
  * «المحصل»): at least PAID_SHARE of the price agreed for it (lib/agreedPrice.js).
  * When no price is known anywhere, any money in counts, as it always did.
  *
@@ -27,8 +23,7 @@ function parseCrm(value) {
  * on 3 October): it counts the same as a payment.
  */
 async function hasPaidForCourse(db, { tenantId, subscriberId, courseId }) {
-  const [[client]] = await db.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
-  const prior = parseCrm(client?.crm_json).priorPaid || {};
+  const prior = (await moneyOf(db, { tenantId, subscriberId })).priorPaid;
   const [tracks] = await db.query('SELECT bundle_id FROM bundle_courses WHERE tenant_id=? AND course_id=?', [tenantId, courseId]);
   const items = [{ courseId, bundleId: null, key: String(courseId) },
     ...tracks.map(track => ({ courseId: null, bundleId: track.bundle_id, key: `bundle:${track.bundle_id}` }))];
@@ -56,8 +51,7 @@ async function hasPaidForCourse(db, { tenantId, subscriberId, courseId }) {
  * it. The certificate of a track is earned this way — a client who booked a track gets the track's certificate, not one for each course in it.
  */
 async function hasPaidForBundle(db, { tenantId, subscriberId, bundleId }) {
-  const [[client]] = await db.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
-  const prior = parseCrm(client?.crm_json).priorPaid || {};
+  const prior = (await moneyOf(db, { tenantId, subscriberId })).priorPaid;
   const [byCurrency] = await db.query(
     `SELECT currency, SUM(amount) AS paid FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND status='paid' AND deleted_at IS NULL

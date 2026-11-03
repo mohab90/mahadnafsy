@@ -5,7 +5,7 @@
 // «لما بنعدلها وقت تسجيل حجز العميل مش بتظهر في صفحه عملاء الاونلاين وبتظهر
 // السعر الاجمالي علي السسيتم». The agreed price lived in two places that were
 // written and read separately: payments.course_expected on each booking row,
-// and crm_json.customPrices on the client. The online table read the second
+// and the client's own price (client_item_money, lib/itemMoney.js). The online table read the second
 // and then the catalogue; the payment route, the access panel, the receipt
 // and the collections list read the first; an instalment recorded neither, so
 // its row fell back to nothing. Each screen was right about its own copy.
@@ -15,19 +15,15 @@
 // been paid for it — else the catalogue. And one writer, which puts a changed
 // price in both places.
 //
-// «مدفوع قبل السيستم» (crm_json.priorPaid) is money a client paid before their
+// «مدفوع قبل السيستم» (client_item_money.prior_paid, lib/itemMoney.js) is money a client paid before their
 // payments were recorded here — an old sheet's «المحصل». It counts towards what
 // they have paid everywhere a balance is shown, and is not revenue: no payment
 // row, no journal.
 
 const { resolveCatalogPrice } = require('./catalogPrice');
+const { moneyOf, setItemMoney, priorPaidTotals } = require('./itemMoney');
 
 const itemKey = ({ courseId, bundleId }) => (bundleId ? `bundle:${bundleId}` : String(courseId || ''));
-
-function parseCrm(value) {
-  if (value && typeof value === 'object') return value;
-  try { return JSON.parse(value || '{}') || {}; } catch { return {}; }
-}
 
 /** The rule itself. `booked` is the highest price a booking recorded. */
 function resolveAgreed({ custom = 0, booked = 0, paid = 0, catalogue = 0 }) {
@@ -40,9 +36,7 @@ function resolveAgreed({ custom = 0, booked = 0, paid = 0, catalogue = 0 }) {
 
 async function agreedPrice(db, { tenantId, subscriberId, courseId = null, bundleId = null, currency = 'EGP' }) {
   if (!courseId && !bundleId) return null;
-  const [[subscriber]] = await db.query(
-    'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
-  const custom = Number(parseCrm(subscriber?.crm_json).customPrices?.[itemKey({ courseId, bundleId })]) || 0;
+  const custom = Number((await moneyOf(db, { tenantId, subscriberId })).customPrices[itemKey({ courseId, bundleId })]) || 0;
   if (custom > 0) return custom;
   const [[booked]] = await db.query(
     `SELECT MAX(course_expected) AS price,
@@ -62,9 +56,7 @@ async function agreedPrice(db, { tenantId, subscriberId, courseId = null, bundle
  * agreed, what the system has recorded as paid, and what was paid before it.
  */
 async function itemBalances(db, { tenantId, subscriberId }) {
-  const [[subscriber]] = await db.query(
-    'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
-  const crm = parseCrm(subscriber?.crm_json);
+  const held = await moneyOf(db, { tenantId, subscriberId });
   const [payments] = await db.query(
     `SELECT course_id, bundle_id, amount, currency, status, course_expected FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND payment_type IN ('COURSE','BUNDLE')
@@ -94,21 +86,11 @@ async function itemBalances(db, { tenantId, subscriberId }) {
       type: entry.bundleId ? 'bundle' : 'course', itemId: entry.bundleId || entry.courseId, currency: entry.currency, tenantId,
     }).catch(() => null);
     entry.catalogue = catalogue || 0;
-    entry.expected = resolveAgreed({ custom: crm.customPrices?.[entry.item], booked: entry.booked, paid: entry.paid, catalogue }) || 0;
-    entry.priorPaid = Number(crm.priorPaid?.[entry.item]) || 0;
+    entry.expected = resolveAgreed({ custom: held.customPrices[entry.item], booked: entry.booked, paid: entry.paid, catalogue }) || 0;
+    entry.priorPaid = Number(held.priorPaid[entry.item]) || 0;
     entry.remaining = Math.max(0, entry.expected - entry.paid - entry.priorPaid);
   }
   return items;
-}
-
-async function updateCrm(db, { tenantId, subscriberId }, change) {
-  const [[subscriber]] = await db.query(
-    'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subscriberId, tenantId]);
-  if (!subscriber) return;
-  const crm = parseCrm(subscriber.crm_json);
-  change(crm);
-  await db.query('UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?',
-    [JSON.stringify(crm), subscriberId, tenantId]);
 }
 
 /**
@@ -127,9 +109,7 @@ async function setAgreedPrice(db, { tenantId, subscriberId, courseId = null, bun
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL
         AND course_id <=> ? AND bundle_id <=> ? AND payment_type IN ('COURSE','BUNDLE')`,
     [value, tenantId, subscriberId, courseId || null, bundleId || null]);
-  await updateCrm(db, { tenantId, subscriberId }, crm => {
-    crm.customPrices = { ...(crm.customPrices || {}), [itemKey({ courseId, bundleId })]: value };
-  });
+  await setItemMoney(db, { tenantId, subscriberId, itemKey: itemKey({ courseId, bundleId }), price: value });
 }
 
 /** «مدفوع قبل السيستم» for one item. Zero clears it. */
@@ -138,12 +118,7 @@ async function setPriorPaid(db, { tenantId, subscriberId, courseId = null, bundl
   if (!Number.isFinite(value) || value < 0) {
     const error = new Error('المدفوع لازم يكون رقم'); error.statusCode = 400; throw error;
   }
-  await updateCrm(db, { tenantId, subscriberId }, crm => {
-    const priorPaid = { ...(crm.priorPaid || {}) };
-    if (value > 0) priorPaid[itemKey({ courseId, bundleId })] = value;
-    else delete priorPaid[itemKey({ courseId, bundleId })];
-    crm.priorPaid = priorPaid;
-  });
+  await setItemMoney(db, { tenantId, subscriberId, itemKey: itemKey({ courseId, bundleId }), priorPaid: value });
 }
 
 /**
@@ -152,28 +127,17 @@ async function setPriorPaid(db, { tenantId, subscriberId, courseId = null, bundl
  * before the system moves with it. Returns what was there, for the history.
  */
 async function releaseItemMoney(db, { tenantId, subscriberId, from, to = null }) {
-  const released = { price: 0, priorPaid: 0 };
-  await updateCrm(db, { tenantId, subscriberId }, crm => {
-    const key = itemKey(from);
-    released.price = Number(crm.customPrices?.[key]) || 0;
-    released.priorPaid = Number(crm.priorPaid?.[key]) || 0;
-    const customPrices = { ...(crm.customPrices || {}) };
-    const priorPaid = { ...(crm.priorPaid || {}) };
-    delete customPrices[key];
-    delete priorPaid[key];
-    if (to && released.priorPaid > 0) {
-      priorPaid[itemKey(to)] = (Number(priorPaid[itemKey(to)]) || 0) + released.priorPaid;
-    }
-    crm.customPrices = customPrices;
-    crm.priorPaid = priorPaid;
-  });
+  const held = await moneyOf(db, { tenantId, subscriberId });
+  const key = itemKey(from);
+  const released = { price: Number(held.customPrices[key]) || 0, priorPaid: Number(held.priorPaid[key]) || 0 };
+  await setItemMoney(db, { tenantId, subscriberId, itemKey: key, price: 0, priorPaid: 0 });
+  if (to && released.priorPaid > 0) {
+    const toKey = itemKey(to);
+    await setItemMoney(db, { tenantId, subscriberId, itemKey: toKey, priorPaid: (Number(held.priorPaid[toKey]) || 0) + released.priorPaid });
+  }
   return released;
 }
 
-/** The client's «مدفوع قبل السيستم», summed, for balances that read payments alone. */
-function priorPaidTotal(crmJson) {
-  return Object.values(parseCrm(crmJson).priorPaid || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
-}
 
 // What counts as paying for the course or track a payment names. A carnet, a
 // book, a certificate or a consultation names the client's course too — «الكورس
@@ -186,4 +150,4 @@ const isItemPaymentType = type => !type || ITEM_PAYMENT_TYPES.includes(String(ty
 // The same rule for SQL, written for the alias `p`: the payments that are the course's (or track's) own money.
 const ITEM_PAYMENT_SQL = "COALESCE(p.payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER')";
 
-module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, itemBalances, itemKey, priorPaidTotal, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };
+module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, itemBalances, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };

@@ -805,6 +805,24 @@ CREATE TABLE `classroom_bookings` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `client_item_money`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `client_item_money` (
+  `tenant_id` varchar(64) NOT NULL,
+  `subscriber_id` varchar(36) NOT NULL,
+  `item_key` varchar(190) NOT NULL COMMENT 'A course id, or bundle:<id> for a track.',
+  `agreed_price` decimal(14,2) DEFAULT NULL COMMENT 'The price this client agreed for the item (was crm_json.customPrices).',
+  `prior_paid` decimal(14,2) DEFAULT NULL COMMENT 'Paid for the item before the system recorded payments (was crm_json.priorPaid); not revenue.',
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`subscriber_id`,`item_key`),
+  KEY `idx_item_money_item` (`tenant_id`,`item_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `client_code_counter`
 --
 

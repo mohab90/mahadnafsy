@@ -32,6 +32,7 @@ const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc, sqlCairoDayEndUtc, sql
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
+const { loadItemMoney, withItemMoney } = require('../../lib/itemMoney');
 const { loadCollectionPicker, subscriberMarket } = require('../../lib/collectionDistribution');
 const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
@@ -439,6 +440,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     // Batch-load payments from the payments table (authoritative source, one query for all)
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    const moneyBySub = await loadItemMoney(pool, { tenantId: req.tenantId, subscriberIds: ids });
     // A course placed in another branch than the client's (lib/coursePlacement.js).
     const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const placeholders = ids.map(() => '?').join(',');
@@ -520,7 +522,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     });
 
     res.json(rows.map(r => {
-      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
+      const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
       // client_code column is authoritative
       const clientCode = r.client_code || crm.clientCode || null;
       // payments table is authoritative; fall back to crm_json if no DB records found
@@ -638,6 +640,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
   if (rows.length === 0) return [];
   const ids = rows.map(r => r.id);
   const plansBySub = await installmentPlansBySubscriber(tenantId, ids);
+  const moneyBySub = await loadItemMoney(pool, { tenantId, subscriberIds: ids });
   // A course placed in another branch than the client's (lib/coursePlacement.js).
   const placementsBySub = await loadPlacements(pool, tenantId, ids);
   const [payRows] = await pool.query(
@@ -712,7 +715,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
   });
 
   return rows.map(r => {
-    const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
+    const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
     const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
     const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
     const rb = r.branch || crm.branch || null;
@@ -948,6 +951,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
 
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    const moneyBySub = await loadItemMoney(pool, { tenantId: req.tenantId, subscriberIds: ids });
     // A course placed in another branch than the client's (lib/coursePlacement.js).
     const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
@@ -978,7 +982,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     });
 
     res.json(rows.map(r => {
-      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
+      const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
@@ -1023,6 +1027,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
 
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    const moneyBySub = await loadItemMoney(pool, { tenantId: req.tenantId, subscriberIds: ids });
     // A course placed in another branch than the client's (lib/coursePlacement.js).
     const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
@@ -1052,7 +1057,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     });
 
     res.json(rows.map(r => {
-      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
+      const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {

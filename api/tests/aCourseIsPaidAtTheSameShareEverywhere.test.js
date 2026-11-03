@@ -19,7 +19,7 @@ function clientDb({ payments = {}, prior = {}, catalogue = {}, tracks = [] }) {
     async query(sql, params) {
       const flat = String(sql).replace(/\s+/g, ' ');
       calls.push(flat);
-      if (/SELECT crm_json FROM subscribers/.test(flat)) return [[{ crm_json: JSON.stringify({ priorPaid: prior }) }]];
+      if (/FROM client_item_money WHERE/.test(flat)) return [Object.entries(prior).map(([item, amount]) => ({ subscriber_id: params[1][0], item_key: item, agreed_price: null, prior_paid: amount }))];
       if (/FROM bundle_courses/.test(flat)) return [tracks.map(id => ({ bundle_id: id }))];
       if (/SELECT currency, SUM\(amount\)/.test(flat)) {
         const key = /bundle_id=\?/.test(flat) ? `bundle:${params[2]}` : params[2];

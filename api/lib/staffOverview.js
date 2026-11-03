@@ -12,6 +12,7 @@ const { balanceOf, cairoDay, isCollected, toEgp } = require('./staffClientsView'
 const { parseCrm } = require('./helpers');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('./installmentPlansBySubscriber');
+const { loadItemMoney, withItemMoney } = require('./itemMoney');
 
 // Above this many clients in the person's scope the payments and enrolments are read once for the tenant and picked
 // out by client here, instead of by a list of thousands of ids (the manager's scope is every client; 30,000 ids in an
@@ -120,11 +121,11 @@ async function readOverviewClients(db, tenantId, sc) {
     [tenantId, ...(ids || [])]
   );
 
-  let rows; let payRows; let enrolRows; let plansBySub; let inScope = null;
+  let rows; let payRows; let enrolRows; let plansBySub; let moneyBySub; let inScope = null;
   if (sc.everyone) {
     // Every client of the tenant: nothing to ask by id, so all four reads go at once.
-    [[rows], [payRows], [enrolRows], plansBySub] = await Promise.all([
-      readClients(), readPayments(null), readEnrolments(null), installmentPlansBySubscriber(tenantId, null),
+    [[rows], [payRows], [enrolRows], plansBySub, moneyBySub] = await Promise.all([
+      readClients(), readPayments(null), readEnrolments(null), installmentPlansBySubscriber(tenantId, null), loadItemMoney(db, { tenantId, subscriberIds: null }),
     ]);
     inScope = new Set(rows.map(row => row.id));
   } else {
@@ -133,8 +134,9 @@ async function readOverviewClients(db, tenantId, sc) {
     const wholeTable = ids.length > READ_WHOLE_TABLE_ABOVE;
     if (wholeTable) inScope = new Set(ids);
     if (!ids.length) return [];
-    [[payRows], [enrolRows], plansBySub] = await Promise.all([
+    [[payRows], [enrolRows], plansBySub, moneyBySub] = await Promise.all([
       readPayments(wholeTable ? null : ids), readEnrolments(wholeTable ? null : ids), installmentPlansBySubscriber(tenantId, wholeTable ? null : ids),
+      loadItemMoney(db, { tenantId, subscriberIds: wholeTable ? null : ids }),
     ]);
   }
 
@@ -164,7 +166,7 @@ async function readOverviewClients(db, tenantId, sc) {
   }
 
   return rows.map(row => {
-    const crm = withInstallmentPlans(parseCrm(row.crm_json), plansBySub.get(row.id));
+    const crm = withItemMoney(withInstallmentPlans(parseCrm(row.crm_json), plansBySub.get(row.id)), moneyBySub.get(row.id));
     const held = holdsOf.get(row.id);
     const rawBranch = row.branch || crm.branch || null;
     const normalized = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g, '_') : null;

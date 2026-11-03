@@ -29,8 +29,8 @@ test('the rule: their own price, else the booking\'s (never under what was paid)
 
 test('a client\'s balance counts their tracks, the currency they pay in, and what they paid before', async () => {
   const db = { async query(sql) {
-    if (/SELECT crm_json FROM subscribers/.test(sql)) {
-      return [[{ crm_json: JSON.stringify({ customPrices: { 'c-2': 2500 }, priorPaid: { 'bundle:b-1': 1000 } }) }]];
+    if (/FROM client_item_money WHERE/.test(sql)) {
+      return [[{ subscriber_id: 's', item_key: 'c-2', agreed_price: 2500, prior_paid: null }, { subscriber_id: 's', item_key: 'bundle:b-1', agreed_price: null, prior_paid: 1000 }]];
     }
     if (/FROM payments/.test(sql)) {
       return [[
@@ -75,7 +75,7 @@ test('every screen reads that rule', () => {
   // The filters and the total read the table's own items (onlineSectionReview.test.js).
   assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /const items = clientItems\(subscriber, courses, bundles, clientCurrency\(subscriber\)\);/);
   assert.match(read('api/lib/paymentReceipt.js'), /await itemBalances\(db, \{ tenantId, subscriberId: payment\.subscriber_id \}\)/);
-  assert.match(read('api/lib/outstandingBalances.js'), /const prior = priorPaidTotal\(crmJson\);/);
+  assert.match(read('api/lib/outstandingBalances.js'), /const prior = Number\(priorPaid\) \|\| 0;/);
 });
 
 test('the dialog hands the handler the price it shows; an instalment only a price the desk changed', () => {

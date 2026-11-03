@@ -38,10 +38,10 @@ const db = {
     if (/FROM subscribers s JOIN \( SELECT subscriber_id, entitlement_key/.test(flat)) {
       return [[
         // Fridays: the week ends 2026-10-09. Booked 10 days before → 0–30.
-        { subscriber_id: 's1', branch: 'DAQQI', crm_json: null, expected: 4000, paid: 1000, since: '2026-09-29' },
+        { subscriber_id: 's1', branch: 'DAQQI', prior_paid: 0, expected: 4000, paid: 1000, since: '2026-09-29' },
         // Booked 100 days before → 90+; 500 of it paid before the system.
-        { subscriber_id: 's2', branch: 'DAQQI', crm_json: JSON.stringify({ priorPaid: { x: 500 } }), expected: 3000, paid: 0, since: '2026-07-01' },
-        { subscriber_id: 's3', branch: 'ONLINE_EGYPT', crm_json: null, expected: 2000, paid: 0, since: '2026-08-20' },
+        { subscriber_id: 's2', branch: 'DAQQI', prior_paid: 500, expected: 3000, paid: 0, since: '2026-07-01' },
+        { subscriber_id: 's3', branch: 'ONLINE_EGYPT', prior_paid: 0, expected: 2000, paid: 0, since: '2026-08-20' },
       ]];
     }
     if (/FROM leads l/.test(flat)) {

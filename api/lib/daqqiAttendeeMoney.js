@@ -22,6 +22,7 @@
 // paid for it), else the catalogue.
 
 const { isItemPaymentType, resolveAgreed } = require('./agreedPrice');
+const { loadItemMoney } = require('./itemMoney');
 
 const CHUNK = 500;
 
@@ -109,12 +110,7 @@ async function attachAttendeeMoney(db, tenantId, rows) {
   const enrolmentsById = new Map();
   const bookedById = new Map();
   for (const part of chunks(subscriberIds)) {
-    const [crmRows] = await db.query(
-      `SELECT s.id,
-              CASE WHEN s.crm_json IS NOT NULL AND JSON_VALID(s.crm_json) THEN JSON_EXTRACT(s.crm_json, '$.priorPaid') END AS prior_paid,
-              CASE WHEN s.crm_json IS NOT NULL AND JSON_VALID(s.crm_json) THEN JSON_EXTRACT(s.crm_json, '$.customPrices') END AS custom_prices
-         FROM subscribers s WHERE s.tenant_id=? AND s.id IN (${inList(part)})`, [tenantId, ...part]);
-    for (const row of crmRows) crmById.set(row.id, { priorPaid: parseJson(row.prior_paid), customPrices: parseJson(row.custom_prices) });
+    for (const [id, held] of await loadItemMoney(db, { tenantId, subscriberIds: part })) crmById.set(id, { priorPaid: held.priorPaid, customPrices: held.customPrices });
 
     const [payRows] = await db.query(
       `SELECT subscriber_id, course_id, bundle_id, status, payment_type, COALESCE(amount_egp, amount) AS amount, course_expected

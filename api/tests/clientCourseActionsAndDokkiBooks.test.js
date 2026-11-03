@@ -46,7 +46,8 @@ function fakeDb(answers) {
   };
 }
 const find = (db, pattern) => db.calls.find(call => pattern.test(call.sql));
-const crmWritten = db => JSON.parse(find(db, /UPDATE subscribers SET crm_json/).params[0]);
+// The client's money is rows of client_item_money (lib/itemMoney.js): what was written to them, [item, price, priorPaid] in order.
+const moneyWritten = db => db.calls.filter(call => /^INSERT INTO client_item_money/.test(call.sql)).map(call => call.params.slice(2));
 const logged = db => find(db, /INSERT INTO activity_logs/).params;
 
 test('only the managers delete a course', () => {
@@ -64,7 +65,9 @@ test('a deleted course leaves the client, its rounds and its price — and the h
   const db = fakeDb([
     [/FROM enrollments .* FOR UPDATE/, [[{ id: 'e1', course_id: 'c1', status: 'active' }]]],
     [/FROM courses/, [[{ title: 'علم النفس الإكلينيكي' }]]],
-    [/SELECT crm_json/, [[{ crm_json: JSON.stringify({ customPrices: { c1: 3000, c9: 1 }, priorPaid: { c1: 500 } }) }]]],
+    [/FROM client_item_money WHERE/, [[
+      { subscriber_id: 's1', item_key: 'c1', agreed_price: 3000, prior_paid: 500 }, { subscriber_id: 's1', item_key: 'c9', agreed_price: 1, prior_paid: null },
+    ]]],
   ]);
   const result = await removeClientCourse(db, {
     tenantId: 't', subscriber: { id: 's1' }, item: 'c1', reason: 'اتسجل غلط', actor: 'مدير الدقي',
@@ -74,7 +77,8 @@ test('a deleted course leaves the client, its rounds and its price — and the h
   const removed = find(db, /UPDATE enrollments SET status='removed'/);
   assert.deepEqual(removed.params, ['t', 'e1'], 'and the enrolment leaves every list');
   assert.ok(find(db, /DELETE a FROM daqqi_attendees .* r\.status<>'finished'/), 'out of the rounds still running');
-  assert.deepEqual(crmWritten(db), { customPrices: { c9: 1 }, priorPaid: {} }, 'its price goes, other items keep theirs');
+  assert.deepEqual(moneyWritten(db), [['c1', null, null]], 'its price goes (and nothing else is touched: c9 keeps its own)');
+  assert.ok(find(db, /^DELETE FROM client_item_money WHERE .* item_key=?/), 'a row with neither number left is removed');
   const [, , action, entity, subscriberId, label, actor] = logged(db);
   assert.equal(action, 'course_removed');
   assert.equal(entity, 'subscriber');
@@ -102,7 +106,7 @@ test('a transfer carries access, the money paid and what was paid before the sys
     [/FROM courses/, params => [[{ title: params[0] === 'c2' ? 'الكورس الجديد' : 'الكورس القديم' }]]],
     [/SELECT COALESCE\(SUM\(amount\),0\) AS total/, [[{ total: 2000, currency: 'EGP' }]]],
     [/UPDATE payments SET course_id/, [{ affectedRows: 2 }]],
-    [/SELECT crm_json/, [[{ crm_json: JSON.stringify({ priorPaid: { c1: 300 } }) }]]],
+    [/FROM client_item_money WHERE/, [[{ subscriber_id: 's1', item_key: 'c1', agreed_price: null, prior_paid: 300 }]]],
   ]);
   const result = await transferClientCourse(db, {
     tenantId: 't', subscriber: { id: 's1', branch_id: 'branch-daqqi' }, item: 'c1', toItem: 'c2', reason: 'طلب العميل', actor: 'الحسابات',
@@ -116,7 +120,7 @@ test('a transfer carries access, the money paid and what was paid before the sys
   assert.match(moved.sql, /course_id=\? AND bundle_id IS NULL/, 'the old course alone, not a track holding it');
   assert.deepEqual(moved.params.slice(0, 3), ['c2', null, 'الكورس الجديد']);
   assert.match(moved.sql, /course_expected=NULL/, 'the old price belonged to the old course');
-  assert.deepEqual(crmWritten(db).priorPaid, { c2: 300 });
+  assert.deepEqual(moneyWritten(db), [['c1', null, null], ['c2', null, 300]], 'what was paid before the system moves with the course');
   const label = logged(db)[5];
   assert.match(label, /الكورس القديم/);
   assert.match(label, /الكورس الجديد/);

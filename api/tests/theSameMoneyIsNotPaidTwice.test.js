@@ -16,7 +16,7 @@ let currentPrior = 0;
 const writes = [];
 const query = async (sql, params = []) => {
   const flat = String(sql).replace(/\s+/g, ' ').trim();
-  if (/SELECT crm_json FROM subscribers/.test(flat)) return [[{ crm_json: JSON.stringify({ priorPaid: currentPrior ? { 'c-1': currentPrior } : {} }) }]];
+  if (/FROM client_item_money WHERE/.test(flat)) return [currentPrior ? [{ subscriber_id: 's-1', item_key: 'c-1', agreed_price: null, prior_paid: currentPrior }] : []];
   if (/FROM payments WHERE tenant_id=\? AND subscriber_id=\? AND deleted_at IS NULL AND status='paid' AND amount > 0/.test(flat)) return [recentPayments.map(amount => ({ amount }))];
   if (/^UPDATE subscribers SET crm_json/.test(flat)) { writes.push(params[0]); return [{ affectedRows: 1 }]; }
   if (/FROM subscribers/.test(flat)) return [[{ id: 's-1', tenant_id: 't', branch: 'ONLINE_EGYPT', crm_json: '{}', assigned_cs_id: null, assigned_sales_id: null }]];

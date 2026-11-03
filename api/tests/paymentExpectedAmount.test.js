@@ -28,7 +28,7 @@ test('an unstated expectation falls back to the agreed price, and then the catal
     'the price has to come from what the client agreed, not the payment');
   assert.match(code, /require\('\.\.\/lib\/agreedPrice'\)/);
   // The client's own price, then their booking's, then the catalogue.
-  assert.ok(agreed.indexOf('customPrices') < agreed.indexOf('MAX(course_expected)'));
+  assert.ok(agreed.indexOf('customPrices') < agreed.indexOf('MAX(course_expected)'), 'the client\'s own price (client_item_money) is read first');
   assert.ok(agreed.indexOf('MAX(course_expected)') < agreed.indexOf('resolveCatalogPrice('));
 });
 
@@ -61,7 +61,7 @@ test('a course with no price anywhere falls back to the amount, not to zero', ()
 test('a price the desk enters becomes the client\'s price everywhere', () => {
   assert.match(code, /await setAgreedPrice\(conn, \{/);
   assert.match(agreed, /UPDATE payments SET course_expected=\?/);
-  assert.match(agreed, /crm\.customPrices = \{ \.\.\.\(crm\.customPrices \|\| \{\}\), \[itemKey\(\{ courseId, bundleId \}\)\]: value \};/);
+  assert.match(agreed, /await setItemMoney\(db, \{ tenantId, subscriberId, itemKey: itemKey\(\{ courseId, bundleId \}\), price: value \}\);/);
   // And the access check reads the agreed price, not only a supplied one.
   assert.match(code, /expectedAmount: resolvedExpected,/);
 });

@@ -35,6 +35,7 @@ const { findLeadByContact } = require('./leadMatching');
 const { transitionLead } = require('./leadState');
 const { fetchCsvFollowRedirects, isHtmlResponse } = require('./sheets');
 const { setTenantSetting } = require('./tenantSettings');
+const { setItemMoney } = require('./itemMoney');
 const { isBranchClient, loadCollectionConfig, loadCollectionPicker, subscriberMarket } = require('./collectionDistribution');
 const { detectLayout, paidBefore, parseAmount, splitPhones, tabClientRows } = require('./sheetCells');
 const { cairoToday } = require('./dates');
@@ -68,8 +69,6 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
   const prior = paidBefore(row);
   const crm = {
     clientStatus: kind, status: 'active', source,
-    ...(courseId && expected > 0 ? { customPrices: { [courseId]: expected } } : {}),
-    ...(courseId && prior > 0 ? { priorPaid: { [courseId]: prior } } : {}),
   };
   // A refund, and a collected figure that disagrees with the remaining, are
   // shown rather than netted; what could not be tied to a course stays
@@ -106,6 +105,8 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
       [id, tenantId, await getNextClientCode(conn, tenantId), (cell(row._name) || phone || 'بدون اسم').slice(0, 255), email || null,
         toIdentity(phone) || null, branch, branchId, notes, staff?.id || null, staff?.name || null, JSON.stringify(crm),
         String(source).slice(0, 100), sheetDate(row._date)]);
+    // The price the sheet names and what it says was collected are the client's own rows (lib/itemMoney.js), not part of the blob.
+    if (courseId) await setItemMoney(conn, { tenantId, subscriberId: id, itemKey: String(courseId), price: expected, priorPaid: prior });
     if (courseId) {
       await grantCourseSelections({
         tenantId, subscriberId: id, selections: [{ courseId }], branchId, source: 'collection_sheet', actor,

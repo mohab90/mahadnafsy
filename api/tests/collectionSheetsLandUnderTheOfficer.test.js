@@ -42,6 +42,7 @@ function loadImport(extra = {}) {
 
 function fakeDb(existing) {
   const inserted = [];
+  const money = []; // what was written to client_item_money (lib/itemMoney.js): [subscriber, item, price, priorPaid]
   const assigned = [];
   let code = 100;
   const conn = {
@@ -52,6 +53,8 @@ function fakeDb(existing) {
       if (/UPDATE client_code_counter/.test(sql)) { code += 1; return [{}]; }
       if (/SELECT next_value FROM client_code_counter/.test(sql)) return [[{ next_value: code }]];
       if (/INSERT INTO subscribers/.test(sql)) { inserted.push(params); return [{}]; }
+      if (/^INSERT INTO client_item_money/.test(sql.trim())) { money.push(params.slice(1)); return [{}]; }
+      if (/^DELETE FROM client_item_money/.test(sql.trim())) return [{}];
       if (/UPDATE subscribers SET assigned_cs_id/.test(sql)) { assigned.push(params); return [{}]; }
       throw new Error(`unexpected query: ${sql}`);
     },
@@ -60,7 +63,7 @@ function fakeDb(existing) {
     rollback: async () => {},
     release: () => {},
   };
-  return { db: { getConnection: async () => conn }, inserted, assigned };
+  return { db: { getConnection: async () => conn }, inserted, money, assigned };
 }
 
 const officer = { id: 'cs-1', name: 'منة' };
@@ -83,7 +86,7 @@ test('a sheet reads the way the old-data screen reads a file', () => {
 test('every row lands under the officer, once, and nobody else\'s client moves', async () => {
   const { lib, granted, restore } = loadImport();
   try {
-    const { db, inserted, assigned } = fakeDb([
+    const { db, inserted, money, assigned } = fakeDb([
       { id: 's-free', phone: '+201011111111', email: null, assigned_cs_id: null },
       { id: 's-mine', phone: '01022222222', email: null, assigned_cs_id: 'cs-1' },
       { id: 's-other', phone: null, email: 'held@x.com', assigned_cs_id: 'cs-2' },
@@ -120,8 +123,8 @@ test('every row lands under the officer, once, and nobody else\'s client moves',
     assert.equal(crm.clientStatus, 'old_intl');
     // The sheet's price and what it collected: the client's price and
     // «مدفوع قبل السيستم», never a payment.
-    assert.deepEqual(crm.customPrices, { 'c-life': 3000 });
-    assert.deepEqual(crm.priorPaid, { 'c-life': 1500 });
+    assert.equal(crm.customPrices, undefined, 'not in the blob');
+    assert.deepEqual(money[0].slice(1), ['c-life', 3000, 1500], 'the client\'s own rows (client_item_money)');
     assert.deepEqual(granted.map(grant => grant.selections), [[{ courseId: 'c-life' }]]);
 
     assert.deepEqual(assigned, [['cs-1', 'منة', 's-free', 't1']], 'only the unheld client is handed over');
@@ -173,7 +176,7 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
     },
   });
   try {
-    const { db, inserted } = fakeDb([{ id: 's-old', phone: '1050954780', email: null, assigned_cs_id: null }]);
+    const { db, inserted, money } = fakeDb([{ id: 's-old', phone: '1050954780', email: null, assigned_cs_id: null }]);
     const result = await lib.importCollectionRows({
       tenantId: 't1', staff: null, autoAssign: true, kind: 'active', branch: 'ONLINE_EGYPT', source: 'داتا قديمة أونلاين',
       rows: [
@@ -200,8 +203,7 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
     // (a Dokki sheet gets no online officer — collectionGoesRoundAndLeadsStayWithSales.test.js).
     assert.deepEqual(picked, ['loaded', 'local', 'local']);
     const crm = JSON.parse(first.crm_json);
-    assert.deepEqual(crm.customPrices, { 'c-life': 4600 });
-    assert.deepEqual(crm.priorPaid, { 'c-life': 1700 });
+    assert.deepEqual(money.find(row => row[1] === 'c-life').slice(1), ['c-life', 4600, 1700]);
     assert.match(first.notes, /أرقام تانية: \+249999147035/);
     assert.match(first.notes, /رقم مش سليم: 114785023/);
     assert.match(first.notes, /المحصل في الملف 1000 والمتبقي 2900/);

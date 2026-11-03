@@ -99,11 +99,10 @@ test('the roster reads the whole list in a handful of queries, and says what eac
   const db = {
     async query(sql) {
       calls.push(sql.replace(/\s+/g, ' ').trim().slice(0, 60));
-      if (/FROM subscribers s WHERE/.test(sql)) {
+      if (/FROM client_item_money WHERE/.test(sql)) {
         return [[
-          { id: 's1', prior_paid: '{"bundle:bT":3000}', custom_prices: '{"bundle:bT":3500}' },
-          { id: 's2', prior_paid: { cA: 1500 }, custom_prices: null },
-          { id: 's3', prior_paid: null, custom_prices: null },
+          { subscriber_id: 's1', item_key: 'bundle:bT', agreed_price: 3500, prior_paid: 3000 },
+          { subscriber_id: 's2', item_key: 'cA', agreed_price: null, prior_paid: 1500 },
         ]];
       }
       if (/FROM payments/.test(sql)) return [[]];

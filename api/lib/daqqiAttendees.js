@@ -103,15 +103,13 @@ async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = fa
                  AND p.payment_type IN ('COURSE','OTHER')
             ), 0) AS unlinked_amount,
             -- «مدفوع قبل السيستم»: money the client paid for THIS course before the
-            -- system existed, kept in subscribers.crm_json.priorPaid keyed by course
+            -- system existed, kept in client_item_money.prior_paid keyed by course
             -- id (sheet import, collection import). It is real money for this round
             -- but it was never a payment row, so the roster could not see it and read
             -- «المدفوع 0» for 1,609 of the 1,919 Dokki clients. Returned apart so the
             -- revenue figures, which are period collections, do not count it.
-            COALESCE(CASE WHEN s.crm_json IS NOT NULL AND JSON_VALID(s.crm_json)
-              THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(s.crm_json,
-                     CONCAT('$.priorPaid."', REPLACE(dr.course_id, '"', ''), '"'))) AS DECIMAL(14,2))
-              END, 0) AS prior_paid
+            COALESCE((SELECT m.prior_paid FROM client_item_money m
+                       WHERE m.tenant_id = da.tenant_id AND m.subscriber_id = da.subscriber_id AND m.item_key = dr.course_id), 0) AS prior_paid
        FROM daqqi_attendees da
        JOIN daqqi_rounds dr
          ON dr.id=da.round_id AND dr.tenant_id=da.tenant_id

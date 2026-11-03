@@ -16,9 +16,17 @@ const skip = !ENABLED && 'no DB_* configured';
 const TENANT = 'tenant-cert-it';
 let pool; let eligible;
 
-const client = async (id, crm) => {
+// «مدفوع قبل السيستم» is a row of client_item_money (lib/itemMoney.js): `priorPaid` here is { item: amount }.
+const setPrior = async (id, priorPaid) => {
+  await pool.query('DELETE FROM client_item_money WHERE tenant_id=? AND subscriber_id=?', [TENANT, id]);
+  for (const [item, amount] of Object.entries(priorPaid)) {
+    await pool.query('INSERT INTO client_item_money (tenant_id, subscriber_id, item_key, prior_paid) VALUES (?,?,?,?)', [TENANT, id, item, amount]);
+  }
+};
+const client = async (id, { priorPaid } = {}) => {
   await pool.query('INSERT INTO subscribers (id, tenant_id, name, phone, crm_json) VALUES (?,?,?,?,?)',
-    [id, TENANT, id, `10150${String(Math.random()).slice(2, 7)}`, crm ? JSON.stringify(crm) : null]);
+    [id, TENANT, id, `10150${String(Math.random()).slice(2, 7)}`, null]);
+  if (priorPaid) await setPrior(id, priorPaid);
   await pool.query("INSERT INTO enrollments (id, tenant_id, subscriber_id, course_id, status, enrolled_at) VALUES (UUID(), ?, ?, 'co-c-1', 'active', NOW())", [TENANT, id]);
   await pool.query("INSERT INTO course_completions (id, tenant_id, subscriber_id, course_id, certificate_code, status) VALUES (UUID(), ?, ?, 'co-c-1', ?, 'active')", [TENANT, id, `CERT-${id}`]);
 };
@@ -26,7 +34,7 @@ const client = async (id, crm) => {
 // Rows a run left behind (an interrupted run, a failed delete) must not
 // break the next one: cleared before as well as after.
 async function clean() {
-  for (const table of ['certificate_events', 'outbox', 'payments', 'course_completions', 'enrollments', 'subscribers', 'bundle_courses', 'bundles', 'courses']) {
+  for (const table of ['client_item_money', 'certificate_events', 'outbox', 'payments', 'course_completions', 'enrollments', 'subscribers', 'bundle_courses', 'bundles', 'courses']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
   }
 }
@@ -74,7 +82,7 @@ test('staff can complete a course for a client who paid before the system, and n
     `INSERT INTO enrollments (id, tenant_id, subscriber_id, course_id, status, access_type, enrolled_at) VALUES
        (UUID(), ?, 'prior-course', 'co-c-2', 'active', 'full', NOW()),
        (UUID(), ?, 'unpaid', 'co-c-2', 'active', 'full', NOW())`, [TENANT, TENANT]);
-  await pool.query('UPDATE subscribers SET crm_json=? WHERE id=?', [JSON.stringify({ priorPaid: { 'co-c-1': 900, 'co-c-2': 900 } }), 'prior-course']);
+  await setPrior('prior-course', { 'co-c-1': 900, 'co-c-2': 900 });
   const done = await completeCourse({ tenantId: TENANT, subscriberId: 'prior-course', courseId: 'co-c-2', actor: 'test', requireFullProgress: false });
   assert.ok(done.certificate_code || done.id, 'a completion is issued');
   await assert.rejects(

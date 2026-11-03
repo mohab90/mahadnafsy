@@ -37,7 +37,7 @@ function mockConn(responses) {
 
 // The course paid for in full (lib/coursePaid.js): its payments, the price agreed.
 const PAID_IN_FULL = [
-  { match: 'SELECT crm_json FROM subscribers', rows: [{ crm_json: '{}' }] },
+  { match: 'FROM client_item_money WHERE', rows: [] },
   { match: 'FROM bundle_courses', rows: [] },
   { match: 'SUM(amount) AS paid', rows: [{ currency: 'EGP', paid: 100 }] },
   { match: 'MAX(course_expected)', rows: [{ price: 100, paid: 100 }] },

@@ -17,7 +17,7 @@
 const { pool } = require('./db');
 const { addDaysToDateOnly, cairoClock, cairoDayStartUtc, cairoToday, isValidDateOnly } = require('./dates');
 const { branchForId, normalizeBranch } = require('./branches');
-const { priorPaidTotal } = require('./agreedPrice');
+const { priorPaidTotalSql } = require('./itemMoney');
 const { getTenantSetting } = require('./tenantSettings');
 const outbox = require('./outbox');
 
@@ -111,7 +111,7 @@ async function buildWeeklyBranchReport({ tenantId, week, today = cairoToday() },
   // it by the end of the week — and since when they have owed it: the first
   // payment of that course, the day it was booked.
   const [debtRows] = await db.query(
-    `SELECT s.id AS subscriber_id, s.branch, s.crm_json, b.expected, b.paid, b.since
+    `SELECT s.id AS subscriber_id, s.branch, ${priorPaidTotalSql('s')} AS prior_paid, b.expected, b.paid, b.since
        FROM subscribers s
        JOIN (
          SELECT subscriber_id, entitlement_key, MAX(expected) AS expected, SUM(paid) AS paid, MIN(first_at) AS since
@@ -168,7 +168,7 @@ async function buildWeeklyBranchReport({ tenantId, week, today = cairoToday() },
   const expensesBy = countBy(expenseRows, row => branchOf(branchForId(row.branch_id, null) || row.branch_id), 'expenses');
 
   // Aging, per client: the oldest debt is paid first — which is how the
-  // pre-system money (crm_json priorPaid) is taken off, too.
+  // pre-system money (client_item_money.prior_paid) is taken off, too.
   const asOf = Date.parse(`${to}T00:00:00Z`);
   const aging = new Map();
   const byClient = new Map();
@@ -178,7 +178,7 @@ async function buildWeeklyBranchReport({ tenantId, week, today = cairoToday() },
     byClient.set(row.subscriber_id, list);
   }
   for (const debts of byClient.values()) {
-    let prior = priorPaidTotal(debts[0].crm_json);
+    let prior = Number(debts[0].prior_paid) || 0;
     debts.sort((a, b) => ymd(a.since).localeCompare(ymd(b.since)));
     const branch = branchOf(debts[0].branch);
     const buckets = aging.get(branch) || Object.fromEntries(AGING_BUCKETS.map(([key]) => [key, { amount: 0, clients: new Set() }]));

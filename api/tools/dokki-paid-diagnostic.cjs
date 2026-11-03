@@ -6,23 +6,25 @@
 //
 // The clients table counts a client's money per course from `payments` rows that
 // are (1) status 'paid', (2) of type COURSE with a course or bundle id, and from
-// `crm_json.priorPaid` (money paid before the system, written by the sheet
+// client_item_money.prior_paid (money paid before the system, written by the sheet
 // import). Anything else reads as zero. This sorts every Dokki client into the
 // first reason that applies, so the fix can be aimed at the real cause instead
 // of at the screen.
 require('dotenv').config();
 const { pool } = require('../lib/db');
+const { priorPaidTotals } = require('../lib/itemMoney');
 
 const TENANT = process.argv[2] || process.env.DEFAULT_TENANT_ID || 'tenant-default';
 
 (async () => {
   const [subs] = await pool.query(
-    `SELECT id, name, phone, client_code, crm_json FROM subscribers
+    `SELECT id, name, phone, client_code FROM subscribers
       WHERE tenant_id=? AND deleted_at IS NULL AND UPPER(REPLACE(branch,'-','_'))='DAQQI'`, [TENANT]);
   const ids = subs.map(s => s.id);
   const pays = ids.length ? (await pool.query(
     `SELECT subscriber_id, status, payment_type, course_id, bundle_id, amount, currency, source, staff_name
        FROM payments WHERE tenant_id=? AND deleted_at IS NULL AND subscriber_id IN (?)`, [TENANT, ids]))[0] : [];
+  const priorBy = await priorPaidTotals(pool, { tenantId: TENANT, subscriberIds: ids });
   const bySub = new Map();
   for (const p of pays) { if (!bySub.has(p.subscriber_id)) bySub.set(p.subscriber_id, []); bySub.get(p.subscriber_id).push(p); }
 
@@ -37,8 +39,7 @@ const TENANT = process.argv[2] || process.env.DEFAULT_TENANT_ID || 'tenant-defau
   const pendingBy = {};
   for (const s of subs) {
     const rows = bySub.get(s.id) || [];
-    let crm = {}; try { crm = typeof s.crm_json === 'string' ? JSON.parse(s.crm_json || '{}') : (s.crm_json || {}); } catch { crm = {}; }
-    const prior = Object.values(crm.priorPaid || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    const prior = priorBy.get(s.id) || 0;
     const counted = rows.filter(p => p.status === 'paid' && Number(p.amount) > 0
       && String(p.payment_type || '').toUpperCase() === 'COURSE' && (p.course_id || p.bundle_id));
     const pending = rows.filter(p => p.status === 'pending');

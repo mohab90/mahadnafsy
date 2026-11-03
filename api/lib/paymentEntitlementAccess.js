@@ -1,6 +1,7 @@
 'use strict';
 
 const { itemKey } = require('./agreedPrice');
+const { moneyOf } = require('./itemMoney');
 
 // Determines whether a paid installment may unlock full learning access.
 // Installment aggregation is intentionally single-currency: mixing nominal
@@ -57,7 +58,7 @@ async function resolvePaymentAccess({
   )) {
     throw financialConflict('Installment expected total changed', 'INSTALLMENT_EXPECTED_MISMATCH');
   }
-  // «مدفوع قبل السيستم» (crm_json.priorPaid, lib/agreedPrice.js) counts here as
+  // «مدفوع قبل السيستم» (client_item_money.prior_paid, lib/itemMoney.js) counts here as
   // it does in every balance. Without it a Dokki client who paid 3,000 before
   // the system and the last 2,000 at the desk showed a balance of 0 and was
   // given 40% of the lectures. Sheet money is pounds, so it adds to an EGP grant.
@@ -89,11 +90,7 @@ function paidRatioOf(result) {
 }
 
 async function priorPaidFor(db, { tenantId, subscriberId, courseId, bundleId }) {
-  const [[row]] = await db.query(
-    'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
-  let crm = {};
-  try { crm = typeof row?.crm_json === 'object' && row?.crm_json ? row.crm_json : JSON.parse(row?.crm_json || '{}') || {}; } catch { crm = {}; }
-  const value = Number(crm.priorPaid?.[itemKey({ courseId, bundleId })]);
+  const value = Number((await moneyOf(db, { tenantId, subscriberId })).priorPaid[itemKey({ courseId, bundleId })]);
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 

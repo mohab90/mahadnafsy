@@ -15,6 +15,7 @@ const { uuidv4 } = require('../../lib/id');
 const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
 const { pool, cacheInvalidate } = require('../../lib/db');
+const { moneyOf, withItemMoney } = require('../../lib/itemMoney');
 const { pickCollectionOfficer, subscriberMarket } = require('../../lib/collectionDistribution');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
@@ -221,7 +222,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
     );
     if (subRows.length > 0) {
       const r = subRows[0];
-      const crm = parseCrm(r.crm_json);
+      const crm = withItemMoney(parseCrm(r.crm_json), await moneyOf(pool, { tenantId: req.tenantId, subscriberId: r.id }));
       // Access check: admin OR assigned sales OR assigned via lead
     // Access check: admin OR assigned sales OR reception_daqqi for daqqi-branch clients
       if (!isAdminReq) {
@@ -701,6 +702,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       extraCertificateRequests: _certificateRequests,
       certificates: _courseCompletions,
       lectureProgress: _lectureProgress,
+      // The agreed prices and «مدفوع قبل السيستم» are rows of client_item_money, changed through their own routes (lib/itemMoney.js); a screen's copy is never stored.
+      customPrices: _customPrices,
+      priorPaid: _priorPaid,
       ...crmData
     } = s;
     const staffRole = String(req.staffRecord?.role || '').toLowerCase();
@@ -950,6 +954,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     const salesId   = assignmentFrom.assignedSalesId   || null;
     const salesName = assignmentFrom.assignedSalesName || null;
 
+    // Whatever the stored copy still held (a partial save starts from it), the two maps are not the blob's.
+    delete crmData.customPrices;
+    delete crmData.priorPaid;
     const rawBranch = crmData.branch || null;
     const normBranch = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
     const branchVal = (normBranch && VALID_BRANCHES.has(normBranch)) ? normBranch : null;

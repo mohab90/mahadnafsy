@@ -70,8 +70,8 @@ test('a zero or empty prior amount does not invent a course', { skip: !agreed },
 test('the round roster reads prior money for the round\'s own course, apart from collected money', () => {
   const sql = read('api/lib/daqqiAttendees.js');
   assert.match(sql, /AS prior_paid/);
-  assert.match(sql, /JSON_EXTRACT\(s\.crm_json,\s*CONCAT\('\$\.priorPaid\."', REPLACE\(dr\.course_id/);
-  assert.match(sql, /JSON_VALID\(s\.crm_json\)/, 'a malformed crm_json must not take the whole roster down');
+  // 3 Nov 2026: read from client_item_money (lib/itemMoney.js) by the round's own course id — no JSON path in SQL any more, so a malformed blob cannot take the roster down.
+  assert.match(sql, /FROM client_item_money m\s+WHERE m\.tenant_id = da\.tenant_id AND m\.subscriber_id = da\.subscriber_id AND m\.item_key = dr\.course_id/);
   const route = read('api/routes/daqqi-rounds.js');
   assert.match(route, /amountPrior: Number\(a\.prior_paid \|\| 0\)/);
   // Revenue sums read amountPaid; prior money must not be folded into it.

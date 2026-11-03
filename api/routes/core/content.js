@@ -12,6 +12,7 @@ const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { requireDeleteRight } = require('../../lib/deleteRights');
 const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
+const { moneyOf } = require('../../lib/itemMoney');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
 const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClientCourse } = require('../../lib/clientCourseActions');
 const { actorName } = require('../../lib/clientHistory');
@@ -212,10 +213,8 @@ router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrS
     // amount added here that matches what was recorded on the course in the
     // last two days is asked about first.
     if (req.body?.priorPaid !== undefined && req.body?.confirmNotRecorded !== true) {
-      const [[client]] = await pool.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, tenantId]);
-      let crm = {};
-      try { crm = typeof client?.crm_json === 'object' && client.crm_json ? client.crm_json : JSON.parse(client?.crm_json || '{}'); } catch { crm = {}; }
-      const added = Math.round((Number(req.body.priorPaid) || 0) - (Number(crm?.priorPaid?.[item]) || 0));
+      const held = await moneyOf(pool, { tenantId, subscriberId: req.params.id });
+      const added = Math.round((Number(req.body.priorPaid) || 0) - (Number(held.priorPaid[item]) || 0));
       if (added > 0) {
         const [recent] = await pool.query(
           `SELECT amount FROM payments

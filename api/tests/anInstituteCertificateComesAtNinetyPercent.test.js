@@ -22,7 +22,7 @@ test('every client with money in and no certificate is a candidate — a course 
       const flat = String(sql).replace(/\s+/g, ' ');
       if (/SELECT DISTINCT p\.subscriber_id, p\.course_id/.test(flat)) return [[{ subscriber_id: 's-1', course_id: 'c-1' }, { subscriber_id: 's-2', course_id: 'c-1' }]];
       if (/SELECT DISTINCT p\.subscriber_id, p\.bundle_id/.test(flat)) return [[{ subscriber_id: 's-3', bundle_id: 'b-2' }]];
-      if (/crm_json LIKE '%priorPaid%'/.test(flat)) return [[{ id: 's-4', crm_json: JSON.stringify({ priorPaid: { 'c-9': 2000, 'bundle:b-1': 500, 'c-0': 0 } }) }]];
+      if (/FROM client_item_money m JOIN subscribers s/.test(flat)) return [[{ subscriber_id: 's-4', item_key: 'c-9' }, { subscriber_id: 's-4', item_key: 'bundle:b-1' }]];
       if (/FROM course_completions/.test(flat)) return [[{ subscriber_id: 's-2', course_id: 'c-1' }]];
       return [[]];
     },
