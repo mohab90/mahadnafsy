@@ -16,6 +16,7 @@ const { pool } = require('../../lib/db');
 const { uuidv4 } = require('../../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { hasPermission } = require('../../constants/permissions');
+const { writeAuditEvent } = require('../../lib/auditTrail');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_hr')];
@@ -154,6 +155,22 @@ router.put('/api/admin/hr/staff/:staffId/pay', ...managePay, async (req, res) =>
     res.json({ ok: true });
   } catch (error) {
     logger.error('[staff-pay/update]', error.message);
+    hrError(res, error);
+  }
+});
+
+// «معاينة حساب الموظف»: the owner opens the panel as an employee, read-only (middleware/auth.js applyPreview). This only RECORDS that it was done — who looked at
+// whose account; the preview itself is a header on ordinary reads.
+router.post('/api/admin/hr/staff/:staffId/preview-start', ...manage, async (req, res) => {
+  try {
+    if (!req.isSuperAdmin) return res.status(403).json({ error: 'المعاينة للمالك بس', code: 'PREVIEW_OWNER_ONLY' });
+    const [[staff]] = await pool.query(
+      'SELECT id, name FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [req.tenantId, req.params.staffId]);
+    if (!staff) return res.status(404).json({ error: 'الموظف مش موجود' });
+    await writeAuditEvent({ action: 'staff.account_previewed', entityType: 'staff', entityId: staff.id, severity: 'warning', metadata: { staffName: staff.name }, req });
+    res.json({ ok: true, id: staff.id, name: staff.name });
+  } catch (error) {
+    logger.error('[staff/preview-start]', error.message);
     hrError(res, error);
   }
 });

@@ -41,11 +41,16 @@ test('anyone on the desk completes the English name, the national ID and the dat
   request = { id: 'cr-1', subscriber_id: 's-1', nationality: 'EGYPTIAN' };
   const res = await put({ nameEn: 'Yasmine Mohamed Elhady', idNumber: '29501011234567', courseStartDate: '2026-07-01', courseEndDate: '2026-09-30' });
   assert.equal(res.statusCode, 200);
-  const [cert, client, history] = writes;
+  const [cert] = writes;
+  const history = writes.find(write => /^INSERT INTO activity_logs/.test(write.sql));
   // The name printed on it leads (10 Oct 2026); none typed leaves it as it is.
   assert.match(cert.sql, /^UPDATE certificate_requests SET name_ar=COALESCE\(\?, name_ar\), name_en=COALESCE\(\?, name_en\)/);
   assert.deepEqual(cert.params.slice(0, 5), [null, 'Yasmine Mohamed Elhady', '29501011234567', '2026-07-01', '2026-09-30']);
-  assert.match(client.sql, /UPDATE subscribers SET name_en=COALESCE\(NULLIF\(name_en, ''\), \?\)/, 'and the client\'s record when it has none');
+  // 3 Nov 2026: the English name is the client's, set once and followed by every certificate of theirs (lib/clientEnglishName.js).
+  const named = writes.find(write => /^UPDATE subscribers SET name_en=\?/.test(write.sql));
+  assert.deepEqual(named.params.slice(0, 1), ['Yasmine Mohamed Elhady']);
+  assert.ok(writes.some(write => /^UPDATE certificate_requests SET name_en=\? WHERE tenant_id=\? AND subscriber_id=\?/.test(write.sql)), 'every request of theirs');
+  assert.ok(writes.some(write => /^UPDATE subscribers SET national_id=COALESCE\(NULLIF\(national_id, ''\), \?\)/.test(write.sql)), 'and the id fills a blank');
   assert.match(history.sql, /^INSERT INTO activity_logs/);
 });
 

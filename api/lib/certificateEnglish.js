@@ -54,8 +54,7 @@ function certificateDuration(value, hours) {
  * ignored for the name and the course (the English-only rule holds for edits too).
  */
 function effectiveCertificate(row = {}) {
-  // The client's name is one thing wherever it was typed: this certificate's own, the client's file, else the latest English name on one of
-  // their certificate requests (REQUEST_NAME_EN_SQL) — «أنا مدخله قبل كده لنفس العميل من صفحة الشهادات».
+  // The client's name is one thing wherever it was typed: this certificate's own spelling when the desk typed one on THIS certificate (a name set for the whole client clears those, lib/clientEnglishName.js), then the client's file, else the latest English name on one of their certificate requests (REQUEST_NAME_EN_SQL) — «أنا مدخله قبل كده لنفس العميل من صفحة الشهادات».
   const name = certificateName(row.cert_name_en) || certificateName(row.name_en) || certificateName(row.request_name_en);
   const course = certificateCourse({ title_en: row.cert_course_en })
     || certificateCourse({ title_en: row.course_title_en, title: row.course_title });

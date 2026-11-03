@@ -18,6 +18,7 @@ import { canOpenTab, viewerOf } from '../../lib/access';
 import { DASHBOARD_MENU_GROUPS } from '../dashboard/navigation';
 import { ROLE_DATA_SCOPE } from '../../constants/permissions';
 import { cairoMonthStart } from '../../../shared/cairoDate';
+import { previewUrl } from '../../lib/previewMode';
 
 const createStaffAccount = async (staff: StaffMember, password: string): Promise<void> => {
   await mysqlAdmin.createStaffAccount({ ...staff, staffId: staff.id, password } as unknown as Record<string, unknown>);
@@ -514,8 +515,16 @@ export default function StaffSettingsPanel({
             {/* Access preview */}
             <div className="px-5 pb-5">
               <div className="bg-gradient-to-l from-gray-50 to-white border border-gray-200 rounded-xl p-4">
-                <p className="text-xs font-bold text-gray-600 mb-3 flex items-center gap-1.5">
+                <p className="text-xs font-bold text-gray-600 mb-3 flex flex-wrap items-center gap-1.5">
                   <Eye size={12} /> ملخص الوصول — التبويبات المتاحة لهذا الموظف
+                  {isAdmin && currentStaff?.id !== draft.id && (
+                    <button type="button" onClick={() => {
+                      void mysqlAdmin.adminPost(`/admin/hr/staff/${encodeURIComponent(draft.id)}/preview-start`, {}).catch(() => undefined);
+                      window.open(previewUrl({ id: draft.id, name: draft.name }), '_blank');
+                    }} className="mr-auto flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-600">
+                      <Eye size={12} /> معاينة حسابه (قراءة فقط)
+                    </button>
+                  )}
                 </p>
                 {/* The menu this grid opens, by the rule the menu and the tab gate use (lib/access.ts) — a hand-written
                     list of thirteen areas stood here and disagreed with both. The owner's role overrides are applied by

@@ -2,12 +2,13 @@
 // the payroll run's lines); now it holds everything: the fingerprint upload, the payroll run's calculate / approve / pay, and for each employee the
 // department, basic salary, attendance, free day, deductions, the net (or an estimate before the run), the required / reached / bonus of the month
 // and an edit button that opens every part of the employee's month.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Award, CalendarCheck, Loader2, Pencil, Save, Upload, Wallet } from 'lucide-react';
 import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hrLabels';
 import { fmtMoney } from './hrFormat';
+import { useAutoResizableColumns } from '../../../../components/useAutoResizableColumns';
 import HrFingerprintUpload from './HrFingerprintUpload';
 import HrMonthEditModal from './HrMonthEditModal';
 
@@ -24,7 +25,7 @@ type Item = {
   late_deductions?: number | string; late_deduction?: number | string;
   other_deductions?: number | string; other_deduction?: number | string;
   advance_deductions?: number | string; advance_deduction?: number | string;
-  commission?: number | string; bonus_amount?: number | string;
+  commission?: number | string; bonus_amount?: number | string; total_allowances?: number | string; allowances_total?: number | string; instructor_earnings?: number | string;
 };
 type MonthBonus = {
   staffId: string;
@@ -37,6 +38,8 @@ const BONUS_STATUS_AR: Record<string, string> = { PENDING: 'مستني الاع�
 
 const num = (value: unknown) => Number(value) || 0;
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
+// Where each department sits in the sheet (the same order the server uses, api/lib/staffDepartment.js); the rest follow by name.
+const DEPARTMENT_ORDER = ['الدقي', 'التجمع', 'المبيعات', 'التحصيل أونلاين', 'الدعم الفني', 'الموارد البشرية', 'الحسابات', 'الإدارة'];
 const WORK_DAYS = 26; // the policy's work_days_per_month default, used only for the estimate
 
 export default function HrMonthSheet({ notify, canManageFinance, canManagePayroll }: { notify: Notify; canManageFinance: boolean; canManagePayroll: boolean }) {
@@ -51,6 +54,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
   const [calculating, setCalculating] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const tableRef = useAutoResizableColumns('hr-month-sheet');
 
   const load = useCallback(async () => {
     const [y, m] = month.split('-');
@@ -141,8 +145,22 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
     const estimate = !item && row.base_salary
       ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / WORK_DAYS) * (num(row.absent_days) + num(row.deduction_days)))
       : null;
-    return { row, item, deductions, estimate };
-  }), [attendance, items]);
+    // The salary with the month's additions and before any deduction: base + allowances + commission + teaching + bonus; before the run, base + the bonus typed here.
+    const gross = item
+      ? num(item.base_salary) + num(item.total_allowances ?? item.allowances_total) + num(item.commission) + num(item.instructor_earnings) + num(item.bonus_amount)
+      : (row.base_salary ? num(row.base_salary) + num(bonuses.get(row.id)?.entry?.amount) : null);
+    return { row, item, deductions, estimate, gross };
+  }), [attendance, items, bonuses]);
+  // One block per department, in the order above.
+  const groups = useMemo(() => {
+    const byDepartment = new Map<string, typeof rows>();
+    for (const entry of rows) {
+      const name = entry.row.department_name || 'أخرى';
+      byDepartment.set(name, [...(byDepartment.get(name) || []), entry]);
+    }
+    const rank = (name: string) => { const at = DEPARTMENT_ORDER.indexOf(name); return at === -1 ? DEPARTMENT_ORDER.length : at; };
+    return [...byDepartment.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ar'));
+  }, [rows]);
   const totals = useMemo(() => rows.reduce((acc, { row, item }) => ({
     absent: acc.absent + num(row.absent_days), late: acc.late + num(row.late_days),
     net: acc.net + (item ? num(item.net_salary) : 0), noSalary: acc.noSalary + (row.base_salary ? 0 : 1),
@@ -189,7 +207,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
         <div className="py-10 text-center text-gray-400"><Loader2 className="mx-auto animate-spin" size={20} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full min-w-[1500px] text-sm">
+          <table ref={tableRef} className="w-full min-w-[1600px] text-sm">
             <thead className="bg-gray-50 text-right text-xs font-bold text-gray-500">
               <tr>
                 <th className="px-3 py-2">الموظف</th>
@@ -203,6 +221,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                 <th className="px-3 py-2">أيام خصم</th>
                 <th className="px-3 py-2">عمولة ومكافأة</th>
                 <th className="px-3 py-2">الخصومات</th>
+                <th className="px-3 py-2">إجمالي بعد المكافأة</th>
                 <th className="px-3 py-2">الصافي</th>
                 <th className="border-r border-gray-200 px-3 py-2">المطلوب</th>
                 <th className="px-3 py-2">المحقق</th>
@@ -211,7 +230,16 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {rows.map(({ row, item, deductions, estimate }) => {
+              {groups.map(([department, members]) => (
+                <Fragment key={department}>
+                  <tr className="bg-indigo-50/60">
+                    <td colSpan={17} className="px-3 py-1.5 text-xs font-extrabold text-indigo-900">
+                      {department} <span className="mr-2 font-semibold text-indigo-700">{n(members.length)} موظف</span>
+                      <span className="mr-2 font-semibold text-indigo-700">إجمالي الرواتب بعد المكافأة {fmtMoney(members.reduce((sum, member) => sum + (member.gross || 0), 0))}</span>
+                      {members.some(member => member.item) && <span className="mr-2 font-semibold text-emerald-700">الصافي {fmtMoney(members.reduce((sum, member) => sum + num(member.item?.net_salary), 0))}</span>}
+                    </td>
+                  </tr>
+                  {members.map(({ row, item, deductions, estimate, gross }) => {
                 const bonus = bonuses.get(row.id);
                 const locked = Boolean(bonus?.entry?.locked);
                 const unit = bonus?.entry?.targetUnit || bonus?.standing.type;
@@ -232,6 +260,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                     <td className={`px-3 py-2 tabular-nums ${num(row.deduction_days) ? 'font-bold text-amber-700' : 'text-gray-300'}`}>{num(row.deduction_days) ? n(num(row.deduction_days)) : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-700">{item && (num(item.commission) + num(item.bonus_amount)) ? `+${fmtMoney(num(item.commission) + num(item.bonus_amount))}` : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-red-600">{deductions ? `−${fmtMoney(deductions)}` : '—'}</td>
+                    <td className="px-3 py-2 tabular-nums text-emerald-800">{gross !== null ? <span className={item ? 'font-semibold' : 'text-xs text-gray-500'}>{item ? '' : '≈ '}{fmtMoney(Math.round(gross))}</span> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2 font-extrabold tabular-nums text-gray-900">
                       {item ? fmtMoney(num(item.net_salary))
                         : estimate !== null ? <span className="text-xs font-semibold text-gray-500" title="تقدير من الراتب الأساسي والغياب والخصم — احسب المسير لتثبيته">≈ {fmtMoney(Math.round(estimate))}</span>
@@ -253,8 +282,10 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                     </td>
                   </tr>
                 );
-              })}
-              {rows.length === 0 && <tr><td colSpan={16} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
+                  })}
+                </Fragment>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={17} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
             </tbody>
           </table>
         </div>

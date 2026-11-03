@@ -30,10 +30,12 @@ export function useResizableCols(tableId: string, defaults: ColWidths) {
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
+      // The grip is on a header cell's left edge, which is its trailing edge in the right-to-left tables: dragging left is wider there.
+      const rtl = getComputedStyle(e.currentTarget as Element).direction === 'rtl';
       const startW = widthsRef.current[colKey] ?? defaults[colKey] ?? 120;
 
       const onMove = (mv: MouseEvent) => {
-        const newW = Math.max(48, startW + mv.clientX - startX);
+        const newW = Math.max(48, startW + (rtl ? startX - mv.clientX : mv.clientX - startX));
         setWidths(prev => {
           const next = { ...prev, [colKey]: newW };
           try { localStorage.setItem(`rcol:${tableId}`, JSON.stringify(next)); } catch { /* ignore */ }

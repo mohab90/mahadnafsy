@@ -11,6 +11,7 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../../../../con
 import type { SubscriberItem } from '../../../../types';
 import { clientCurrency, isOnlineClient } from '../onlineClientsUtils';
 import { AddRefundModal } from '../financial/AddRefundModal';
+import { ClientCertificatesPanel } from './ClientCertificatesPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -507,6 +508,7 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
           </div>
         );
       })}
+      {canManage && <ClientCertificatesPanel subscriberId={subscriberId} notify={notify} onChanged={onChanged} />}
     </div>
   );
 };

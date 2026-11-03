@@ -63,7 +63,9 @@ test('customer service sets the English name, the national id and each course’
   assert.ok(sql.some(text => /UPDATE subscribers SET name_en = COALESCE\(\?, name_en\), national_id = COALESCE\(\?, national_id\)/.test(text)), 'the client keeps the name and the id');
   assert.equal(sql.filter(text => /^UPDATE enrollments SET course_start_date/.test(text)).length, 2, 'one update per course');
   assert.ok(sql.some(text => /^UPDATE certificate_requests SET course_start_date = COALESCE\(course_start_date, \?\)/.test(text)), 'an open request is filled from them');
-  assert.ok(sql.some(text => /^UPDATE certificate_requests SET name_en = COALESCE\(NULLIF\(name_en, ''\), \?\)/.test(text)));
+  // 3 Nov 2026: the name replaces, on the client and on every certificate request of theirs (lib/clientEnglishName.js).
+  assert.ok(sql.some(text => /^UPDATE subscribers SET name_en=\?/.test(text)));
+  assert.ok(sql.some(text => /^UPDATE certificate_requests SET name_en=\? WHERE tenant_id=\? AND subscriber_id=\?/.test(text)));
   assert.ok(writes.some(w => w.event && w.event.action === 'certificate_data'), 'the client’s history says who set it');
   assert.equal(writes.at(-1), 'COMMIT');
   const enrol = writes.find(w => w.sql && /^UPDATE enrollments/.test(w.sql));

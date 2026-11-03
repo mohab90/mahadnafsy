@@ -12,6 +12,7 @@ const { toNumbers } = require('../../lib/mappers');
 const { readDeviceSheet } = require('../../lib/attendanceSheet');
 const { importAttendanceMonth } = require('../../lib/attendanceImport');
 const { freeDaysFor } = require('../../lib/attendancePolicy');
+const { departmentOf } = require('../../lib/staffDepartment');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
@@ -1034,6 +1035,8 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
     const policy = await getEffectiveHrPolicy(pool, req.tenantId, `${monthKey}-01`);
     res.json(rows.map(({ hired, ...row }) => ({
       ...row,
+      // HR has not filled departments in: the job says where the employee sits (lib/staffDepartment.js).
+      department_name: departmentOf({ departmentName: row.department_name, role: row.role }),
       base_salary: row.base_salary == null ? null : Number(row.base_salary),
       free_days_allowed: freeDaysFor({ policy, month: monthKey, hired: hired ? String(hired instanceof Date ? hired.toISOString() : hired).slice(0, 10) : null, override: row.free_days_per_month }),
     })));

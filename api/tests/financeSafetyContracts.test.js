@@ -293,7 +293,7 @@ test('certificate lifecycle and receipt rendering fail closed', () => {
   const safeHtml = read('admin/lib/safeHtml.ts');
 
   assert.match(certificates, /certificate_request_id=\?/);
-  assert.match(certificates, /Paid or financially linked certificate requests cannot be deleted/);
+  assert.match(certificates, /CERT_PAID_FORCE_REQUIRED/);
   // Paid first (a payment row, or paid in full before the system), and never on a course that was taken back.
   // Paid in full against the price list's figure (8 Oct 2026).
   assert.ok(certificates.includes('!fullyPaid(request, systemPrice)'));

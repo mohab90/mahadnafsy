@@ -58,7 +58,7 @@ async function verifyCertificate(db, rawCode) {
 
   const [[external]] = await db.query(
     `SELECT cr.certificate_code, cr.type, cr.custom_name, cr.status, cr.issued_at, cr.requested_at,
-            COALESCE(NULLIF(cr.name_ar, ''), s.name) AS name_ar, COALESCE(NULLIF(cr.name_en, ''), s.name_en) AS name_en,
+            COALESCE(NULLIF(cr.name_ar, ''), s.name) AS name_ar, COALESCE(NULLIF(s.name_en, ''), NULLIF(cr.name_en, '')) AS name_en,
             c.title AS course_ar, c.title_en AS course_en
        FROM certificate_requests cr
        LEFT JOIN subscribers s ON s.id = cr.subscriber_id AND s.tenant_id = cr.tenant_id

@@ -31,6 +31,7 @@ const {
 } = require('../constants/permissions');
 const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { getClientIp, hashClientIp } = require('../lib/clientContext');
+const { loadPreviewTarget } = require('../lib/staffPreview');
 
 // Lower-cased on both sides, like PLATFORM_ADMIN_EMAILS: an owner written
 // «Name@Gmail.com» in the environment was never recognised, because the token's
@@ -242,6 +243,46 @@ async function optionalAuth(req, res, next) {
   next();
 }
 
+/**
+ * «معاينة حساب الموظف»: the owner reads the panel AS an employee — what they are offered, the data their scope shows, and nothing they could change — to be sure the
+ * permissions are right (3 Nov 2026: «اقدر اشوف هو بيشوف ايه وبيقدر يعدل ايه»). The browser tab sends `X-Preview-Staff: <staff id>`. Only the owner's own session is believed;
+ * the request then runs as that employee for every read, and every write is refused. Sign-in, refresh and sign-out (/api/auth) stay the owner's own.
+ */
+async function applyPreview(req, res) {
+  try {
+    return await applyPreviewUnchecked(req, res);
+  } catch (error) {
+    // A failure here is ours, not the owner's session: never answer it as an invalid token (the panel signs the person out on a 401).
+    logger.error('[auth/preview]', error.message);
+    res.status(500).json({ error: 'تعذرت المعاينة', code: 'PREVIEW_FAILED' });
+    return false;
+  }
+}
+async function applyPreviewUnchecked(req, res) {
+  const asked = String(req.headers['x-preview-staff'] || '').trim();
+  if (!asked) return true;
+  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  const method = String(req.method || 'GET').toUpperCase();
+  if (path.startsWith('/api/auth/') && method !== 'GET') return true;
+  if (!isInstituteOwner({ email: req.user.email, uid: req.user.uid, tenantId: req.user.tenant_id })) {
+    res.status(403).json({ error: 'المعاينة للمالك بس', code: 'PREVIEW_OWNER_ONLY' });
+    return false;
+  }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    res.status(403).json({ error: 'أنت في وضع معاينة حساب موظف — للقراءة فقط. اخرج من المعاينة عشان تعدّل.', code: 'PREVIEW_READ_ONLY' });
+    return false;
+  }
+  const target = await loadPreviewTarget(pool, req.user.tenant_id, asked);
+  if (!target) {
+    res.status(404).json({ error: 'الموظف ده مالوش حساب دخول يتعاين', code: 'PREVIEW_NO_LOGIN' });
+    return false;
+  }
+  req.previewBy = { uid: req.user.uid, email: req.user.email };
+  req.isPreview = true;
+  req.user = { ...req.user, uid: target.loginId, email: target.staff.email, name: target.staff.name, is_staff: true };
+  return true;
+}
+
 async function requireAuth(req, res, next) {
   if (req.user?.uid && req.user?.tenant_id === req.tenantId) return next();
   let token = null;
@@ -289,6 +330,7 @@ async function requireAuth(req, res, next) {
       name: identity.name,
       tenant_id: tenantId,
     };
+    if (!(await applyPreview(req, res))) return undefined;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -545,5 +587,5 @@ module.exports = {
   hasSignedToken, optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
   requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows, requireChannel,
-  requireAnyPermission, enforceMfa, invalidateIdentity,
+  requireAnyPermission, enforceMfa, invalidateIdentity, applyPreview,
 };

@@ -21,6 +21,7 @@ const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../.
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { checkEnglishName, checkNationalId } = require('../../lib/bookingIdentity');
 const { actorName, logClientEvent } = require('../../lib/clientHistory');
+const { setClientEnglishName } = require('../../lib/clientEnglishName');
 const { dateOnlyInTimeZone, safeDateOnly } = require('../../lib/dates');
 
 const router = express.Router();
@@ -129,12 +130,12 @@ router.put('/api/admin/subscribers/:id/certificate-data', ...GUARD, async (req, 
           WHERE tenant_id = ? AND subscriber_id = ? AND course_id = ? AND status <> 'DELIVERED'`,
         [date.start, date.end, req.tenantId, row.id, date.courseId]);
     }
-    if (english.value || id.value) {
+    if (english.value) await setClientEnglishName(conn, { tenantId: req.tenantId, subscriberId: row.id, nameEn: english.value });
+    if (id.value) {
       await conn.query(
-        `UPDATE certificate_requests
-            SET name_en = COALESCE(NULLIF(name_en, ''), ?), id_number = COALESCE(NULLIF(id_number, ''), ?)
+        `UPDATE certificate_requests SET id_number = COALESCE(NULLIF(id_number, ''), ?)
           WHERE tenant_id = ? AND subscriber_id = ? AND status <> 'DELIVERED'`,
-        [english.value, id.value, req.tenantId, row.id]);
+        [id.value, req.tenantId, row.id]);
     }
     await logClientEvent(conn, {
       tenantId: req.tenantId, subscriberId: row.id, action: 'certificate_data', actor: actorName(req),

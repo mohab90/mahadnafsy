@@ -8,6 +8,7 @@ import { ToastProvider } from '../shared/ui/Toast';
 import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { mysqlClient } from './lib/mysqlapi';
 import { LECTURER_ROLES } from './constants/permissions';
+import { PreviewBanner } from './components/PreviewBanner';
 
 // ── Lazily-loaded admin pages ────────────────────────────────────────────────
 const Dashboard     = React.lazy(() => import('./pages/Dashboard'));
@@ -169,6 +170,7 @@ const AppShell: React.FC = () => {
     <>
       <ScrollToTop />
       <ServerKeepalive />
+      <PreviewBanner />
       {/* A click on any WhatsApp link opens that chat in the system's own WhatsApp (components/InSystemWhatsApp.tsx). */}
       <InSystemWhatsAppLinks />
       <ErrorBoundary key={location.pathname}>

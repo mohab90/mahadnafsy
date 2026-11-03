@@ -17,7 +17,8 @@ test('the English name typed on a request is the client\'s: fallback chain, sync
     'a client whose file has no English name prints the one typed on their certificate request');
   assert.equal(effectiveCertificate({ ...base, name_en: 'File Name', request_name_en: 'MOHAMED ALI' }).name, 'FILE NAME');
   assert.equal(effectiveCertificate({ ...base, cert_name_en: 'Desk Name', name_en: 'File Name' }).name, 'DESK NAME');
-  assert.match(read('api/routes/certificates.js'), /UPDATE subscribers SET name_en=\? WHERE id=\? AND tenant_id=\? AND \(name_en IS NULL OR TRIM\(name_en\)=''\)/);
+  // 3 Nov 2026: typed on a request, it replaces the client's and every certificate of theirs follows (lib/clientEnglishName.js).
+  assert.match(read('api/routes/certificates.js'), /await setClientEnglishName\(conn, \{ tenantId: req\.tenantId, subscriberId: request\.subscriber_id, nameEn: typedNameEn \}\);/);
   assert.match(read('api/migrations/307_v26_certificates_print_marks_tracks_hours.sql'), /UPDATE subscribers s\s+JOIN \(SELECT cr\.tenant_id, cr\.subscriber_id/);
 });
 

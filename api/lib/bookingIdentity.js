@@ -1,4 +1,5 @@
 'use strict';
+const { setClientEnglishName } = require('./clientEnglishName');
 
 /**
  * Who the client really is, taken at the booking desk.
@@ -115,6 +116,7 @@ async function applyBookingIdentity(conn, { tenantId, subscriberId, identity, na
             nationality=COALESCE(?, nationality)
       WHERE id=? AND tenant_id=?`,
     [identity.nameAr, identity.nameAr, identity.nameEn, identity.nationalId, nationality, subscriberId, tenantId]);
+  if (identity.nameEn) await setClientEnglishName(conn, { tenantId, subscriberId, nameEn: identity.nameEn });
 }
 
 module.exports = { checkArabicName, checkEnglishName, checkNationalId, validateBookingIdentity, applyBookingIdentity };

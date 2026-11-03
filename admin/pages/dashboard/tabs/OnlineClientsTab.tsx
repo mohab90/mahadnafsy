@@ -542,7 +542,7 @@ export default function OnlineClientsTab({
                 const onMove = (me: MouseEvent) => {
                   const drag = collOnlineResizing.current;
                   if (!drag) return;
-                  const newW = Math.max(48, drag.startW + (me.clientX - drag.startX));
+                  const newW = Math.max(48, drag.startW + (drag.startX - me.clientX)); // the grip is on the cell's left edge: in this right-to-left table, dragging left widens
                   // The width is taken from `drag` now: the state updater below runs later,
                   // after the mouse may already be up and the ref cleared («reading 'col'»).
                   setCollOnlineColWidths(prev => {

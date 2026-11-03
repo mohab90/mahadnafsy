@@ -3,6 +3,11 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import { installMobileTables } from './lib/mobileTables';
+import { capturePreviewFromUrl, installPreviewFetch } from './lib/previewMode';
+
+// A preview tab (the owner reading the panel as an employee) arrives with ?preview=<staff id>: take it before the next lines strip the query.
+capturePreviewFromUrl();
+installPreviewFetch();
 
 // Fix malformed URLs like /?#/dashboard → /#/dashboard
 // These can appear when Apache redirects clean up empty query strings

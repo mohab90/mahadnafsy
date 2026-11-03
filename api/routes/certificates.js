@@ -21,6 +21,8 @@ const { actorName, logClientEvent } = require('../lib/clientHistory');
 const { sanitize } = require('../lib/helpers');
 const { checkArabicName, checkEnglishName, checkNationalId } = require('../lib/bookingIdentity');
 const { dateOnlyInTimeZone } = require('../lib/dates');
+const { setClientEnglishName } = require('../lib/clientEnglishName');
+const { logFinancialAudit } = require('../lib/finance');
 // A date the certificate states, as YYYY-MM-DD in Cairo, or null.
 const dayOf = value => (value ? dateOnlyInTimeZone(new Date(value)) : null);
 
@@ -209,8 +211,8 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
          FROM certificate_requests cr
          LEFT JOIN subscribers s ON s.id = cr.subscriber_id AND s.tenant_id=cr.tenant_id AND s.deleted_at IS NULL
          LEFT JOIN courses c ON c.id = cr.course_id AND c.tenant_id=cr.tenant_id AND c.deleted_at IS NULL
-        WHERE cr.tenant_id=?
-        ORDER BY cr.requested_at DESC LIMIT ?`, [req.tenantId, limit]);
+        WHERE cr.tenant_id=?${req.query.subscriber_id ? ' AND cr.subscriber_id=?' : ''}
+        ORDER BY cr.requested_at DESC LIMIT ?`, [req.tenantId, ...(req.query.subscriber_id ? [String(req.query.subscriber_id)] : []), limit]);
     const pricing = await loadPricing(req.tenantId);
     res.json(rows.map(row => {
       const price = row.price != null ? Number(row.price) : null;
@@ -230,7 +232,7 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         type: String(row.type || 'OTHER').toLowerCase(),
         customName: row.custom_name || null,
         nameAr: row.name_ar || null,
-        nameEn: row.name_en || row.client_name_en || null,
+        nameEn: row.client_name_en || row.name_en || null,
         nationality: row.nationality ? String(row.nationality).toLowerCase() : null,
         idNumber: row.id_number || row.client_national_id || null,
         // The Drive links of the pictures asked for with the certificate (api/lib/googleDrive.js).
@@ -296,9 +298,11 @@ router.put('/api/admin/certificate-requests/:id/client-data', requireAuth, requi
       [arabic.value, english.value, id.value, start, end, request.id, req.tenantId]);
     if (request.subscriber_id && (arabic.value || english.value || id.value)) {
       await conn.query(
-        `UPDATE subscribers SET name_en=COALESCE(NULLIF(name_en, ''), ?), national_id=COALESCE(NULLIF(national_id, ''), ?)
+        `UPDATE subscribers SET national_id=COALESCE(NULLIF(national_id, ''), ?)
           WHERE id=? AND tenant_id=?`,
-        [english.value, id.value, request.subscriber_id, req.tenantId]);
+        [id.value, request.subscriber_id, req.tenantId]);
+      // The English name is the client's: it replaces theirs and every certificate of theirs follows (lib/clientEnglishName.js).
+      if (english.value) await setClientEnglishName(conn, { tenantId: req.tenantId, subscriberId: request.subscriber_id, nameEn: english.value });
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_data', actor: actorName(req),
         label: `تعديل بيانات الشهادة${arabic.value && arabic.value !== request.name_ar ? ` · الاسم: ${arabic.value}` : ''}${english.value ? ` · ${english.value}` : ''}${id.value ? ' · الرقم القومي' : ''}${start ? ` · من ${start}` : ''}${end ? ` لـ ${end}` : ''}`,
@@ -440,7 +444,7 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
     // their file too — the institute's certificate and every other one read it from there.
     const typedNameEn = b.nameEn === undefined ? '' : sanitize(String(b.nameEn ?? ''), 255).trim();
     if (request.subscriber_id && typedNameEn && isEnglish(typedNameEn)) {
-      await conn.query("UPDATE subscribers SET name_en=? WHERE id=? AND tenant_id=? AND (name_en IS NULL OR TRIM(name_en)='')", [typedNameEn, request.subscriber_id, req.tenantId]);
+      await setClientEnglishName(conn, { tenantId: req.tenantId, subscriberId: request.subscriber_id, nameEn: typedNameEn });
     }
     if (request.subscriber_id) {
       await logClientEvent(conn, {
@@ -736,11 +740,20 @@ router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdminOr
         LIMIT 1`,
       [req.params.id, req.tenantId]
     );
-    if (linkedPayment || POST_PAYMENT_STATUSES.has(String(request.status).toUpperCase())) {
+    const financiallyLinked = Boolean(linkedPayment) || POST_PAYMENT_STATUSES.has(String(request.status).toUpperCase());
+    // «احذفهم وكل شيء»: the owner's account can delete a certificate that was paid for. The money stays in the books — the payment only stops pointing at a
+    // request that is gone — and it is said so in the audit trail; without `force` a paid one is still refused.
+    const force = req.query.force === '1' && Boolean(req.isSuperAdmin);
+    if (financiallyLinked && !force) {
       await conn.rollback();
       conn.release();
       conn = null;
-      return res.status(409).json({ error: 'Paid or financially linked certificate requests cannot be deleted' });
+      return res.status(409).json({ error: 'الشهادة دي مدفوعة أو مربوطة بدفعة — لو عايز تمسحها فعلاً امسحها بتأكيد المدير (الدفعة هتفضل في الحسابات)', code: 'CERT_PAID_FORCE_REQUIRED' });
+    }
+    if (financiallyLinked) {
+      await conn.query('UPDATE payments SET certificate_request_id=NULL WHERE certificate_request_id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+      await logFinancialAudit({ entityType: 'certificate_request', entityId: req.params.id, action: 'force_delete', oldData: { status: request.status }, newData: { unlinkedPayment: Boolean(linkedPayment) },
+        actor: req.user?.email || req.user?.uid || 'system', tenantId: req.tenantId, db: conn, strict: true });
     }
     await conn.query('DELETE FROM certificate_requests WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     await conn.commit();

@@ -95,7 +95,7 @@ function corsConfig() {
   return {
     origin: (origin, callback) => callback(null, isAllowed(origin)),
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS', 'PUT'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Tenant-Id', 'Idempotency-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Tenant-Id', 'Idempotency-Key', 'X-Preview-Staff'],
     credentials: true,
   };
 }
