@@ -220,6 +220,8 @@ async function signup(req, res) {
     });
     setAuthCookie(res, token);
     res.json({ ok: true, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
+    // An account made with the number of a client already on the system is that client (lib/autoLinkAccounts.js; an e-mail links once it is proven).
+    require('../../lib/autoLinkAccounts').autoLinkAccounts(pool, { tenantId, userIds: [id] }).catch(error => logger.warn('[auto-link-accounts]', error.message));
 
     // Welcome message through the lifecycle journey rather than a direct
     // send. The direct sendWhatsApp() call this replaces was fire-and-

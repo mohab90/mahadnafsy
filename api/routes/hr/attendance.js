@@ -540,8 +540,8 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     if (!staff_id || !validDateOnly(date)) return res.status(400).json({ error: 'staff_id and valid date are required' });
     if (!(await staffInReach(conn, req, staff_id))) return outOfReach(res);
     // FREE_DAY is the paid day off every employee of six months has each month: stored as a HOLIDAY marked free_day, so a fingerprint re-upload counts it.
-    // 3 Nov 2026, «الغياب دا باذن او بدون او من رصيد الاجازات»: an absence is told apart on the day. ABSENT is without permission; ABSENT_EXCUSED is an ABSENT row
-    // marked 'excused'; both cost the day. LEAVE_BALANCE is a HOLIDAY marked 'leave_balance': it costs nothing and spends a day of the year's 21.
+    // 3 Nov 2026, «الغياب دا باذن او بدون او من رصيد الاجازات»: an absence is told apart on the day. ABSENT is without permission and costs two days (4 Nov 2026,
+    // lib/payrollCalc.js UNEXCUSED_ABSENCE_DAYS); ABSENT_EXCUSED is an ABSENT row marked 'excused' and costs the one. LEAVE_BALANCE is a HOLIDAY marked 'leave_balance': it costs nothing and spends a day of the year's 21.
     const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY','ABSENT_EXCUSED','LEAVE_BALANCE'];
     if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid attendance status' });
     const manualDeduction = req.body.deduction_days === undefined || req.body.deduction_days === '' || req.body.deduction_days === null ? null : Number(req.body.deduction_days);

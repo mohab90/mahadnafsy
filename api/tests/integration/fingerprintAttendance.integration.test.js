@@ -120,7 +120,7 @@ test('payroll deducts the judged days at the basic salary typed on the employee'
   const daily = 6500 / 30; // a day is a thirtieth of the salary (3 Nov 2026); the columns keep two decimals
   assert.equal(Number(mona.base_salary), 6500);
   assert.ok(Math.abs(Number(mona.late_deductions) - daily * 0.75) < 0.01, 'three quarters of a day');
-  assert.ok(Math.abs(Number(mona.absence_deductions) - daily) < 0.01, 'one absent day');
+  assert.ok(Math.abs(Number(mona.absence_deductions) - daily * 2) < 0.01, 'one absent day without permission costs two (4 Nov 2026)');
   const details = typeof mona.calculation_details === 'string' ? JSON.parse(mona.calculation_details) : mona.calculation_details;
   assert.equal(details.salarySource, 'staff_file');
   assert.equal(details.lateDeductionDays, 0.75);

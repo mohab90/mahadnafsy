@@ -58,7 +58,11 @@ function populations(req) {
     out.registration = {
       where: `u.is_active = 1
               AND NOT EXISTS (SELECT 1 FROM subscribers s WHERE s.tenant_id = u.tenant_id AND s.firebase_uid = u.id)
-              AND NOT EXISTS (SELECT 1 FROM staff st WHERE st.tenant_id = u.tenant_id AND st.deleted_at IS NULL AND st.email <> '' AND st.email = u.email)`,
+              AND NOT EXISTS (SELECT 1 FROM staff st WHERE st.tenant_id = u.tenant_id AND st.deleted_at IS NULL AND st.email <> '' AND st.email = u.email)
+              -- Not twice: a sign-in with the e-mail or the number of a client is that client (lib/autoLinkAccounts.js links them; until it has, it is not a second person here).
+              AND NOT EXISTS (SELECT 1 FROM subscribers sm WHERE sm.tenant_id = u.tenant_id AND sm.deleted_at IS NULL
+                              AND ((u.email IS NOT NULL AND u.email <> '' AND sm.email = u.email COLLATE utf8mb4_unicode_ci)
+                                OR (u.phone IS NOT NULL AND u.phone <> '' AND sm.phone_digits = REGEXP_REPLACE(u.phone, '[^0-9]', '') COLLATE utf8mb4_unicode_ci)))`,
       params: [],
     };
   }

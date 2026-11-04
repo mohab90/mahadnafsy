@@ -5,7 +5,7 @@
 // nobody notices until someone complains.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { computePayrollLine, PAY_MONTH_DAYS } = require('../lib/payrollCalc');
+const { computePayrollLine, PAY_MONTH_DAYS, UNEXCUSED_ABSENCE_DAYS } = require('../lib/payrollCalc');
 
 const EMP = {
   housing_allowance: 1000,
@@ -205,4 +205,18 @@ test('a target earner is not paid a percentage of what they collected', () => {
   assert.equal(computePayrollLine({ ...EMP, commission_type: 'TARGET', commission_rate: 10 }, { ...CTX, ...sales }).commission, 0);
   assert.equal(computePayrollLine({ ...EMP, commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000);
   assert.equal(computePayrollLine({ ...EMP, commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000, 'a row from before commission_type keeps its rate');
+});
+
+test('4 Nov 2026: a day missed without permission costs two days of pay, a day missed with permission costs one', () => {
+  const pay = attendance => computePayrollLine(EMP, { ...CTX, baseSalary: 9000, attendance });
+  const excused = pay({ absent_days: 2, unexcused_absent_days: 0 });
+  assert.equal(excused.absenceDeduction, 600);
+  const unexcused = pay({ absent_days: 2, unexcused_absent_days: 2 });
+  assert.equal(unexcused.absenceDeduction, 1200);
+  assert.equal(unexcused.absentDays, 2, 'the days recorded stay the days recorded');
+  assert.equal(unexcused.absenceChargedDays, 4);
+  const mixed = pay({ absent_days: 3, unexcused_absent_days: 1, unpaid_leave_days: 1 });
+  assert.equal(mixed.absenceDeduction, 300 * (3 + 1 + 1));
+  assert.equal(pay({ absent_days: 1, unexcused_absent_days: 5 }).absenceChargedDays, 2, 'cannot charge more unexcused days than were absent');
+  assert.equal(UNEXCUSED_ABSENCE_DAYS, 2);
 });

@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { ClientDbCard } from './client-db/ClientDbCard';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
-import { WholeDatabaseSearch } from './client-db/WholeDatabaseSearch';
+import { LinkAccount } from './client-db/LinkAccount';
 import ArchivedClientsTab from './ArchivedClientsTab';
 import { toDialable } from '../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -229,9 +229,9 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const canSeeArchive = isAdmin || authUser?.permissions === '*'
     || (Array.isArray(authUser?.permissions) && authUser.permissions.includes('delete_subscribers'));
   const [search, setSearch] = useState('');
-  // This table holds the pages the screen has loaded; a person the loaded pages do not hold is found by «البحث في قاعدة البيانات كاملة» above it, which asks the
-  // server. A bare «لا توجد نتائج» under two results found there read as a contradiction (3 Nov 2026).
-  const emptyMessage = search.trim().length >= 2 ? 'مفيش حد بالاسم ده في الجدول المحمّل — النتايج الكاملة في «البحث في قاعدة البيانات كاملة» فوق' : 'لا توجد نتائج';
+  // One view of the database: this table, which asks the server for the search too (api/routes/misc/clientDbList.js). «البحث في قاعدة البيانات كاملة» above it showed the same
+  // people a second time and is gone (4 Nov 2026).
+  const emptyMessage = 'لا توجد نتائج';
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl' | 'registration'>('all');
   const [branchFilter, setBranchFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
@@ -490,11 +490,6 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         </div>
       </div>
 
-      {/* Every person in the system, whatever the arrays above hold — archived
-          clients, every kind of lead, site sign-ups — with where they are and
-          where they came from. */}
-      <WholeDatabaseSearch query={search} />
-
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center gap-3 flex-wrap">
@@ -610,6 +605,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                       {c.email && !c.email.endsWith('@lead.local') && (
                         <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[160px]" title={c.email}>{c.email}</div>
                       )}
+                      {isRegistration && <div className="mt-1"><LinkAccount row={{ id: c.id, name: c.name, email: c.email || null, phone: c.phone || null }} onLinked={refreshPage} /></div>}
                     </td>
                     {/* Type badge */}
                     <td className="px-3 py-3">

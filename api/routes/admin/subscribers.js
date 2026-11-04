@@ -16,6 +16,7 @@ const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
 const { pool, cacheInvalidate } = require('../../lib/db');
 const { moneyOf, withItemMoney } = require('../../lib/itemMoney');
+const { autoLinkAccounts } = require('../../lib/autoLinkAccounts');
 const { pickCollectionOfficer, subscriberMarket } = require('../../lib/collectionDistribution');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
@@ -1112,6 +1113,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       invalidateIdentity(tenantId, '', identityToInvalidate.newEmail);
     }
     res.json({ ok: true, id, updatedAt: savedUpdatedAt, assignedCs: csId ? { id: csId, name: csName } : null });
+    // The e-mail or number just saved may be the one an account already signs in with: they are one person (lib/autoLinkAccounts.js).
+    if (safeEmail || safePhone) autoLinkAccounts(pool, { tenantId, subscriberIds: [id] }).catch(error => logger.warn('[auto-link-accounts]', error.message));
     // External notifications only start after the subscriber/enrollment transaction commits.
     if (isNewSub && safePhone) {
       setImmediate(async () => {

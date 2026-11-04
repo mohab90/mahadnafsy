@@ -90,6 +90,8 @@ async function verifyEmailToken(db, { tenantId, token }) {
   const [burned] = await db.query('UPDATE email_verifications SET used_at=NOW() WHERE id=? AND used_at IS NULL', [row.id]);
   if (Number(burned?.affectedRows) !== 1) return { ok: false };
   const ok = await markVerified(db, { tenantId: row.tenant_id, userId: row.user_id, email: row.email });
+  // A proven address is an identity now: the client record that holds it is this person's (lib/autoLinkAccounts.js).
+  if (ok) require('./autoLinkAccounts').autoLinkAccounts(db, { tenantId: row.tenant_id, userIds: [row.user_id] }).catch(error => logger.warn('[auto-link-accounts]', error.message));
   return { ok, tenantId: row.tenant_id, userId: row.user_id };
 }
 

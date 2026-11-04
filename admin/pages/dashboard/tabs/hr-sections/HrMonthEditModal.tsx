@@ -20,7 +20,7 @@ type Basics = {
 };
 
 const STATUS_OPTIONS: [string, string][] = [
-  ['PRESENT', 'حاضر'], ['LATE', 'متأخر'], ['ABSENT', 'غياب بدون إذن'], ['ABSENT_EXCUSED', 'غياب بإذن'], ['LEAVE_BALANCE', 'غياب من رصيد الإجازات (بدون خصم)'],
+  ['PRESENT', 'حاضر'], ['LATE', 'متأخر'], ['ABSENT', 'غياب بدون إذن (يخصم يومين)'], ['ABSENT_EXCUSED', 'غياب بإذن (يخصم يوم)'], ['LEAVE_BALANCE', 'غياب من رصيد الإجازات (بدون خصم)'],
   ['HALF_DAY', 'نص يوم'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'],
 ];
 const field = 'w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm disabled:bg-gray-50';

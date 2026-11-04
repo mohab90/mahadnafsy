@@ -17,7 +17,7 @@
  *  - salaryFx            FX factor applied to fixed amounts
  *  - baseSalary          already FX-converted base
  *  - workdayMinutes      from HR policy
- *  - attendance          { absent_days, late_minutes, present_days, unpaid_leave_days }
+ *  - attendance          { absent_days, unexcused_absent_days, late_minutes, present_days, unpaid_leave_days }
  *  - crmCommission       { amt, cnt } | null — authoritative when cnt > 0
  *  - totalSales          EGP sales used for the flat-rate fallback
  *  - advanceDeduction    salary advances being recovered
@@ -25,6 +25,8 @@
  *  - bonus, deduction    manual adjustments
  */
 const PAY_MONTH_DAYS = 30;
+// 4 Nov 2026, «الغياب بدون إذن بخصم يومين»: a day missed without permission costs two days of pay; a day missed with permission (marked 'excused') costs one.
+const UNEXCUSED_ABSENCE_DAYS = 2;
 
 function computePayrollLine(emp = {}, ctx = {}) {
   const {
@@ -51,6 +53,9 @@ function computePayrollLine(emp = {}, ctx = {}) {
   const unpaidLeaveDays = Number(attendance.unpaid_leave_days) || 0;
   const absentDays = (Number(attendance.absent_days) || 0) + unpaidLeaveDays;
   const lateMins   = parseInt(attendance.late_minutes) || 0;
+  // absent_days counts every ABSENT day; unexcused_absent_days is the part of them nobody gave permission for, and each of those costs the extra day.
+  const unexcusedAbsentDays = Math.min(Number(attendance.unexcused_absent_days) || 0, Number(attendance.absent_days) || 0);
+  const absenceChargedDays = absentDays + unexcusedAbsentDays * (UNEXCUSED_ABSENCE_DAYS - 1);
 
   // 3 Nov 2026, «احسب دايما الراتب على 30 يوم»: the day's pay is the month's salary over thirty, whatever the month's length or its working days. A constant
   // also leaves no stored value that could turn the daily rate into Infinity (a DECIMAL "0.00" once did, and every payslip of the run came out NaN). The
@@ -59,7 +64,7 @@ function computePayrollLine(emp = {}, ctx = {}) {
 
   const dailyRate  = baseSalary / PAY_MONTH_DAYS;
   const minuteRate = baseSalary / (PAY_MONTH_DAYS * safeWorkMinutes);
-  const absenceDeduction = dailyRate * absentDays;
+  const absenceDeduction = dailyRate * absenceChargedDays;
   // Days the policy's tiers judged (¼, ½, a whole day) cost that fraction of
   // the daily rate; minutes on older rows are still charged per minute.
   const lateDeductionDays = Number(attendance.late_deduction_days) || 0;
@@ -109,7 +114,7 @@ function computePayrollLine(emp = {}, ctx = {}) {
   return {
     housing, transport, food, otherFixed, totalAllowances,
     dedSocial, dedTax,
-    absentDays, lateMins, lateDeductionDays, dailyRate, minuteRate, absenceDeduction, lateDeduction,
+    absentDays, unexcusedAbsentDays, absenceChargedDays, lateMins, lateDeductionDays, dailyRate, minuteRate, absenceDeduction, lateDeduction,
     commission, commissionCount, commissionSource,
     // advanceDeduction is what was due this month; advanceApplied is what the
     // salary could actually absorb, and is the figure the books must use.
@@ -124,4 +129,4 @@ function computePayrollLine(emp = {}, ctx = {}) {
   };
 }
 
-module.exports = { computePayrollLine, PAY_MONTH_DAYS };
+module.exports = { computePayrollLine, PAY_MONTH_DAYS, UNEXCUSED_ABSENCE_DAYS };

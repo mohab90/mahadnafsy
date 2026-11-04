@@ -87,7 +87,7 @@ test('a site account is linked to its client by a member of the staff, never by 
   const route = read('api/routes/misc/clientDbSearch.js');
   assert.match(route, /router\.post\('\/api\/admin\/site-accounts\/:userId\/link', requireAuth, requireAdminOrStaff, requirePermission\('manage_leads'\)/);
   assert.match(read('api/lib/siteAccountLink.js'), /action: 'site_account_linked'/);
-  assert.match(read('admin/pages/dashboard/tabs/client-db/WholeDatabaseSearch.tsx'), /ربطه بعميل/);
+  assert.match(read('admin/pages/dashboard/tabs/client-db/LinkAccount.tsx'), /ربطه بعميل/);
 });
 
 test('lifting a sharing lock starts the device count over, or the next sign-in locks the account again', () => {

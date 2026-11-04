@@ -220,6 +220,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     const [attBatch] = empIds.length ? await conn.query(`
       SELECT a.staff_id,
         COUNT(CASE WHEN a.status='ABSENT' THEN 1 END) AS absent_days,
+        COUNT(CASE WHEN a.status='ABSENT' AND (a.permit_used IS NULL OR a.permit_used <> 'excused') THEN 1 END) AS unexcused_absent_days,
         COALESCE(SUM(CASE WHEN a.leave_id IS NOT NULL AND l.type='UNPAID'
                           THEN IF(a.status='HALF_DAY',0.5,1) ELSE 0 END),0) AS unpaid_leave_days,
         -- A morning permission HR approved is lateness nobody is charged for.
@@ -387,7 +388,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         instructorFeeCount: feeMap[emp.staff_id]?.count || 0,
         commissionSource, totalSalesEgp: Math.round(totalSales * 100) / 100,
         bonusTotal, deductionTotal, dedSocial, dedTax, unpaidLeaveDays, salaryCurrency, salaryFx,
-        salarySource: emp.salary_source, lateDeductionDays: Number(attStats.late_deduction_days) || 0,
+        salarySource: emp.salary_source, unexcusedAbsentDays: line.unexcusedAbsentDays, absenceChargedDays: line.absenceChargedDays, lateDeductionDays: Number(attStats.late_deduction_days) || 0,
         policyId: policy.id, policyVersion: policy.version,
       });
       await conn.query(`

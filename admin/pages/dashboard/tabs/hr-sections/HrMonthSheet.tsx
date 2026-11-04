@@ -42,6 +42,7 @@ const BONUS_STATUS_AR: Record<string, string> = { PENDING: 'مستني الاع�
 const num = (value: unknown) => Number(value) || 0;
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
 const PAY_MONTH_DAYS = 30; // a day's pay is the month's salary over thirty (api/lib/payrollCalc.js)
+const UNEXCUSED_ABSENCE_DAYS = 2; // a day missed without permission costs two (api/lib/payrollCalc.js)
 
 export default function HrMonthSheet({ notify, canManageFinance, canManagePayroll }: { notify: Notify; canManageFinance: boolean; canManagePayroll: boolean }) {
   const [month, setMonth] = useState(cairoMonthOnly());
@@ -145,7 +146,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
       : null;
     // Before the run: what the month would cost at the basic salary, so the column is never just «not calculated».
     const estimate = !item && row.base_salary
-      ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / PAY_MONTH_DAYS) * (num(row.absent_days) + num(row.deduction_days)))
+      ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / PAY_MONTH_DAYS) * (num(row.absent_days) + (num(row.absent_days) - num(row.excused_days)) * (UNEXCUSED_ABSENCE_DAYS - 1) + num(row.deduction_days)))
       : null;
     // The salary with the month's additions and before any deduction: base + allowances + commission + teaching + bonus; before the run, base + the bonus typed here.
     const gross = item

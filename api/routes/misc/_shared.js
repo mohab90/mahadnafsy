@@ -278,6 +278,18 @@ function scheduleSlaBreachSweep() {
   logger.info('[sla-sweep] scheduled — hourly, first run in 5m');
 }
 
+// A site account and a client record with the same number or the same proven e-mail are one person: linked once an hour for the whole tenant (lib/autoLinkAccounts.js), on top of
+// the moments that matter (a client saved, an account made or its e-mail proven).
+function scheduleAccountLinking() {
+  const { autoLinkAccounts } = require('../../lib/autoLinkAccounts');
+  const sweep = tenantId => autoLinkAccounts(pool, { tenantId });
+  setTimeout(() => {
+    forEachActiveTenant(sweep);
+    setInterval(() => forEachActiveTenant(sweep), 60 * 60 * 1000).unref?.();
+  }, 3 * 60 * 1000).unref?.();
+  logger.info('[auto-link-accounts] scheduled — hourly, first run in 3m');
+}
+
 // Certificates earn themselves: half the course watched and 90% of it paid;
 // and «شهادات المعهد», 90% paid whatever was watched (lib/instituteCertificates.js).
 // Hourly, on the same footing as the SLA sweep — either watching or paying
@@ -658,6 +670,7 @@ function startSharedRouteJobs() {
   // And the day's follow-ups as in-app notifications, to each owner and a team one to the managers.
   require('../../lib/followUpDigest').scheduleFollowUpDigest();
   scheduleSlaBreachSweep();
+  scheduleAccountLinking();
   scheduleAutoCertificateSweep();
   scheduleDokkiAutomation();
   scheduleWeeklyBranchReport();
