@@ -101,14 +101,16 @@ test('the booking is charged the Dokki discount price, and the real name is kept
     ['أحمد محمد عبد الله', 'أحمد محمد عبد الله', 'Ahmed Mohamed Abdallah', '29001011234567']);
 });
 
-test('the booking bonuses are paid once: rep 200, collection 5% of 2,200, lecturer 100', { skip }, async () => {
+// 4 Nov 2026, «الغي كل المكافات اللي انت حطيتها احنا هنحطها مانيول»: the booking goes through and the course still carries its bonus settings, but the system writes no
+// bonus (lib/paymentCompensation.js AUTOMATIC_BONUSES); HR types them. With the switch on this test paid: rep 200, collection 5% of 2,200, lecturer 100.
+test('a booking writes no automatic bonus: the rep, the desk and the lecturer are paid by hand', { skip }, async () => {
   const second = await book({ subscriber_id: 'sub-bp-1', payment: payment({ amount: 1200 }) });
   assert.equal(second.statusCode, 200, JSON.stringify(second.body));
   const [bonuses] = await pool.query(
     "SELECT staff_id, commission_amount FROM crm_commissions WHERE tenant_id=? AND payment_id LIKE 'booking:%' ORDER BY staff_id", [TENANT]);
-  assert.deepEqual(bonuses.map(b => [b.staff_id, Number(b.commission_amount)]), [['st-bp-cs', 110], ['st-bp-rep', 200]]);
+  assert.deepEqual(bonuses, []);
   const [fees] = await pool.query("SELECT staff_id, total_amount FROM instructor_fees WHERE tenant_id=? AND source_key LIKE 'booking:%'", [TENANT]);
-  assert.deepEqual(fees.map(f => [f.staff_id, Number(f.total_amount)]), [['st-bp-dr', 100]]);
+  assert.deepEqual(fees, []);
 });
 
 test('a typed price that is not the catalogue price is refused', { skip }, async () => {

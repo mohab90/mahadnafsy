@@ -1,9 +1,9 @@
 // «كشف الشهر — الحضور والمرتب لكل موظف»: the ONE table of the month. It used to be drawn three times on the page (this sheet, an attendance table and
 // the payroll run's lines); now it holds everything: the fingerprint upload, the payroll run's calculate / approve / pay, and for each employee the
-// department, basic salary, attendance, free day, deductions, the net (or an estimate before the run), the required / reached / bonus of the month
+// department, basic salary, attendance, free day, deductions, the net (or an estimate before the run)
 // and an edit button that opens every part of the employee's month.
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { Award, CalendarCheck, Gavel, Loader2, Pencil, Save, Upload, Wallet } from 'lucide-react';
+import { Award, CalendarCheck, Gavel, Loader2, Pencil, Upload, Wallet } from 'lucide-react';
 import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { departmentRank } from '../../../../../shared/staffDepartment';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -30,15 +30,6 @@ type Item = {
   advance_deductions?: number | string; advance_deduction?: number | string;
   commission?: number | string; bonus_amount?: number | string; total_allowances?: number | string; allowances_total?: number | string; instructor_earnings?: number | string;
 };
-type MonthBonus = {
-  staffId: string;
-  standing: { type: 'clients' | 'bookings' | 'egp' | null; target: number | null; bonus: number | null };
-  entry: { id: string; amount: number; status: string; note: string; targetValue: number | null; achievedValue: number | null; targetUnit: string | null; locked: boolean } | null;
-};
-type BonusDraft = { targetValue?: string; achievedValue?: string; amount?: string };
-const UNIT_AR: Record<string, string> = { clients: 'عميل', bookings: 'حجز', egp: 'جنيه' };
-const BONUS_STATUS_AR: Record<string, string> = { PENDING: 'مستني الاعتماد', APPROVED: 'معتمدة', REJECTED: 'مرفوضة' };
-
 const num = (value: unknown) => Number(value) || 0;
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
 const PAY_MONTH_DAYS = 30; // a day's pay is the month's salary over thirty (api/lib/payrollCalc.js)
@@ -50,9 +41,6 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
   const [items, setItems] = useState<Map<string, Item>>(new Map());
   const [run, setRun] = useState<Run | null>(null);
   const [loading, setLoading] = useState(false);
-  const [bonuses, setBonuses] = useState<Map<string, MonthBonus>>(new Map());
-  const [drafts, setDrafts] = useState<Record<string, BonusDraft>>({});
-  const [saving, setSaving] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
@@ -63,14 +51,11 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
     const [y, m] = month.split('-');
     setLoading(true);
     try {
-      const [summary, runs, bonusList] = await Promise.allSettled([
+      const [summary, runs] = await Promise.allSettled([
         mysqlAdmin.adminGet<AttendanceRow[]>(`/admin/hr/attendance/summary?month=${parseInt(m, 10)}&year=${y}`),
         mysqlAdmin.adminGet<Run[]>('/admin/hr/payroll'),
-        mysqlAdmin.adminGet<MonthBonus[]>(`/admin/hr/month-bonuses?month=${parseInt(m, 10)}&year=${y}`),
       ]);
       setAttendance(summary.status === 'fulfilled' && Array.isArray(summary.value) ? summary.value : []);
-      setBonuses(new Map(bonusList.status === 'fulfilled' && Array.isArray(bonusList.value) ? bonusList.value.map(b => [b.staffId, b]) : []));
-      setDrafts({});
       const monthRuns = runs.status === 'fulfilled' && Array.isArray(runs.value)
         ? runs.value.filter(r => Number(r.month) === parseInt(m, 10) && Number(r.year) === Number(y) && r.status !== 'CANCELLED')
         : [];
@@ -84,33 +69,6 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
     } finally { setLoading(false); }
   }, [month, notify]);
   useEffect(() => { void load(); }, [load]);
-
-  const draftOf = (staffId: string, key: keyof BonusDraft): string => {
-    const draft = drafts[staffId]?.[key];
-    if (draft !== undefined) return draft;
-    const entry = bonuses.get(staffId)?.entry;
-    const value = key === 'targetValue' ? entry?.targetValue : key === 'achievedValue' ? entry?.achievedValue : entry?.amount;
-    return value == null || (key === 'amount' && value === 0) ? '' : String(value);
-  };
-  const edit = (staffId: string, patch: BonusDraft) => setDrafts(current => ({ ...current, [staffId]: { ...current[staffId], ...patch } }));
-  const saveBonuses = async () => {
-    const [y, m] = month.split('-');
-    const payload = Object.keys(drafts).map(staffId => ({
-      staffId,
-      targetValue: draftOf(staffId, 'targetValue'), achievedValue: draftOf(staffId, 'achievedValue'), amount: draftOf(staffId, 'amount'),
-      targetUnit: bonuses.get(staffId)?.entry?.targetUnit || bonuses.get(staffId)?.standing.type || undefined,
-      note: bonuses.get(staffId)?.entry?.note || '',
-    }));
-    if (!payload.length) return;
-    setSaving(true);
-    try {
-      await mysqlAdmin.adminPut('/admin/hr/month-bonuses', { month: parseInt(m, 10), year: Number(y), rows: payload });
-      notify('success', `اتسجل المطلوب والمحقق والمكافأة لـ ${payload.length} موظف — المكافأة بتتحسب في المرتب بعد ما حد تاني يعتمدها`);
-      await load();
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'تعذر حفظ المكافآت');
-    } finally { setSaving(false); }
-  };
 
   const calculate = async () => {
     const [y, m] = month.split('-');
@@ -148,12 +106,12 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
     const estimate = !item && row.base_salary
       ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / PAY_MONTH_DAYS) * (num(row.absent_days) + (num(row.absent_days) - num(row.excused_days)) * (UNEXCUSED_ABSENCE_DAYS - 1) + num(row.deduction_days)))
       : null;
-    // The salary with the month's additions and before any deduction: base + allowances + commission + teaching + bonus; before the run, base + the bonus typed here.
+    // The salary with the month's additions and before any deduction: base + allowances + commission + teaching + the bonus HR typed; before the run, the basic salary.
     const gross = item
       ? num(item.base_salary) + num(item.total_allowances ?? item.allowances_total) + num(item.commission) + num(item.instructor_earnings) + num(item.bonus_amount)
-      : (row.base_salary ? num(row.base_salary) + num(bonuses.get(row.id)?.entry?.amount) : null);
+      : (row.base_salary ? num(row.base_salary) : null);
     return { row, item, deductions, estimate, gross };
-  }), [attendance, items, bonuses]);
+  }), [attendance, items]);
   // One block per department, in the order above.
   const groups = useMemo(() => {
     const byDepartment = new Map<string, typeof rows>();
@@ -167,7 +125,6 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
     absent: acc.absent + num(row.absent_days), late: acc.late + num(row.late_days),
     net: acc.net + (item ? num(item.net_salary) : 0), noSalary: acc.noSalary + (row.base_salary ? 0 : 1),
   }), { absent: 0, late: 0, net: 0, noSalary: 0 }), [rows]);
-  const changed = Object.keys(drafts).length;
 
   return (
     <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
@@ -189,11 +146,6 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
           {run?.status === 'APPROVED' && canManageFinance && <button type="button" onClick={() => void setRunStatus('PAID')} className="rounded-xl bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">تأكيد الصرف</button>}
           {run && canManagePayroll && (run.status === 'CALCULATED' || (run.status === 'APPROVED' && canManageFinance)) && (
             <button type="button" onClick={() => void setRunStatus('CANCELLED')} className="rounded-xl bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-red-50 hover:text-red-600">إلغاء المسير</button>
-          )}
-          {changed > 0 && (
-            <button type="button" onClick={() => void saveBonuses()} disabled={saving} className="flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} احفظ المكافآت ({n(changed)})
-            </button>
           )}
         </div>
       </div>
@@ -227,9 +179,6 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                 <th className="px-3 py-2">الخصومات</th>
                 <th className="px-3 py-2">إجمالي بعد المكافأة</th>
                 <th className="px-3 py-2">الصافي</th>
-                <th className="border-r border-gray-200 px-3 py-2">المطلوب</th>
-                <th className="px-3 py-2">المحقق</th>
-                <th className="px-3 py-2">المكافأة</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -237,17 +186,13 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
               {groups.map(([department, members]) => (
                 <Fragment key={department}>
                   <tr className="bg-indigo-50/60">
-                    <td colSpan={18} className="px-3 py-1.5 text-xs font-extrabold text-indigo-900">
+                    <td colSpan={15} className="px-3 py-1.5 text-xs font-extrabold text-indigo-900">
                       {department} <span className="mr-2 font-semibold text-indigo-700">{n(members.length)} موظف</span>
                       <span className="mr-2 font-semibold text-indigo-700">إجمالي الرواتب بعد المكافأة {fmtMoney(members.reduce((sum, member) => sum + (member.gross || 0), 0))}</span>
                       {members.some(member => member.item) && <span className="mr-2 font-semibold text-emerald-700">الصافي {fmtMoney(members.reduce((sum, member) => sum + num(member.item?.net_salary), 0))}</span>}
                     </td>
                   </tr>
                   {members.map(({ row, item, deductions, estimate, gross }) => {
-                const bonus = bonuses.get(row.id);
-                const locked = Boolean(bonus?.entry?.locked);
-                const unit = bonus?.entry?.targetUnit || bonus?.standing.type;
-                const cell = 'w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm tabular-nums disabled:bg-gray-50 disabled:text-gray-500';
                 return (
                   <tr key={row.id} className="hover:bg-gray-50/60">
                     <td className="px-3 py-2">
@@ -276,22 +221,6 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                         : estimate !== null ? <span className="text-xs font-semibold text-gray-500" title="تقدير من الراتب الأساسي والغياب والخصم — احسب المسير لتثبيته">≈ {fmtMoney(Math.round(estimate))}</span>
                           : <span className="text-xs font-normal text-gray-400">{row.base_salary ? 'لسه ما اتحسبش' : 'من غير راتب أساسي'}</span>}
                     </td>
-                    <td className="border-r border-gray-100 px-3 py-2">
-                      <input type="number" min={0} disabled={locked} className={cell} value={draftOf(row.id, 'targetValue')} placeholder={bonus?.standing.target != null ? String(bonus.standing.target) : ''}
-                        onChange={e => edit(row.id, { targetValue: e.target.value })} />
-                      {unit && <span className="mr-1 text-[11px] text-gray-400">{UNIT_AR[unit]}</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" min={0} disabled={locked} className={cell} value={draftOf(row.id, 'achievedValue')} onChange={e => edit(row.id, { achievedValue: e.target.value })} />
-                      {Number(draftOf(row.id, 'targetValue') || bonus?.standing.target) > 0 && draftOf(row.id, 'achievedValue') !== '' && (
-                        <span className="mr-1 text-[11px] font-bold text-indigo-600">{n(Math.round((Number(draftOf(row.id, 'achievedValue')) / Number(draftOf(row.id, 'targetValue') || bonus?.standing.target)) * 100))}٪</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" min={0} disabled={locked} className={cell} value={draftOf(row.id, 'amount')} placeholder={bonus?.standing.bonus != null ? String(bonus.standing.bonus) : ''}
-                        onChange={e => edit(row.id, { amount: e.target.value })} />
-                      {bonus?.entry && bonus.entry.amount > 0 && <span className="mr-1 text-[11px] text-gray-500">{BONUS_STATUS_AR[bonus.entry.status] || bonus.entry.status}</span>}
-                    </td>
                     <td className="px-3 py-2">
                       <button type="button" onClick={() => setEditing({ id: row.id, name: row.name })} className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"><Pencil size={12} /> تعديل</button>
                     </td>
@@ -300,7 +229,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                   })}
                 </Fragment>
               ))}
-              {rows.length === 0 && <tr><td colSpan={18} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={15} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
             </tbody>
           </table>
         </div>

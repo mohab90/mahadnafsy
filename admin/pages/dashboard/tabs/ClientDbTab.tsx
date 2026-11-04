@@ -247,7 +247,10 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const [rows, setRows] = useState<ClientRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loadingRows, setLoadingRows] = useState(false);
-  const [summary, setSummary] = useState({ total: 0, subscribers: 0, online: 0, daqqi: 0, leads: 0 });
+  const [rowsFailed, setRowsFailed] = useState(false);
+  const [summary, setSummary] = useState({ total: 0, subscribers: 0, online: 0, daqqi: 0, leads: 0, registrations: 0, leftOut: { hidden: 0, archived: 0, merged: 0, converted: 0 } });
+  const [summaryFailed, setSummaryFailed] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -255,9 +258,13 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   }, [search]);
   useEffect(() => {
     let alive = true;
-    void mysqlAdmin.adminGet<typeof summary>('/admin/client-db/summary').then(result => { if (alive) setSummary(result); }).catch(() => {});
+    // The numbers are the server's and take a few seconds on a big database: a failure is said, kept apart from the last numbers (not turned into zeros), and asked once more.
+    const ask = (attempt: number) => mysqlAdmin.adminGet<typeof summary>('/admin/client-db/summary')
+      .then(result => { if (alive) { setSummary(result); setSummaryFailed(false); } })
+      .catch(() => { if (!alive) return; if (attempt < 1) setTimeout(() => { if (alive) void ask(attempt + 1); }, 2500); else setSummaryFailed(true); });
+    void ask(0);
     return () => { alive = false; };
-  }, [refreshTick]);
+  }, [refreshTick, retryTick]);
   useEffect(() => {
     if (view !== 'clients') return undefined;
     let alive = true;
@@ -269,15 +276,17 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     mysqlAdmin.adminGet<{ rows: Array<Omit<ClientRow, 'type' | 'subType'> & { kind: ClientRow['type'] }>; total: number }>(`/admin/client-db/page?${query.toString()}`)
       .then(result => {
         if (!alive) return;
+        setRowsFailed(false);
         setRows(result.rows.map(({ kind, ...row }) => ({
           ...row, type: kind, subType: kind === 'subscriber' ? getSubType(row.branch, row.clientType) : null,
         })));
         setTotal(result.total);
       })
-      .catch(error => { if (alive) { setRows([]); setTotal(0); notify('error', error instanceof Error ? error.message : 'تعذر تحميل قاعدة العملاء'); } })
+      // The rows already on screen stay (a failed page is not an empty database); the toast says so and the button above asks again.
+      .catch(error => { if (alive) { setRowsFailed(true); notify('error', error instanceof Error ? error.message : 'تعذر تحميل قاعدة العملاء'); } })
       .finally(() => { if (alive) setLoadingRows(false); });
     return () => { alive = false; };
-  }, [view, typeFilter, branchFilter, courseFilter, sort, page, debouncedSearch, refreshTick, notify]);
+  }, [view, typeFilter, branchFilter, courseFilter, sort, page, debouncedSearch, refreshTick, retryTick, notify]);
 
   const allCourseOptions = useMemo(
     () => courses.map(c => ({ id: c.id, title: c.title })).sort((a, b) => a.title.localeCompare(b.title, 'ar')),
@@ -362,6 +371,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             { label: 'أونلاين', value: stats.online },
             { label: 'الدقي', value: stats.daqqi },
             { label: 'محتملون', value: stats.leads, icon: UserPlus },
+            { label: 'تسجيلات الموقع', value: stats.registrations },
           ].map(({ label, value }) => (
             <div key={label} className="bg-white/20 rounded-xl px-3 py-1.5 text-center">
               <p className="text-lg font-black">{value.toLocaleString('ar-EG-u-nu-latn')}</p>
@@ -369,6 +379,17 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             </div>
           ))}
         </div>
+        {summaryFailed && (
+          <p className="mt-2 text-xs text-amber-100">
+            تعذر تحميل الأرقام — الأرقام اللي فوق مش محدّثة.{' '}
+            <button type="button" onClick={() => setRetryTick(tick => tick + 1)} className="font-bold underline">إعادة المحاولة</button>
+          </p>
+        )}
+        {!summaryFailed && (stats.leftOut.hidden + stats.leftOut.archived + stats.leftOut.merged + stats.leftOut.converted) > 0 && (
+          <p className="mt-2 text-[11px] text-emerald-100">
+            مش محسوب في الإجمالي (موجود في «المحتملين» الأصلي): {stats.leftOut.hidden.toLocaleString('ar-EG-u-nu-latn')} مخفي · {stats.leftOut.archived.toLocaleString('ar-EG-u-nu-latn')} مؤرشف · {stats.leftOut.merged.toLocaleString('ar-EG-u-nu-latn')} اندمج في غيره · {stats.leftOut.converted.toLocaleString('ar-EG-u-nu-latn')} بقى مشترك
+          </p>
+        )}
       </div>
 
       {/* View switcher — the sign-in log is an authentication trail, not a CRM
@@ -486,6 +507,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
 
           <span className="text-xs text-gray-500 font-medium mr-auto">
             {total.toLocaleString('ar-EG-u-nu-latn')} نتيجة{loadingRows ? ' …' : ''}
+            {rowsFailed && <button type="button" onClick={() => setRetryTick(tick => tick + 1)} className="mr-2 rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">تعذر التحميل — إعادة المحاولة</button>}
           </span>
         </div>
       </div>

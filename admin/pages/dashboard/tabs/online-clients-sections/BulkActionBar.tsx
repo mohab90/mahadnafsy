@@ -20,7 +20,7 @@ interface Props {
   shouldUseScopedSubscribers: boolean;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   deleteSubscriber: (id: string) => Promise<boolean>;
-  updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  updateSubscriber: (s: SubscriberItem, only?: string[]) => Promise<boolean>;
   notify: NotifyFn;
 }
 
@@ -108,7 +108,7 @@ export function BulkActionBar({
                     const newStatus = collOnlineBulkConfirm === 'pause' ? 'paused' : 'finished';
                     for (const id of ids) {
                       const sub = actionSubscribers.find(s=>s.id===id);
-                      if (sub && await updateSubscriber({ ...sub, clientStatus: newStatus })) succeeded.add(id);
+                      if (sub && await updateSubscriber({ ...sub, clientStatus: newStatus }, ['clientStatus'])) succeeded.add(id);
                       else failed.add(id);
                     }
                     if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>succeeded.has(s.id)?{...s,clientStatus:newStatus}:s));

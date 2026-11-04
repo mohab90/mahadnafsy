@@ -10,7 +10,7 @@ interface Params {
   isSaving: boolean;
   setIsSaving: (saving: boolean) => void;
   updateLead: (lead: LeadItem) => Promise<boolean>;
-  updateSubscriber: (subscriber: SubscriberItem) => Promise<boolean>;
+  updateSubscriber: (subscriber: SubscriberItem, only?: string[]) => Promise<boolean>;
 }
 
 function communicationDraft(withStatus = false): UnifiedClientCommunicationDraft {
@@ -48,7 +48,7 @@ export function useUnifiedClientCommunications(params: Params) {
     if (quickNoteTimer.current) clearTimeout(quickNoteTimer.current);
     quickNoteTimer.current = setTimeout(async () => {
       const saved = subscriber
-        ? await updateSubscriber({ ...subscriber, internalQuickNote: value })
+        ? await updateSubscriber({ ...subscriber, internalQuickNote: value }, ['internalQuickNote'])
         : lead ? await updateLead({ ...lead, internalQuickNote: value }) : false;
       if (!saved) setQuickNote(persistedQuickNote);
     }, 600);

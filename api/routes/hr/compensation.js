@@ -316,127 +316,12 @@ router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmi
   } catch (e) { hrError(res, e); }
 });
 
-// ── The month sheet's bonus: what was required, what was reached, what is paid ─────────────────────────────────────────────────────────────────
-// «أضيف مكافأة لكل موظف على كل شهر وأكتب تحقيق المطلوب كام والمكافأة كام». One employee_bonuses row per employee and month (source='MONTH_SHEET'); it is
-// pending until a second person approves it (the rule every bonus follows), and an approved month's row is final. A row with no amount only records the target.
-const MONTH_SHEET = 'MONTH_SHEET';
-const TARGET_UNITS = new Set(['clients', 'bookings', 'egp']);
+// The month a body or query names, for the routes that act on one month.
 const sheetMonth = query => {
   const month = Number(query.month);
   const year = Number(query.year);
   return month >= 1 && month <= 12 && year >= 2000 && year <= 2100 ? { month, year } : null;
 };
-
-router.get('/api/admin/hr/month-bonuses', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
-  try {
-    const period = sheetMonth(req.query);
-    if (!period) return res.status(400).json({ error: 'اختار الشهر' });
-    const [rows] = await pool.query(
-      `SELECT s.id AS staff_id, s.monthly_target, s.monthly_target_type, s.monthly_bonus,
-              b.id AS bonus_id, b.amount, b.status, b.reason, b.target_value, b.achieved_value, b.target_unit, b.approved_by
-         FROM staff s
-         LEFT JOIN employee_bonuses b ON b.tenant_id=s.tenant_id AND b.staff_id=s.id AND b.source=? AND b.type='bonus' AND b.for_month=? AND b.for_year=?
-        WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL`,
-      [MONTH_SHEET, period.month, period.year, req.tenantId]);
-    res.json(rows.map(r => ({
-      staffId: r.staff_id,
-      standing: {
-        type: TARGET_UNITS.has(r.monthly_target_type) ? r.monthly_target_type : null,
-        target: r.monthly_target == null ? null : Number(r.monthly_target),
-        bonus: r.monthly_bonus == null ? null : Number(r.monthly_bonus),
-      },
-      entry: r.bonus_id ? {
-        id: r.bonus_id, amount: Number(r.amount), status: r.status, note: r.reason || '',
-        targetValue: r.target_value == null ? null : Number(r.target_value),
-        achievedValue: r.achieved_value == null ? null : Number(r.achieved_value),
-        targetUnit: r.target_unit,
-        locked: !(r.status === 'PENDING' || (Number(r.amount) === 0 && r.approved_by === 'system')),
-      } : null,
-    })));
-  } catch (error) {
-    logger.error('[hr/month-bonuses/get]', error.message);
-    hrError(res, error);
-  }
-});
-
-router.put('/api/admin/hr/month-bonuses', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
-  const conn = await pool.getConnection();
-  let transactionStarted = false;
-  try {
-    const period = sheetMonth(req.body || {});
-    const entries = Array.isArray(req.body?.rows) ? req.body.rows : null;
-    if (!period) return res.status(400).json({ error: 'اختار الشهر' });
-    if (!entries || !entries.length || entries.length > 500) return res.status(400).json({ error: 'مفيش تعديلات' });
-    const money = value => (value === '' || value == null ? null : Number(value));
-    const valid = value => value === null || (Number.isFinite(value) && value >= 0 && value <= 10_000_000);
-    const actor = req.staffRecord?.id || null;
-    const saved = [];
-    await conn.beginTransaction();
-    transactionStarted = true;
-    for (const entry of entries) {
-      const staffId = String(entry?.staffId || '');
-      const amount = money(entry.amount) ?? 0;
-      const targetValue = money(entry.targetValue);
-      const achievedValue = money(entry.achievedValue);
-      if (!staffId || ![amount, targetValue, achievedValue].every(valid)) {
-        throw Object.assign(new Error('المبالغ لازم تكون أرقام موجبة'), { statusCode: 400 });
-      }
-      if (staffId === actor) {
-        throw Object.assign(new Error('لا يجوز إضافة مكافأة أو خصم لنفسك'), { statusCode: 409, code: 'HR_SELF_MUTATION' });
-      }
-      const [[staff]] = await conn.query(
-        'SELECT id, name, monthly_target_type FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
-        [req.tenantId, staffId]);
-      if (!staff) throw Object.assign(new Error('موظف مش موجود'), { statusCode: 404 });
-      const unit = TARGET_UNITS.has(entry.targetUnit) ? entry.targetUnit : (TARGET_UNITS.has(staff.monthly_target_type) ? staff.monthly_target_type : null);
-      const note = String(entry.note ?? '').trim().slice(0, 500) || null;
-      const [[existing]] = await conn.query(
-        `SELECT id, status, amount, approved_by FROM employee_bonuses
-          WHERE tenant_id=? AND staff_id=? AND source=? AND type='bonus' AND for_month=? AND for_year=? LIMIT 1 FOR UPDATE`,
-        [req.tenantId, staffId, MONTH_SHEET, period.month, period.year]);
-      const nothing = amount === 0 && targetValue === null && achievedValue === null && !note;
-      if (existing && !(existing.status === 'PENDING' || (Number(existing.amount) === 0 && existing.approved_by === 'system'))) {
-        throw Object.assign(new Error(`مكافأة ${staff.name} لشهر ${period.month}/${period.year} اتعتمدت وماينفعش تتعدل`), { statusCode: 409, code: 'BONUS_LOCKED' });
-      }
-      if (nothing) {
-        if (existing) await conn.query('DELETE FROM employee_bonuses WHERE tenant_id=? AND id=?', [req.tenantId, existing.id]);
-        continue;
-      }
-      // Nothing to pay needs no second pair of eyes; money does.
-      const status = amount > 0 ? 'PENDING' : 'APPROVED';
-      const approvedBy = amount > 0 ? null : 'system';
-      if (existing) {
-        await conn.query(
-          `UPDATE employee_bonuses SET amount=?, reason=?, target_value=?, achieved_value=?, target_unit=?, status=?, approved_by=?, approved_at=?
-            WHERE tenant_id=? AND id=?`,
-          [amount, note, targetValue, achievedValue, unit, status, approvedBy, amount > 0 ? null : new Date(), req.tenantId, existing.id]);
-        saved.push({ staffId, id: existing.id, status });
-      } else {
-        const id = uuidv4();
-        await conn.query(
-          `INSERT INTO employee_bonuses
-             (id, tenant_id, staff_id, type, amount, currency, reason, for_month, for_year, created_by, status, approved_by, approved_at,
-              target_value, achieved_value, target_unit, source)
-           VALUES (?,?,?,'bonus',?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [id, req.tenantId, staffId, amount, 'EGP', note, period.month, period.year, actor, status, approvedBy,
-            amount > 0 ? null : new Date(), targetValue, achievedValue, unit, MONTH_SHEET]);
-        saved.push({ staffId, id, status });
-      }
-    }
-    await writeAuditEvent({
-      action: 'hr.month_bonus.saved', entityType: 'employee_bonus', entityId: `${period.year}-${period.month}`,
-      severity: 'warning', metadata: { month: period.month, year: period.year, employees: saved.length }, req, db: conn,
-    });
-    await conn.commit();
-    transactionStarted = false;
-    res.json({ ok: true, saved });
-  } catch (error) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
-    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
-    logger.error('[hr/month-bonuses/put]', error.message);
-    hrError(res, error);
-  } finally { conn.release(); }
-});
 
 // «ضيف زر فوق اضيف فيه خصم جزاء من المدير»: a penalty the manager orders for an employee's month — an amount, or a number of days at the day's pay (a thirtieth of
 // the basic salary) — with the reason written. It is an employee_bonuses 'deduction' row (source='MANAGER_PENALTY'), so payroll takes it like any deduction. The
@@ -1106,7 +991,7 @@ router.get('/api/admin/hr/attendance-report', requireAuth, requireAdminOrStaff, 
     const attendanceByStaff = new Map(attendance.map(row => [row.staff_id, row]));
 
     const policy = await getEffectiveHrPolicy(pool, req.tenantId, monthStart);
-    const weekend = new Set(policy.weekend_days_json || [5, 6]);
+    const weekend = new Set(policy.weekend_days_json || [5]);
     const daysInMonth = new Date(y, m, 0).getDate();
     const firstDow    = new Date(y, m - 1, 1).getDay(); // 0=Sun
     let workDays = 0;

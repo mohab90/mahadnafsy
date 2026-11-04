@@ -118,7 +118,7 @@ export interface SiteDataShape {
   updateTestimonial: (item: TestimonialItem) => Promise<boolean>;
   deleteTestimonial: (id: number) => Promise<boolean>;
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
-  updateSubscriber: (item: SubscriberItem) => Promise<boolean>;
+  updateSubscriber: (item: SubscriberItem, only?: string[]) => Promise<boolean>;
   deleteSubscriber: (id: string) => Promise<boolean>;
   addLead: (item: NewLeadDraft, opts?: { skipReload?: boolean }) => Promise<void>;
   addPublicLead: (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }) => Promise<void>;

@@ -68,7 +68,7 @@ interface Props {
   isCollection?: boolean;
   canDeleteSubscriber: boolean;
   shouldUseScopedSubscribers: boolean;
-  updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  updateSubscriber: (s: SubscriberItem, only?: string[]) => Promise<boolean>;
   reloadSubscribers: () => Promise<void>;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   deleteSubscriber: (id: string) => Promise<boolean>;
@@ -181,7 +181,7 @@ export function ClientsTable({
                 };
                 const nextClientStatus = clientStatusMap[nextStatus as string];
                 const nextRow = nextClientStatus ? { ...row, status: nextStatus, clientStatus: nextClientStatus } : { ...row, status: nextStatus };
-                if (!await updateSubscriber(nextRow)) {
+                if (!await updateSubscriber(nextRow, nextClientStatus ? ['status', 'clientStatus'] : ['status'])) {
                   notify('error', 'فشل حفظ حالة العميل. لم يتم اعتماد التغيير.');
                 }
               }}

@@ -30,11 +30,14 @@ test('migration 352 makes a client\'s number comparable by its digits, indexed',
 
 test('the resolver matches the number by digits, and adopts a record whose account has vanished', async () => {
   const source = read('lib/subscriberIdentity.js');
-  assert.match(source, /s\.phone_digits IN \(\$\{placeholders\}\)/);
+  assert.match(source, /s\.phone_digits IN \(\$\{spellings\.map/);
   assert.doesNotMatch(source, /s\.phone IN \(/, 'the exact-spelling list is gone');
-  // Email and number alike: a record held by another LIVE account is not taken, one whose account no longer exists is.
-  assert.equal((source.match(/NOT EXISTS \(SELECT 1 FROM users lu WHERE lu\.id = s\.firebase_uid/g) || []).length, 2);
-  assert.match(source, /NOT EXISTS \(SELECT 1 FROM users lu WHERE lu\.id = firebase_uid AND lu\.tenant_id = subscribers\.tenant_id\)\)`/, 'and the link is written back');
+  // The NUMBER never takes a record held by another LIVE account (one whose account no longer exists is free); the proven e-mail does (4 Nov 2026: one client, two logins).
+  assert.match(source, /const free = `\(s\.firebase_uid IS NULL OR s\.firebase_uid = '' OR s\.firebase_uid = \?\s+OR NOT EXISTS \(SELECT 1 FROM users lu WHERE lu\.id = s\.firebase_uid/);
+  assert.match(source, /s\.email=\? AND s\.deleted_at IS NULL\$\{holding\}/, 'the e-mail match is not blocked by another login');
+  // The users table has a firebase_uid column of its own: unqualified inside the subquery it names THAT one, which made every record look abandoned.
+  assert.doesNotMatch(source, /lu\.id = firebase_uid/);
+  assert.match(source, /lu\.id = subscribers\.firebase_uid AND lu\.tenant_id = subscribers\.tenant_id\)\)`/, 'and the link is written back');
 
   const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
   const seen = [];

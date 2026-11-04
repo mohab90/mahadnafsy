@@ -68,17 +68,13 @@ test('the second institute reads only its own, through the same endpoints', { sk
 
 test('reports and search count and find only the original institute\'s rows', { skip }, async () => {
   await assertIsolated(assert, base, pair.a, pair.b, cookieA, [
-    { path: '/api/admin/reports/lead-funnel', expectOwn: 'SOURCE' },
     { path: '/api/admin/reports/sales-performance', expectOwn: 'REP' },
     { path: '/api/admin/reports/management' },
     { path: '/api/admin/reports/weekly-branches' },
     { path: '/api/admin/search?q=ISO-', expectOwn: 'CLIENT' },
     { path: `/api/admin/search?q=${SHARED_PHONE}`, expectOwn: 'LEAD' },
   ]);
-  // The one lead each tenant filed: a funnel that counted both would say 2.
-  const funnel = JSON.parse((await getAs(base, pair.a, cookieA, '/api/admin/reports/lead-funnel')).text);
-  const own = funnel.bySource.find(row => row.source === `${pair.a.marker}-SOURCE`);
-  assert.equal(Number(own.total), 1);
+  // (The lead funnel report was one of the unused read routes removed on 3 Nov 2026, with its own count check here.)
 });
 
 test('the second institute is kept out of the modules not yet scoped by tenant', { skip }, async () => {

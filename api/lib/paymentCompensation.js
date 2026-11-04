@@ -5,6 +5,8 @@ const { recordRetentionBonus } = require('./instructorPay');
 const { recordBookingBonuses } = require('./bookingBonuses');
 const { cairoDayOf, dateOnlyInTimeZone } = require('./dates');
 
+const AUTOMATIC_BONUSES = false;
+
 // The month a payment counts in. payments.date is a DATETIME, which the driver
 // hands back as a Date: `String(date).slice(0, 10)` gave «Wed Sep 30», matched
 // nothing, and every commission was filed in the month it was processed — a
@@ -117,12 +119,17 @@ async function recordPaymentCompensation({ paymentId, tenantId, commissionStaffI
     }
   }
 
-  // A client who studied with this course's instructor before: the
-  // instructor's retention bonus, whatever basis they are paid on.
-  await recordRetentionBonus(db, { tenantId, payment, amountEgp, actor });
+  // 4 Nov 2026, «الغي كل المكافات اللي انت حطيتها احنا هنحطها مانيول»: no bonus is written by the system now — a payment records the commission and the
+  // instructor's share only; every bonus is typed by HR (employee_bonuses). Set AUTOMATIC_BONUSES to true to bring the automatic ones back: the booking
+  // bonuses (lib/bookingBonuses.js) and the instructor's retention bonus resume from the next payment, nothing is back-filled.
+  if (AUTOMATIC_BONUSES) {
+    // A client who studied with this course's instructor before: the
+    // instructor's retention bonus, whatever basis they are paid on.
+    await recordRetentionBonus(db, { tenantId, payment, amountEgp, actor });
 
-  // The course's own booking bonuses — sales, the desk, the lecturer.
-  await recordBookingBonuses(db, { tenantId, payment, amountEgp, actor });
+    // The course's own booking bonuses — sales, the desk, the lecturer.
+    await recordBookingBonuses(db, { tenantId, payment, amountEgp, actor });
+  }
 }
 
 module.exports = { paymentPeriod, recordPaymentCompensation };

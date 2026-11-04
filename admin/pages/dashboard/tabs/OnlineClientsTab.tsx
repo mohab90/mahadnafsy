@@ -75,7 +75,7 @@ interface Props {
   content: Record<string, string>;
   salesOwnDaqqiRounds: DaqqiRound[];
   setSalesOwnDaqqiRounds: React.Dispatch<React.SetStateAction<DaqqiRound[] | null>>;
-  updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  updateSubscriber: (s: SubscriberItem, only?: string[]) => Promise<boolean>;
   addSubscriber: (s: SubscriberItem) => Promise<boolean>;
   reloadSubscribers: () => Promise<void>;
   reloadLeads: () => Promise<void>;
@@ -901,7 +901,7 @@ export default function OnlineClientsTab({
                                           ...marketRowClean, market: convertType, branch: MARKET_BRANCH[convertType],
                                           clientStatus: 'active', transferDate: cairoDateOnly(),
                                         };
-                                        if (!await updateSubscriber(moved)) throw new Error('فشل حفظ تحويل العميل');
+                                        if (!await updateSubscriber(moved, ['market', 'branch', 'clientStatus', 'transferDate'])) throw new Error('فشل حفظ تحويل العميل');
                                         setSalesOwnSubscribers(prev => prev.map(s => s.id === moved.id ? moved : s));
                                         setConvertRow(null);
                                         notify('success', `✅ تم تحويل ${convertRow.name} إلى ${MARKET_LABELS[convertType]}`);
@@ -910,7 +910,7 @@ export default function OnlineClientsTab({
                                       if (convertType === 'online') {
                                         const { crm_json: _dropCrm2, ...onlineRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
                                         const onlineUpdated: SubscriberItem = { ...onlineRowClean, branch: 'ONLINE_EGYPT' as const, clientStatus: 'active' as const, transferDate: cairoDateOnly() };
-                                        if (!await updateSubscriber(onlineUpdated)) throw new Error('فشل حفظ تحويل العميل');
+                                        if (!await updateSubscriber(onlineUpdated, ['branch', 'clientStatus', 'transferDate'])) throw new Error('فشل حفظ تحويل العميل');
                                         setSalesOwnSubscribers(prev => prev.map(s => s.id === onlineUpdated.id ? onlineUpdated : s));
                                         setConvertRow(null);
                                         notify('success', `✅ تم تحويل ${convertRow.name} إلى الأونلاين`);
@@ -936,7 +936,7 @@ export default function OnlineClientsTab({
                                          });
                                          const { crm_json: _dropCrm4, ...refundRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
                                          const pending: SubscriberItem = { ...refundRowClean, clientStatus: 'refund_pending', transferAnswers: answers, transferDate: cairoDateOnly() };
-                                         if (!await updateSubscriber(pending)) throw new Error('اتفتح طلب الاسترداد، بس حالة العميل متحفظتش');
+                                         if (!await updateSubscriber(pending, ['clientStatus', 'transferAnswers', 'transferDate'])) throw new Error('اتفتح طلب الاسترداد، بس حالة العميل متحفظتش');
                                          setSalesOwnSubscribers(prev => prev.map(s => s.id === pending.id ? pending : s));
                                          setConvertRow(null);
                                          notify('success', `✅ اتفتح طلب استرداد لـ ${convertRow.name} — مستني الاعتماد في «طلبات الاسترداد»`);
@@ -951,7 +951,7 @@ export default function OnlineClientsTab({
                                         transferDate: cairoDateOnly(),
                                         ...(convertType === 'daqqi' ? { branch: physicalBranch.key } : {}),
                                       };
-                                      if (!await updateSubscriber(updated)) throw new Error('فشل حفظ حالة العميل');
+                                      if (!await updateSubscriber(updated, ['clientStatus', 'transferAnswers', 'transferDate', ...(convertType === 'daqqi' ? ['branch'] : [])])) throw new Error('فشل حفظ حالة العميل');
                                       setSalesOwnSubscribers(prev => prev.map(s => s.id === updated.id ? updated : s));
                                        setConvertRow(null);
                                        const typeLabel = convertType === 'active' ? 'نشط' : convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : `فرع ${physicalBranch.label}`;

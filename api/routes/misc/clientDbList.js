@@ -20,6 +20,19 @@ const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 
 const router = express.Router();
 const PAGE_MAX = 100;
+// The counts walk every lead against the clients (seconds at hundreds of thousands of rows) and change slowly: the same question inside a minute is answered once.
+const COUNT_TTL_MS = 60 * 1000;
+const memo = new Map();
+async function remembered(key, load) {
+  const hit = memo.get(key);
+  if (hit && Date.now() - hit.at < COUNT_TTL_MS) return hit.value;
+  const value = await load();
+  memo.set(key, { at: Date.now(), value });
+  if (memo.size > 200) memo.delete(memo.keys().next().value);
+  return value;
+}
+// A page reads at most this many rows from each population: deeper than that is what the filters and the search are for.
+const DEEP_MAX = 20000;
 
 /** The kind of client a record is — online, Dokki or the regular branch — by the same rule as the screen's getSubType: the client type first, then the branch. */
 function subTypeSql(alias) {
@@ -72,20 +85,31 @@ function populations(req) {
 router.get('/api/admin/client-db/summary', requireAuth, requireAdminOrStaff, requirePermission('view_client_db'), async (req, res) => {
   try {
     const pop = populations(req);
-    const [subs, leads, registrations] = await Promise.all([
+    const summaryKey = JSON.stringify(['summary', req.tenantId, pop.subscriber, pop.lead, pop.registration]);
+    const cached = await remembered(summaryKey, async () => {
+    const [subs, leads, registrations, left] = await Promise.all([
       pop.subscriber ? pool.query(
         `SELECT COUNT(*) AS total, COALESCE(SUM(${subTypeSql('s')} = 'online'), 0) AS online, COALESCE(SUM(${subTypeSql('s')} = 'daqqi'), 0) AS daqqi,
                 COALESCE(SUM(${subTypeSql('s')} = 'regular'), 0) AS regular
            FROM subscribers s WHERE s.tenant_id = ? AND ${pop.subscriber.where}`, [req.tenantId, ...pop.subscriber.params]) : [[{ total: 0, online: 0, daqqi: 0, regular: 0 }]],
       pop.lead ? pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ? AND ${pop.lead.where}`, [req.tenantId, ...pop.lead.params]) : [[{ total: 0 }]],
       pop.registration ? pool.query(`SELECT COUNT(*) AS total FROM users u WHERE u.tenant_id = ? AND ${pop.registration.where}`, [req.tenantId, ...pop.registration.params]) : [[{ total: 0 }]],
+      // The leads the total leaves out, so a number that looks short can be read: hidden, archived, merged, become clients.
+      pop.lead ? pool.query(
+        `SELECT COALESCE(SUM(l.hidden <> 0), 0) AS hidden, COALESCE(SUM(l.hidden = 0 AND l.status = 'archived'), 0) AS archived,
+                COALESCE(SUM(l.hidden = 0 AND l.status <> 'archived' AND l.merged_into_lead_id IS NOT NULL), 0) AS merged,
+                COALESCE(SUM(l.hidden = 0 AND l.status <> 'archived' AND l.merged_into_lead_id IS NULL AND l.status IN ${CONVERTED_SQL}), 0) AS converted
+           FROM leads l WHERE l.tenant_id = ? AND l.deleted_at IS NULL${leadScope(req, 'l').sql}`, [req.tenantId, ...leadScope(req, 'l').params]) : [[{ hidden: 0, archived: 0, merged: 0, converted: 0 }]],
     ]);
     const s = subs[0][0];
     const summary = {
       subscribers: Number(s.total) || 0, online: Number(s.online) || 0, daqqi: Number(s.daqqi) || 0, regular: Number(s.regular) || 0,
       leads: Number(leads[0][0].total) || 0, registrations: Number(registrations[0][0].total) || 0,
+      leftOut: { hidden: Number(left[0][0].hidden) || 0, archived: Number(left[0][0].archived) || 0, merged: Number(left[0][0].merged) || 0, converted: Number(left[0][0].converted) || 0 },
     };
-    res.json({ ...summary, total: summary.subscribers + summary.leads + summary.registrations });
+    return { ...summary, total: summary.subscribers + summary.leads + summary.registrations };
+    });
+    res.json(cached);
   } catch (error) {
     logger.error('[client-db-summary]', error.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -93,9 +117,10 @@ router.get('/api/admin/client-db/summary', requireAuth, requireAdminOrStaff, req
 });
 
 const SORTS = {
-  date_desc: 't.created_at DESC, t.id',
-  date_asc: 't.created_at ASC, t.id',
-  name_asc: 't.name ASC, t.id',
+  // `by` orders one population in its own query (the id runs the same way as the date, so the index serves the sort without a filesort); `compare` merges the pages.
+  date_desc: { by: alias => `${alias}.created_at DESC, ${alias}.id DESC`, compare: (a, b) => (new Date(b.created_at) - new Date(a.created_at)) || String(b.id).localeCompare(String(a.id)), leadIndex: true },
+  date_asc: { by: alias => `${alias}.created_at ASC, ${alias}.id ASC`, compare: (a, b) => (new Date(a.created_at) - new Date(b.created_at)) || String(a.id).localeCompare(String(b.id)), leadIndex: true },
+  name_asc: { by: alias => `${alias}.name ASC, ${alias}.id ASC`, compare: (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ar') || String(a.id).localeCompare(String(b.id)) },
 };
 
 router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requirePermission('view_client_db'), async (req, res) => {
@@ -118,6 +143,7 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
       if (course) { filters.push('EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id = s.tenant_id AND e.subscriber_id = s.id AND e.course_id = ?)'); params.push(course); }
       if (q) { const match = personMatch(q, 's', { withPhone2: true }); filters.push(match.sql); params.push(...match.params); }
       parts.push({
+        alias: 's',
         sql: `SELECT 'subscriber' AS kind, s.id COLLATE utf8mb4_unicode_ci AS id, s.client_code COLLATE utf8mb4_unicode_ci AS client_code, s.name COLLATE utf8mb4_unicode_ci AS name, s.phone COLLATE utf8mb4_unicode_ci AS phone, s.email COLLATE utf8mb4_unicode_ci AS email, s.branch COLLATE utf8mb4_unicode_ci AS branch,
                      s.client_type COLLATE utf8mb4_unicode_ci AS client_type, 'مشترك' AS status, s.created_at, COALESCE(s.assigned_sales_name, '') COLLATE utf8mb4_unicode_ci AS sales_name
                 FROM subscribers s WHERE s.tenant_id = ? AND ${pop.subscriber.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
@@ -133,9 +159,10 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
       if (branch) { filters.push("UPPER(COALESCE(l.branch, '')) = ?"); params.push(branch); }
       if (q) { const match = personMatch(q, 'l'); filters.push(match.sql); params.push(...match.params); }
       parts.push({
+        alias: 'l',
         sql: `SELECT 'lead' AS kind, l.id COLLATE utf8mb4_unicode_ci AS id, l.client_code COLLATE utf8mb4_unicode_ci AS client_code, l.name COLLATE utf8mb4_unicode_ci AS name, l.phone COLLATE utf8mb4_unicode_ci AS phone, l.email COLLATE utf8mb4_unicode_ci AS email, l.branch COLLATE utf8mb4_unicode_ci AS branch,
                      l.client_type COLLATE utf8mb4_unicode_ci AS client_type, l.status COLLATE utf8mb4_unicode_ci AS status, l.created_at, COALESCE(l.assigned_sales_name, '') COLLATE utf8mb4_unicode_ci AS sales_name
-                FROM leads l WHERE l.tenant_id = ? AND ${pop.lead.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
+                FROM leads l${order.leadIndex && !q && !branch && ['all', 'lead'].includes(type) ? ' FORCE INDEX (idx_leads_tenant_hidden_created_id)' : ''} WHERE l.tenant_id = ? AND ${pop.lead.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
         params: [req.tenantId, ...pop.lead.params, ...params],
       });
     }
@@ -144,6 +171,7 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
       const params = [];
       if (q) { const match = personMatch(q, 'u', { withCode: false }); filters.push(match.sql); params.push(...match.params); }
       parts.push({
+        alias: 'u',
         sql: `SELECT 'registration' AS kind, u.id COLLATE utf8mb4_unicode_ci AS id, NULL AS client_code, u.name COLLATE utf8mb4_unicode_ci AS name, u.phone COLLATE utf8mb4_unicode_ci AS phone, u.email COLLATE utf8mb4_unicode_ci AS email, NULL AS branch, NULL AS client_type, 'registration' AS status,
                      u.created_at, '' AS sales_name
                 FROM users u WHERE u.tenant_id = ? AND ${pop.registration.where}${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`,
@@ -154,12 +182,15 @@ router.get('/api/admin/client-db/page', requireAuth, requireAdminOrStaff, requir
 
     // Each text column of the union names one collation: the three tables do not all hold theirs in the same one on every database, and a UNION of two refuses (the
     // release's staging run showed it for the new table's columns, 3 Nov 2026).
-    const union = parts.map(part => part.sql).join(' UNION ALL ');
-    const unionParams = parts.flatMap(part => part.params);
-    const [[count], [page]] = await Promise.all([
-      pool.query(`SELECT COUNT(*) AS total FROM (${union}) t`, unionParams).then(([rows]) => [rows[0]]),
-      pool.query(`SELECT t.* FROM (${union}) t ORDER BY ${order} LIMIT ? OFFSET ?`, [...unionParams, limit, offset]),
-    ]);
+    // Each population is counted and read on its own, ordered by its own index, and the pages are merged here: one sort over the union of every lead and client
+    // took 5 s at 600,000 leads. A page needs only the first offset + limit rows of each.
+    if (offset + limit > DEEP_MAX) return res.status(400).json({ error: 'الصفحة بعيدة — ضيّق البحث أو استخدم الفلاتر', code: 'PAGE_TOO_DEEP' });
+    const counts = await Promise.all(parts.map(part => remembered(JSON.stringify(['count', req.tenantId, part.sql, part.params]),
+      async () => Number((await pool.query(`SELECT COUNT(*) AS total FROM (${part.sql}) t`, part.params))[0][0].total) || 0)));
+    const reads = await Promise.all(parts.map((part, index) => (counts[index] === 0 ? [] : pool.query(
+      `${part.sql} ORDER BY ${order.by(part.alias)} LIMIT ?`, [...part.params, offset + limit]).then(([rows]) => rows))));
+    const count = { total: counts.reduce((sum, value) => sum + value, 0) };
+    const page = reads.flat().sort(order.compare).slice(offset, offset + limit);
 
     // What the page's clients have paid and which courses they hold — for these rows only.
     const clientIds = page.filter(row => row.kind === 'subscriber').map(row => row.id);

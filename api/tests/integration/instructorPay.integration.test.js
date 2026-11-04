@@ -104,7 +104,8 @@ test('an online session that ended is a lecture paid by the hour for its own len
   ], '300 an hour × 1.5 hours');
 });
 
-test('a returning client earns the instructor the retention bonus once; a first course does not; a lecture instructor takes no revenue share', { skip }, async () => {
+// 4 Nov 2026: the retention bonus is no longer written by the system (lib/paymentCompensation.js AUTOMATIC_BONUSES); with the switch on this test expected one 200 bonus for the returning client.
+test('a returning client earns the instructor no automatic retention bonus; a lecture instructor takes no revenue share', { skip }, async () => {
   const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
   const pay = async (id, courseId, amount, date) => {
     await pool.query(
@@ -118,12 +119,10 @@ test('a returning client earns the instructor the retention bonus once; a first 
   assert.deepEqual(await fees("fee_type IN ('retention','fixed')"), [], 'first course with Amal: no bonus; per-lecture: no share of the payment');
   await pay('pay-ip-2', 'co-a2', 1500, '2026-10-02');
   await pay('pay-ip-3', 'co-a2', 1500, '2026-10-20'); // the second instalment of the same course
-  assert.deepEqual(await fees("fee_type='retention'"), [
-    { staff_id: 'st-dr-a', fee_type: 'retention', status: 'pending', total_amount: 200, hours: null, source_key: 'retention:sub-ip-1:co-a2' },
-  ], 'one fixed bonus for the client and the course');
+  assert.deepEqual(await fees("fee_type='retention'"), [], 'the bonus is typed by HR, not written by a payment');
 });
 
-test('the payment that earned the bonus refunded: the bonus goes', { skip }, async () => {
+test('a refund of that payment leaves no bonus behind and fails nothing', { skip }, async () => {
   const { applyRefundReversal } = require('../../lib/refunds');
   const conn = await pool.getConnection();
   try {
@@ -131,7 +130,7 @@ test('the payment that earned the bonus refunded: the bonus goes', { skip }, asy
     await applyRefundReversal({ paymentId: 'pay-ip-2', subscriberId: 'sub-ip-1', refundAmount: 1500, refundCurrency: 'EGP', tenantId: TENANT, actor: 'test' }, conn);
     await conn.commit();
   } finally { conn.release(); }
-  assert.equal((await fees("fee_type='retention'"))[0].status, 'rejected');
+  assert.deepEqual(await fees("fee_type='retention'"), []);
 });
 
 test('a rate change is a request another person approves, and then the lectures follow it', { skip }, async () => {

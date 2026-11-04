@@ -43,6 +43,12 @@ async function autoLinkAccounts(db, { tenantId, userIds = null, subscriberIds = 
     [tenantId, ...(subscriberIds ? [subscriberIds] : []), ...(spellings.length ? [spellings] : []), ...(emails.length ? [emails] : [])]);
   if (!clients.length) return { number: 0, email: 0, contested: 0 };
 
+  // Two records of one person (the same number or e-mail twice): the one that holds the courses is the client; with none or several holding, it stays contested.
+  const [held] = await db.query(
+    "SELECT DISTINCT subscriber_id FROM enrollments WHERE tenant_id = ? AND status = 'active' AND subscriber_id IN (?)", [tenantId, clients.map(client => client.id)]);
+  const holders = new Set(held.map(row => row.subscriber_id));
+  const holdingOnly = list => (list.length > 1 && list.filter(client => holders.has(client.id)).length === 1 ? list.filter(client => holders.has(client.id)) : list);
+
   const byDigits = new Map();
   const byEmail = new Map();
   for (const client of clients) {
@@ -59,14 +65,15 @@ async function autoLinkAccounts(db, { tenantId, userIds = null, subscriberIds = 
       : [];
     const email = Number(account.email_unverified) === 1 ? '' : String(account.email || '').trim().toLowerCase();
     const byAddress = email ? (byEmail.get(email) || []).filter(client => !taken.has(client.id)) : [];
-    const [tier, found] = byNumber.length === 1 ? ['number', byNumber] : byAddress.length === 1 ? ['email', byAddress] : [null, null];
-    if (!tier) { if (byNumber.length > 1 || byAddress.length > 1) done.contested += 1; continue; }
+    const [numberPick, addressPick] = [holdingOnly(byNumber), holdingOnly(byAddress)];
+    const [tier, found] = numberPick.length === 1 ? ['number', numberPick] : addressPick.length === 1 ? ['email', addressPick] : [null, null];
+    if (!tier) { if (numberPick.length > 1 || addressPick.length > 1) done.contested += 1; continue; }
     const client = found[0];
     const [result] = await db.query(
       // Fills the client's EMPTY e-mail / number from the account, so the desk sees them; nothing is merged or removed.
       `UPDATE subscribers SET firebase_uid = ?, email = COALESCE(NULLIF(email, ''), ?), phone = COALESCE(NULLIF(phone, ''), ?), updated_at = updated_at
         WHERE id = ? AND tenant_id = ?
-          AND (firebase_uid IS NULL OR firebase_uid = '' OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = firebase_uid AND lu.tenant_id = subscribers.tenant_id))`,
+          AND (firebase_uid IS NULL OR firebase_uid = '' OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = subscribers.firebase_uid AND lu.tenant_id = subscribers.tenant_id))`,
       [account.id, Number(account.email_unverified) === 1 ? null : (account.email || null), account.phone || null, client.id, tenantId]);
     if (result.affectedRows) { taken.add(client.id); done[tier] += 1; }
   }

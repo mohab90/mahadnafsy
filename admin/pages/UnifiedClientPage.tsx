@@ -274,7 +274,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         onOpenInstallmentPlan={() => setActiveTab('installments')}
         onOpenAccess={() => setShowAccessModal(true)}
         onEdit={() => { setEditing(true); setActiveTab('edit'); }}
-        onToggleSubscriberStatus={() => updateSubscriber({ ...subscriber!, status: subscriber!.status === 'active' ? 'paused' : 'active' })}
+        onToggleSubscriberStatus={() => updateSubscriber({ ...subscriber!, status: subscriber!.status === 'active' ? 'paused' : 'active' }, ['status'])}
         onDeleteClient={async () => {
           // In-app: window.confirm can be suppressed by the browser, and a
           // suppressed dialog answers "no" without ever reaching the person —
@@ -404,7 +404,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               subscriber={subscriber}
               discountBase={discountBase}
               settlementLabel={settlementLabel}
-              onUpdateDiscount={(discount) => updateSubscriber({ ...subscriber!, discount })}
+              onUpdateDiscount={(discount) => updateSubscriber({ ...subscriber!, discount }, ['discount'])}
             />
           )}
 

@@ -141,7 +141,7 @@ const csv = rows => rows.map(row => row.map(cell => `"${String(cell ?? '').repla
               updated_at = updated_at
         WHERE id = ? AND tenant_id = ?
           AND (firebase_uid IS NULL OR firebase_uid = ''
-               OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = firebase_uid AND lu.tenant_id = subscribers.tenant_id))`,
+               OR NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = subscribers.firebase_uid AND lu.tenant_id = subscribers.tenant_id))`,
       [account.id, Number(account.email_unverified) === 1 ? null : (account.email || null), account.phone || null, client.id, TENANT]);
     written += result.affectedRows;
   }

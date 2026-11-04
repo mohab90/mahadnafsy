@@ -214,7 +214,7 @@ export function useCrmCoreState(
     return true;
   };
 
-  const updateSubscriber = async (item: SubscriberItem): Promise<boolean> => {
+  const updateSubscriber = async (item: SubscriberItem, only?: string[]): Promise<boolean> => {
     // Snapshot the old record BEFORE updating so we can diff.
     const oldSub = subscribersRef.current.find(r => r.id === item.id);
     // Upsert: add if not found (handles non-admin staff whose context subscribers are initially empty)
@@ -232,10 +232,11 @@ export function useCrmCoreState(
     // list, or for staff the scoped list their screens draw from. The server
     // applies only these fields to the row as it stands (api/routes/admin/
     // subscribers.js «partial»), so a payment or another manager's edit since
-    // then is kept instead of refused or overwritten. No copy, no list: the
-    // whole-record save and its version check, as before.
+    // then is kept instead of refused or overwritten. A caller that knows what it changes (a status, a conversion) names the fields in `only`: the
+    // paginated screens hold no copy of the row in either list, and without one the save fell back to the whole record and its version check — the
+    // «تم تعديل هذا المشترك من طرف آخر» errors on activate / pause (4 Nov 2026). No copy, no list, no `only`: the whole-record save, as before.
     const base = oldSub ?? staffScopedSubscribers.find(row => row.id === item.id);
-    const changedFields = base
+    const changedFields = only ? [...new Set(only)] : base
       ? [...new Set([...Object.keys(item), ...Object.keys(base)])]
         .filter(key => key !== 'updatedAt'
           && JSON.stringify((item as unknown as Record<string, unknown>)[key]) !== JSON.stringify((base as unknown as Record<string, unknown>)[key]))

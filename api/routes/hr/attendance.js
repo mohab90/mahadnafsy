@@ -83,7 +83,7 @@ router.get('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requirePe
       ...toNumbers(row, ['annual_leave_days', 'sick_leave_days', 'overtime_multiplier', 'work_days_per_month']),
       weekend_days_json: (() => {
         try { return typeof row.weekend_days_json === 'string' ? JSON.parse(row.weekend_days_json) : row.weekend_days_json; }
-        catch { return [5, 6]; }
+        catch { return [5]; }
       })(),
       late_tiers_json: (() => { try { return JSON.parse(row.late_tiers_json); } catch { return DEFAULT_POLICY.late_tiers_json; } })(),
     })));
@@ -131,7 +131,7 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
     };
     const weekend = Array.isArray(weekend_days_json)
       ? [...new Set(weekend_days_json.map(Number).filter(day => day >= 0 && day <= 6))]
-      : [5, 6];
+      : [5];
     if (!effective_from || Object.values(values).some(value => !Number.isFinite(value))
       || values.annual < 0 || values.annual > 365 || values.sick < 0 || values.sick > 365
       || values.workDays <= 0 || values.workDays > 31 || values.workMinutes < 60 || values.workMinutes > 1440
