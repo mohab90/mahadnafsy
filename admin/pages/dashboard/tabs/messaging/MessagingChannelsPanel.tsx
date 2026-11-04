@@ -4,9 +4,16 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin, type MessagingChannel, type WapilotInstance } from '../../../../lib/mysqlapi';
 import { toDialable } from '../../../../lib/whatsappLink';
+import { copyText } from '../../../../../shared/copyText';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+
+/** GET /admin/messaging/channels/health: what receiving needs, and the last thing that arrived on each channel. */
+type ChannelHealth = {
+  webhooks: Record<'whatsapp' | 'messenger', { url: string; appSecret: boolean; verifyToken: boolean }>;
+  channels: Record<string, { lastInboundAt: string | null; inboundThisWeek: number }>;
+};
 
 /**
  * Every identity the institute can send from, in one place.
@@ -25,6 +32,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
   const [editId, setEditId] = useState<string | null>(null);
   const blankEdit = { label: '', displayNumber: '', instance: '', apiKey: '', metaPhoneId: '', metaWabaId: '', metaToken: '', pageId: '', pageAccessToken: '' };
   const [edit, setEdit] = useState(blankEdit);
+  const [health, setHealth] = useState<ChannelHealth | null>(null);
 
   const [draft, setDraft] = useState({
     kind: 'whatsapp' as 'whatsapp' | 'messenger',
@@ -44,6 +52,8 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     try { setChannels(await mysqlAdmin.listMessagingChannels()); }
     catch { notify('error', 'تعذر تحميل القنوات'); }
     finally { setLoading(false); }
+    // The receiving side is a second question; a failure to ask it must not hide the channels.
+    mysqlAdmin.adminGet<ChannelHealth>('/admin/messaging/channels/health').then(setHealth).catch(() => setHealth(null));
   }, [notify]);
   useEffect(() => { void load(); }, [load]);
 
@@ -190,6 +200,14 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               </div>
             )}
             {channel.last_error && <p className="text-xs text-red-600 mt-1">{channel.last_error}</p>}
+            {health && (channel.provider === 'meta' || channel.provider === 'messenger') && !channel.owner_staff_id && (() => {
+              const seen = health.channels[channel.id];
+              return seen?.lastInboundAt ? (
+                <p className="mt-1 text-xs text-emerald-700">آخر رسالة وصلت على القناة دي: {new Date(seen.lastInboundAt).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })} · {seen.inboundThisWeek} الأسبوع ده</p>
+              ) : (
+                <p className="mt-1 text-xs text-amber-700">لسه ولا رسالة وصلت على القناة دي — راجع «استقبال الرسائل» فوق (عنوان الـ Webhook وأسرار السيرفر) أو ابعت رسالة تجريبية للرقم.</p>
+              );
+            })()}
           </div>
           <div className="flex items-center gap-1.5">
             {channel.isConnected
@@ -386,6 +404,26 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
         <p>• <b>واتساب كل موظف:</b> رقمه الشخصي، بيربطه الموظف بنفسه من «واتسابي» — منفصل تمامًا عن قنوات الشركة.</p>
         <p>• <b>رقم الأكواد والإشعارات (OTP):</b> القناة اللي عليها علامة «الافتراضية» تحت. سيبها لرقم الأكواد (01200400031) ومتغيّرهاش غير لو عايز تنقل الأكواد لرقم تاني.</p>
       </div>
+
+      {health && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 text-sm">
+          <p className="font-bold text-gray-800">استقبال الرسائل في الصندوق</p>
+          <p className="text-xs text-gray-500">القناة «متصلة» معناها إن التوكن سليم للإرسال. عشان الرسايل توصل للصندوق لازم ميتا تعرف تبعت لعنوان الـ Webhook ده، والسيرفر يكون معاه الأسرار.</p>
+          {([['whatsapp', 'واتساب Cloud API'], ['messenger', 'ماسنجر وانستجرام']] as const).map(([key, label]) => {
+            const item = health.webhooks[key];
+            return (
+              <div key={key} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="w-28 shrink-0 font-bold text-gray-700">{label}</span>
+                <code className="rounded bg-gray-50 px-2 py-1 font-mono" dir="ltr">{item.url}</code>
+                <button type="button" onClick={() => { void copyText(item.url).then(() => notify('success', 'اتنسخ العنوان')); }}
+                  className="rounded-lg bg-teal-50 px-2 py-1 font-bold text-teal-700 hover:bg-teal-100">نسخ</button>
+                <span className={item.appSecret ? 'text-emerald-700' : 'text-red-600'}>{item.appSecret ? '✓ App Secret' : '✗ App Secret مش متحط على السيرفر'}</span>
+                <span className={item.verifyToken ? 'text-emerald-700' : 'text-red-600'}>{item.verifyToken ? '✓ Verify Token' : '✗ Verify Token مش متحط على السيرفر'}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {showAdd && (
         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">

@@ -96,6 +96,33 @@ router.get('/api/admin/messaging/channels', ...view, async (req, res) => {
   } catch (error) { fail(res, error, 'channel list failed'); }
 });
 
+/**
+ * What a company channel needs to receive anything, and whether it does. A channel can read «متصلة» (the token is good) and still bring nothing into the shared inbox: Meta has to be
+ * told where to post (the webhook address), the server has to hold the app secret and the verify token, and the id saved for the channel has to be the one Meta names in the post.
+ * The last thing that arrived on each channel is the proof that all of it works (4 Nov 2026, «واتساب الأساسي وصندوق الإنبوكس مش شغالين»).
+ */
+router.get('/api/admin/messaging/channels/health', ...view, async (req, res) => {
+  try {
+    const { resolveSecret } = require('../lib/secretResolver');
+    const has = name => { try { return Boolean(resolveSecret(name)); } catch { return false; } };
+    const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
+    const origin = host ? `https://${host}` : '';
+    const [rows] = await pool.query(
+      `SELECT channel_id, MAX(created_at) AS last_at, SUM(created_at >= NOW() - INTERVAL 7 DAY) AS week
+         FROM communications WHERE tenant_id = ? AND direction = 'IN' AND channel_id IS NOT NULL GROUP BY channel_id`, [req.tenantId]);
+    res.json({
+      webhooks: {
+        whatsapp: { url: `${origin}/api/webhooks/whatsapp/meta`, appSecret: has('WHATSAPP_APP_SECRET'), verifyToken: has('WHATSAPP_WEBHOOK_VERIFY_TOKEN') },
+        messenger: {
+          url: `${origin}/api/webhooks/messenger`,
+          appSecret: has('MESSENGER_APP_SECRET') || has('WHATSAPP_APP_SECRET'), verifyToken: has('MESSENGER_WEBHOOK_VERIFY_TOKEN'),
+        },
+      },
+      channels: Object.fromEntries(rows.map(row => [row.channel_id, { lastInboundAt: row.last_at, inboundThisWeek: Number(row.week) || 0 }])),
+    });
+  } catch (error) { fail(res, error, 'channel health failed'); }
+});
+
 router.post('/api/admin/messaging/channels', ...manage, async (req, res) => {
   try {
     const { kind, provider, label, displayNumber, credentials, ownerStaffId, dailySendLimit, makeDefault } = req.body || {};

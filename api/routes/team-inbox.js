@@ -537,7 +537,9 @@ router.get('/api/admin/team-inbox/readiness', ...guard, async (req, res) => {
       return rows.find(channel => channel.is_default === 1) || rows[0] || null;
     };
     const shown = channel => (channel ? { label: channel.label, provider: channel.provider, status: channel.status, displayNumber: channel.display_number || null } : null);
-    const whatsapp = company('whatsapp');
+    // The inbox is fed by the official API: when one exists it is the company WhatsApp here, even if the default channel (the one the codes go out from) is another number.
+    const receiving = list.filter(channel => channel.kind === 'whatsapp' && channel.is_active === 1 && channel.provider === 'meta');
+    const whatsapp = receiving.find(channel => channel.status === 'connected') || receiving[0] || company('whatsapp');
     const page = company('messenger');
     const whatsappReceives = Boolean(whatsapp && ['meta', 'green-api'].includes(whatsapp.provider));
     res.json({
