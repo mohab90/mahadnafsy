@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import IntegrationsTab from './tabs/IntegrationsTab';
 import SecurityCenterTab from './tabs/SecurityCenterTab';
 import AnalyticsHubTab from './tabs/AnalyticsHubTab';
+import StaffPerformanceHubTab from './tabs/StaffPerformanceHubTab';
 import CampaignsTab from './tabs/CampaignsTab';
 import SalesPlanningTab from './tabs/SalesPlanningTab';
 
@@ -30,12 +31,10 @@ import {
   FinancialBranchTab,
   FinancialReportsHub,
   HrTab,
-  HrAnalyticsTab,
   InstallmentPlansTab,
   InterviewsTab,
   JoinUsAdminTab,
   LeadSourcesSettingsTab,
-  EnpsDashboardTab,
   OffboardingTab,
   FaqManagerTab,
   NpsDashboardTab,
@@ -48,7 +47,6 @@ import {
   SalesReportsTab,
   SalesTeamTab,
   SettingsHubTab,
-  StaffPerformanceTab,
   SubscriptionsTab,
   SystemSettingsTab,
   TasksBoardTab,
@@ -123,8 +121,7 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'financial_reports', Component: FinancialReportsHub, spinner: 'amber' },
   { key: 'recurring_expenses', Component: RecurringExpensesTab, spinner: 'primary' },
   { key: 'hr', Component: HrTab, spinner: 'primary' },
-  { key: 'hr_analytics', Component: HrAnalyticsTab, spinner: 'primary' },
-  { key: 'staff_performance', Component: StaffPerformanceTab, spinner: 'indigo' },
+  { key: 'staff_performance', Component: StaffPerformanceHubTab, spinner: 'indigo' },
   { key: 'sales_daqqi_schedule', Component: SalesDaqqiScheduleTab, spinner: 'amber' },
   { key: 'sales_team', Component: SalesTeamTab, spinner: 'indigo' },
   { key: 'sales_reports', Component: SalesReportsTab, spinner: 'indigo' },
@@ -133,7 +130,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'consultation_calendar', Component: ConsultationCalendarTab, spinner: 'indigo' },
   { key: 'branches_settings', Component: BranchesSettingsTab, spinner: 'indigo' },
   { key: 'archived_clients', Component: ArchivedClientsTab, spinner: 'indigo' },
-  { key: 'enps_dashboard', Component: EnpsDashboardTab, spinner: 'indigo' },
   { key: 'offboarding', Component: OffboardingTab, spinner: 'indigo' },
   { key: 'settings_hub', Component: SettingsHubTab, spinner: 'indigo' },
   { key: 'lead_sources_settings', Component: LeadSourcesSettingsTab, spinner: 'blue' },

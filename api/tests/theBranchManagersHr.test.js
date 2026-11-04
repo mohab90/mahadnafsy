@@ -75,5 +75,5 @@ test('a branch manager opening «الموارد البشرية» from any link l
   // links and saved addresses (/dashboard/hr, /dashboard/hr/attendance) led there.
   const dashboard = dashboardSource();
   assert.match(dashboard, /const branchHrOnly = \['daqqi_manager', 'tagamoa_manager'\]\.includes\(String\(currentStaff\?\.role \|\| ''\)\.toLowerCase\(\)\);/);
-  assert.match(dashboard, /branchHrOnly && \['hr', 'hr_analytics'\]\.includes\(activeScreen\) \? 'branch_hr' : activeScreen/);
+  assert.match(dashboard, /branchHrOnly && activeScreen === 'hr' \? 'branch_hr' : activeScreen/);
 });

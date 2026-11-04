@@ -17,7 +17,6 @@ const offboarding = read('routes', 'hr', 'offboarding.js');
 const payroll = read('routes', 'hr', 'payroll.js');
 const records = read('routes', 'hr', 'records.js');
 const reports = read('routes', 'hr', 'reports.js');
-const enps = read('routes', 'hr', 'enps.js');
 const cron = read('lib', 'hrAuditRetentionJob.js');
 const migration = read('migrations', '127_v25_hr_workflow_integrity.sql');
 const compensationMigration = read('migrations', '128_v25_hr_compensation_approval.sql');
@@ -222,11 +221,9 @@ test('disciplinary records require employee acknowledgement, support appeal and 
   assert.match(records, /hr\.disciplinary\.appealed/);
 });
 
-test('eNPS protects small cohorts and does not expose score/timestamp beside comments', () => {
-  assert.match(enps, /MIN_ANONYMOUS_COHORT = 5/);
-  assert.match(enps, /privacySuppressed/);
-  assert.match(enps, /SELECT comment,period FROM enps_responses/);
-  assert.doesNotMatch(enps, /SELECT score, comment, period, created_at FROM enps_responses/);
+test('4 Nov 2026: the eNPS survey is gone — no route for it', () => {
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'routes', 'hr', 'enps.js')), false);
+  assert.doesNotMatch(read('routes', 'hr.js'), /hr\/enps/);
 });
 
 test('private employee fields are schema-owned and saved through the HR endpoint', () => {

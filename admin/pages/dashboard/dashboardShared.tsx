@@ -660,7 +660,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   financial_reports:  'view_financial',
   recurring_expenses: 'view_financial',
   hr:                 'view_hr',
-  hr_analytics:       'view_hr',
   // A branch manager reaches their branch's applications and interviews — «اتاكد
   // ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct
   // 2026). branch_hr is theirs whatever their grid says (hasPermission), and the
@@ -683,7 +682,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // Customer service reads satisfaction, as the route allows.
   nps_dashboard:      ['view_reports', 'manage_inbox'],
   notifications:      'manage_notifications',
-  enps_dashboard:      'view_hr',
   offboarding:         'manage_hr',
   activity:           'view_activity',
   // view_leads alone, matching GET /api/admin/leads/staff-performance. Adding

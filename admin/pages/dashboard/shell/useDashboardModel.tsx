@@ -44,6 +44,7 @@ import { RETIRED_INTEGRATION_TABS } from '../tabs/IntegrationsTab';
 import { RETIRED_SECURITY_TABS } from '../tabs/SecurityCenterTab';
 import { RETIRED_ANALYTICS_TABS } from '../tabs/AnalyticsHubTab';
 import { RETIRED_CAMPAIGN_TABS } from '../tabs/CampaignsTab';
+import { RETIRED_STAFF_PERFORMANCE_TABS } from '../tabs/StaffPerformanceHubTab';
 import { RETIRED_SALES_TABS } from '../tabs/SalesPlanningTab';
 import { useSaveFailureToasts } from './useSaveFailureToasts';
 import { useAccess } from '../../../hooks/useAccess';
@@ -57,6 +58,7 @@ const RETIRED_SECTION_TABS: ReadonlyArray<readonly [string, Record<string, strin
   ['analytics_hub', RETIRED_ANALYTICS_TABS],
   ['campaigns', RETIRED_CAMPAIGN_TABS],
   ['sales_planning', RETIRED_SALES_TABS],
+  ['staff_performance', RETIRED_STAFF_PERFORMANCE_TABS],
 ];
 
 const _BUILD = '20260502';
@@ -330,7 +332,7 @@ export function useDashboardModel() {
   // A branch manager's HR is their branch's: «الموارد البشرية» from any link or
   // address opens it, not the institute's HR they are refused.
   const branchHrOnly = ['daqqi_manager', 'tagamoa_manager'].includes(String(currentStaff?.role || '').toLowerCase());
-  const activeTab = (branchHrOnly && ['hr', 'hr_analytics'].includes(activeScreen) ? 'branch_hr' : activeScreen) as TabKey;
+  const activeTab = (branchHrOnly && activeScreen === 'hr' ? 'branch_hr' : activeScreen) as TabKey;
   useVisibleInterval(() => {
     mysqlAdmin.getOnlineUsers().then(rows => {
       setOnlineUsers((rows as { uid: string; name?: string; email?: string; lastActiveAt: string }[])

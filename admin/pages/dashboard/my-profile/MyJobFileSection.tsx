@@ -192,65 +192,6 @@ export function MyJobFileSection({ hr, disciplinary, setDisciplinary, notify }: 
       </Card>
 
       <MyHrFilePanel />
-      <SatisfactionCard notify={notify} />
     </div>
-  );
-}
-
-/** The monthly, anonymous «رضاك عن العمل» — moved here from the old ملفي الوظيفي page. */
-function SatisfactionCard({ notify }: { notify: Notify }) {
-  const [responded, setResponded] = useState<boolean | null>(null);
-  const [score, setScore] = useState<number | null>(null);
-  const [comment, setComment] = useState('');
-  const [sending, setSending] = useState(false);
-
-  const load = useCallback(() => {
-    fetch('/api/staff/me/enps', { credentials: 'include', headers: adminAuthHeaders() })
-      .then(r => (r.ok ? r.json() : null))
-      .then(payload => { if (payload) { setResponded(!!payload.responded); if (payload.responded) setScore(payload.score); } })
-      .catch(() => setResponded(false));
-  }, []);
-  useEffect(load, [load]);
-
-  const send = async () => {
-    if (score === null) return;
-    setSending(true);
-    try {
-      const response = await fetch('/api/staff/me/enps', {
-        method: 'POST', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify({ score, comment }),
-      });
-      if (!response.ok) throw new Error();
-      setResponded(true);
-      notify('success', 'شكراً إنك شاركتنا رأيك 💚');
-    } catch { notify('error', 'تعذر إرسال التقييم'); } finally { setSending(false); }
-  };
-
-  return (
-    <Card icon={Smile} title="رضاك عن الشغل" tone="bg-amber-50 text-amber-600">
-      {responded ? (
-        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          اتسجل تقييمك للشهر ده{score !== null ? ` (${score}/10)` : ''}.
-          <button type="button" onClick={() => setResponded(false)} className="mr-2 text-xs text-emerald-800 underline">تعديل</button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500">قد إيه ممكن ترشّح الشغل هنا لصاحبك؟ (0 = مستحيل، 10 = أكيد) — الرد سري وبيظهر للإدارة مجمّع بس.</p>
-          <div className="flex flex-wrap gap-1.5">
-            {Array.from({ length: 11 }, (_, n) => n).map(n => (
-              <button key={n} type="button" onClick={() => setScore(n)}
-                className={`h-9 w-9 rounded-lg text-sm font-bold transition ${score === n
-                  ? (n >= 9 ? 'bg-emerald-600 text-white' : n >= 7 ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{n}</button>
-            ))}
-          </div>
-          <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="ملاحظة (اختياري)…"
-            className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm" />
-          <button type="button" onClick={() => void send()} disabled={sending || score === null}
-            className="rounded-xl bg-gray-800 px-5 py-2 text-sm font-bold text-white hover:bg-gray-900 disabled:opacity-50">
-            {sending ? 'جارٍ الإرسال…' : 'إرسال التقييم'}
-          </button>
-        </div>
-      )}
-    </Card>
   );
 }

@@ -90,7 +90,7 @@ test('the screens still read what the menu now promises', () => {
     ['sales_reports', 'SalesReportsTab'],
     ['sales_team', 'SalesTeamTab'],
     ['online_team', 'OnlineTeamMgmtTab'],
-    ['staff_performance', 'StaffPerformanceTab'],
+    ['staff_performance', 'StaffPerformanceHubTab'],
   ]) {
     assert.match(renders, new RegExp(`key: '${key}', Component: ${component}`),
       `${key} must still render ${component}`);

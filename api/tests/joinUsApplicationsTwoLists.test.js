@@ -151,7 +151,7 @@ test('the Dokki manager is shown the applications and interviews screens', () =>
   assert.match(shared, /lecturer_applications: \['view_join_us', 'branch_hr'\]/);
   // The redirect of a branch manager's HR to branch_hr leaves these two alone.
   const dashboard = dashboardSource();
-  assert.match(dashboard, /branchHrOnly && \['hr', 'hr_analytics'\]\.includes\(activeScreen\) \? 'branch_hr' : activeScreen/);
+  assert.match(dashboard, /branchHrOnly && activeScreen === 'hr' \? 'branch_hr' : activeScreen/);
   // And the admin's own permission check opens them for the role.
   const { hasPermission } = require('../constants/permissions');
   assert.equal(hasPermission({ role: 'daqqi_manager', permissions_json: '[]' }, 'branch_hr'), true);

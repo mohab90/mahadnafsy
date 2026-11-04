@@ -83,9 +83,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   daqqi_attendance: [],
   // HR, the inboxes and the service desks read their own endpoints.
   hr: [],
-  hr_analytics: [],
   branch_hr: [],
-  enps_dashboard: [],
   offboarding: [],
   interviews: [],
   team_inbox: [],

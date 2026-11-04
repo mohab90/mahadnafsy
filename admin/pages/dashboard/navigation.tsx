@@ -140,9 +140,7 @@ export type TabKey =
   | 'tagamoa_waitlist'
   | 'recurring_expenses'
   | 'hr'
-  | 'hr_analytics'
   | 'my_hr'
-  | 'enps_dashboard'
   | 'offboarding'
   | 'lecturer_applications'
   | 'interviews'
@@ -348,8 +346,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // filter — wider than the performance section inside the HR screen, which
       // reads the HR record alone.
       { key: 'staff_performance', label: 'أداء الموظفين', icon: TrendingUp },
-      { key: 'hr_analytics', label: 'تقارير وتحليلات HR', icon: BarChart3 },
-      { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },
       { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },
       { key: 'instructors', label: 'المحاضرون والخبراء', icon: GraduationCap },
       // Two entries into the one screen, each opening its own list —
@@ -371,6 +367,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // each had sent. All on manage_channel_settings. See tabs/CampaignsTab.tsx.
       { key: 'campaigns', label: 'الحملات', icon: Megaphone },
       { key: 'notif_inbox', label: 'إدارة صندوق الإشعارات', icon: Bell },
+      // Moved from الإعدادات (4 Nov 2026): the rules that send and remind are marketing's, and the settings hub no longer repeats the page.
+      { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
     ],
   },
   {
@@ -414,7 +412,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // per branch rather than defining which branches exist.
       { key: 'branches_settings', label: 'الفروع', icon: Building2 },
       { key: 'branch_workspaces', label: 'مساحات عمل الفروع', icon: FolderKanban },
-      { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
       // لوحة الأمان and قائمة IP المسموحة answer the same question from two
       // sides — what happened, and who is allowed in — and مراقبة السيرفر with
       // ترحيل قاعدة البيانات are that pairing for the machine underneath.

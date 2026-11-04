@@ -25,6 +25,8 @@ export type TabSection = {
   icon: LucideIcon;
   /** The permission this section required when it was its own screen. */
   permission: StaffPermission;
+  /** Other permissions that open the section too (the screen was gated on any of several). */
+  alsoPermissions?: StaffPermission[];
   /**
    * Set where the screen was gated on `isAdmin` alone rather than a permission.
    * Merging must not widen access any more than it narrows it, and مراقبة
@@ -69,7 +71,7 @@ export function SectionedTab({
       if (s.ownerOnly) return isOwner;
       if (isAdmin) return true;
       if (s.adminOnly) return false;
-      return hasPermission(subject, s.permission as PermissionKey);
+      return [s.permission, ...(s.alsoPermissions || [])].some(permission => hasPermission(subject, permission as PermissionKey));
     });
   }, [sections, isAdmin, currentStaff, isOwner]);
 

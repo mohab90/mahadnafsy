@@ -110,7 +110,6 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { title: 'مصادر الليد والداتا', desc: 'فيسبوك ليدز، جوجل شيت، مصادر API، وتوزيع الليدز على السيلز.', href: '/dashboard/lead_sources_settings', tab: 'lead_sources_settings', keywords: 'فيسبوك شيت توزيع' },
       { title: 'قائمة مصادر الليدات', desc: 'المصادر اللي بيختار منها الموظف وهو بيضيف ليد.', href: S('lead_sources'), tab: 'system_settings' },
       { title: 'مهلة المتابعة والأرشفة', desc: 'كام ساعة قبل ما الليد يتأخر، وبعد كام يوم يتأرشف لوحده.', href: S('financial'), tab: 'system_settings', keywords: 'SLA أرشفة' },
-      { title: 'الأتمتة والقواعد', desc: 'التوزيع التلقائي، التذكيرات، وتغيير الحالات لوحدها.', href: '/dashboard/automation', tab: 'automation' },
       { title: 'تتبّع إعلانات ميتا', desc: 'Conversions API: الـ Pixel ID والتوكن وكود الحدث التجريبي، وإرسال حدث تجريبي يتأكد إن ميتا مستلمة الليد والدفع من السيرفر.', href: '/dashboard/integrations/meta_capi', tab: 'integrations', permission: 'manage_settings', adminOnly: true, keywords: 'فيسبوك بكسل pixel capi conversions اعلانات' },
     ],
   },
@@ -144,11 +143,9 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     blurb: 'واتساب الشركة والماسنجر، البريد، والرسائل النصية.',
     tone: 'bg-teal-500',
     entries: [
-      { title: 'واتساب وماسنجر وانستجرام', desc: 'ربط رقم الشركة والصفحة والحساب، والحملات وصحة الرسايل.', href: '/dashboard/campaigns/messaging', tab: 'campaigns', permission: 'manage_channel_settings', keywords: 'whatsapp messenger instagram' },
       { title: 'البريد الإلكتروني', desc: 'سيرفر الإرسال واسم المُرسِل.', href: '/dashboard/integrations/email', tab: 'integrations', permission: 'manage_settings', keywords: 'SMTP ايميل' },
       { title: 'الرسائل النصية SMS', desc: 'مزوّد الرسائل واسم المُرسِل والرصيد.', href: '/dashboard/integrations/sms', tab: 'integrations', permission: 'manage_channel_settings' },
       { title: 'أكواد الدخول', desc: 'كود الدخول بيتبعت منين: واتساب ثم البريد ثم SMS.', href: '/dashboard/integrations/otp', tab: 'integrations', permission: 'manage_security', keywords: 'OTP كود تحقق' },
-      { title: 'صندوق الإشعارات', desc: 'الإشعارات اللي بتوصل للعملاء والموظفين.', href: '/dashboard/notif_inbox', tab: 'notif_inbox' },
     ],
   },
   {

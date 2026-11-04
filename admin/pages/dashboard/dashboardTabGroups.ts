@@ -77,8 +77,6 @@ export const contentHubRouteTabs = new Set<string>([
   // "إنهاء الخدمة" showed just the empty shell). registrations is the new
   // تسجيلات tab, added here so it doesn't ship with the same gap.
   'faq_manager',
-  'hr_analytics',
-  'enps_dashboard',
   'offboarding',
   'registrations',
   'interviews',
