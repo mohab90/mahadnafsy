@@ -72,9 +72,9 @@ test('backups: stale, missing, never copied off the machine — and an unreadabl
   assert.equal(stale[0].key, 'backup');
   assert.match(stale[0].body, /60 ساعة/);
   assert.equal(watchdog.backupFindings({ local: { readable: true, newest: null }, offsite: copied, now: at })[0].key, 'backup');
+  // 4 Nov 2026: no off-site copy is not a message to the owner any more.
   const never = watchdog.backupFindings({ local: fresh, offsite: { readable: true, backupOkAt: hours(5), offsiteOkAt: null, lastAlert: 'OFF-SITE BACKUP FAILED: MAHAD_BACKUP_REMOTE is not set' }, now: at });
-  assert.equal(never[0].key, 'offsite');
-  assert.match(never[0].body, /MAHAD_BACKUP_REMOTE is not set/);
+  assert.deepEqual(never, []);
   assert.deepEqual(watchdog.backupFindings({ local: { readable: false, newest: null }, offsite: { readable: false }, now: at }), [], 'a development machine has no backup folder');
   assert.deepEqual(watchdog.backupFindings({ local: fresh, offsite: { readable: false }, now: at }), [], 'an unreadable log is unknown, not a failure');
 });

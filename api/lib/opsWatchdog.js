@@ -215,17 +215,9 @@ function backupFindings({ local, offsite, now = Date.now() }) {
       });
     }
   }
-  // An unreadable log says nothing either way, so it alerts about nothing.
-  if (local.readable && offsite.readable && local.newest) {
-    const recent = offsite.offsiteOkAt && now - offsite.offsiteOkAt <= maxMs;
-    if (!recent) {
-      findings.push({
-        key: 'offsite', severity: 'high', title: 'النسخة الاحتياطية مش بتتنسخ بره السيرفر',
-        body: `النسخ موجودة على نفس السيرفر بس — لو السيرفر ضاع، البيانات بتضيع معاه.${offsite.lastAlert ? `\nآخر رسالة من الـ job: ${offsite.lastAlert}` : ''}`,
-        hint: 'لازم يتظبط نسخ خارجي مشفّر (deploy/README_AR.md ← النسخ الاحتياطي).',
-      });
-    }
-  }
+  // 4 Nov 2026, «مش عاوز واتساب يبعتلي رسالة تاني بموضوع النسخ برة السيرفر»: a missing off-site copy is no longer a message to the owner. offsiteState() still reads the job's
+  // log (the release prints the same warning), but only a stale or missing LOCAL backup — the one a restore needs tonight — reaches WhatsApp.
+  void offsite;
   return findings;
 }
 

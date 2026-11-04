@@ -19,6 +19,7 @@ const {
   enforceSharingLimit,
 } = require('./_shared');
 const { checkLoginCode, readPendingToken, sendLoginCode, CODE_TTL_MINUTES, RESEND_AFTER_SECONDS } = require('../../lib/loginEmailCode');
+const { rememberTrustedDevice } = require('../../lib/trustedDevice');
 
 const router = Router();
 
@@ -112,6 +113,8 @@ router.post('/api/auth/login/email-code/verify', otpLimiter, async (req, res) =>
     });
     pool.query('UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login = NOW() WHERE id=? AND tenant_id=?', [user.id, tenantId])
       .catch(() => {});
+    // The mailbox is proved on this browser: the code is not asked again here for a week (lib/trustedDevice.js).
+    await rememberTrustedDevice(res, { db: pool, tenantId, user });
     setAuthCookie(res, token);
     await logLoginAttempt({ userId: user.id, email: user.email, req, tenantId, status: '2fa_success' });
     const sharing = await enforceSharingLimit({ tenantId, userId: user.id, email: user.email });

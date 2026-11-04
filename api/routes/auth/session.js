@@ -35,6 +35,7 @@ const {
 const deleteRights = require('../../lib/deleteRights');
 const { rememberKnownLogin } = require('../../lib/knownLogin');
 const { accountNeedsEmailCode, startEmailCodeStep } = require('../../lib/loginEmailCode');
+const { isTrustedDevice } = require('../../lib/trustedDevice');
 
 // The one refusal for a wrong identifier, a wrong password and an account with
 // no password yet: anything more specific says which numbers and addresses
@@ -164,7 +165,10 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       });
     }
     // ── An important account (lib/mfaPolicy.js) owes the code sent to its email before it gets a session ──
-    if (await accountNeedsEmailCode({ tenantId: req.tenantId || 'tenant-default', user })) {
+    // — unless this browser proved the mailbox within the week and nobody has been guessing the password since (lib/trustedDevice.js).
+    const needsCode = await accountNeedsEmailCode({ tenantId: req.tenantId || 'tenant-default', user });
+    const trustedDevice = needsCode && await isTrustedDevice(req, { db: pool, tenantId: req.tenantId || 'tenant-default', user });
+    if (needsCode && !trustedDevice) {
       try {
         return res.json(await startEmailCodeStep(req, { user, tenantId: req.tenantId || 'tenant-default', via: 'password' }));
       } catch (error) {
@@ -192,7 +196,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     invalidateIdentity(req.tenantId, user.id, user.email);
     const token = signAccessToken({
       uid: user.id, email: user.email, tenantId: req.tenantId || 'tenant-default',
-      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: trustedDevice === true,
       // Signed into the token so middleware/auth.js never queries `staff` itself
       // (every staff lookup there must go through the tenant-scoped helper).
       // Decides concurrent-device allowance only — it grants no permission.

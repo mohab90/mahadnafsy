@@ -19,6 +19,7 @@ const {
   WA_CODE_TTL_MINUTES,
 } = require('./_shared');
 const { accountNeedsEmailCode, startEmailCodeStep } = require('../../lib/loginEmailCode');
+const { isTrustedDevice } = require('../../lib/trustedDevice');
 
 const router = Router();
 
@@ -91,7 +92,10 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     }
 
     // An important account (lib/mfaPolicy.js) owes the code sent to its email as well: the number alone is not the second step for it.
-    if (await accountNeedsEmailCode({ tenantId, user })) {
+    // A browser that proved the mailbox within the week is not asked again (lib/trustedDevice.js).
+    const needsCode = await accountNeedsEmailCode({ tenantId, user });
+    const trustedDevice = needsCode && await isTrustedDevice(req, { db: pool, tenantId, user });
+    if (needsCode && !trustedDevice) {
       try {
         return res.json(await startEmailCodeStep(req, { user, tenantId, via: 'whatsapp' }));
       } catch (error) {
@@ -124,7 +128,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     invalidateIdentity(tenantId, user.id, user.email);
     const token = signAccessToken({
       uid: user.id, email: user.email, tenantId,
-      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: trustedDevice === true,
       isStaff: isOperator,
     });
     pool.query(
