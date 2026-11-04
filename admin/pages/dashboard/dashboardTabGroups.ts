@@ -164,19 +164,17 @@ export const saasOpsTabs = new Set<string>([
  *                          lead_id column and the mapper never set leadId, so
  *                          every order fell into the 'مباشر' bucket. */
 export const fullLeadTabs = new Set<string>([
-  // These two were unreachable until they were put in the menu, and both count
-  // per-rep leads out of the array: sales_team builds the monthly table from
-  // l.assignedSalesId, sales_reports the status breakdown and the range filter.
+  // sales_reports is not here any more (4 Nov 2026): its status and source breakdown and its money come from GET /api/admin/reports/sales-breakdown.
+  // sales_team, unreachable until it was put in the menu, counts per-rep leads out of the array: it builds the monthly table from
+  // l.assignedSalesId.
   // Reachable and unlisted, they would have counted the 500-row bootstrap page
   // and shown it as the pipeline — the fault this file already documents for
   // marketing_hub and analytics_hub.
   //
   // Listed rather than rewritten: the direction above is toward server
-  // aggregates, and both are candidates for it — sales_reports wants a status
-  // breakdown, sales_team a per-rep monthly roll-up, and the staff-performance
-  // endpoint already returns byStatus per rep. Until someone does that, they
-  // read the table, which is at least true.
-  'sales_reports',
+  // aggregates, and it is a candidate for it — a per-rep monthly roll-up, and the
+  // staff-performance endpoint already returns byStatus per rep. Until someone
+  // does that, it reads the table, which is at least true.
   'sales_team',
 ]);
 

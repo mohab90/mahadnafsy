@@ -60,7 +60,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   leads: [],
   sales_hub: ['leads', 'orders', 'subscribers'],
   sales_team: ['leads', 'orders'],
-  sales_reports: ['leads', 'orders'],
+  sales_reports: [], // the server's own figures (GET /api/admin/reports/sales-breakdown)
   sales_planning: ['leads', 'orders'],
   staff_performance: ['leads', 'orders'],
   sales_daqqi_schedule: [],

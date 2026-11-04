@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { rangeStartDate } from '../../../lib/rangeStart';
-import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { FileText, TrendingUp, Users, DollarSign, Tag, BarChart3, PieChart as PieIcon } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
 import { STATUS_CFG } from './leadUtils';
@@ -19,60 +18,55 @@ const leadStatusLabel = (status: string) =>
   STATUS_CFG[status as keyof typeof STATUS_CFG]?.label || status;
 
 
+type Breakdown = {
+  leads: { status: string; source: string; n: number }[];
+  revenue: number; payments: number;
+  byStaff: { staffId: string | null; name: string; revenue: number; payments: number }[];
+  byItem: { id: string | null; name: string; revenue: number; payments: number }[];
+};
+
+// The numbers are the server's (GET /api/admin/reports/sales-breakdown): the leads by status and source, the collected money in EGP in total, by employee and by course or
+// track, over the range chosen. The screen used to count them out of the leads and orders its browser held — it loaded every lead of the tenant to do it — and added
+// amounts of different currencies as if they were one (4 Nov 2026).
 export default function SalesReportsTab() {
-  const { leads, orders, staffMembers, courses } = useSiteData();
   const [range, setRange] = useState<Range>('month');
+  const [data, setData] = useState<Breakdown | null>(null);
+  const [failed, setFailed] = useState(false);
 
   const rangeStart = rangeStartDate(range);
+  useEffect(() => {
+    let live = true;
+    setFailed(false);
+    mysqlAdmin.adminGet<Breakdown>(`/admin/reports/sales-breakdown${rangeStart ? `?from=${rangeStart.slice(0, 10)}` : ''}`)
+      .then(result => { if (live) setData(result); })
+      .catch(() => { if (live) { setData(null); setFailed(true); } });
+    return () => { live = false; };
+  }, [rangeStart]);
 
-  const filteredLeads = useMemo(() => leads.filter(l => (l.createdAt || '') >= rangeStart), [leads, rangeStart]);
-  const filteredOrders = useMemo(() => orders.filter(o => o.status === 'paid' && (o.createdAt || '') >= rangeStart), [orders, rangeStart]);
-
-  const totalRevenue = useMemo(() => filteredOrders.reduce((acc, o) => acc + (Number(o.amount) || 0), 0), [filteredOrders]);
-  const avgOrderValue = filteredOrders.length > 0 ? Math.round(totalRevenue / filteredOrders.length) : 0;
-  const convRate = filteredLeads.length > 0
-    ? Math.round((filteredLeads.filter(l => l.status === 'converted').length / filteredLeads.length) * 100) : 0;
+  const leadRows = useMemo(() => data?.leads || [], [data]);
+  const leadsTotal = leadRows.reduce((sum, row) => sum + row.n, 0);
+  const totalRevenue = data?.revenue || 0;
+  const avgOrderValue = data && data.payments > 0 ? Math.round(totalRevenue / data.payments) : 0;
+  const converted = leadRows.filter(row => row.status === 'converted').reduce((sum, row) => sum + row.n, 0);
+  const convRate = leadsTotal > 0 ? Math.round((converted / leadsTotal) * 100) : 0;
 
   // Leads by status
   const byStatus = useMemo(() => {
     const map: Record<string, number> = {};
-    filteredLeads.forEach(l => { const s = l.status || 'new'; map[s] = (map[s] || 0) + 1; });
-    return Object.entries(map).map(([k, v]) => ({ name: leadStatusLabel(k), value: v }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredLeads]);
+    leadRows.forEach(row => { map[row.status] = (map[row.status] || 0) + row.n; });
+    return Object.entries(map).map(([k, v]) => ({ name: leadStatusLabel(k), value: v })).sort((x, y) => y.value - x.value);
+  }, [leadRows]);
 
   // Leads by source
   const bySource = useMemo(() => {
     const map: Record<string, number> = {};
-    filteredLeads.forEach(l => { const s = l.source || 'غير محدد'; map[s] = (map[s] || 0) + 1; });
-    return Object.entries(map).map(([k, v]) => ({ name: k, value: v })).sort((a, b) => b.value - a.value).slice(0, 6);
-  }, [filteredLeads]);
+    leadRows.forEach(row => { map[row.source] = (map[row.source] || 0) + row.n; });
+    return Object.entries(map).map(([k, v]) => ({ name: k, value: v })).sort((x, y) => y.value - x.value).slice(0, 6);
+  }, [leadRows]);
 
-  // Revenue by staff
-  const byStaff = useMemo(() => {
-    const map: Record<string, { name: string; revenue: number; orders: number }> = {};
-    filteredOrders.forEach(o => {
-      const s = staffMembers.find(st => st.id === o.staffId);
-      const key = o.staffId || 'unknown';
-      if (!map[key]) map[key] = { name: s?.name || 'غير محدد', revenue: 0, orders: 0 };
-      map[key].revenue += Number(o.amount) || 0;
-      map[key].orders++;
-    });
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
-  }, [filteredOrders, staffMembers]);
-
-  // Revenue by course
-  const byCourse = useMemo(() => {
-    const map: Record<string, { name: string; revenue: number; count: number }> = {};
-    filteredOrders.forEach(o => {
-      const cid = o.courseId || o.bundleId || 'unknown';
-      const c = courses.find(c => c.id === cid);
-      if (!map[cid]) map[cid] = { name: c?.title || o.courseName || 'غير محدد', revenue: 0, count: 0 };
-      map[cid].revenue += Number(o.amount) || 0;
-      map[cid].count++;
-    });
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 6);
-  }, [filteredOrders, courses]);
+  // Revenue by staff and by course or track
+  const byStaff = (data?.byStaff || []).map(row => ({ name: row.name, revenue: row.revenue, orders: row.payments }));
+  const byCourse = (data?.byItem || []).map(row => ({ name: row.name, revenue: row.revenue, count: row.payments }));
 
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
 
@@ -93,10 +87,12 @@ export default function SalesReportsTab() {
         </div>
       </div>
 
+      {failed && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">تعذر تحميل أرقام التقرير — جرّب تاني بعد شوية.</p>}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'إجمالي الليدات', val: filteredLeads.length, color: 'blue', icon: Users },
+          { label: 'إجمالي الليدات', val: leadsTotal, color: 'blue', icon: Users },
           { label: 'إجمالي الإيراد', val: `${fmtMoney(totalRevenue)} ج`, color: 'emerald', icon: DollarSign },
           { label: 'معدل التحويل', val: `${convRate}%`, color: 'amber', icon: TrendingUp },
           { label: 'متوسط الطلب', val: `${fmtMoney(avgOrderValue)} ج`, color: 'violet', icon: BarChart3 },

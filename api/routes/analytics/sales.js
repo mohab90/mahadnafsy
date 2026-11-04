@@ -8,6 +8,8 @@ const { pool } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../../constants/permissions');
 const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, monthRange } = require('../../lib/dates');
+const { leadScope } = require('../../lib/leadAccess');
+const { financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Sales Team Performance + Lead Conversion Funnel ──────────────
@@ -67,6 +69,56 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
       }),
     });
   } catch (e) { logger.error('[route]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
+});
+
+// GET /api/admin/reports/sales-breakdown?from=&to= — «تقارير المبيعات»: the leads by status and by source, and the collected money in total, by employee and by course or track,
+// over a range of Cairo days (no `from` is all time). «تقارير المبيعات» counted them in the browser out of the leads and orders it had loaded (it asked for every lead of the
+// tenant to do it, and added amounts of different currencies); the money here is payments.amount_egp, the same figure «أداء المبيعات» draws (3 Nov 2026).
+router.get('/api/admin/reports/sales-breakdown', requireAuth, requireAdminOrStaff, requirePermission(PERMISSIONS.MANAGE_SALES_TEAM), async (req, res) => {
+  try {
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? String(req.query.from) : null;
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || '')) ? String(req.query.to) : cairoToday();
+    const leadRange = leadScope(req, 'l');
+    const moneyScope = financialScopeClause(resolveFinancialScope(req, { allowAssigned: true }), { branchColumn: 'p.branch_id', subscriberAlias: 's' });
+
+    const leadParams = [req.tenantId, ...leadRange.params];
+    let leadWhen = '';
+    if (from) { leadWhen = ' AND l.created_at >= ? AND l.created_at < ?'; const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to); leadParams.push(fromUtc, toUtc); }
+    const moneyParams = [req.tenantId, ...moneyScope.params];
+    let moneyWhen = '';
+    if (from) { moneyWhen = ' AND p.date >= ? AND p.date <= ?'; moneyParams.push(from, to); }
+    const moneyFrom = `FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}${moneyWhen}`;
+
+    const [[leadRows], [[total]], [staffRows], [itemRows]] = await Promise.all([
+      leadRange.none ? [[]] : pool.query(
+        `SELECT LOWER(COALESCE(NULLIF(l.status, ''), 'new')) AS status, COALESCE(NULLIF(l.source, ''), 'غير محدد') AS source, COUNT(*) AS n
+           FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${leadRange.sql}${leadWhen} GROUP BY 1, 2`, leadParams),
+      pool.query(`SELECT COALESCE(SUM(p.amount_egp), 0) AS revenue, COUNT(*) AS payments ${moneyFrom}`, moneyParams),
+      pool.query(
+        `SELECT p.staff_id, SUM(p.amount_egp) AS revenue, COUNT(*) AS payments ${moneyFrom} GROUP BY p.staff_id ORDER BY revenue DESC LIMIT 8`, moneyParams),
+      pool.query(
+        `SELECT p.course_id, p.bundle_id, SUM(p.amount_egp) AS revenue, COUNT(*) AS payments ${moneyFrom} GROUP BY p.course_id, p.bundle_id ORDER BY revenue DESC LIMIT 6`, moneyParams),
+    ]);
+
+    const staffIds = staffRows.map(row => row.staff_id).filter(Boolean);
+    const courseIds = itemRows.map(row => row.course_id).filter(Boolean);
+    const bundleIds = itemRows.map(row => row.bundle_id).filter(Boolean);
+    const [[staffNames], [courseTitles], [bundleTitles]] = await Promise.all([
+      staffIds.length ? pool.query('SELECT id, name FROM staff WHERE tenant_id = ? AND id IN (?)', [req.tenantId, staffIds]) : [[]],
+      courseIds.length ? pool.query('SELECT id, COALESCE(NULLIF(title_ar, \'\'), title) AS title FROM courses WHERE tenant_id = ? AND id IN (?)', [req.tenantId, courseIds]) : [[]],
+      bundleIds.length ? pool.query('SELECT id, title FROM bundles WHERE tenant_id = ? AND id IN (?)', [req.tenantId, bundleIds]) : [[]],
+    ]);
+    const nameOf = new Map(staffNames.map(row => [row.id, row.name]));
+    const titleOf = new Map([...courseTitles, ...bundleTitles].map(row => [row.id, row.title]));
+    res.json({
+      from, to,
+      leads: leadRows.map(row => ({ status: row.status, source: row.source, n: Number(row.n) })),
+      revenue: Math.round(Number(total.revenue) || 0), payments: Number(total.payments) || 0,
+      byStaff: staffRows.map(row => ({ staffId: row.staff_id, name: nameOf.get(row.staff_id) || 'غير محدد', revenue: Math.round(Number(row.revenue) || 0), payments: Number(row.payments) || 0 })),
+      byItem: itemRows.map(row => ({ id: row.bundle_id || row.course_id, name: titleOf.get(row.bundle_id || row.course_id) || 'غير محدد', revenue: Math.round(Number(row.revenue) || 0), payments: Number(row.payments) || 0 })),
+    });
+  } catch (e) { logger.error('[sales-breakdown]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
