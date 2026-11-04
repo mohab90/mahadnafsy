@@ -99,3 +99,18 @@ test('a login tied to an empty record moves to the record of the same person tha
   assert.equal(row.id, 'full-record');
   assert.equal(updates.length, 2, 'the old record lets go, then the new one is taken');
 });
+
+test('the repair tools: a report until --apply, a backup first, nothing taken by a payroll run is touched, a name link only for the accounts named', () => {
+  const void_ = read('tools/void-booking-bonuses.cjs');
+  assert.match(void_, /const APPLY = process\.argv\.includes\('--apply'\);/);
+  assert.match(void_, /fs\.writeFileSync\(backup,/);
+  assert.match(void_, /AND status = 'PENDING'/, 'a commission is withdrawn only while it is still pending');
+  assert.match(void_, /status = 'rejected'[^]*AND status = \?/, 'a fee only while it has the status that was read');
+  assert.doesNotMatch(void_, /\b(DELETE|DROP|TRUNCATE)\b/);
+  const link = read('tools/link-site-accounts.cjs');
+  assert.match(link, /const ONLY = new Set\(/);
+  assert.match(link, /if \(NAMES \|\| ONLY\.has\(String\(account\.email \|\| ''\)\.trim\(\)\.toLowerCase\(\)\)\) claim\('name'/);
+  const diagnose = read('tools/diagnose-client-sign-in.cjs');
+  assert.match(diagnose, /const VERIFY = process\.argv\.includes\('--verify-resolver'\);/);
+  assert.ok(diagnose.includes('UPDATE|INSERT|DELETE|REPLACE') && diagnose.includes('Promise.resolve([{ affectedRows: 0 }])'), 'the rehearsal answers every write with 0 rows');
+});

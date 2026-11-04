@@ -62,7 +62,7 @@ test('the repair tool links the sure ones first, never merges or deletes, and ba
   assert.ok(tool.indexOf('1. number') < tool.indexOf('2. same proven email') && tool.indexOf('2. same proven email') < tool.indexOf('3. same name'));
   assert.match(tool, /const APPLY = process\.argv\.includes\('--apply'\);/);
   assert.match(tool, /const NAMES = process\.argv\.includes\('--include-name-match'\);/);
-  assert.match(tool, /if \(NAMES\) claim\('name', account, nameMatches\[0\]\);\s+else links\.name\.push\(\{ account, client: nameMatches\[0\], pending: true \}\);/, 'a name is a judgement: listed unless asked for');
+  assert.match(tool, /if \(NAMES \|\| ONLY\.has\(.*\)\) claim\('name', account, nameMatches\[0\]\);\s+else links\.name\.push\(\{ account, client: nameMatches\[0\], pending: true \}\);/, 'a name is a judgement: listed unless asked for, for all of them or for the accounts named');
   assert.match(tool, /Number\(account\.email_unverified\) === 1 \? '' :/, 'an email still waiting to be proven matches nobody');
   assert.match(tool, /fs\.writeFileSync\(backup,/);
   assert.doesNotMatch(tool, /\b(DELETE|DROP|TRUNCATE)\b/);

@@ -20,7 +20,7 @@
  *   1. number   the account's number equals the client's number, whatever the spelling (subscribers.phone_digits)   — sure
  *   2. email    the account's email (proven, not pending) equals the client's email                                  — sure
  *   3. name     the same name after Arabic spelling is normalised, and exactly ONE such client, one such account  — a judgement:
- *               only with --include-name-match, and the report lists each pair for review
+ *               only with --include-name-match (all of them) or --only=<account e-mail>,… (just those), and the report lists each pair for review
  * What is left, and the clients two accounts claim, are written to CSV files in the working directory.
  *
  * Linking sets subscribers.firebase_uid, and fills the client's EMPTY email/phone from the account so the desk sees them. Nothing is
@@ -38,6 +38,8 @@ const { normalizeArabicName } = require(path.join(API_ROOT, 'lib', 'linkSiteAcco
 
 const APPLY = process.argv.includes('--apply');
 const NAMES = process.argv.includes('--include-name-match');
+// --only=a@x.com,b@y.com: link by name just these accounts (after the review CSV was read), not every name match.
+const ONLY = new Set(((process.argv.find(arg => arg.startsWith('--only=')) || '').slice('--only='.length)).split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
 const TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 
@@ -96,7 +98,7 @@ const csv = rows => rows.map(row => row.map(cell => `"${String(cell ?? '').repla
     const name = normalizeArabicName(account.name);
     const nameMatches = name ? (byName.get(name) || []).filter(c => !taken.has(c.id)) : [];
     if (nameMatches.length === 1 && (accountsByName.get(name) || []).length === 1) {
-      if (NAMES) claim('name', account, nameMatches[0]);
+      if (NAMES || ONLY.has(String(account.email || '').trim().toLowerCase())) claim('name', account, nameMatches[0]);
       else links.name.push({ account, client: nameMatches[0], pending: true });
       continue;
     }
@@ -110,7 +112,7 @@ const csv = rows => rows.map(row => row.map(cell => `"${String(cell ?? '').repla
   console.log(`clients no live account holds ........ ${clients.length}`);
   console.log(`  1. same number ..................... ${links.number.length}`);
   console.log(`  2. same proven email ............... ${links.email.length}`);
-  console.log(`  3. same name, exactly one client ... ${links.name.length}${NAMES ? ' (will be linked)' : ' (listed only: add --include-name-match)'}`);
+  console.log(`  3. same name, exactly one client ... ${links.name.length}${NAMES ? ' (will be linked)' : ' (listed only: add --include-name-match, or --only=<account e-mail>)'}`);
   console.log(`  several clients match ............. ${contested.length}`);
   console.log(`  nothing matches ................... ${unresolved.length}`);
   for (const [label, list] of [['number', links.number], ['email', links.email], ['name', links.name]]) {
@@ -125,7 +127,7 @@ const csv = rows => rows.map(row => row.map(cell => `"${String(cell ?? '').repla
   console.log(`\nwritten here: unlinked-accounts-${stamp}.csv, name-match-review-${stamp}.csv, contested-${stamp}.csv`);
 
   const toLink = [...links.number, ...links.email, ...links.name.filter(link => !link.pending)];
-  console.log(`\nthis run ${APPLY ? 'LINKS' : 'would link'} ${toLink.length} client(s)` + (NAMES ? ` (${named} by name)` : ` (${sure} sure)`));
+  console.log(`\nthis run ${APPLY ? 'LINKS' : 'would link'} ${toLink.length} client(s)` + (NAMES || ONLY.size ? ` (${named} by name)` : ` (${sure} sure)`));
   if (!APPLY || !toLink.length) { await db.end(); return; }
 
   const backup = `link-site-accounts-backup-${stamp}.json`;

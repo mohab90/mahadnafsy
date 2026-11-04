@@ -6,6 +6,7 @@
  *
  *   node tools/diagnose-client-sign-in.cjs                         # the counts: how many site accounts are in each situation
  *   node tools/diagnose-client-sign-in.cjs --email=name@mail.com   # one person: their login(s), the client record(s) with that e-mail or number, and the courses each holds
+ *   node tools/diagnose-client-sign-in.cjs --verify-resolver       # runs the site's own sign-in matching for every account that sees no course, writes nothing, says how many now would
  *
  * The counts carry no names or contact details. The one-person report prints that person's own rows, so run it for a client you are helping.
  */
@@ -14,6 +15,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mysql = require('mysql2/promise');
 
+const VERIFY = process.argv.includes('--verify-resolver');
 const EMAIL = (process.argv.find(arg => arg.startsWith('--email=')) || '').slice('--email='.length).trim().toLowerCase();
 const TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 const HOLDS = "EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id = s.tenant_id AND e.subscriber_id = s.id AND e.status = 'active')";
@@ -24,6 +26,33 @@ const HOLDS = "EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id = s.tenant_
     password: process.env.DB_PASSWORD, database: process.env.DB_NAME,
   });
   const one = async (sql, params = []) => (await db.query(sql, params))[0][0];
+
+  if (VERIFY) {
+    // The deployed resolver (lib/subscriberIdentity.js) itself, on a connection that answers every UPDATE / INSERT / DELETE with «0 rows»: a read-only rehearsal of
+    // what each account would be shown at its next request.
+    const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
+    const readOnly = { query: (sql, params) => (/^s*(UPDATE|INSERT|DELETE|REPLACE)/i.test(sql) ? Promise.resolve([{ affectedRows: 0 }]) : db.query(sql, params)) };
+    const [accounts] = await db.query(
+      `SELECT u.id,
+              EXISTS (SELECT 1 FROM subscribers s WHERE s.tenant_id = u.tenant_id AND s.firebase_uid = u.id AND s.deleted_at IS NULL) AS linked
+         FROM users u
+        WHERE u.tenant_id = ? AND u.is_active = 1
+          AND NOT EXISTS (SELECT 1 FROM subscribers s WHERE s.tenant_id = u.tenant_id AND s.firebase_uid = u.id AND s.deleted_at IS NULL
+                          AND EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id = s.tenant_id AND e.subscriber_id = s.id AND e.status = 'active'))`, [TENANT]);
+    const result = { courses: [], emptyRecord: [], nobody: [] };
+    for (const account of accounts) {
+      const row = await resolveSubscriberRow({ tenantId: TENANT, user: { uid: account.id } }, ['id'], readOnly);
+      if (!row) { result.nobody.push(account.id); continue; }
+      const held = await one("SELECT 1 AS held FROM enrollments WHERE tenant_id = ? AND subscriber_id = ? AND status = 'active' LIMIT 1", [TENANT, row.id]);
+      (held ? result.courses : result.emptyRecord).push(account.id);
+    }
+    console.log(`accounts that do not see a course today ............ ${accounts.length}`);
+    console.log(`  would now be shown a client WITH courses ............ ${result.courses.length}`);
+    console.log(`  would be shown a client record with no course ....... ${result.emptyRecord.length}  (a client who has not bought, or bought under another e-mail / number)`);
+    console.log(`  would be shown no client at all ..................... ${result.nobody.length}  (signed up on the site, no client matches)`);
+    await db.end();
+    process.exit(0);
+  }
 
   if (!EMAIL) {
     const rows = [
