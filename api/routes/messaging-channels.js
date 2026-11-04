@@ -49,6 +49,14 @@ function selfStaffId(req) {
 // ── Admin: every channel ─────────────────────────────────────────────────────
 
 /**
+ * When Meta recognised the id typed as «Phone Number ID» as the account's (it was the WABA id), the right number's id is saved in its place, with the account id beside it.
+ */
+async function saveCorrectedPhoneId(tenantId, channelId, check) {
+  if (!check?.correctedPhoneId) return;
+  await channels.updateChannel(tenantId, channelId, { credentials: { metaPhoneId: check.correctedPhoneId, metaWabaId: check.wabaId } });
+}
+
+/**
  * Prove the credentials just saved against the provider and record the answer on the row. Nothing is sent to anyone: Wapilot is asked
  * for its session, Messenger and the official API for who the token belongs to. A failure here never fails the save.
  */
@@ -61,7 +69,7 @@ async function verifySaved(tenantId, channel) {
       check = await verifyMessengerCredentials(resolved.credentials);
       if (check.ok && !check.subscribed) check = { ok: false, reason: `الصفحة متربطتش بالتطبيق: ${check.subscribeError || 'رفض من فيسبوك'}` };
     } else if (channel.provider === 'wapilot') check = await verifyWapilot(resolved.credentials);
-    else if (channel.provider === 'meta') check = await verifyMetaCredentials(resolved.credentials);
+    else if (channel.provider === 'meta') { check = await verifyMetaCredentials(resolved.credentials); await saveCorrectedPhoneId(tenantId, channel.id, check); }
     else return;
     if (check.ok) await channels.markChannelConnected(tenantId, channel.id, pool, check.number);
     else await channels.markChannelError(tenantId, channel.id, typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من بيانات الاتصال');
@@ -331,9 +339,10 @@ router.post('/api/messaging/channels/:id/test', ...selfChannel, bulkOperationLim
       const resolved = await channels.getSendableChannel({ tenantId: req.tenantId, channelId: channel.id, kind: 'whatsapp' });
       if (!resolved) return res.status(409).json({ error: 'بيانات الاتصال غير محفوظة' });
       const check = await verifyMetaCredentials(resolved.credentials);
+      await saveCorrectedPhoneId(req.tenantId, channel.id, check);
       if (!check.ok) {
         await channels.markChannelError(req.tenantId, channel.id, typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من التوكن');
-        return res.status(502).json({ error: 'التوكن أو الـ Phone Number ID مرفوض من ميتا — راجع بيانات الاتصال', reason: typeof check.reason === 'string' ? check.reason : undefined });
+        return res.status(502).json({ error: typeof check.reason === 'string' && /[\u0600-\u06FF]/.test(check.reason) ? check.reason : 'التوكن أو الـ Phone Number ID مرفوض من ميتا — راجع بيانات الاتصال', reason: typeof check.reason === 'string' ? check.reason : undefined });
       }
       await channels.markChannelConnected(req.tenantId, channel.id, pool, check.number);
       return res.json({ ok: true, number: check.number || null, name: check.name || null, quality: check.quality || null, nameStatus: check.nameStatus || null });

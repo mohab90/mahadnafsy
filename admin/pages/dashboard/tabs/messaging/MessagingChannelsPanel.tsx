@@ -169,7 +169,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-gray-800 text-sm">{channel.label}</span>
               {channel.is_default === 1 && (
-                <span className="text-[11px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold">الافتراضية</span>
+                <span className="text-[11px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold" title="منها بتخرج أكواد الدخول والإشعارات">الافتراضية (أكواد وإشعارات)</span>
               )}
               <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">{channel.provider}</span>
               {channel.is_active === 0 && (
@@ -370,7 +370,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
       <div className="bg-gradient-to-l from-teal-600 to-emerald-600 rounded-2xl p-5 text-white flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2"><Radio size={22} />قنوات المراسلة</h2>
-          <p className="text-teal-50 text-sm mt-1">أرقام الواتساب وحسابات الماسنجر اللي السيستم بيبعت منها</p>
+          <p className="text-teal-50 text-sm mt-1">القنوات اللي السيستم بيبعت منها وبيستقبل عليها</p>
         </div>
         <button
           onClick={() => setShowAdd(v => !v)}
@@ -378,6 +378,13 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
         >
           <Plus size={16} />إضافة قناة
         </button>
+      </div>
+
+      <div className="rounded-2xl border border-teal-100 bg-teal-50/60 p-4 text-sm text-teal-900 space-y-1.5">
+        <p className="font-bold">إزاي القنوات دي بتتقسم</p>
+        <p>• <b>صندوق رسائل الشركة (الكل بيرد منه):</b> واتساب Cloud API + ماسنجر + انستجرام. الرسايل بتوصل لصندوق الرسائل والفريق كله يرد عليها. <b>انستجرام</b> مش قناة لوحدها: بيشتغل من نفس صفحة الفيسبوك المربوط بيها الحساب، فبتضيفه بإضافة قناة «ماسنجر وانستجرام» بالصفحة دي.</p>
+        <p>• <b>واتساب كل موظف:</b> رقمه الشخصي، بيربطه الموظف بنفسه من «واتسابي» — منفصل تمامًا عن قنوات الشركة.</p>
+        <p>• <b>رقم الأكواد والإشعارات (OTP):</b> القناة اللي عليها علامة «الافتراضية» تحت. سيبها لرقم الأكواد (01200400031) ومتغيّرهاش غير لو عايز تنقل الأكواد لرقم تاني.</p>
       </div>
 
       {showAdd && (
@@ -392,7 +399,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white"
               >
                 <option value="whatsapp">واتساب</option>
-                <option value="messenger">ماسنجر (صفحة فيسبوك)</option>
+                <option value="messenger">ماسنجر وانستجرام (صفحة فيسبوك)</option>
               </select>
             </div>
             {draft.kind === 'whatsapp' && (
@@ -405,8 +412,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                 >
                   <option value="green-api">Green-API</option>
                   <option value="wapilot">Wapilot</option>
-                  <option value="wapilot">Wapilot</option>
-                  <option value="meta">WhatsApp Cloud API</option>
+                  <option value="meta">WhatsApp Cloud API (رقم الشركة الرسمي — صندوق الرسائل)</option>
                 </select>
               </div>
             )}
@@ -451,6 +457,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Phone Number ID</label>
                   <input value={draft.metaPhoneId} onChange={e => setDraft(d => ({ ...d, metaPhoneId: e.target.value }))}
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono" />
+                  <p className="mt-1 text-[11px] text-gray-400">من WhatsApp Manager ← API Setup. لو دخلت رقم حساب الأعمال (WABA) بالغلط، السيستم بيصلحه لوحده لو فيه رقم واحد.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Access Token</label>

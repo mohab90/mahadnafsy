@@ -534,6 +534,39 @@ async function metaTemplateAccess(tenantId) {
 }
 
 /**
+ * The id typed as «Phone Number ID» is not one. The usual mistake is the WhatsApp Business Account id (the account that holds the numbers) typed in its place: asked for its
+ * numbers, that id answers. One number → it is the answer and the caller saves it (`correctedPhoneId`); several → the owner is told which is which. Anything else is the
+ * token: it does not reach that business, or lacks whatsapp_business_management / whatsapp_business_messaging.
+ */
+async function explainUnknownPhoneId({ token, id, original }) {
+  try {
+    const res = await fetch(
+      `${GRAPH}/${encodeURIComponent(id)}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,name_status`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
+    const data = await res.json().catch(() => ({}));
+    const numbers = res.ok && Array.isArray(data?.data) ? data.data.filter(row => row?.id) : [];
+    if (numbers.length === 1) {
+      const only = numbers[0];
+      return {
+        ok: true, number: only.display_phone_number || undefined, name: only.verified_name || undefined,
+        quality: only.quality_rating || undefined, nameStatus: only.name_status || undefined,
+        correctedPhoneId: String(only.id), wabaId: String(id),
+      };
+    }
+    if (numbers.length > 1) {
+      return {
+        ok: false,
+        reason: `الرقم ${id} هو حساب واتساب للأعمال (WABA) وفيه ${numbers.length} أرقام، مش Phone Number ID. اختار واحد من: ${numbers.map(row => `${row.display_phone_number || row.verified_name || ''} = ${row.id}`).join(' | ')}`,
+      };
+    }
+  } catch { /* falls through to the token explanation */ }
+  return {
+    ok: false,
+    reason: `ميتا مش لاقية الـ ID ${id} بالتوكن ده. اتأكد إن: (1) الـ Phone Number ID منسوخ من WhatsApp Manager ← API Setup (مش رقم الموبايل ولا رقم التطبيق ولا الـ Business ID)، (2) التوكن من System User عنده الأصل ده وصلاحيتي whatsapp_business_messaging و whatsapp_business_management. الرد الأصلي: ${original || 'object does not exist'}`,
+  };
+}
+
+/**
  * Whether an official-API channel is live, without messaging anyone: Meta says who the Phone Number ID and the token belong to. The old
  * test sent a message from the channel to its own number under the category channel_test, which is closed by default, so every official
  * channel answered «لم يتم الإرسال» and stayed «لم تُختبر» however right its token was.
@@ -549,7 +582,12 @@ async function verifyMetaCredentials(credentials = {}) {
       `${GRAPH}/${encodeURIComponent(phoneId)}?fields=id,display_phone_number,verified_name,quality_rating,name_status`,
       { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.id) return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
+    if (!res.ok || !data?.id) {
+      // «Object with ID … does not exist, cannot be loaded due to missing permissions» (4 Nov 2026): Meta answers so when the id is not a phone number's. Find out which
+      // mistake it is instead of showing the English sentence.
+      if (data?.error?.code === 100 || /does not exist/i.test(data?.error?.message || '')) return explainUnknownPhoneId({ token, id: phoneId, original: data?.error?.message });
+      return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
+    }
     return {
       ok: true, number: data.display_phone_number || undefined, name: data.verified_name || undefined,
       quality: data.quality_rating || undefined, nameStatus: data.name_status || undefined,
@@ -567,7 +605,13 @@ async function listMetaTemplates(tenantId) {
     `${GRAPH}/${encodeURIComponent(wabaId)}/message_templates?fields=name,language,status,category,components&limit=200`,
     { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
+  if (!res.ok) {
+    // The same Graph sentence as for a wrong Phone Number ID, here about the account id (WABA): said in words the owner can act on.
+    if (data?.error?.code === 100 || /does not exist/i.test(data?.error?.message || '')) {
+      return { ok: false, reason: `ميتا مش لاقية حساب واتساب للأعمال (WABA) برقم ${wabaId}. انسخه من WhatsApp Manager ← الإعدادات (مش الـ Phone Number ID)، وتأكد إن التوكن عنده صلاحية whatsapp_business_management. الرد الأصلي: ${data?.error?.message || ''}` };
+    }
+    return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
+  }
   return { ok: true, templates: (data.data || []).map(describeTemplate) };
 }
 

@@ -138,6 +138,36 @@ test('the official API is asked of Meta, with the one Graph version, and says wh
   } finally { global.fetch = original; }
 });
 
+test('4 Nov 2026: an id Meta does not know is explained — the account id typed as the number is corrected, anything else says what to check', async () => {
+  const { verifyMetaCredentials, listMetaTemplates } = require('../lib/whatsapp');
+  const original = global.fetch;
+  const gone = { error: { message: "Unsupported get request. Object with ID '797474976773775' does not exist, cannot be loaded due to missing permissions, or does not support this operation", code: 100 } };
+  const answer = (body, ok = true) => ({ ok, status: ok ? 200 : 400, json: async () => body });
+  try {
+    // The id is a WhatsApp Business Account with one number: that number is the answer.
+    global.fetch = async url => (String(url).includes('/phone_numbers') ? answer({ data: [{ id: '1098', display_phone_number: '+20 10 1234 5678', verified_name: 'المعهد' }] }) : answer(gone, false));
+    const fixed = await verifyMetaCredentials({ metaPhoneId: '797474976773775', metaToken: TOKEN });
+    assert.equal(fixed.ok, true);
+    assert.equal(fixed.correctedPhoneId, '1098');
+    assert.equal(fixed.wabaId, '797474976773775');
+    // Several numbers: the owner is told which is which, nothing is guessed.
+    global.fetch = async url => (String(url).includes('/phone_numbers') ? answer({ data: [{ id: '1', display_phone_number: '+20 1' }, { id: '2', display_phone_number: '+20 2' }] }) : answer(gone, false));
+    const many = await verifyMetaCredentials({ metaPhoneId: '797474976773775', metaToken: TOKEN });
+    assert.equal(many.ok, false);
+    assert.match(many.reason, /WABA/);
+    assert.match(many.reason, /\+20 2 = 2/);
+    // Neither: the token or the id is wrong, said in Arabic with the original sentence kept.
+    global.fetch = async () => answer(gone, false);
+    const unknown = await verifyMetaCredentials({ metaPhoneId: '797474976773775', metaToken: TOKEN });
+    assert.equal(unknown.ok, false);
+    assert.match(unknown.reason, /Phone Number ID/);
+    assert.match(unknown.reason, /whatsapp_business_management/);
+    assert.match(unknown.reason, /does not exist/);
+  } finally { global.fetch = original; }
+  assert.match(read('api/routes/messaging-channels.js'), /async function saveCorrectedPhoneId\(tenantId, channelId, check\)/);
+  assert.equal(typeof listMetaTemplates, 'function');
+});
+
 test('every save is proved at once, the official channel is tested without a message, and the staff panel keeps what it saved', () => {
   const route = read('api/routes/messaging-channels.js');
   assert.match(route, /async function verifySaved\(tenantId, channel\)/);
