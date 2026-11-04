@@ -74,7 +74,6 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // The orders, leads and clients are counted by the server (GET /api/admin/analytics-summary).
   daqqi_stats: ['discounts', 'contactMessages'],
   ask_ai: ['leads', 'subscribers', 'orders', 'settings'],
-  automation: ['automationWorkflows'],
   // The Dokki screens: the rounds and their attendees. The clients a round's
   // pickers offer, and the few it looks up, come from the server
   // (api/lib/dokkiClients.js), not from the context's list.

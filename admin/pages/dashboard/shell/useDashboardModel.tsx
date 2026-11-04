@@ -59,6 +59,7 @@ const RETIRED_SECTION_TABS: ReadonlyArray<readonly [string, Record<string, strin
   ['campaigns', RETIRED_CAMPAIGN_TABS],
   ['sales_planning', RETIRED_SALES_TABS],
   ['staff_performance', RETIRED_STAFF_PERFORMANCE_TABS],
+  ['marketing_hub', { automation: 'automation' }],
 ];
 
 const _BUILD = '20260502';

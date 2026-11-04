@@ -6,7 +6,6 @@ export const AnalyticsTab = lazy(() => import('./tabs/AnalyticsTab'));
 export const BranchesSettingsTab = lazy(() => import('./tabs/BranchesSettingsTab'));
 export const ArchivedClientsTab = lazy(() => import('./tabs/ArchivedClientsTab'));
 export const AskAITab = lazy(() => import('./tabs/AskAITab'));
-export const AutomationTab = lazy(() => import('./tabs/AutomationTab'));
 export const BalanceSheetTab = lazy(() => import('./tabs/BalanceSheetTab'));
 export const BranchWorkspacesTab = lazy(() => import('./tabs/BranchWorkspacesTab'));
 export const BudgetTrackerTab = lazy(() => import('./tabs/BudgetTrackerTab'));

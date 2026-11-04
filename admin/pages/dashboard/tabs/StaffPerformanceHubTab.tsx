@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { BarChart3, TrendingUp } from 'lucide-react';
+import { BarChart3, LayoutDashboard, TrendingUp } from 'lucide-react';
 import type { NotifyFn } from '../../../types';
 import { SectionedTab, type TabSection } from './SectionedTab';
 
@@ -9,10 +9,12 @@ import { SectionedTab, type TabSection } from './SectionedTab';
  * (a rep's own figures too), and the HR figures — headcount, payroll over time, departments — for view_hr.
  */
 
+const StaffOverviewSection = lazy(() => import('./staff-performance/StaffOverviewSection').then(module => ({ default: module.StaffOverviewSection })));
 const StaffPerformanceTab = lazy(() => import('./StaffPerformanceTab'));
 const HrAnalyticsTab = lazy(() => import('./HrAnalyticsTab'));
 
 export const STAFF_PERFORMANCE_SECTIONS: TabSection[] = [
+  { id: 'overview', label: 'نظرة عامة', icon: LayoutDashboard, permission: 'view_hr', alsoPermissions: ['manage_sales_team', 'view_perf_sales'], Component: StaffOverviewSection },
   { id: 'team', label: 'أداء الفريق', icon: TrendingUp, permission: 'view_hr', alsoPermissions: ['view_leads'], Component: StaffPerformanceTab as TabSection['Component'] },
   { id: 'hr', label: 'تحليلات الموارد البشرية', icon: BarChart3, permission: 'view_hr', Component: HrAnalyticsTab },
 ];

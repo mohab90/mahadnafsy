@@ -98,7 +98,6 @@ export type TabKey =
   | 'analytics'
   | 'ask_ai'
   | 'ai_dev'
-  | 'automation'
   // لوحة الأمان، قائمة IP، مراقبة السيرفر، ترحيل القاعدة — أقسام داخله الآن.
   | 'security_center'
   | 'quizzes'
@@ -367,8 +366,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // each had sent. All on manage_channel_settings. See tabs/CampaignsTab.tsx.
       { key: 'campaigns', label: 'الحملات', icon: Megaphone },
       { key: 'notif_inbox', label: 'إدارة صندوق الإشعارات', icon: Bell },
-      // Moved from الإعدادات (4 Nov 2026): the rules that send and remind are marketing's, and the settings hub no longer repeats the page.
-      { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
     ],
   },
   {

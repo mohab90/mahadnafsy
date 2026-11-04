@@ -96,7 +96,6 @@ export const growthOpsTabs = new Set<string>([
 
 export const saasOpsTabs = new Set<string>([
   'ask_ai',
-  'automation',
 ]);
 
 /**

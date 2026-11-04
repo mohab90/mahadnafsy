@@ -30,9 +30,11 @@ test('staff performance and HR analytics are one page with two sections, and the
   assert.match(read('admin/pages/dashboard/shell/useDashboardModel.tsx'), /\['staff_performance', RETIRED_STAFF_PERFORMANCE_TABS\]/);
 });
 
-test('the automation page sits under التسويق and the settings hub does not list it again', () => {
-  assert.match(groupBlock('marketing'), /key: 'automation'/);
-  assert.doesNotMatch(groupBlock('settings'), /key: 'automation'/);
+test('the automation page is one door, a section of the marketing hub; the settings hub does not list it and the old address redirects there', () => {
+  assert.doesNotMatch(menu, /key: 'automation'/);
+  assert.match(read('admin/pages/dashboard/dashboardShared.tsx'), /marketing_hub:\s+\['manage_channel_settings', 'manage_automation'\]/);
+  assert.match(read('admin/pages/dashboard/shell/useDashboardModel.tsx'), /\['marketing_hub', \{ automation: 'automation' \}\]/);
+  assert.match(read('admin/pages/dashboard/tabs/MarketingHubTab.tsx'), /permission: 'manage_automation'/);
   const hub = read('admin/pages/dashboard/tabs/settingsHubConfig.ts');
   for (const title of ['الأتمتة والقواعد', 'واتساب وماسنجر وانستجرام', 'صندوق الإشعارات']) {
     assert.ok(!hub.includes(`title: '${title}'`), `${title} lives under التسويق only`);
@@ -64,4 +66,16 @@ test('4 Nov 2026: الحملات is the messaging hub alone, opening on the inbo
 
 test('4 Nov 2026: the inbox readiness counts the official-API number as the company WhatsApp, not the default one the codes use', () => {
   assert.match(read('api/routes/team-inbox.js'), /const receiving = list\.filter\(channel => channel\.kind === 'whatsapp'[^\n]*provider === 'meta'\);/);
+});
+
+test('4 Nov 2026: the merged performance page opens on an overview of the month — absence at its payroll cost, lateness, and the money — each half only for who may read it', () => {
+  const hub = read('admin/pages/dashboard/tabs/StaffPerformanceHubTab.tsx');
+  assert.match(hub, /id: 'overview'[^\n]*alsoPermissions: \['manage_sales_team', 'view_perf_sales'\]/);
+  assert.ok(hub.indexOf("id: 'overview'") < hub.indexOf("id: 'team'"), 'the overview is the first section');
+  const overview = read('admin/pages/dashboard/tabs/staff-performance/StaffOverviewSection.tsx');
+  assert.match(overview, /\/admin\/hr\/attendance\/summary\?month=/);
+  assert.match(overview, /\/admin\/reports\/sales-performance\?from=/);
+  assert.match(overview, /UNEXCUSED_ABSENCE_DAYS = 2/);
+  assert.match(read('api/lib/payrollCalc.js'), /UNEXCUSED_ABSENCE_DAYS = 2/);
+  assert.match(overview, /Promise\.allSettled/, 'one half failing for a permission must not hide the other');
 });

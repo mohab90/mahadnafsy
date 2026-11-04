@@ -620,7 +620,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // view_dashboard meant every sales rep — and every employee at all — saw a
   // marketing section they have no business in. Campaign tooling and channel
   // configuration are the same job, so they share the same permission.
-  marketing_hub:      'manage_channel_settings',
+  marketing_hub:      ['manage_channel_settings', 'manage_automation'],
   online_hub:         'manage_subscribers',
   installment_plans:  'view_financial',
   consultations:      'view_consultations',
@@ -714,7 +714,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   online_team:        ['manage_sales_team', 'view_perf_online'],
   subscriptions:     'view_financial',
   consultation_calendar: 'view_consultations',
-  automation:         'manage_automation',
   // Every permission the seven merged screens used, so nobody loses a screen
   // they could reach before. INTEGRATION_SECTIONS gates each one inside.
   integrations:       ['manage_settings', 'manage_security', 'manage_channel_settings', 'manage_ai_settings'],

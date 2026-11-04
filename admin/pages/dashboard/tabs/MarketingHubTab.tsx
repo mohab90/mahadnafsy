@@ -1,14 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Megaphone, Zap, BarChart3, Tag, CheckCircle, X, Hash, Copy, Layers, Award, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 import { SegmentationTab } from './marketing-hub-sections/SegmentationTab';
 import { SiteOffersPanel } from './marketing-hub-sections/SiteOffersPanel';
 import { MarketingOverview } from './marketing-hub-sections/MarketingOverview';
-import AutomationTab from './AutomationTab';
+const AutomationTab = lazy(() => import('./AutomationTab'));
 import { useSiteData } from '../../../context/SiteDataContext';
 import { isTabKey } from '../navigation';
+import { useAccess } from '../../../hooks/useAccess';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type SubTab = 'overview' | 'discounts' | 'automation' | 'segmentation';
@@ -59,17 +60,24 @@ const StatCard: React.FC<{
   </div>
 );
 
-const SUB_TABS: { key: SubTab; label: string; icon: React.ElementType }[] = [
-  { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
-  { key: 'discounts', label: 'الخصومات', icon: Tag },
-  { key: 'automation', label: 'الأتوميشن', icon: Zap },
-  { key: 'segmentation', label: 'الشرائح', icon: Layers },
+// Each section keeps the permission it was reached with: the automation page is the one door to the automation rules now (it left the menu, 4 Nov 2026), so whoever holds
+// only manage_automation opens the hub and sees that section alone.
+const SUB_TABS: { key: SubTab; label: string; icon: React.ElementType; permission: string }[] = [
+  { key: 'overview', label: 'نظرة عامة', icon: BarChart3, permission: 'manage_channel_settings' },
+  { key: 'discounts', label: 'الخصومات', icon: Tag, permission: 'manage_channel_settings' },
+  { key: 'automation', label: 'الأتوميشن', icon: Zap, permission: 'manage_automation' },
+  { key: 'segmentation', label: 'الشرائح', icon: Layers, permission: 'manage_channel_settings' },
 ];
 
 const MarketingHubTab: React.FC<Props> = ({ notify }) => {
   const { leads, subscribers, discounts } = useSiteData();
   const navigate = useNavigate();
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
+  const { can } = useAccess();
+  const sections = useMemo(() => SUB_TABS.filter(tab => can(tab.permission)), [can]);
+  // /dashboard/marketing_hub/automation (the old address of the automation page redirects there) opens that section.
+  const { param } = useParams<{ param?: string }>();
+  const [chosen, setChosen] = useState<SubTab>(SUB_TABS.some(tab => tab.key === param) ? param as SubTab : 'overview');
+  const activeSubTab = (sections.find(tab => tab.key === chosen) || sections[0])?.key;
 
   const activeDiscounts = useMemo(() => discounts.filter(d => d.isActive), [discounts]);
   const totalDiscountUsage = discounts.reduce((s, d) => s + (d.usageCount || 0), 0);
@@ -88,8 +96,8 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
       </div>
 
       <div className="flex gap-2 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-        {SUB_TABS.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveSubTab(key)}
+        {sections.map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setChosen(key)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
               activeSubTab === key ? 'bg-white shadow-sm text-rose-700 font-bold' : 'text-gray-500 hover:text-gray-700'
             }`}>
@@ -212,7 +220,9 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
       )}
 
       {activeSubTab === 'automation' && (
-        <AutomationTab notify={notify} setActiveTab={tab => { if (isTabKey(tab)) navigate(`/dashboard/${tab}`); }} />
+        <Suspense fallback={<div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-rose-600" /></div>}>
+          <AutomationTab notify={notify} setActiveTab={tab => { if (isTabKey(tab)) navigate(`/dashboard/${tab}`); }} />
+        </Suspense>
       )}
 
       {activeSubTab === 'segmentation' && (

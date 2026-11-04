@@ -3,10 +3,7 @@ import { Suspense } from 'react';
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { StaffPermission } from '../../types';
 import type { TabKey } from './navigation';
-import {
-  AskAITab,
-  AutomationTab,
-} from './lazyTabs';
+import { AskAITab } from './lazyTabs';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -47,14 +44,6 @@ export function DashboardSaasOpsTabs({
     return (
       <Suspense fallback={<Spinner tone="indigo" />}>
         <AskAITab notify={notify} />
-      </Suspense>
-    );
-  }
-
-  if (activeTab === 'automation') {
-    return (
-      <Suspense fallback={<Spinner tone="violet" />}>
-        <AutomationTab notify={notify} setActiveTab={(tab) => setActiveTab(tab as TabKey)} />
       </Suspense>
     );
   }
