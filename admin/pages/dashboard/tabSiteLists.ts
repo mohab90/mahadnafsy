@@ -64,8 +64,8 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   sales_planning: ['leads', 'orders'],
   staff_performance: ['leads', 'orders'],
   sales_daqqi_schedule: [],
-  marketing_hub: ['leads', 'subscribers', 'orders', 'discounts', 'joinUsApplications'],
-  campaigns: ['leads', 'subscribers'],
+  marketing_hub: ['leads', 'subscribers', 'discounts', 'automationWorkflows'],
+  campaigns: [], // the messaging hub reads its own server routes
   online_team: ['leads', 'subscribers'],
   online_hub: [],
   // The four analyses (retention, cohort, revenue sources, expenses) are counted by the server (GET /api/admin/analytics-hub/*).

@@ -205,10 +205,6 @@ export const fullCrmDataTabs = new Set<string>([
   // nothing at all: AnalyticsTab renders under 'daqqi_stats', and no screen
   // answers to crm_settings.
   'marketing_hub',      // segmentation builds audiences from both tables
-  // Was 'drip_campaigns', whose enrolment picker lists real people and needs
-  // the rows. That screen is a section of تبويب الحملات now, and this set is
-  // keyed on the tab the URL names, so it has to name the tab.
-  'campaigns',
   'ask_ai',
   // online_team is not here: who carries which leads and clients comes from GET /admin/online-performance, and the
   // first pages of both tables are only the fallback while that answers.

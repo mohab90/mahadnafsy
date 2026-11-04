@@ -7,7 +7,7 @@ const router  = express.Router();
 const { pool } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../../constants/permissions');
-const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, monthRange } = require('../../lib/dates');
+const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, monthRange, sqlCairoWall, addDaysToDateOnly } = require('../../lib/dates');
 const { leadScope } = require('../../lib/leadAccess');
 const { financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
 
@@ -69,6 +69,85 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
       }),
     });
   } catch (e) { logger.error('[route]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
+});
+
+// GET /api/admin/marketing/overview?range=today|7d|30d|month|all — «نظرة عامة» of مركز التسويق (4 Nov 2026). It counted leads and orders in the browser out of the whole tables, added
+// amounts of different currencies and had no past to compare with. Here: the leads by status and source, the collected money (payments.amount_egp), a daily line, the same
+// figures for the period just before it, and the leads nobody has touched in two days.
+const MARKETING_RANGES = { today: 1, '7d': 7, '30d': 30 };
+router.get('/api/admin/marketing/overview', requireAuth, requireAdminOrStaff, requirePermission('manage_channel_settings'), async (req, res) => {
+  try {
+    const today = cairoToday();
+    const range = Object.keys(MARKETING_RANGES).includes(String(req.query.range)) || ['month', 'all'].includes(String(req.query.range)) ? String(req.query.range) : 'month';
+    const from = range === 'all' ? null : range === 'month' ? cairoMonthStart(0) : addDaysToDateOnly(today, 1 - MARKETING_RANGES[range]);
+    const days = from ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1 : null;
+    const before = from ? { from: addDaysToDateOnly(from, -days), to: addDaysToDateOnly(from, -1) } : null;
+
+    const leadRange = leadScope(req, 'l');
+    const moneyScope = financialScopeClause(resolveFinancialScope(req, { allowAssigned: true }), { branchColumn: 'p.branch_id', subscriberAlias: 's' });
+
+    const leadsIn = async (start, end) => {
+      if (leadRange.none) return [];
+      const params = [req.tenantId, ...leadRange.params];
+      let when = '';
+      if (start) { const [fromUtc, toUtc] = cairoDayBoundsUtc(start, end); when = ' AND l.created_at >= ? AND l.created_at < ?'; params.push(fromUtc, toUtc); }
+      const [rows] = await pool.query(
+        `SELECT LOWER(COALESCE(NULLIF(l.status, ''), 'new')) AS status, COALESCE(NULLIF(l.source, ''), 'غير محدد') AS source, COUNT(*) AS n
+           FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${leadRange.sql}${when} GROUP BY 1, 2`, params);
+      return rows.map(row => ({ status: row.status, source: row.source, n: Number(row.n) }));
+    };
+    const moneyIn = async (start, end) => {
+      const params = [req.tenantId, ...moneyScope.params];
+      let when = '';
+      if (start) { when = ' AND p.date >= ? AND p.date <= ?'; params.push(start, end); }
+      const [[row]] = await pool.query(
+        `SELECT COALESCE(SUM(p.amount_egp), 0) AS revenue, COUNT(*) AS payments
+           FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+          WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}${when}`, params);
+      return { revenue: Math.round(Number(row.revenue) || 0), payments: Number(row.payments) || 0 };
+    };
+
+    // The daily line is the last 30 days at most, whatever the range, so «all» does not draw years.
+    const lineFrom = days && days <= 30 ? from : addDaysToDateOnly(today, -29);
+    const lineLeadParams = [req.tenantId, ...leadRange.params, ...cairoDayBoundsUtc(lineFrom, today)];
+    const lineMoneyParams = [req.tenantId, ...moneyScope.params, lineFrom, today];
+    const [current, previous, currentMoney, previousMoney, [lineLeads], [lineMoney], [[stale]]] = await Promise.all([
+      leadsIn(from, today),
+      before ? leadsIn(before.from, before.to) : Promise.resolve(null),
+      moneyIn(from, today),
+      before ? moneyIn(before.from, before.to) : Promise.resolve(null),
+      leadRange.none ? [[]] : pool.query(
+        `SELECT DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m-%d') AS day, COUNT(*) AS leads, SUM(l.status IN ${CONVERTED_SQL}) AS converted
+           FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${leadRange.sql} AND l.created_at >= ? AND l.created_at < ? GROUP BY 1`, lineLeadParams),
+      pool.query(
+        `SELECT DATE_FORMAT(p.date, '%Y-%m-%d') AS day, COALESCE(SUM(p.amount_egp), 0) AS revenue
+           FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+          WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}
+            AND p.date >= ? AND p.date <= ? GROUP BY 1`, lineMoneyParams),
+      leadRange.none ? [[{ n: 0 }]] : pool.query(
+        `SELECT COUNT(*) AS n FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${leadRange.sql}
+            AND LOWER(COALESCE(NULLIF(l.status, ''), 'new')) = 'new' AND l.created_at < NOW() - INTERVAL 2 DAY`, [req.tenantId, ...leadRange.params]),
+    ]);
+
+    const leadsByDay = new Map(lineLeads.map(row => [row.day, row]));
+    const moneyByDay = new Map(lineMoney.map(row => [row.day, row]));
+    const daily = [];
+    for (let day = lineFrom; day <= today; day = addDaysToDateOnly(day, 1)) {
+      daily.push({
+        day,
+        leads: Number(leadsByDay.get(day)?.leads) || 0,
+        converted: Number(leadsByDay.get(day)?.converted) || 0,
+        revenue: Math.round(Number(moneyByDay.get(day)?.revenue) || 0),
+      });
+    }
+    res.json({
+      range, from, to: today,
+      current: { leads: current, ...currentMoney },
+      previous: previous ? { from: before.from, to: before.to, leads: previous, ...previousMoney } : null,
+      daily,
+      untouchedLeads: Number(stale?.n) || 0,
+    });
+  } catch (e) { logger.error('[marketing-overview]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // GET /api/admin/reports/sales-breakdown?from=&to= — «تقارير المبيعات»: the leads by status and by source, and the collected money in total, by employee and by course or track,
