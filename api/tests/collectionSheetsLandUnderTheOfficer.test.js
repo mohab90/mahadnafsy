@@ -113,14 +113,15 @@ test('every row lands under the officer, once, and nobody else\'s client moves',
 
     const [row] = inserted;
     const columns = ['id', 'tenant_id', 'client_code', 'name', 'email', 'phone', 'branch', 'branch_id', 'notes',
-      'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'source'];
+      'assigned_cs_id', 'assigned_cs_name', 'client_status', 'crm_json', 'source'];
     const created = Object.fromEntries(columns.map((column, index) => [column, row[index]]));
     assert.equal(created.assigned_cs_id, 'cs-1');
     assert.equal(created.assigned_cs_name, 'منة');
     assert.equal(created.branch, 'ONLINE_SAUDI');
     assert.equal(created.client_code, 'C100');
     const crm = JSON.parse(created.crm_json);
-    assert.equal(crm.clientStatus, 'old_intl');
+    assert.equal(created.client_status, 'old_intl', 'the status is the column');
+    assert.equal(crm.clientStatus, undefined);
     // The sheet's price and what it collected: the client's price and
     // «مدفوع قبل السيستم», never a payment.
     assert.equal(crm.customPrices, undefined, 'not in the blob');
@@ -190,7 +191,7 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
     }, db);
     assert.deepEqual({ ...result, problems: result.problems.length }, { created: 2, assigned: 0, skipped: 1, others: 0, failed: 0, flagged: 1, problems: 1 });
     const columns = ['id', 'tenant_id', 'client_code', 'name', 'email', 'phone', 'branch', 'branch_id', 'notes',
-      'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'source', 'created_at'];
+      'assigned_cs_id', 'assigned_cs_name', 'client_status', 'crm_json', 'source', 'created_at'];
     const [first, second] = inserted.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
     // One form for a number — the ten digits, no trunk zero (migration 283): the zero Excel dropped is not put back,
     // and «01009441632» and «1009441632» are one client.
@@ -249,7 +250,8 @@ test('the online import lands where the desk says, unassigned unless an officer 
     assert.equal(assigned.length, 0, 'nobody already on the system is handed to anyone');
     assert.equal(inserted[0][6], 'ONLINE_SAUDI');
     assert.equal(inserted[0][9], null, 'no officer');
-    assert.equal(JSON.parse(inserted[0][11]).clientStatus, 'active');
+    assert.equal(inserted[0][11], 'active', 'the status column');
+    assert.equal(JSON.parse(inserted[0][12]).clientStatus, undefined);
   } finally { restore(); }
 
   const routes = read('api/routes/collection-distribution.js');

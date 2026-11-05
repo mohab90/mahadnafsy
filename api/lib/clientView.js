@@ -95,8 +95,8 @@ const PAYMENT_COLUMNS = {
 /**
  * For each subscriber id: their payments (not deleted), oldest first, as the staff screens show them (the shape of `paymentHistory`).
  *   shape      'full' — what the profile and the main lists send; 'slim' — the two lighter lists, without courseExpected, certType, certId and branch
- *   staffName  'executor' — who really took the money, resolved through the audit trail (resolvePaymentExecutors), as the lists show it;
- *              'recorded' — the name stored on the payment row, as the profile shows it; 'none' — null (the lite list does not resolve it)
+ *   staffName  'executor' — who really took the money, resolved by lib/paymentExecutor.js so one person reads as one name; the same on the lists and on the profile
+ *              (the profile used the name stored on the row until 5 Nov 2026, which spelled one person two ways); 'none' — null (the lite list does not resolve it)
  * A subscriber with no payment has no entry.
  */
 async function loadPayments(tenantId, subscriberIds, { shape = 'full', staffName = 'executor' } = {}, db = pool) {
@@ -125,7 +125,7 @@ async function loadPayments(tenantId, subscriberIds, { shape = 'full', staffName
       at: safeDateOnly(p.date),
       status: p.status || 'paid',
       staffId: p.staff_id || null,
-      staffName: staffName === 'recorded' ? (p.staff_name || null) : (executors.get(String(p.id)) ?? null),
+      staffName: executors.get(String(p.id)) ?? null,
       fromAccountNumber: p.from_account || null,
       senderName: p.sender_name || null,
       source: p.source || null,

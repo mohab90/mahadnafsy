@@ -191,19 +191,19 @@ router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requ
     // Converting is already a deliberate staff action; there is nothing left to
     // gate behind an inactive flag.
     //
-    // clientStatus='active' in crm_json for the same reason: the view tabs in
+    // client_status='active' for the same reason: the view tabs in
     // OnlineClientsTab switch on it, and a row with no status falls through
-    // every named tab.
+    // every named tab. (A column since 5 Nov 2026, not a key of the blob.)
     await conn.query(
       `INSERT INTO subscribers
-         (id, firebase_uid, client_code, name, email, phone, branch, branch_id, is_active, tenant_id, created_at, crm_json, source)
-       VALUES (?,?,?,?,?,?,?,?,1,?,NOW(),?,?)`,
+         (id, firebase_uid, client_code, name, email, phone, branch, branch_id, is_active, tenant_id, created_at, client_status, crm_json, source)
+       VALUES (?,?,?,?,?,?,?,?,1,?,NOW(),'active',?,?)`,
       // NULL, never '': uq_subs_tenant_phone lets any number of NULLs through
        // and exactly one ''. With one blank already stored, every registration
        // without a phone failed here — six times in the August logs.
        [subscriberId, userId, clientCode, (user.name || '').trim() || null, user.email, toIdentity(user.phone) || null,
        branch, branchIdForBranch(branch), tenantId,
-       JSON.stringify({ clientStatus: 'active', convertedFromRegistrationId: userId, convertedAt: new Date().toISOString() }),
+       JSON.stringify({ convertedFromRegistrationId: userId, convertedAt: new Date().toISOString() }),
        'تسجيل موقع']
     );
     await conn.commit();

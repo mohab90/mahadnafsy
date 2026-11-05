@@ -9,6 +9,7 @@
 
 const { addDaysToDateOnly, safeDateOnly } = require('./dates');
 const { balanceOf, cairoDay, isCollected, toEgp } = require('./staffClientsView');
+const { withOwned } = require('./crmColumns');
 const { parseCrm } = require('./helpers');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('./installmentPlansBySubscriber');
@@ -100,7 +101,7 @@ function buildOverview(clients, { today, weekStart, monthStart, catalogue, team 
  */
 async function readOverviewClients(db, tenantId, sc) {
   const readClients = () => db.query(
-    `SELECT s.id, s.name, s.branch, s.lead_id, s.client_code, s.crm_json
+    `SELECT s.id, s.name, s.branch, s.lead_id, s.client_code, s.client_status, s.crm_json
        FROM subscribers s
       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${sc.where})
       ORDER BY s.created_at DESC, s.id DESC`,
@@ -166,7 +167,7 @@ async function readOverviewClients(db, tenantId, sc) {
   }
 
   return rows.map(row => {
-    const crm = withItemMoney(withInstallmentPlans(parseCrm(row.crm_json), plansBySub.get(row.id)), moneyBySub.get(row.id));
+    const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(row.crm_json), plansBySub.get(row.id)), moneyBySub.get(row.id)), row);
     const held = holdsOf.get(row.id);
     const rawBranch = row.branch || crm.branch || null;
     const normalized = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g, '_') : null;

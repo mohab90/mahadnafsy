@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mysql = require('mysql2/promise');
+const { ownedSql } = require('../lib/crmColumns');
 
 const APPLY = process.argv.includes('--apply');
 const arg = name => (process.argv.find(item => item.startsWith(`--${name}=`)) || '').slice(name.length + 3) || null;
@@ -33,13 +34,15 @@ const TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
     host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER,
     password: process.env.DB_PASSWORD, database: process.env.DB_NAME,
   });
-  const where = ["tenant_id=?", 'deleted_at IS NULL', "JSON_VALID(crm_json)", "JSON_UNQUOTE(JSON_EXTRACT(crm_json,'$.clientStatus'))='paused'",
+  // the status is a column since 5 Nov 2026 (lib/crmColumns.js): the blob's key while an old row still has it, else the column
+  const status = ownedSql('clientStatus', 'subscribers');
+  const where = ["tenant_id=?", 'deleted_at IS NULL', "JSON_VALID(crm_json)", `(${status})='paused'`,
     "JSON_UNQUOTE(JSON_EXTRACT(crm_json,'$.transferAnswers.pauseReason')) LIKE 'عليه متبقي%'"];
   const params = [TENANT];
   if (SOURCE) { where.push('source=?'); params.push(SOURCE); }
   if (BRANCH) { where.push('branch=?'); params.push(BRANCH); }
   const [rows] = await db.query(`SELECT id, name, branch, source, crm_json, DATE(updated_at) AS day FROM subscribers WHERE ${where.join(' AND ')}`, params);
-  const [[all]] = await db.query("SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND JSON_VALID(crm_json) AND JSON_UNQUOTE(JSON_EXTRACT(crm_json,'$.clientStatus'))='paused'", [TENANT]);
+  const [[all]] = await db.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND (${status})='paused'`, [TENANT]);
 
   const byBatch = new Map();
   let owed = 0;
@@ -62,7 +65,7 @@ const TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
   let skipped = 0;
   for (const row of rows) {
     const [result] = await db.query(
-      `UPDATE subscribers SET crm_json=JSON_REMOVE(JSON_SET(crm_json,'$.clientStatus','active'),'$.transferAnswers.pauseReason'), updated_at=NOW()
+      `UPDATE subscribers SET client_status='active', crm_json=JSON_REMOVE(crm_json,'$.clientStatus','$.transferAnswers.pauseReason'), updated_at=NOW()
         WHERE id=? AND tenant_id=? AND crm_json=?`, [row.id, TENANT, row.crm_json]);
     if (result.affectedRows) changed += 1; else skipped += 1;
   }

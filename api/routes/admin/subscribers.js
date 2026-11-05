@@ -1,6 +1,7 @@
 'use strict';
 const { signerName } = require('../../lib/staffNames');
 const { loadHoldings, loadCertificateRequests, loadPayments, loadCompletions } = require('../../lib/clientView');
+const { withOwned, takeOwned } = require('../../lib/crmColumns');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, spellingsOf, sharedPhoneSlot, recordSharedPhone } = require('../../lib/phoneDuplicates');
 const { findLeadByContact } = require('../../lib/leadMatching');
@@ -215,14 +216,14 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
     // ── 1. Try subscriber (by id or client_code) ────────────────────────────
     const [subRows] = await pool.query(
        `SELECT id, firebase_uid, client_code, lead_id, name, email, phone, phone2, branch,
-       is_active, notes, client_type, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
+       is_active, notes, client_type, client_status, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
        crm_json, created_at, updated_at
        FROM subscribers
        WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND (id=? OR client_code=?) LIMIT 1`, [req.tenantId, code, code]
     );
     if (subRows.length > 0) {
       const r = subRows[0];
-      const crm = withItemMoney(parseCrm(r.crm_json), await moneyOf(pool, { tenantId: req.tenantId, subscriberId: r.id }));
+      const crm = withOwned(withItemMoney(parseCrm(r.crm_json), await moneyOf(pool, { tenantId: req.tenantId, subscriberId: r.id })), r);
       // Access check: admin OR assigned sales OR assigned via lead
     // Access check: admin OR assigned sales OR reception_daqqi for daqqi-branch clients
       if (!isAdminReq) {
@@ -257,7 +258,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
           }
         }
       }
-      const paymentHistory = (await loadPayments(req.tenantId, [r.id], { staffName: 'recorded' }))[r.id] || [];
+      const paymentHistory = (await loadPayments(req.tenantId, [r.id]))[r.id] || [];
       const held = (await loadHoldings(req.tenantId, [r.id]))[r.id];
       const enrolledCourseIds = held?.withBundles || [];
       const enrolledBundleIds = held?.bundleIds || [];
@@ -882,6 +883,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       'LEAD_LOCAL_NEW','LEAD_LOCAL_OLD','LEAD_INTL_NEW','LEAD_INTL_OLD']);
     const rawClientType = crmData.clientType || s.client_type || null;
     const clientTypeVal = (rawClientType && VALID_CLIENT_TYPES.has(rawClientType.toUpperCase())) ? rawClientType.toUpperCase() : (rawClientType || null);
+    // The client's status is a column, not part of the blob (lib/crmColumns.js): taken out of what is saved, and written only when this save carried one.
+    const owned = takeOwned(crmData);
+    const statusCarried = Object.prototype.hasOwnProperty.call(owned.set, 'client_status');
     if (existingSub) {
       // COALESCE alone cannot express "unassign": a caller that omits the field
       // and one that explicitly sends null both arrive here as NULL, so the old
@@ -898,22 +902,22 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
            assigned_sales_id=IF(?,NULL,COALESCE(?,assigned_sales_id)),
            assigned_sales_name=IF(?,NULL,COALESCE(?,assigned_sales_name)),
            branch=COALESCE(?,branch), branch_id=COALESCE(NULLIF(?,''),branch_id),
-           client_type=COALESCE(?,client_type), crm_json=?
+           client_type=COALESCE(?,client_type), client_status=IF(?,?,client_status), crm_json=?
          WHERE id=? AND tenant_id=?`,
         [safeName||'', safeEmail, safePhone, firebaseUid || firebase_uid || null, code, active?1:0,
          safeNotes||null,
          clearCs ? 1 : 0, csId, clearCs ? 1 : 0, csName,
          clearSales ? 1 : 0, salesId, clearSales ? 1 : 0, salesName,
          branchVal, branchIdVal, clientTypeVal,
-         JSON.stringify(crmData), id, tenantId]
+         statusCarried ? 1 : 0, owned.set.client_status ?? null, JSON.stringify(owned.crm), id, tenantId]
       );
     } else {
       await conn.query(
         `INSERT INTO subscribers (id, tenant_id, firebase_uid, client_code, name, email, phone, phone_slot, phone_shared_with, is_active, notes,
-           assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, branch_id, client_type, crm_json)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, branch_id, client_type, client_status, crm_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [id, tenantId, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, sharing ? sharing.slot : 0, sharing ? sharing.primaryId : null, active?1:0,
-         safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, JSON.stringify(crmData)]
+         safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, owned.set.client_status ?? null, JSON.stringify(owned.crm)]
       );
       if (sharing) await recordSharedPhone(conn, { tenantId, newId: id, newName: safeName || '', sharing, actor: signerName(req) });
     }

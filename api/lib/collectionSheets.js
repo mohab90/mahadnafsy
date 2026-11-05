@@ -68,7 +68,7 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
   // was collected.
   const prior = paidBefore(row);
   const crm = {
-    clientStatus: kind, status: 'active', source,
+    status: 'active', source,
   };
   // A refund, and a collected figure that disagrees with the remaining, are
   // shown rather than netted; what could not be tied to a course stays
@@ -100,10 +100,10 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
     await conn.query(
       `INSERT INTO subscribers
          (id, tenant_id, client_code, name, email, phone, branch, branch_id, is_active, notes,
-          assigned_cs_id, assigned_cs_name, crm_json, source, created_at)
-       VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,COALESCE(?, NOW()))`,
+          assigned_cs_id, assigned_cs_name, client_status, crm_json, source, created_at)
+       VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,COALESCE(?, NOW()))`,
       [id, tenantId, await getNextClientCode(conn, tenantId), (cell(row._name) || phone || 'بدون اسم').slice(0, 255), email || null,
-        toIdentity(phone) || null, branch, branchId, notes, staff?.id || null, staff?.name || null, JSON.stringify(crm),
+        toIdentity(phone) || null, branch, branchId, notes, staff?.id || null, staff?.name || null, kind, JSON.stringify(crm),
         String(source).slice(0, 100), sheetDate(row._date)]);
     // The price the sheet names and what it says was collected are the client's own rows (lib/itemMoney.js), not part of the blob.
     if (courseId) await setItemMoney(conn, { tenantId, subscriberId: id, itemKey: String(courseId), price: expected, priorPaid: prior });

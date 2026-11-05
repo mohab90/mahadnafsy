@@ -39,6 +39,7 @@ const { mapInstallmentPlan } = require('../../lib/installmentMath');
 const { buildOverview, readOverviewClients } = require('../../lib/staffOverview');
 
 // What each client holds is read once, in lib/clientView.js, for the lists and the single-client profile alike.
+const { withOwned, ownedSql } = require('../../lib/crmColumns');
 const { loadHoldings: loadEnrollmentProjection, loadCertificateRequests, loadPayments, loadCompletions: loadCompletionProjection } = require('../../lib/clientView');
 
 /**
@@ -285,7 +286,7 @@ router.get('/api/admin/subscribers/count', requireAuth, requireAdminOrStaff, req
       ? `AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
       : '';
     const [rows] = await pool.query(
-      `SELECT CASE WHEN JSON_VALID(s.crm_json) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.crm_json,'$.clientStatus')),'') ELSE '' END AS client_status,
+      `SELECT ${ownedSql('clientStatus')} AS client_status,
               COUNT(*) AS cnt
          FROM subscribers s
         WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.is_active=1 AND (${scope.clause})${branch.sql} AND NOT EXISTS (
@@ -405,7 +406,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     const certificatesBySub = await loadCertificateRequests(req.tenantId, ids);
 
     res.json(rows.map(r => {
-      const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
+      const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
       // client_code column is authoritative
       const clientCode = r.client_code || crm.clientCode || null;
       // payments table is authoritative; fall back to crm_json if no DB records found
@@ -541,7 +542,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
   const staffCertificatesBySub = lite ? {} : await loadCertificateRequests(tenantId, ids);
 
   return rows.map(r => {
-    const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
+    const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
     const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
     const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
     const rb = r.branch || crm.branch || null;
@@ -785,7 +786,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     const payBySubId = await loadPayments(req.tenantId, ids, { shape: 'slim' });
 
     res.json(rows.map(r => {
-      const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
+      const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
@@ -838,7 +839,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     const payBySubId = await loadPayments(req.tenantId, ids, { shape: 'slim' });
 
     res.json(rows.map(r => {
-      const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
+      const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {

@@ -110,14 +110,15 @@ test('payments: full and slim shapes, recorded and absent staff names, grouped p
       course_expected: null, date: new Date('2026-10-03T09:00:00Z'), note: null, status: 'pending', staff_id: null, staff_name: '', from_account: null, sender_name: null, source: null,
       item_title: null, cert_type: null, certificate_request_id: null, branch: null },
   ];
-  const db = { query: async () => [rows] };
-  const full = await loadPayments('t', ['s1', 's2'], { staffName: 'recorded' }, db);
+  // the payments query answers the rows; the staff lookup answers the person behind st1 (the stored name 'Rep' is NOT what is shown: the staff row's name is); nothing else is known
+  const db = { query: async sql => (/FROM payments/.test(sql) ? [rows] : /FROM staff WHERE tenant_id=\? AND id IN/.test(sql) ? [[{ id: 'st1', name: 'اسم الموظف' }]] : [[]]) };
+  const full = await loadPayments('t', ['s1', 's2'], {}, db);
   assert.deepEqual(Object.keys(full), ['s1', 's2']);
   assert.deepEqual(full.s1[0], {
     id: 'p1', amount: 150.5, currency: 'EGP', paymentType: 'course', paymentMethod: 'cash', transactionId: null, isInstallment: true, courseId: 'c1', bundleId: null, courseExpected: 400,
-    note: 'n', at: '2026-10-02', status: 'paid', staffId: 'st1', staffName: 'Rep', fromAccountNumber: '010', senderName: 'X', source: 'web', itemTitle: 'T',
+    note: 'n', at: '2026-10-02', status: 'paid', staffId: 'st1', staffName: 'اسم الموظف', fromAccountNumber: '010', senderName: 'X', source: 'web', itemTitle: 'T',
     certType: 'extra', certId: 'cr1', branch: 'DOKKI' });
-  assert.equal(full.s2[0].staffName, null, 'an empty recorded name is null');
+  assert.equal(full.s2[0].staffName, null, 'a payment nobody is named on has no name, not a guess');
   assert.equal(full.s2[0].paymentType, 'other');
   const slim = await loadPayments('t', ['s1', 's2'], { shape: 'slim', staffName: 'none' }, db);
   for (const key of ['courseExpected', 'certType', 'certId', 'branch']) assert.equal(key in slim.s1[0], false, key);
@@ -129,7 +130,7 @@ test('no staff route keeps its own copy of the client payment mapping', () => {
   const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
   assert.equal(read('routes/admin/stafflists.js').split('const [payRows] = await pool.query(').length - 1, 0);
   assert.equal(read('routes/admin/stafflists.js').split('loadPayments(').length - 1, 4);
-  assert.match(read('routes/admin/subscribers.js'), /loadPayments\(req\.tenantId, \[r\.id\], \{ staffName: 'recorded' \}\)/);
+  assert.match(read('routes/admin/subscribers.js'), /loadPayments\(req\.tenantId, \[r\.id\]\)/);
   assert.equal(read('routes/admin/subscribers.js').split('payRows').length - 1, 0);
 });
 

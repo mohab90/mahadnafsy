@@ -8,23 +8,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { changeClientCurrency, convertAmount } = require('../lib/clientCurrency');
+const { fakeDb } = require('./support/repo');
 
 const RATES = { EGP: 1, SAR: 14.5, USD: 48 };
 
-function fakeDb(answers) {
-  const calls = [];
-  return {
-    calls,
-    async query(sql, params = []) {
-      const flat = sql.replace(/\s+/g, ' ');
-      calls.push({ sql: flat, params });
-      for (const [pattern, answer] of answers) {
-        if (pattern.test(flat)) return typeof answer === 'function' ? answer(params) : answer;
-      }
-      return [{ affectedRows: 0 }];
-    },
-  };
-}
 const find = (db, pattern) => db.calls.find(call => pattern.test(call.sql));
 const writes = db => db.calls.filter(call => /^(UPDATE|INSERT)/.test(call.sql));
 // What the client's rows hold after the change: the rows written to client_item_money, as the two maps.
@@ -58,9 +45,11 @@ test('a riyal client moved to pounds: market, branch, status and every figure fo
   assert.equal(result.branch, 'ONLINE_EGYPT');
   const update = find(db, /^UPDATE subscribers SET branch=/);
   assert.equal(update.params[0], 'ONLINE_EGYPT');
-  const crm = JSON.parse(update.params[2]);
+  const crm = JSON.parse(update.params[4]);
   assert.equal(crm.market, 'local');
-  assert.equal(crm.clientStatus, 'old_local', 'the old-data tabs tell local from foreign by the status');
+  // the status is the column (lib/crmColumns.js): written with its flag, and no longer a key of the blob
+  assert.deepEqual(update.params.slice(2, 4), [1, 'old_local'], 'the old-data tabs tell local from foreign by the status');
+  assert.equal(crm.clientStatus, undefined);
   assert.deepEqual(moneyAfter(db), { customPrices: { c1: 11455, 'bundle:b1': 23186 }, priorPaid: { c1: 5800 } });
   assert.equal(crm.customPrices, undefined, 'the blob no longer carries them');
   assert.ok(find(db, /^UPDATE enrollments SET branch_id=/), 'their courses follow the branch');
@@ -71,7 +60,7 @@ test('without «convert» the market moves and the figures stay as they are', as
   const db = fakeDb(client());
   const result = await changeClientCurrency(db, args({ currency: 'EGP', convert: false }));
   assert.equal(result.converted, false);
-  const crm = JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[2]);
+  const crm = JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[4]);
   assert.deepEqual(moneyAfter(db), { customPrices: { c1: 790, 'bundle:b1': 1599 }, priorPaid: { c1: 400 } });
   assert.match(find(db, /^INSERT INTO activity_logs/).params[5], /من غير تحويل/);
 });
@@ -106,8 +95,9 @@ test('a branch client, the same currency, and a currency nobody has are refused'
 test('an old local client moved abroad becomes an old foreign one', async () => {
   const db = fakeDb(client({ branch: 'ONLINE_EGYPT' }, { clientStatus: 'old_local', market: 'local' }));
   await changeClientCurrency(db, args({ currency: 'SAR' }));
-  const crm = JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[2]);
-  assert.equal(crm.clientStatus, 'old_intl');
+  const update = find(db, /^UPDATE subscribers SET branch=/);
+  const crm = JSON.parse(update.params[4]);
+  assert.deepEqual(update.params.slice(2, 4), [1, 'old_intl']);
   assert.equal(crm.market, 'saudi');
 });
 

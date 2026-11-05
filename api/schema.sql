@@ -5406,6 +5406,7 @@ CREATE TABLE `subscribers` (
   `crm_json` longtext DEFAULT NULL,
   `referred_by` varchar(20) DEFAULT NULL,
   `client_type` varchar(50) DEFAULT NULL,
+  `client_status` varchar(40) DEFAULT NULL,
   `is_unsubscribed` tinyint(1) NOT NULL DEFAULT 0,
   `unsubscribed_at` timestamp NULL DEFAULT NULL,
   `source` varchar(120) DEFAULT NULL,
@@ -5431,6 +5432,7 @@ CREATE TABLE `subscribers` (
   KEY `idx_subscribers_tenant_branch_listing` (`tenant_id`,`branch`,`is_active`,`deleted_at`,`created_at`),
   KEY `idx_subscribers_tenant_active_deleted` (`tenant_id`,`is_active`,`deleted_at`),
   KEY `idx_subscribers_tenant_phone` (`tenant_id`,`phone`),
+  KEY `idx_subscribers_tenant_status` (`tenant_id`,`client_status`),
   KEY `idx_subscribers_tenant_lead` (`tenant_id`,`lead_id`),
   KEY `idx_subscribers_cs_at` (`tenant_id`,`assigned_cs_id`,`assigned_cs_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

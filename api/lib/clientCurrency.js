@@ -20,6 +20,7 @@ const { subscriberMarket } = require('./collectionDistribution');
 const { branchIdForBranch } = require('./branches');
 const { logClientEvent } = require('./clientHistory');
 const { moneyOf, replaceItemMoney, withItemMoney, withoutItemMoney } = require('./itemMoney');
+const { withOwned, takeOwned } = require('./crmColumns');
 
 const CURRENCIES = ['EGP', 'SAR', 'USD'];
 const MARKET_OF = { EGP: 'local', SAR: 'saudi', USD: 'intl' };
@@ -67,13 +68,13 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   const to = String(currency || '').toUpperCase();
   if (!CURRENCIES.includes(to)) throw fail(400, 'اختار العملة: جنيه أو ريال أو دولار');
   const [[subscriber]] = await db.query(
-    `SELECT id, name, branch, crm_json FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+    `SELECT id, name, branch, client_status, crm_json FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
     [subscriberId, tenantId]);
   if (!subscriber) throw fail(404, 'العميل غير موجود');
   if (BRANCH_CLIENT.includes(String(subscriber.branch || '').toUpperCase())) {
     throw fail(409, 'ده عميل فرع — عملته بتتحدد بالفرع، وتغيير العملة للعملاء الأونلاين بس', 'BRANCH_CLIENT');
   }
-  const crm = withItemMoney(parseCrm(subscriber.crm_json), await moneyOf(db, { tenantId, subscriberId }));
+  const crm = withOwned(withItemMoney(parseCrm(subscriber.crm_json), await moneyOf(db, { tenantId, subscriberId })), subscriber);
   const [[latest]] = await db.query(
     `SELECT currency FROM payments WHERE tenant_id=? AND subscriber_id=? AND status='paid' AND deleted_at IS NULL
       ORDER BY date DESC, created_at DESC LIMIT 1`, [tenantId, subscriberId]);
@@ -124,8 +125,10 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   };
   if (dryRun) return result;
 
-  await db.query('UPDATE subscribers SET branch=?, branch_id=?, crm_json=? WHERE id=? AND tenant_id=?',
-    [BRANCH_OF[market], branchIdForBranch(BRANCH_OF[market]), JSON.stringify(withoutItemMoney(next)), subscriberId, tenantId]);
+  // the status is a column (lib/crmColumns.js), so it is written there and not into the blob
+  const owned = takeOwned(withoutItemMoney(next));
+  await db.query('UPDATE subscribers SET branch=?, branch_id=?, client_status=IF(?,?,client_status), crm_json=? WHERE id=? AND tenant_id=?',
+    [BRANCH_OF[market], branchIdForBranch(BRANCH_OF[market]), 'client_status' in owned.set ? 1 : 0, owned.set.client_status ?? null, JSON.stringify(owned.crm), subscriberId, tenantId]);
   await replaceItemMoney(db, { tenantId, subscriberId, customPrices, priorPaid });
   await db.query('UPDATE enrollments SET branch_id=? WHERE subscriber_id=? AND tenant_id=?',
     [branchIdForBranch(BRANCH_OF[market]), subscriberId, tenantId]);
