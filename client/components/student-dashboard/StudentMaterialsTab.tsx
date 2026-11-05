@@ -3,6 +3,7 @@ import { Download, FileText } from 'lucide-react';
 import type { Course, CourseMaterial, SubscriberItem } from '../../types';
 import { cdnImg } from '../../../shared/img';
 import { webLink } from '../../lib/webLink';
+import { CourseDocumentsSection } from '../../pages/course-details-sections/CourseDocumentsSection';
 
 type MaterialWithCourse = CourseMaterial & {
   courseName: string;
@@ -24,6 +25,8 @@ export function StudentMaterialsTab({ subscriber, enrolledCourses }: { subscribe
     );
   }
 
+  // the diploma's own PDFs (free / after the first payment / after 80%), each course's, as the server says they are open for this client
+  const documentBlocks = enrolledCourses.map(course => <CourseDocumentsSection key={course.id} courseId={course.id} compact heading={`ملفات ${course.title}`} />);
   const allMaterials: MaterialWithCourse[] = [];
   enrolledCourses.forEach(course => {
     if (!course.materials || course.materials.length === 0) return;
@@ -41,6 +44,7 @@ export function StudentMaterialsTab({ subscriber, enrolledCourses }: { subscribe
         <FileText size={36} className="mx-auto mb-3 text-gray-200" />
         <p className="mb-1 font-bold text-gray-500">لا توجد مادة علمية متاحة حاليا</p>
         <p className="text-xs text-gray-400">ستظهر هنا الملفات والمواد العلمية عند إضافتها من قبل الفريق</p>
+        {documentBlocks.length > 0 && <div className="mt-6 space-y-4 text-right">{documentBlocks}</div>}
       </div>
     );
   }
@@ -86,6 +90,8 @@ export function StudentMaterialsTab({ subscriber, enrolledCourses }: { subscribe
           </div>
         </div>
       ))}
+
+      {documentBlocks.length > 0 && <div className="space-y-4">{documentBlocks}</div>}
     </div>
   );
 }

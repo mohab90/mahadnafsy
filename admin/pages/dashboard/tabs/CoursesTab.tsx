@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { CourseDocumentsSection } from './CourseDocumentsSection';
 import {
   Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
@@ -550,6 +551,9 @@ const saveCourse = async () => {
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-gray-600 mb-1">فيديو برومو الكورس (YouTube/Vimeo/MP4)</label>
               <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="https://..." value={courseDraft.promoVideoUrl || ''} onChange={(e) => setCourseDraft({ ...courseDraft, promoVideoUrl: e.target.value })} />
+            </div>
+            <div className="md:col-span-2">
+              <CourseDocumentsSection courseId={courseDraft.id} notify={notify} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-gray-600 mb-1">رابط البث المباشر للمشتركين (Zoom/Meet/YouTube Live)</label>

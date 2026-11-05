@@ -20,7 +20,7 @@ const { listOnlineUsers } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { requireTenantQuota } = require('../../middleware/tenantQuota');
-const { textValue, numberValue, sendFieldError } = require('../../lib/inputFields');
+const { textValue, numberValue, urlValue, sendFieldError } = require('../../lib/inputFields');
 
 
 // GET /api/admin/online-users — العملاء المتصلون الآن (آخر دقيقتين)
@@ -83,8 +83,9 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
     const rating          = numberValue(c.rating, { field: 'rating', label: 'التقييم', min: 0, max: 5, fallback: 0 });
     const students        = numberValue(c.students, { field: 'students', label: 'عدد الطلاب', min: 0, max: 1e7, integer: true, fallback: 0 });
     const hours           = numberValue(c.hours, { field: 'hours', label: 'عدد الساعات', min: 0, max: 100000, fallback: null }) || null;
-    const promoUrl        = c.promo_video_url  ?? c.promoVideoUrl   ?? null;
-    const liveUrl         = c.live_session_url ?? c.liveSessionUrl  ?? null;
+    // Both are loaded by a player or opened by a button: https or this site's own uploads, or nothing (lib/inputFields.js urlValue).
+    const promoUrl        = urlValue(c.promo_video_url  ?? c.promoVideoUrl,  { field: 'promo_video_url',  label: 'رابط فيديو البرومو' }) || null;
+    const liveUrl         = urlValue(c.live_session_url ?? c.liveSessionUrl, { field: 'live_session_url', label: 'رابط البث المباشر' }) || null;
     const certUrl         = c.certificate_template_url  ?? c.certificateTemplateUrl  ?? null;
     const certName        = c.certificate_template_name ?? c.certificateTemplateName ?? null;
     const seoTitle        = c.seo_title        ?? null;

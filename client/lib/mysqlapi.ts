@@ -190,6 +190,8 @@ if (typeof window !== 'undefined') {
 
 type AR = Record<string, unknown>;
 
+export interface CourseDocumentView { tier: 'FREE' | 'FIRST_PAYMENT' | 'EIGHTY_PERCENT'; title: string; fileName: string; size: number; updatedAt: string; open: boolean; requirement: string }
+
 // ── Public catalog ────────────────────────────────────────────────────────────
 export const mysqlCatalog = {
   getClientContext: () => apiFetch<{
@@ -200,6 +202,8 @@ export const mysqlCatalog = {
     locationResolved: true;
   }>('/public/client-context'),
   listCourses: (limit = 500, offset = 0) => apiFetch<AR[]>(`/courses?limit=${limit}&offset=${offset}`),
+  /** The course's PDFs with whether each is open for the person looking — never where the file is (api/routes/course-documents.js). */
+  getCourseDocuments: (idOrSlug: string) => apiFetch<{ documents: CourseDocumentView[] }>(`/courses/${encodeURIComponent(idOrSlug)}/documents`, {}, true),
   getCourse: (idOrSlug: string) => apiFetch<AR & { lectures?: AR[]; chapters?: AR[] }>(`/courses/${encodeURIComponent(idOrSlug)}`),
   listBundles: (limit = 200) => apiFetch<AR[]>(`/bundles?limit=${limit}`),
   listLectures: (limit = 5000, offset = 0) => apiFetch<AR[]>(`/lectures?limit=${limit}&offset=${offset}`),

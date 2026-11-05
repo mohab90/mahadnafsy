@@ -8,6 +8,7 @@ import { useSeo } from '../lib/useSeo';
 import { courseSeoDescription, courseSeoTitle } from '../lib/seoText';
 import { CourseBookingCard, CourseHeroSection, scrollToLeadForm } from './course-details-sections/CourseHeroSection';
 import { PromoVideoSection } from './course-details-sections/PromoVideoSection';
+import { CourseDocumentsSection } from './course-details-sections/CourseDocumentsSection';
 import { AboutSection, PainPointsSection } from './course-details-sections/PainPointsAndAboutSection';
 import { LecturePlayerSection } from './course-details-sections/LecturePlayerSection';
 import { GallerySection } from './course-details-sections/GallerySection';
@@ -411,6 +412,8 @@ const CourseDetails: React.FC = () => {
                 {accessMode !== 'full' && <PainPointsSection content={content} courseId={course.id} isSubscribed={isSubscribed} />}
 
                 <AboutSection content={content} description={course.description} modules={course.courseModules} />
+
+                <CourseDocumentsSection courseId={course.id} />
 
                 <LecturePlayerSection
                     content={content}

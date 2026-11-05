@@ -498,7 +498,38 @@ async function allPages(path: string, pageSize: number): Promise<AR[]> {
   return all;
 }
 
+/** A file sent as multipart: the browser sets the boundary itself, and a big file gets minutes, not the 15 seconds of a JSON request. */
+async function uploadForm<T>(path: string, form: FormData, timeoutMs = 5 * 60_000): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { method: 'PUT', body: form, headers, credentials: 'include', cache: 'no-store', signal: controller.signal });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401) sessionIsOver(path);
+    if (!res.ok) throw new Error(res.status === 403 ? arabicRefusal(body.error) : (body.error || `HTTP ${res.status}`));
+    return body as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('الرفع أخد وقت طويل — جرّب تاني على نت أسرع أو بملف أصغر');
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
+export type CourseDocumentTier = 'FREE' | 'FIRST_PAYMENT' | 'EIGHTY_PERCENT';
+export interface CourseDocument { tier: CourseDocumentTier; title: string; fileName: string; size: number; updatedAt: string }
+
 export const mysqlAdmin = {
+  // ── The three PDFs of a course, each opened by what the client has paid (api/routes/course-documents.js) ──
+  listCourseDocuments: (courseId: string) => apiFetch<{ documents: CourseDocument[] }>(`/admin/courses/${encodeURIComponent(courseId)}/documents`, {}, A),
+  uploadCourseDocument: (courseId: string, tier: CourseDocumentTier, file: File, title: string) => {
+    const form = new FormData();
+    form.append('title', title);
+    form.append('pdf', file, file.name);
+    return uploadForm<{ ok: boolean; document: CourseDocument }>(`/admin/courses/${encodeURIComponent(courseId)}/documents/${tier}`, form);
+  },
+  removeCourseDocument: (courseId: string, tier: CourseDocumentTier) => apiFetch<{ ok: boolean }>(`/admin/courses/${encodeURIComponent(courseId)}/documents/${tier}`, { method: 'DELETE' }, A),
   // ── Generic helpers (for ad-hoc admin endpoints) ──
   adminGet: <T = AR>(path: string) => apiFetch<T>(path, {}, A),
   adminPost: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }, A),
@@ -1029,7 +1060,9 @@ export const mysqlAdmin = {
   deleteQuiz: (id: string) => del(`/admin/quizzes/${id}`),
 
   // ── Live Streams ──
-  saveLiveStream:   (o: AR) => post('/admin/live-streams', o),
+  // the answer carries the link the system made when the live was saved with none (api/routes/core/catalog.js)
+  saveLiveStream:   (o: AR) => apiFetch<{ ok: boolean; id?: string; streamUrl?: string; systemMade?: boolean }>('/admin/live-streams', { method: 'POST', body: JSON.stringify(o) }, A),
+  getRoomMaker:     () => apiFetch<{ configured: boolean; provider: 'zoom' | 'google_meet' | null }>('/admin/live-streams/room-maker', {}, A),
   deleteLiveStream: (id: string) => del(`/admin/live-streams/${id}`),
 
   // ── Automation Workflows ──

@@ -334,7 +334,7 @@ upload_dirs() {
   if [ -n "${MAHAD_OFFSITE_UPLOAD_DIRS:-}" ]; then printf '%s\n' $MAHAD_OFFSITE_UPLOAD_DIRS; return; fi
   echo "$API_DIR/uploads"
   local var value
-  for var in VIDEO_UPLOAD_DIR BRAND_ASSET_DIR MEDIA_IMAGE_DIR; do
+  for var in VIDEO_UPLOAD_DIR BRAND_ASSET_DIR MEDIA_IMAGE_DIR COURSE_DOCUMENT_DIR; do
     value=$(grep -m1 "^$var=" "$API_DIR/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r"'"'")
     case "$value" in ""|"$API_DIR/uploads"|"$API_DIR/uploads/"*) ;; *) echo "$value" ;; esac
   done

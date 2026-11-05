@@ -84,4 +84,15 @@ function sendFieldError(res, error) {
   return true;
 }
 
-module.exports = { FieldError, textValue, numberValue, scalarFields, sendFieldError };
+/**
+ * An address a page will load into a player or open: empty, an https:// address, or a path of this site's own uploads. Anything else — javascript:, data:, http:
+ * (a secure page will not load it), a space-broken text — is refused rather than saved to be rendered later.
+ */
+function urlValue(value, { field, label = field, max = 2000 } = {}) {
+  const text = textValue(value, { field, label, max });
+  if (!text) return '';
+  if (/^https:\/\/[^\s<>"']+$/i.test(text) || /^\/uploads\/[^\s<>"']+$/.test(text)) return text;
+  throw new FieldError(field, `${label} لازم يكون رابط يبدأ بـ https://`);
+}
+
+module.exports = { FieldError, textValue, numberValue, urlValue, scalarFields, sendFieldError };
