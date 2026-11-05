@@ -70,9 +70,6 @@ test('CRM insights starts its independent reads together and ranges the reminder
   assert.match(handler, /const \[\[\[dueRow\]\], \[weekCommRows\], \[followupRows\], \[newLeadRows\], \[overdueRows\], \[neverContacted\], \[loadRows\]\] = await Promise\.all\(/);
   assert.match(handler, /AND l\.next_follow_up_date < \?\s+ORDER BY \$\{FOLLOW_UP_DATE\} ASC/);
   assert.match(handler, /addDaysToDateOnly\(cairoToday\(\), 8\)/);
-  // The scored list and the rep board do the same.
-  const scored = route.slice(route.indexOf("'/api/admin/leads/scored'"), route.indexOf("'/api/admin/leads/crm-insights'"));
-  assert.match(scored, /\[\[rows\], \[\[totalRow\]\], \[\[distRow\]\], \[facetRows\]\] = await Promise\.all\(/);
   const perf = route.slice(route.indexOf("'/api/admin/leads/staff-performance'"), route.indexOf("'/api/admin/leads/rep-revenue'"));
   assert.match(perf, /\[\[createdRows\], \[contactedRows\], \[dueRows\]\] = await Promise\.all\(/);
 });

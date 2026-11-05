@@ -23,7 +23,6 @@
     "smoke:customer-auth-geo": "node tools/customer-auth-geo-smoke.cjs",
     "smoke:forgot-password": "node tools/forgot-password-smoke.cjs",
     "uat:full-smoke": "node tools/uat-full-smoke.cjs",
-    "smoke:crm-forecast": "node tools/crm-forecast-smoke.cjs",
     "smoke:crm-sequences": "node tools/crm-sequences-smoke.cjs",
     "smoke:crm-quotes": "node tools/crm-quotes-smoke.cjs",
     "smoke:connector-inbox": "node tools/connector-inbox-smoke.cjs",

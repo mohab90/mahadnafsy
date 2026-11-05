@@ -1,195 +1,139 @@
 'use strict';
-const { TERMINAL_SQL } = require('../../lib/leadStatuses');
+// «لوحة KPI للمدير» — one request, one answer, the numbers a manager opens the panel for: the money (against the same days of last month, not the whole of it),
+// the leads and what became of them, the clients, who is at work today, what waits for a decision, who collected most, and the last thirty days.
+//
+// 5 Nov 2026: it was fourteen queries one after the other (and the page asked again on every visit); they run together now, the answer is held for 30 s under
+// «figures:» (dropped by the first write after it, lib/httpApp.js dropFiguresAfterWrites), course money no longer includes certificates, and the series fill the days
+// with no payment. Gated like the page: view_financial.
+
 const logger = require('../../lib/logger');
 const express = require('express');
-const router  = express.Router();
+const router = express.Router();
 
 const { pool, cached } = require('../../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { resolveDataScope } = require('../../constants/permissions');
-const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoDayStartUtc, sqlCairoDayEndUtc, cairoDayStartUtc, cairoDayBoundsUtc, cairoMonthStart, cairoToday, sqlCairoWall } = require('../../lib/dates'); const { resolveFinancialScope, financialScopeClause } = require('../../lib/financialScope');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { dateOnlyInTimeZone, addDaysToDateOnly, cairoDayBoundsUtc, cairoDayStartUtc, cairoToday, sqlCairoWall } = require('../../lib/dates');
+const { resolveFinancialScope, financialScopeClause } = require('../../lib/financialScope');
+const { CONVERTED_SQL } = require('../../lib/leadStatuses');
+const { hasPermission } = require('../../constants/permissions');
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Admin Dashboard KPI Snapshot ────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// Certificate money is not course money (every course-money query says so).
+const COURSE_MONEY = "(p.payment_type IS NULL OR UPPER(p.payment_type) <> 'CERTIFICATE')";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Cohort Analysis ───────────────────────────────────────────────
-// GET /api/admin/analytics/cohorts?year=2026&months=6
-//
-// Returns subscriber cohorts grouped by registration month.
-// For each cohort: how many made their first payment, and how many
-// remained active in months 1..N after registration.
-//
-// Response:
-//   { cohorts: [ { month, newSubs, firstPayment, retentionByMonth: [n1,n2,...] } ] }
-// ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/analytics/cohorts', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
+const monthStartOf = day => `${day.slice(0, 7)}-01`;
+function previousMonthStart(day) {
+  const [year, month] = day.split('-').map(Number);
+  return `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}-01`;
+}
+const days = (from, count) => Array.from({ length: count }, (_, i) => addDaysToDateOnly(from, i));
+const pct = (now, before) => (before > 0 ? Math.round(((now - before) / before) * 100) : null);
+const num = value => Number(value) || 0;
+
+async function build(tenantId) {
+  const today = dateOnlyInTimeZone();
+  const weekStart = addDaysToDateOnly(today, -6);              // today and the six days before
+  const trendStart = addDaysToDateOnly(today, -29);
+  const monthStart = monthStartOf(today);
+  const prevStart = previousMonthStart(today);
+  const dayOfMonth = Number(today.slice(8, 10));
+  const prevSameEnd = addDaysToDateOnly(prevStart, dayOfMonth);  // the first `dayOfMonth` days of last month, exclusive end
+  const tomorrow = addDaysToDateOnly(today, 1);
+  const [todayStartUtc] = cairoDayBoundsUtc(today);
+  const weekStartUtc = cairoDayStartUtc(weekStart);
+  const monthStartUtc = cairoDayStartUtc(monthStart);
+  const prevStartUtc = cairoDayStartUtc(prevStart);
+  const prevSameEndUtc = cairoDayStartUtc(prevSameEnd);
+  const trendStartUtc = cairoDayStartUtc(trendStart);
+  const in30Days = addDaysToDateOnly(today, 30);
+
+  const [[[money]], [[certificates]], [[expenses]], [sellers], [revenueByDay], [[leads]], [leadsByDay], [[clients]], [[expiring]],
+    [attendance], [[staff]], [[tickets]], [[refunds]], [[leaves]], [[bonuses]]] = await Promise.all([
+    pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? THEN p.amount_egp END), 0) AS today,
+              COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END), 0) AS week,
+              COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END), 0) AS month,
+              COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? THEN p.amount_egp END), 0) AS prev_month,
+              COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? THEN p.amount_egp END), 0) AS prev_same_days,
+              COALESCE(SUM(CASE WHEN p.date >= ? THEN 1 END), 0) AS month_payments
+         FROM payments p
+        WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL AND ${COURSE_MONEY} AND p.date >= ?`,
+      [today, tomorrow, weekStart, monthStart, prevStart, monthStart, prevStart, prevSameEnd, monthStart, tenantId, prevStart]).then(rows => [rows[0]]),
+    pool.query(
+      `SELECT COALESCE(SUM(p.amount_egp), 0) AS month FROM payments p
+        WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL AND UPPER(p.payment_type) = 'CERTIFICATE' AND p.date >= ?`, [tenantId, monthStart]),
+    pool.query(
+      `SELECT COALESCE(SUM(COALESCE(e.amount_egp, IF(e.currency = 'EGP', e.amount, 0))), 0) AS month FROM expenses e
+        WHERE e.tenant_id = ? AND e.deleted_at IS NULL AND e.date >= ?`, [tenantId, monthStart]),
+    pool.query(
+      `SELECT p.staff_id, MAX(COALESCE(NULLIF(p.staff_name, ''), st.name)) AS name, MAX(st.role) AS role, SUM(p.amount_egp) AS revenue, COUNT(*) AS payments
+         FROM payments p LEFT JOIN staff st ON st.id = p.staff_id AND st.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL AND ${COURSE_MONEY} AND p.date >= ? AND p.staff_id IS NOT NULL
+        GROUP BY p.staff_id ORDER BY revenue DESC LIMIT 5`, [tenantId, monthStart]),
+    pool.query(
+      `SELECT DATE_FORMAT(p.date, '%Y-%m-%d') AS day, SUM(p.amount_egp) AS revenue FROM payments p
+        WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL AND ${COURSE_MONEY} AND p.date >= ? GROUP BY 1`, [tenantId, trendStart]),
+    pool.query(
+      `SELECT COALESCE(SUM(l.created_at >= ? AND l.created_at < ?), 0) AS today,
+              COALESCE(SUM(l.created_at >= ?), 0) AS week,
+              COALESCE(SUM(l.created_at >= ?), 0) AS month,
+              COALESCE(SUM(l.created_at >= ? AND l.created_at < ?), 0) AS prev_same_days,
+              COALESCE(SUM(l.created_at >= ? AND l.status IN ${CONVERTED_SQL}), 0) AS converted_month
+         FROM leads l WHERE l.tenant_id = ? AND l.deleted_at IS NULL AND l.hidden = 0 AND l.created_at >= ?`,
+      [todayStartUtc, cairoDayStartUtc(tomorrow), weekStartUtc, monthStartUtc, prevStartUtc, prevSameEndUtc, monthStartUtc, tenantId, prevStartUtc]),
+    pool.query(
+      `SELECT DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m-%d') AS day, COUNT(*) AS count FROM leads l
+        WHERE l.tenant_id = ? AND l.deleted_at IS NULL AND l.hidden = 0 AND l.created_at >= ? GROUP BY 1`, [tenantId, trendStartUtc]),
+    pool.query(
+      `SELECT COUNT(*) AS total, COALESCE(SUM(s.is_active = 1), 0) AS active, COALESCE(SUM(s.created_at >= ?), 0) AS new_7, COALESCE(SUM(s.created_at >= ?), 0) AS new_30
+         FROM subscribers s WHERE s.tenant_id = ? AND s.deleted_at IS NULL`, [weekStartUtc, trendStartUtc, tenantId]),
+    pool.query(
+      `SELECT COUNT(DISTINCT e.subscriber_id) AS n FROM enrollments e
+        WHERE e.tenant_id = ? AND e.status = 'active' AND e.expiry_date >= ? AND e.expiry_date < ?`, [tenantId, today, in30Days]),
+    pool.query(`SELECT a.status, COUNT(*) AS n FROM attendance_logs a WHERE a.tenant_id = ? AND a.date = ? GROUP BY a.status`, [tenantId, today]),
+    pool.query(`SELECT COUNT(*) AS n FROM staff WHERE tenant_id = ? AND is_active = 1 AND deleted_at IS NULL`, [tenantId]),
+    pool.query(`SELECT COUNT(*) AS n FROM support_tickets WHERE tenant_id = ? AND status IN ('open', 'in_progress')`, [tenantId]),
+    pool.query(`SELECT COUNT(*) AS n FROM refund_requests WHERE tenant_id = ? AND status = 'PENDING' AND deleted_at IS NULL`, [tenantId]),
+    pool.query(`SELECT COUNT(*) AS n FROM leaves WHERE tenant_id = ? AND status = 'PENDING'`, [tenantId]),
+    pool.query(`SELECT COUNT(*) AS n FROM employee_bonuses WHERE tenant_id = ? AND status = 'PENDING'`, [tenantId]),
+  ]);
+
+  const byDay = new Map(revenueByDay.map(row => [row.day, num(row.revenue)]));
+  const leadDay = new Map(leadsByDay.map(row => [row.day, num(row.count)]));
+  const status = Object.fromEntries(attendance.map(row => [row.status, num(row.n)]));
+  const present = num(status.PRESENT) + num(status.LATE) + num(status.HALF_DAY) + num(status.REMOTE);
+  const month = num(money.month);
+  const monthLeads = num(leads.month);
+  return {
+    generatedAt: new Date().toISOString(),
+    money: {
+      today: num(money.today), week: num(money.week), month, prevMonth: num(money.prev_month),
+      prevSameDays: num(money.prev_same_days), changeVsSameDays: pct(month, num(money.prev_same_days)),
+      payments: num(money.month_payments), average: num(money.month_payments) ? Math.round(month / num(money.month_payments)) : 0,
+      certificates: num(certificates.month), expenses: num(expenses.month), net: month - num(expenses.month),
+    },
+    leads: {
+      today: num(leads.today), week: num(leads.week), month: monthLeads, prevSameDays: num(leads.prev_same_days),
+      changeVsSameDays: pct(monthLeads, num(leads.prev_same_days)), converted: num(leads.converted_month),
+      conversionRate: monthLeads ? Math.round((num(leads.converted_month) / monthLeads) * 100) : 0,
+    },
+    clients: { total: num(clients.total), active: num(clients.active), new7: num(clients.new_7), new30: num(clients.new_30), expiringIn30Days: num(expiring.n) },
+    team: { staff: num(staff.n), present, late: num(status.LATE), absent: num(status.ABSENT), onLeave: num(status.LEAVE), recorded: attendance.reduce((sum, row) => sum + num(row.n), 0) },
+    waiting: { tickets: num(tickets.n), refunds: num(refunds.n), leaves: num(leaves.n), bonuses: num(bonuses.n) },
+    topCollectors: sellers.map(row => ({ id: row.staff_id, name: row.name || 'غير معروف', role: row.role || '', revenue: num(row.revenue), payments: num(row.payments) })),
+    revenueByDay: days(trendStart, 30).map(day => ({ day, revenue: byDay.get(day) || 0 })),
+    leadsByDay: days(trendStart, 30).map(day => ({ day, count: leadDay.get(day) || 0 })),
+  };
+}
+
+router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const year   = parseInt(req.query.year  || cairoToday().slice(0, 4));
-    const months = Math.min(12, Math.max(1, parseInt(req.query.months || 6)));
-
-    // Step 1: All subscribers + their first payment month
-    const [subs] = await pool.query(`
-      SELECT s.id,
-             DATE_FORMAT(${sqlCairoWall('s.created_at')}, '%Y-%m')  AS cohort_month,
-             MIN(DATE_FORMAT(p.date,   '%Y-%m'))  AS first_pay_month
-      FROM subscribers s
-      LEFT JOIN payments p
-        ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id
-        AND p.status IN ('paid','confirmed')
-        AND p.deleted_at IS NULL
-      WHERE s.tenant_id=? AND s.created_at >= ? AND s.created_at < ?
-      GROUP BY s.id, cohort_month
-      ORDER BY cohort_month ASC
-    `, [req.tenantId, `${year}-01-01`, `${Number(year) + 1}-01-01`]);
-
-    // Step 2: All (subscriber, pay_month) pairs relevant to this year + next
-    const [payMonths] = await pool.query(`
-      SELECT p.subscriber_id,
-             DATE_FORMAT(p.date, '%Y-%m') AS pay_month
-      FROM payments p
-      WHERE p.tenant_id=? AND p.status IN ('paid','confirmed')
-        AND YEAR(p.date) BETWEEN ? AND ? AND p.deleted_at IS NULL
-      GROUP BY p.subscriber_id, pay_month
-    `, [req.tenantId, year, year + 1]);
-
-    const paySet = new Map(); // subId → Set<pay_month>
-    for (const row of payMonths) {
-      if (!paySet.has(row.subscriber_id)) paySet.set(row.subscriber_id, new Set());
-      paySet.get(row.subscriber_id).add(row.pay_month);
-    }
-
-    // Step 3: Build cohort matrix — one entry per calendar month in the year
-    const cohortMap = new Map();
-    for (const sub of subs) {
-      const cm = sub.cohort_month;
-      if (!cohortMap.has(cm)) cohortMap.set(cm, []);
-      cohortMap.get(cm).push({ id: sub.id, first_pay_month: sub.first_pay_month });
-    }
-
-    const result = [];
-    for (let m = 0; m < 12; m++) {
-      const cm = `${year}-${String(m + 1).padStart(2, '0')}`;
-      const cohortSubs   = cohortMap.get(cm) || [];
-      const newSubs      = cohortSubs.length;
-      const firstPayment = cohortSubs.filter(s => s.first_pay_month === cm).length;
-
-      // Retention[offset]: how many cohort members paid in month (cm + offset)
-      const retentionByMonth = [];
-      for (let offset = 0; offset < months; offset++) {
-        const absMonth  = m + offset;
-        const tYear     = year + Math.floor(absMonth / 12);
-        const tMonthNum = (absMonth % 12) + 1;
-        const target    = `${tYear}-${String(tMonthNum).padStart(2, '0')}`;
-        const count     = cohortSubs.filter(s => paySet.get(s.id)?.has(target)).length;
-        retentionByMonth.push(count);
-      }
-      result.push({ month: cm, newSubs, firstPayment, retentionByMonth });
-    }
-
-    res.json({ year, months, cohorts: result });
-  } catch (e) { logger.error('[cohorts]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Manager KPI Summary Dashboard ────────────────────────────────
-// GET /api/admin/kpi/summary
-// Returns today + week + month revenue, lead counts, subscriber counts,
-// top staff performers, and system health indicators.
-// ══════════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
-  try {
-    // The server runs UTC and the institute runs in Cairo, so between midnight
-    // and 02:00 the UTC date is still yesterday: «إيراد اليوم» showed the
-    // previous day's takings and a payment entered at 01:20 counted for nothing.
-    const today   = dateOnlyInTimeZone();
-    const weekAgo = addDaysToDateOnly(today, -7);
-    const monAgo  = addDaysToDateOnly(today, -30);
-    const monthStart = `${today.slice(0, 7)}-01`;
-    // setMonth(-1) keeps the day of the month, so on the 31st of a month whose
-    // predecessor is shorter JS rolls forward into the current month before
-    // setDate(1) runs: prevMonthStart came out equal to monthStart and the
-    // comparison query asked for date >= X AND date < X. On five days a year
-    // — 31 March, May, July, October, December — the month-over-month line
-    // vanished from the dashboard entirely.
-    const prevMonthStart = (() => {
-      const [year, month] = today.split('-').map(Number);
-      const prevYear = month === 1 ? year - 1 : year;
-      const prevMonth = month === 1 ? 12 : month - 1;
-      return `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
-    })();
-
-    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date >= ? AND date < DATE_ADD(?, INTERVAL 1 DAY) AND status='paid' AND deleted_at IS NULL`, [req.tenantId, today, today]);
-    const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid' AND deleted_at IS NULL`, [req.tenantId, weekAgo]);
-    const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid' AND deleted_at IS NULL`, [req.tenantId, monthStart]);
-    const [[prevMonRev]]= await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND date<? AND status='paid' AND deleted_at IS NULL`, [req.tenantId, prevMonthStart, monthStart]);
-    // created_at is a UTC instant: «ليدز النهارده» counted from 03:00 Cairo.
-    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, ...cairoDayBoundsUtc(today)]);
-    const [[weekLeads]] = await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at>=?`, [req.tenantId, cairoDayStartUtc(weekAgo)]);
-    const [[totalSubs]] = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=?`, [req.tenantId]);
-    const [[newSubs7]]  = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND created_at>=?`, [req.tenantId, cairoDayStartUtc(weekAgo)]);
-    const [[activeSubs]]= await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND is_active=1`, [req.tenantId]);
-    const [[openTickets]]= await pool.query(`SELECT COUNT(*) AS v FROM support_tickets WHERE tenant_id=? AND status IN ('open','in_progress')`, [req.tenantId]).catch(() => [[{ v: 0 }]]);
-    const [[pendingRefunds]]= await pool.query(`SELECT COUNT(*) AS v FROM refund_requests WHERE tenant_id=? AND status='PENDING'`, [req.tenantId]).catch(() => [[{ v: 0 }]]);
-
-    const [topStaff] = await pool.query(
-      `SELECT s.name, s.role, COALESCE(SUM(c.commission_amount),0) AS earned, COUNT(*) AS deals
-       FROM crm_commissions c
-       LEFT JOIN staff s ON s.id=c.staff_id AND s.tenant_id=c.tenant_id
-       WHERE c.tenant_id=? AND c.created_at>=?
-       GROUP BY c.staff_id ORDER BY earned DESC LIMIT 5`, [req.tenantId, monAgo]
-    ).catch(() => [[]]);
-
-    const [revenueByDay] = await pool.query(
-      `SELECT DATE(date) AS day, COALESCE(SUM(amount_egp),0) AS revenue
-       FROM payments WHERE tenant_id=? AND date>=? AND status='paid' AND deleted_at IS NULL
-       GROUP BY day ORDER BY day ASC`, [req.tenantId, weekAgo]
-    ).catch(() => [[]]);
-
-    const [leadsByDay] = await pool.query(
-      `SELECT DATE(${sqlCairoWall('created_at')}) AS day, COUNT(*) AS count
-       FROM leads WHERE tenant_id=? AND created_at>=?
-       GROUP BY day ORDER BY day ASC`, [req.tenantId, cairoDayStartUtc(weekAgo)]
-    ).catch(() => [[]]);
-
-    const monthChange = prevMonRev.v > 0
-      ? Math.round(((monthRev.v - prevMonRev.v) / prevMonRev.v) * 100)
-      : null;
-
-    res.json({
-      revenue: {
-        today:       Number(todayRev.v),
-        week:        Number(weekRev.v),
-        month:       Number(monthRev.v),
-        prevMonth:   Number(prevMonRev.v),
-        monthChange,
-      },
-      leads: {
-        today: Number(todayLeads.v),
-        week:  Number(weekLeads.v),
-      },
-      subscribers: {
-        total:  Number(totalSubs.v),
-        active: Number(activeSubs.v),
-        newThis7Days: Number(newSubs7.v),
-      },
-      alerts: {
-        openTickets:    Number(openTickets.v),
-        pendingRefunds: Number(pendingRefunds.v),
-      },
-      topStaff: topStaff.map(s => ({
-        name:    s.name || 'غير معروف',
-        role:    s.role || '',
-        earned:  Number(s.earned),
-        deals:   Number(s.deals),
-      })),
-      revenueByDay:  revenueByDay.map(r => ({ day: r.day?.toISOString?.()?.slice(0,10) || r.day, revenue: Number(r.revenue) })),
-      leadsByDay:    leadsByDay.map(r => ({ day: r.day?.toISOString?.()?.slice(0,10) || r.day, count: Number(r.count) })),
-      generatedAt: new Date().toISOString(),
-    });
+    const kpi = await cached(`figures:kpi:${req.tenantId}`, 30 * 1000, () => build(req.tenantId));
+    // The page opens for view_financial (the accountant, the collection desk too); who is at work today and the leaves and bonuses waiting for approval are HR's.
+    const hr = Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, 'view_hr');
+    res.json(hr ? kpi : { ...kpi, team: null, waiting: { ...kpi.waiting, leaves: null, bonuses: null } });
   } catch (e) { logger.error('[kpi/summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
+
 
 // GET /api/admin/overview/revenue — the money figures on the overview screen, from
 // the books.

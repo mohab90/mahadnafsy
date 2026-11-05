@@ -187,8 +187,8 @@ test('executive dashboards and funnel cache/query data per tenant', () => {
   const dashboard = read('routes/analytics/dashboard.js');
   const funnel = read('routes/funnel.js');
   // (3 Nov 2026: the second KPI route (GET /api/admin/dashboard/kpi), read by no screen, is gone; /api/admin/kpi/summary is the institute's one.)
-  assert.match(dashboard, /FROM payments WHERE tenant_id=\?/);
-  assert.match(dashboard, /WHERE p\.tenant_id=\?/);
+  assert.match(dashboard, /FROM payments p\s+WHERE p\.tenant_id = \?/);
+  assert.match(dashboard, /cached\(`figures:kpi:\$\{req\.tenantId\}`/);
   assert.match(funnel, /cached\(`funnel:\$\{req\.tenantId\}/);
   assert.match(funnel, /const lw = \['l\.tenant_id=\?'/);
   assert.match(funnel, /l\.tenant_id=\?/);

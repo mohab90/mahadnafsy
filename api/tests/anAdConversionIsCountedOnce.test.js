@@ -164,7 +164,8 @@ test('every lead route and the paid order send theirs, without waiting on Meta',
   const forms = read('client/lib/mysqlapi.ts');
   assert.match(forms, /'\/contact', \{ method: 'POST', body: JSON\.stringify\(data\), headers: leadHeaders\(\) \}/, '/contact');
   // The lead forms carry the visit's ad parameters too (client/lib/attribution.ts).
-  for (const route of ['/registrations', '/leads-public']) {
+  // '/leads-public' is the public webhook other sites post to; the site itself only calls /registrations (the client's unused submitLead was removed on 5 Nov 2026).
+  for (const route of ['/registrations']) {
     assert.match(forms, new RegExp(`'${route}', \\{ method: 'POST', body: JSON\\.stringify\\(\\{ \\.\\.\\.data, attribution: visitAttribution\\(\\) \\}\\), headers: leadHeaders\\(\\) \\}`), route);
   }
 });

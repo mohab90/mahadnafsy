@@ -69,7 +69,7 @@ test('every role reaches at least one screen, and the ones that run a team are t
   // the sales team's performance, the online team's assignments and the
   // quarter's targets, because all five were gated on view_leads or
   // view_subscribers — permissions that mean "may read a record".
-  const teamScreens = ['sales_hub', 'sales_reports', 'sales_team', 'online_team', 'sales_planning'];
+  const teamScreens = ['sales_hub', 'sales_team'];
   for (const role of ['consultant', 'support', 'expert', 'trainer', 'instructor', 'hr']) {
     const seen = (byRole[role]?.tabs || []).filter(t => teamScreens.includes(t));
     assert.deepEqual(seen, [], `${role} is offered ${seen.join(', ')}`);

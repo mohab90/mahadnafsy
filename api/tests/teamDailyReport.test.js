@@ -74,7 +74,7 @@ test('a rep asking sees their own row and no one else\'s money', async () => {
 test('«أداء المبيعات» opens on the report; the quality review is a button', () => {
   // The leads screen's «أداء الفريق» tab is a page of its own now.
   const page = read('admin/pages/dashboard/tabs/SalesPerformancePage.tsx');
-  assert.match(page, /const section: SectionKey = SECTIONS\.some\(item => item\.key === requested\) \? requested as SectionKey : 'today';/);
+  assert.match(page, /const section: SectionKey = sections\.some\(item => item\.key === requested\) \? requested as SectionKey : 'today';/);
   assert.match(page, /\{section === 'today' && <TeamDailyReport notify=\{notify\} \/>\}/);
   assert.match(page, /<CrmCoachingButton notify=\{notify\} \/>/);
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');

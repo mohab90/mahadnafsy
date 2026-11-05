@@ -17,7 +17,7 @@ type BranchWorkspace = {
 };
 
 const MODULES = ['clients', 'leads', 'schedule', 'payments', 'installments', 'reports', 'staff'];
-const TAB_OPTIONS: TabKey[] = ['online_clients', 'leads', 'daqqi_schedule', 'orders', 'financial', 'installment_plans', 'hr'];
+const TAB_OPTIONS: TabKey[] = ['online_clients', 'leads', 'daqqi_schedule', 'orders', 'financial', 'hr'];
 
 export default function BranchWorkspacesTab({ notify }: { notify: NotifyFn }) {
   const [items, setItems] = useState<BranchWorkspace[]>([]);

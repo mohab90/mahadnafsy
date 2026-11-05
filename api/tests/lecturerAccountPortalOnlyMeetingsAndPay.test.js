@@ -245,9 +245,8 @@ test('a unique-key collision is a 409 that says what collided, never «Internal 
   assert.match(read('api/routes/admin/subscribers.js'), /ER_DUP_ENTRY[\s\S]{0,200}duplicateEntryMessage/);
 });
 
-test('a consultation status outside the enum is refused with 400, a zero date no longer breaks the forecast, a long «education» is cut to its column', () => {
+test('a consultation status outside the enum is refused with 400, a long «education» is cut to its column', () => {
   assert.match(read('api/routes/core/catalog.js'), /\['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'\]\.includes\(next\)\) return res\.status\(400\)/);
-  assert.match(read('api/lib/crmForecast.js'), /value instanceof Date && Number\.isNaN\(value\.getTime\(\)\)\) return null/);
   assert.match(read('api/routes/hr/talent.js'), /j\.education \? String\(j\.education\)\.slice\(0, 255\) : null/);
 });
 

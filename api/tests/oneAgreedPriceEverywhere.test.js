@@ -57,13 +57,12 @@ test('a client\'s balance counts their tracks, the currency they pay in, and wha
 test('every screen reads that rule', () => {
   const admin = read('admin/lib/agreedPrice.ts');
   assert.match(admin, /if \(booked > 0\) return Math\.max\(booked, paidFor\(subscriber, item, currency\)\);/);
-  // The table, the plans window and the plans page list the same items.
+  // The table and the plans window list the same items (the plans page was removed on 5 Nov 2026).
   const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
   assert.match(table, /const courseRows = clientItems\(row, courses, bundles, branchCurrency\)/);
   assert.doesNotMatch(table, /multiCourseKey|completeBundles/);
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/InstallmentPlansModal.tsx'),
     /const items = useMemo\(\(\) => clientItems\(subscriber, courses, bundles, defaultCurrency\)/);
-  assert.match(read('admin/pages/dashboard/tabs/InstallmentPlansTab.tsx'), /clientItems\(sub, courses, bundles, plan\.currency\)/);
   assert.match(admin, /paidFor\(subscriber, item, currency\) \+ \(Number\(subscriber\.priorPaid\?\.\[item\]\) \|\| 0\)/);
   const modal = paymentModalSource();
   // The instalment list and «كل المتبقي» used the catalogue.

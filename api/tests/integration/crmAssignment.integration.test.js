@@ -98,11 +98,10 @@ test('«توزيع تلقائي» keeps each rep\'s own daily cap across the bat
 test('a rep\'s figures count their own leads; a role scoped to nothing gets nothing', { skip }, async () => {
   await lead('ld-own-1', { assigned_sales_id: 'st-crm-rep1', assigned_sales_name: 'رنا', score: 80, name: 'ليد رنا' });
   await lead('ld-other-1', { assigned_sales_id: 'st-crm-rep2', assigned_sales_name: 'سلمى', score: 90, name: 'ليد سلمى' });
-  const scored = await app.call('GET', '/api/admin/leads/scored?limit=500&minScore=0', { session: rep1 });
-  assert.equal(scored.status, 200, scored.text);
-  assert.ok(scored.text.includes('ليد رنا'));
-  assert.ok(!scored.text.includes('ليد سلمى'), 'another rep\'s lead is not in my scored list');
-  for (const path of ['/api/admin/leads/scored', '/api/admin/leads/staff-performance', '/api/admin/leads/crm-insights', '/api/admin/subscribers/stats']) {
+  const mine = await app.call('GET', '/api/admin/leads/crm-insights', { session: rep1 });
+  assert.equal(mine.status, 200, mine.text);
+  assert.ok(!mine.text.includes('ليد سلمى'), 'another rep\'s lead is not in my insights');
+  for (const path of ['/api/admin/leads/staff-performance', '/api/admin/leads/crm-insights', '/api/admin/subscribers/stats']) {
     const res = await app.call('GET', path, { session: hr });
     assert.equal(res.status, 200, `${path}: ${res.text}`);
     assert.ok(!res.text.includes('ليد'), `${path} names no lead for a role scoped to nothing`);
@@ -114,10 +113,6 @@ test('the aggregate routes take nothing raw from the query string', { skip }, as
   const injected = await app.call('GET', `/api/admin/leads/staff-performance?from=${encodeURIComponent("2026-01-01' OR '1'='1")}`, { session: admin });
   assert.equal(injected.status, 200, injected.text);
   assert.equal(injected.body.from, null, 'a from that is not a plain date is dropped, not run');
-  const clamped = await app.call('GET', '/api/admin/leads/scored?limit=999999&minScore=-50&sortBy=DROP', { session: admin });
-  assert.equal(clamped.status, 200, clamped.text);
-  const rows = Array.isArray(clamped.body) ? clamped.body : (clamped.body.leads || clamped.body.rows || []);
-  assert.ok(rows.length <= 500, `limit is clamped, got ${rows.length}`);
 });
 
 test('a coaching review needs evidence and a second person, and the server does the arithmetic', { skip }, async () => {

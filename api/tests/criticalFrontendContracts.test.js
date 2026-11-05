@@ -95,16 +95,12 @@ test('push ownership and payment creation permission are tenant and finance safe
   assert.match(migration, /uq_push_tenant_endpoint \(tenant_id, endpoint_hash\)/);
 });
 
-test('subscriber status, certificate counts and sales goals use server-owned truth', () => {
+test('subscriber status and certificate counts use server-owned truth', () => {
   const clients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
   const dashboard = read('client/pages/UserDashboard.tsx');
-  const goals = read('admin/pages/dashboard/tabs/SalesGoalsTab.tsx');
   assert.match(clients, /s\.isActive === false/);
   assert.match(dashboard, /extraCertificateRequests[\s\S]{0,180}\+ completions\.length/);
   assert.doesNotMatch(dashboard, /earnedCertsCount[\s\S]{0,500}lectureProgress/);
-  assert.match(goals, /mysqlAdmin\.listSalesTargets\(MONTH\)/);
-  assert.match(goals, /await mysqlAdmin\.saveSalesTarget/);
-  assert.doesNotMatch(goals, /الأهداف المحددة هنا مؤقتة/);
 });
 
 test('CRM assignment and success feedback are server-authoritative', () => {

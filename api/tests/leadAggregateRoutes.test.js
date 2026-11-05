@@ -15,7 +15,6 @@ const stafflists = fs.readFileSync(path.join(root, 'api/routes/admin/stafflists.
 // module opens the pool at import.
 
 const AGGREGATE_ROUTES = [
-  ['/api/admin/leads/scored', leadsRoute],
   ['/api/admin/leads/staff-performance', leadsRoute],
   ['/api/admin/leads/crm-insights', leadsRoute],
   ['/api/admin/subscribers/stats', stafflists],

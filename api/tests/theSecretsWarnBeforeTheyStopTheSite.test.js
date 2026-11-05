@@ -167,6 +167,5 @@ test('the scheduler asks, the admin card reads it, and the card is on the system
   assert.match(adminUtils, /router\.get\('\/api\/admin\/system\/secret-rotation', requireAuth, requireAdmin/);
   const card = read('..', 'admin', 'components', 'SecretRotationCard.tsx');
   assert.match(card, /adminGet<RotationStatus>\('\/admin\/system\/secret-rotation'\)/);
-  assert.match(read('..', 'admin', 'pages', 'dashboard', 'tabs', 'KpiDashboardTab.tsx'), /<SecretRotationCard/);
   assert.match(read('..', 'admin', 'pages', 'dashboard', 'tabs', 'SystemSettingsTab.tsx'), /<SecretRotationCard/);
 });

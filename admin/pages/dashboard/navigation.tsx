@@ -1,11 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import {
-  Activity,
-  Archive,
-  AlarmClock,
-  Building2,
-  BarChart3,
-  Bell,
+import {Activity,Archive,AlarmClock,Building2,BarChart3,Bell,
   Mail,
   BookOpen,
   Bot,
@@ -46,9 +40,7 @@ import {
 export type TabKey =
   // Each of these holds several screens that were their own menu entries; the
   // retired keys redirect into the matching section. See tabs/SectionedTab.tsx.
-  | 'analytics_hub'
   | 'campaigns'
-  | 'sales_planning'
   | 'overview'
   | 'kpi_dashboard'
   | 'management_reports'
@@ -85,7 +77,6 @@ export type TabKey =
   | 'notifications'
   | 'daqqi_schedule'
   | 'client'
-  | 'archived_clients'
   | 'registrations'
   | 'customer_inbox'
   // The rep's own WhatsApp, linked by QR (tabs/whatsapp/WhatsAppWebTab.tsx).
@@ -120,10 +111,7 @@ export type TabKey =
   | 'branch_hr'
   | 'tasks_board'
   | 'sales_team'
-  | 'sales_reports'
-  | 'online_team'
   | 'subscriptions'
-  | 'installment_plans'
   | 'tickets'
   | 'faq_manager'
   | 'nps_dashboard'
@@ -190,10 +178,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
-      // Four analyses of the same months, all on view_reports: retention,
-      // cohort, revenue sources, expenses. Reading one against another meant
-      // navigating between them. See tabs/AnalyticsHubTab.tsx.
-      { key: 'analytics_hub', label: 'التحليلات', icon: TrendingUp },
       // Sits under الإدارة by request. It previously had its own heading
       // because ask_ai is also granted to sales and support, so for those roles
       // an "الإدارة" heading now appears carrying this single item — the menu
@@ -217,20 +201,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // The team's numbers in one page: the leads screen's «أداء الفريق», this
       // hub and «أداء فريق المبيعات» (tabs/SalesPerformancePage.tsx).
       { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },
-      // Four entries around one pipeline: two about working it — follow-ups and
-      // scoring — and two about where it is heading. The rep checking today and
-      // the manager setting next month sat in different corners of the menu
-      // from the forecast that connects them.
-      //
-      // Two of them were only ever reachable by typing the URL until they were
-      // listed here, and sales_goals is the only screen that can set a rep's
-      // monthly target — the sales hub's "الأهداف" sub-tab merely displays it.
-      // They carry four different permissions, kept per section.
-      // See tabs/SalesPlanningTab.tsx.
-      { key: 'sales_planning', label: 'التخطيط والمتابعة', icon: Target },
-      // Reporting rather than team management: lead status, revenue by course
-      // and revenue by product. view_reports, not view_staff.
-      { key: 'sales_reports', label: 'تقارير المبيعات', icon: BarChart3 },
     ],
   },
   {
@@ -241,15 +211,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
       { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
-      // Deleting a customer archives them rather than erasing them, but until
-      // now nothing could show what was in there or bring one back.
-      { key: 'archived_clients', label: 'أرشيف العملاء', icon: Archive },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
-      // The hub beside it is about money — collected, outstanding, targets.
-      // This one is about who carries what: assigned leads, the subscribers each
-      // person is responsible for, and the courses running.
-      { key: 'online_team', label: 'إدارة فريق الأونلاين', icon: Users },
-      { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
       { key: 'subscriptions', label: 'الاشتراكات المتكررة', icon: RotateCcw },
     ],
   },

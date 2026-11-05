@@ -22,7 +22,7 @@ const nav = codeOnly(read('admin/pages/dashboard/navigation.tsx'));
 const groups = codeOnly(read('admin/pages/dashboard/dashboardTabGroups.ts'));
 const permissions = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
 
-const CONNECTED = ['sales_reports', 'sales_team', 'online_team', 'staff_performance'];
+const CONNECTED = ['sales_team', 'staff_performance'];
 
 test('each newly connected screen has a menu entry', () => {
   for (const key of CONNECTED.filter(key => key !== 'sales_team')) {
@@ -31,6 +31,9 @@ test('each newly connected screen has a menu entry', () => {
   // «أداء فريق المبيعات» is the «الشهر» section of «أداء المبيعات» (sales_hub).
   assert.match(nav, /key: 'sales_hub', label: 'أداء المبيعات'/);
   assert.match(read('admin/pages/dashboard/tabs/SalesPerformancePage.tsx'), /section === 'month' && <SalesTeamTab/);
+  // «تقارير المبيعات» is the «التقرير» section of the same page; the page of that name is gone (5 Nov 2026).
+  assert.match(read('admin/pages/dashboard/tabs/SalesPerformancePage.tsx'), /section === 'report' && <SalesReportSection/);
+  assert.doesNotMatch(nav, /key: 'sales_reports'|key: 'online_team'|key: 'sales_planning'|key: 'analytics_hub'|key: 'archived_clients'|key: 'installment_plans'/);
 });
 
 test('and a route gate, or the entry opens nothing', () => {
@@ -66,12 +69,9 @@ test('a screen that counts rows loads the rows, or it reports the bootstrap page
 
   // sales_team builds a per-rep monthly table from l.assignedSalesId.
   assert.ok(leadTabs.includes("'sales_team'"), 'sales_team counts leads and must load them');
-  // sales_reports (4 Nov 2026) breaks the leads down by status and source on the server: GET /admin/reports/sales-breakdown, so it loads nothing.
-  assert.ok(!leadTabs.includes("'sales_reports'"), 'sales_reports reads the server figures, not the table');
-  assert.match(read('admin/pages/dashboard/tabs/SalesReportsTab.tsx'), /\/admin\/reports\/sales-breakdown/);
-  // online_team takes its counts from GET /admin/online-performance; the tables are only its fallback.
-  assert.ok(!crmTabs.includes("'online_team'"), 'online_team reads the server figures, not both tables');
-  assert.match(read('admin/pages/dashboard/tabs/OnlineTeamMgmtTab.tsx'), /getOnlinePerformance\(\)/);
+  // The sales report section and the online load section read the server's figures (GET /admin/reports/sales-breakdown, /admin/online-performance), so they load nothing.
+  assert.match(read('admin/pages/dashboard/tabs/sales-performance/SalesReportSection.tsx'), /sales-breakdown/);
+  assert.match(read('admin/pages/dashboard/tabs/online-team/OnlineLoadSection.tsx'), /getOnlinePerformance/);
 
   // staff_performance is deliberately NOT here: it takes its per-rep counts
   // from GET /admin/leads/staff-performance, which is why it was moved off the
@@ -87,9 +87,7 @@ test('the screens still read what the menu now promises', () => {
   // screen behind each entry is the one that does that job.
   const renders = codeOnly(read('admin/pages/dashboard/GeneralDashboardTabs.tsx'));
   for (const [key, component] of [
-    ['sales_reports', 'SalesReportsTab'],
     ['sales_team', 'SalesTeamTab'],
-    ['online_team', 'OnlineTeamMgmtTab'],
     ['staff_performance', 'StaffPerformanceHubTab'],
   ]) {
     assert.match(renders, new RegExp(`key: '${key}', Component: ${component}`),

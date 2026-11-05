@@ -16,7 +16,6 @@ const routeModules = [
   ['/', '../routes/finance-payments-register'],
   ['/', '../routes/analytics'],
   ['/', '../routes/crm-advanced'],
-  ['/', '../routes/crm-forecast'],
   ['/', '../routes/management-reports'],
   ['/', '../routes/ai-autopilot'],
   ['/', '../routes/crm-sequences'],

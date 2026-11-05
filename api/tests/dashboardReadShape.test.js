@@ -119,7 +119,7 @@ test('a month is a month, and the previous month is a different one', () => {
   const dashboard = codeOnly(read('api/routes/analytics/dashboard.js'));
   assert.ok(!dashboard.includes('setMonth(d.getMonth() - 1)'),
     'setMonth keeps the day, so on 31 March prevMonthStart equalled monthStart');
-  assert.ok(dashboard.includes('const today   = dateOnlyInTimeZone()'),
+  assert.ok(dashboard.includes('const today = dateOnlyInTimeZone()'),
     'and the day the institute trades in is Cairo’s, not UTC’s');
 });
 

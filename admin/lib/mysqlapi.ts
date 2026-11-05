@@ -280,37 +280,11 @@ export const mysqlClient = {
   heartbeat: (name?: string) => apiFetch<{ ok: boolean }>('/me/heartbeat', { method: 'POST', body: JSON.stringify({ name: name || '' }) }, true),
   getMySubscriber: () => apiFetch<AR | null>('/me/subscriber', {}, true),
   getMyConsultations: () => apiFetch<AR[]>('/me/consultations', {}, true),
-  getMyQuizAttempts: () => apiFetch<AR[]>('/me/quiz-attempts', {}, true),
   checkIsStaff: () => apiFetch<{ isStaff: boolean; isAdmin: boolean; role?: string; staffId?: string }>('/me/is-staff', {}, true),
   getStaffSelf: () => apiFetch<AR>('/staff/me', {}, true),
   getTherapistPortal: () => apiFetch<{ therapist: AR; consultations: AR[] }>('/staff/therapist-portal', {}, true),
   updateTherapistConsultation: (id: string, patch: { status?: string; notes?: string }) =>
     apiFetch<{ ok: boolean }>(`/staff/therapist-portal/consultations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }, true),
-  saveLectureProgress: (lectureId: string, pct: number) =>
-    apiFetch<{ ok: boolean }>('/me/progress', { method: 'PATCH', body: JSON.stringify({ lectureId, pct }) }, true),
-  // Payment proofs
-  createPaymentIntent: (data: { order_id: string; provider?: 'manual'; idempotency_key?: string }) =>
-    apiFetch<{ ok: boolean; id: string; order_id: string; amount: number; currency: string; status: string }>(
-      '/me/payment-intents', { method: 'POST', body: JSON.stringify(data) }, true
-    ),
-  submitPaymentProof: (data: { order_id: string; payment_intent_id?: string; payment_method: string; proof_image?: string | null; note?: string }) =>
-    apiFetch<{ ok: boolean; id: string; payment_intent_id: string; payment_attempt_id: string }>(
-      '/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true
-    ),
-  getMyPaymentProofs: () => apiFetch<AR[]>('/me/payment-proofs', {}, true),
-  getMyOrders: () => apiFetch<Array<{ id: string; item_id: string | null; item_title: string; type: string; status: string; amount: number; currency: string }>>('/me/orders', {}, true),
-  // Course ratings
-  getCourseRatings: (courseId: string) => apiFetch<{ avg: number; count: number; myRating: { rating: number; comment: string } | null }>(`/courses/${encodeURIComponent(courseId)}/ratings`, {}, true),
-  rateCourse: (courseId: string, rating: number, comment?: string) =>
-    apiFetch<{ ok: boolean; avg: number; count: number }>(`/courses/${encodeURIComponent(courseId)}/rate`, { method: 'POST', body: JSON.stringify({ rating, comment }) }, true),
-  // Lecture view tracking
-  trackLectureView: (lectureId: string) =>
-    apiFetch<{ ok: boolean }>(`/lectures/${encodeURIComponent(lectureId)}/view`, { method: 'POST' }, true),
-  // Course completions / digital certificates
-  getMyCompletions: () => apiFetch<AR[]>('/me/completions', {}, true),
-  verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
-  // Referral
-  getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),
 };
 
 // ── Messaging channels ────────────────────────────────────────────────────────
@@ -560,8 +534,6 @@ export const mysqlAdmin = {
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) }, A),
   checkAccount: (email: string) => apiFetch<AR>(`/admin/check-account?email=${encodeURIComponent(email)}`, {}, A),
   createAccount: (params: { email: string; name?: string; password?: string; phone?: string; courses?: {courseId:string;accessType:string;videoCount?:string}[]; referredBy?: string; firstPayment?: { amount: number; currency: string; paymentMethod?: string; date?: string; transactionId?: string; note?: string; courseId?: string; courseExpected?: number } }) => apiFetch<AR>('/admin/create-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) }, A),
-  getMissingAccountsCount: () => apiFetch<{ total: number }>('/admin/missing-accounts', {}, A),
-  bulkCreateAccounts: (limit: number) => apiFetch<AR>('/admin/bulk-create-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit }) }, A),
   // ── List (read) ──
   listAllCourses:          (limit = 500)  => apiFetch<AR[]>(`/admin/courses?limit=${limit}`, {}, A),
   getOnlineUsers:          ()             => apiFetch<AR[]>('/admin/online-users', {}, A),
@@ -638,19 +610,6 @@ export const mysqlAdmin = {
   getCxPerformance: (): Promise<CxPerformance> => apiFetch('/admin/cx-performance', {}, A),
   getOnlinePerformance: (): Promise<OnlinePerformance> => apiFetch('/admin/online-performance', {}, A),
   getSalesTeamPerformance: (): Promise<SalesTeamPerformance> => apiFetch('/admin/reports/sales-performance', {}, A),
-  // Scored, filtered, sorted leads — the scoring screen's fifty rows, chosen by
-  // the database instead of by scoring 26,878 of them in the browser.
-  getScoredLeads:          (opts: { minScore?: number; status?: string; source?: string; q?: string; sortBy?: string; limit?: number } = {}): Promise<ScoredLeadsResult> => {
-    const params = new URLSearchParams();
-    if (opts.minScore) params.set('minScore', String(opts.minScore));
-    if (opts.status && opts.status !== 'all') params.set('status', opts.status);
-    if (opts.source && opts.source !== 'all') params.set('source', opts.source);
-    if (opts.q) params.set('q', opts.q);
-    if (opts.sortBy) params.set('sortBy', opts.sortBy);
-    if (opts.limit) params.set('limit', String(opts.limit));
-    const qs = params.toString();
-    return apiFetch(`/admin/leads/scored${qs ? `?${qs}` : ''}`, {}, A);
-  },
   // The subscriber count, so an audience picker does not have to hold the table.
   // overview: also today's new clients and each course's clients, for الرئيسية.
   getSubscriberStats:      (overview = false): Promise<SubscriberStats> =>
@@ -660,11 +619,6 @@ export const mysqlAdmin = {
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
   listStaffSubscribers:    (pageSize = 2000): Promise<AR[]> =>
     fetchAllPages(offset => `/staff/subscribers?limit=${pageSize}&offset=${offset}`, pageSize, Number.POSITIVE_INFINITY),
-  listStaffLeads:          (pageSize = 2000): Promise<AR[]> =>
-    fetchAllPages(offset => `/staff/leads?limit=${pageSize}&offset=${offset}`, pageSize, Number.POSITIVE_INFINITY),
-  // Legacy kept for backwards compatibility — redirect to unified
-  listMySubscribers:       () => apiFetch<AR[]>('/staff/subscribers', {}, A),
-  listMyCollectionClients: () => apiFetch<AR[]>('/staff/subscribers', {}, A),
   listMyDaqqiClients:      () => apiFetch<AR[]>('/staff/subscribers', {}, A),
   assignSubscriberCollection: (subId: string, collectionId: string | null, collectionName: string | null) =>
     apiFetch<AR>(`/admin/subscribers/${subId}/assign-collection`, { method: 'PUT', body: JSON.stringify({ collectionId, collectionName }) }, A),
@@ -717,8 +671,6 @@ export const mysqlAdmin = {
   listWhatsappCampaigns:   ()             => apiFetch<WhatsappCampaign[]>('/admin/whatsapp-campaigns', {}, A),
   createWhatsappCampaign:  (data: WhatsappCampaignInput) =>
     apiFetch<WhatsappCampaign>('/admin/whatsapp-campaigns', { method: 'POST', body: JSON.stringify(data) }, A),
-  updateWhatsappCampaign:  (id: string, data: Partial<WhatsappCampaignInput>) =>
-    apiFetch<WhatsappCampaign>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }, A),
   deleteWhatsappCampaign:  (id: string) =>
     apiFetch<AR>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
   previewWhatsappCampaign: (id: string) =>
@@ -730,22 +682,13 @@ export const mysqlAdmin = {
   whatsappCampaignRecipients: (id: string) =>
     apiFetch<WhatsappCampaignRecipient[]>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/recipients`, {}, A),
 
-  // ── Shared inbox ──────────────────────────────────────────────────────────
-  listInboxConversations: (unansweredOnly = false) =>
-    apiFetch<InboxConversation[]>(`/admin/messaging/inbox${unansweredOnly ? "?unanswered=1" : ""}`, {}, A),
-  getInboxThread:          (key: { leadId?: string; subscriberId?: string }) =>
-    apiFetch<InboxMessage[]>(`/admin/messaging/inbox/thread?${key.leadId ? `leadId=${encodeURIComponent(key.leadId)}` : `subscriberId=${encodeURIComponent(key.subscriberId || "")}`}`, {}, A),
   replyInThread:           (data: { leadId?: string; subscriberId?: string; message: string; via?: "whatsapp" | "messenger" }) =>
     apiFetch<{ ok: boolean; id: string; channelId: string | null }>("/admin/messaging/inbox/reply", { method: "POST", body: JSON.stringify(data) }, A),
-  linkMessengerToLead:     (leadId: string, psid: string) =>
-    apiFetch<{ ok: boolean; adopted: number }>("/admin/messaging/inbox/link-messenger", { method: "POST", body: JSON.stringify({ leadId, psid }) }, A),
-
   listAllStaff:            ()             => apiFetch<AR[]>('/admin/staff', {}, A),
   listAllConsultations:    (limit = 500)  => apiFetch<AR[]>(`/admin/consultations?limit=${limit}`, {}, A),
   listAllExpenses:         ()             => apiFetch<AR[]>('/admin/expenses', {}, A),
   listActivityLogs:        (limit = 200)  => apiFetch<AR[]>(`/admin/activity-logs?limit=${limit}`, {}, A),
   listAllOrders:           (limit = 500)  => apiFetch<AR[]>(`/admin/orders?limit=${limit}`, {}, A),
-  listAbandonedCheckouts:  (hours = 2)     => apiFetch<AR[]>(`/admin/abandoned-checkouts?hours=${hours}`, {}, A),
   runAbandonedCheckout:    (hours = 24, limit = 100) => apiFetch<{ ok: boolean; scanned: number; sent: number; failed: number; skipped: number }>('/admin/automation/abandoned-checkout/run', { method: 'POST', body: JSON.stringify({ hours, limit }) }, A),
   smartRouteLeads:         (mode: 'all' | 'unassigned' = 'unassigned', limit = 100) => apiFetch<{ ok: boolean; assigned: number; reps: number }>('/admin/crm/leads/smart-route', { method: 'POST', body: JSON.stringify({ mode, limit }) }, A),
   getPushPublicKey:        ()              => apiFetch<{ ok: boolean; enabled: boolean; publicKey: string | null }>('/push/vapid-public-key'),
@@ -762,16 +705,12 @@ export const mysqlAdmin = {
   listDaqqiRoundsForBooking: (branch: string) => apiFetch<AR[]>(`/admin/daqqi-rounds/for-booking?branch=${encodeURIComponent(branch)}`, {}, A),
   // «جدول الدقي» for the sales team: rounds not started or on lecture 1–2, no attendees.
   listDaqqiSalesSchedule: () => apiFetch<SalesScheduleRound[]>('/admin/daqqi-rounds/sales-schedule', {}, A),
-  /** One page of the applications (the server holds up to 1000 a page). */
-  listJoinUsPage:          (limit: number, offset: number) => apiFetch<AR[]>(`/admin/join-us?limit=${limit}&offset=${offset}`, {}, A),
   /**
    * Every application, page by page. The list used to stop at the newest 500, so a tab of 1,285
    * applications showed 427 staff ones among them; the screens count what they are given.
    */
   listAllJoinUs:           () => allPages('/admin/join-us', 1000),
   joinUsFingerprint:       () => apiFetch<{ fingerprint: string }>('/admin/join-us/fingerprint', {}, A),
-  /** How many applications there are — counted in the database over the whole scope, by form and status. */
-  joinUsCounts:            () => apiFetch<{ total: number; byForm: { staff: number; teaching: number }; byStatus: Record<string, number>; byFormStatus: Record<'staff' | 'teaching', Record<string, number>> }>('/admin/join-us/counts', {}, A),
   /**
    * The page HR works the applications from: one list (form), the filters run in the database, and the
    * answer is the rows asked for with the total they are part of. `inbox` leaves out the applications
@@ -818,7 +757,6 @@ export const mysqlAdmin = {
     }>(`/admin/financial/cash-flow?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {}, A),
   listAllInbox:            ()             => apiFetch<AR[]>('/admin/inbox', {}, A),
   listAllAutomationWorkflows: ()          => apiFetch<AR[]>('/admin/automation-workflows', {}, A),
-  listAllQuizAttempts:     (limit = 500)  => apiFetch<AR[]>(`/admin/quiz-attempts?limit=${limit}`, {}, A),
   getSettings:             ()             => apiFetch<AR>('/admin/settings', {}, A),
   generateAdminAi: (body: { systemPrompt?: string; messages: Array<{ role: 'user' | 'assistant'; content: string }>; maxTokens?: number }) =>
     apiFetch<{ text: string }>('/admin/ai/generate', { method: 'POST', body: JSON.stringify(body) }, A),
@@ -914,11 +852,6 @@ export const mysqlAdmin = {
   // Group messaging: all staff / a role / a branch / specific people.
   getBroadcastAudiences: () => apiFetch<AR>('/admin/hr/staff/broadcast-audiences', {}, A),
   sendStaffBroadcast: (payload: AR) => post('/admin/hr/staff/broadcast', payload),
-  // Employee's own thread (their side of the same conversation).
-  listMyStaffMessages: () => apiFetch<AR[]>('/staff/me/messages', {}, A),
-  sendMyStaffMessage:  (body: string, scope: 'management' | 'team' = 'management') =>
-    post('/staff/me/messages', { body, scope }),
-
   // ── التوظيف / الانترفيوهات (job_applicants pipeline) ──
   /** One page of the candidates at interview or offer, for the tab (upcoming/past) and filters given. */
   listHrInterviews: (query: Record<string, string | number>) =>
@@ -926,7 +859,6 @@ export const mysqlAdmin = {
   /** The tallies and pickers around that list — read once, not with every page. */
   hrInterviewsSummary: (tab: 'upcoming' | 'past' | 'no_show', form: '' | 'staff' | 'teaching' = '') =>
     apiFetch<{ tabs: { upcoming: number; past: number; no_show: number }; rejected: number; stages: { interview: number; offer: number }; jobs: Array<{ id: string; title: string | null; count: number }>; branches: Array<{ key: string; count: number }>; grades: Record<string, number> }>(`/admin/hr/interviews/summary?${queryOf({ tab, form })}`, {}, A),
-  listHrApplicants: (stage?: string) => apiFetch<AR[]>(`/admin/hr/applicants${stage ? `?stage=${encodeURIComponent(stage)}` : ''}`, {}, A),
   updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
   hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),
   deleteHrApplicant: (id: string) => del(`/admin/hr/applicants/${encodeURIComponent(id)}`),
@@ -975,8 +907,6 @@ export const mysqlAdmin = {
   setStaffPay: (staffId: string, o: { baseSalary?: number | null; commissionType: string; commissionRate?: number | null; monthlyTarget?: number | null }) =>
     apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/pay`,
       { method: 'PUT', body: JSON.stringify(o) }, A),
-  addRecruitmentNote: (refType: 'join_us' | 'applicant', refId: string, body: string) =>
-    post(`/admin/hr/notes/${refType}/${encodeURIComponent(refId)}`, { body }),
   listHrJobs:       ()             => apiFetch<AR[]>('/admin/hr/jobs', {}, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),
 
@@ -992,8 +922,6 @@ export const mysqlAdmin = {
   saveChapter:   (o: AR) => post('/admin/chapters', o),
   deleteChapter: (id: string) => del(`/admin/chapters/${id}`),
 
-  // ── Consultations ──
-  saveConsultation:          (o: AR) => post('/admin/consultations', o),
   updateConsultationStatus:  (id: string, status: string, notes?: string, link?: string) =>
     patch(`/admin/consultations/${id}`, { status, notes, meeting_link: link }),
   // Any of the three, alone: the desk changes a booking's status, its notes or its session link independently.
@@ -1013,8 +941,6 @@ export const mysqlAdmin = {
 
   // ── Orders ──
   updateOrderStatus: (id: string, status: string, reason?: string) => patch(`/admin/orders/${id}`, { status, ...(reason ? { reason } : {}) }),
-  // Reconcile a customer payment (order) against a bank transfer: confirm + record the link.
-  linkOrderTransfer: (orderId: string, transferId: string) => patch(`/admin/orders/${orderId}`, { status: 'paid', linked_transfer_id: transferId }),
   deleteOrder:       (id: string) => del(`/admin/orders/${id}`),
 
   // ── Subscriber Payments (payments table) ──
@@ -1055,17 +981,12 @@ export const mysqlAdmin = {
       { method: 'PATCH', body: JSON.stringify({ status, reviewNote, paymentMethod, ...(transfer ? { transfer } : {}) }) },
       A,
     ),
-  backfillPayments:      () => post('/admin/backfill-payments', {}),
-
   // ── Credentials (admin reset) ──
   updateSubscriberCredentials: (subscriberId: string, currentEmail: string, opts: { newEmail?: string; newPassword?: string }) =>
     apiFetch<{ ok: boolean }>(`/admin/subscribers/${subscriberId}/credentials`, { method: 'PUT', body: JSON.stringify({ currentEmail, ...opts }) }, A),
   getSubscriberPassword: (subscriberId: string) =>
     apiFetch<{ plain_password: string | null }>(`/admin/subscribers/${subscriberId}/password`, {}, A),
 
-  // ── Enrollments ──
-  addEnrollment: (subscriber_id: string, course_id: string | null, bundle_id: string | null, access_level: 'full' | 'limited', lecture_limit?: number) =>
-    post('/admin/enrollments', { subscriber_id, course_id, bundle_id, access_level, lecture_limit }),
   updateEnrollmentAccess: (subscriber_id: string, course_id: string, access_level: 'full' | 'limited', lecture_limit?: number) =>
     post('/admin/enrollments', { subscriber_id, course_id, bundle_id: null, access_level, lecture_limit }),
 
@@ -1119,9 +1040,6 @@ export const mysqlAdmin = {
   saveInboxConversation:   (o: AR) => post('/admin/inbox', o),
   deleteInboxConversation: (id: string) => del(`/admin/inbox/${id}`),
 
-  // ── Activity Logs ──
-  logActivity: (log: AR) => post('/admin/activity-logs', log),
-
   // ── Settings / Content / Discounts / Notifications ──
   saveSettings:      (data: AR) => put('/admin/settings', data),
   saveContent:       (data: AR) => put('/admin/content', data),
@@ -1150,30 +1068,10 @@ export const mysqlAdmin = {
 
   // ── Atomic client-code counter ──
   issueClientCode: () => apiFetch<{ ok: boolean; code: string }>('/admin/client-code', { method: 'POST', body: '{}' }, A),
-  /** Delete subscribers + hide leads whose email matches any staff/admin member */
-  cleanupStaffSubscribers: () =>
-    apiFetch<{ ok: boolean; deleted: number; hidden: number; emails: string[] }>(
-      '/admin/cleanup-staff-subscribers', { method: 'POST', body: '{}' }, A
-    ),
-  /** Fix auto-created ghost subscribers: remove empties, merge duplicates, assign codes, fix branch */
-  fixAutoSubscribers: () =>
-    apiFetch<{ ok: boolean; deleted: number; merged: number; coded: number; branchFixed: number }>(
-      '/admin/fix-auto-subscribers', { method: 'POST', body: '{}' }, A
-    ),
-  /** Delete duplicate leads: leads matching subscriber phones + leads with duplicate phones (keep oldest) */
-  dedupLeads: () =>
-    apiFetch<{ ok: boolean; merged: number; groups: number; failed: number; remaining: number; deleted: number }>(
-      '/admin/leads/dedup-cleanup', { method: 'POST', body: '{}' }, A
-    ),
   /** Move the unassigned live pool (optionally only leads created before a date) into "محلي قديم". */
   moveLeadsToArchive: (options: { createdBefore?: string; dryRun?: boolean } = {}) =>
     apiFetch<{ ok: boolean; matched?: number; moved?: number }>(
       '/admin/leads/move-to-archive', { method: 'POST', body: JSON.stringify(options) }, A
-    ),
-  /** Comprehensive fix: assign missing codes, merge phone-duplicate leads, merge email-duplicate subscribers, fix cross-table duplicate codes */
-  fixAllCodes: () =>
-    apiFetch<{ ok: boolean; assigned_leads: number; assigned_subs: number; merged_leads: number; merged_subs: number; dup_codes_fixed: number }>(
-      '/admin/fix-all-codes', { method: 'POST', body: '{}' }, A
     ),
   /** Assign codes from the MySQL counter to ALL leads/subscribers that are missing a valid code.
    *  Server handles atomicity — never generates codes locally. */
@@ -1181,12 +1079,6 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; assigned: number; nextCounter?: number; message?: string }>(
       '/admin/bulk-assign-client-codes', { method: 'POST', body: '{}' }, A
     ),
-  /** Fast-forward the MySQL counter to MAX existing code + 1 */
-  syncClientCodeCounter: () =>
-    apiFetch<{ ok: boolean; maxExisting: number; counterNow: number }>(
-      '/admin/sync-client-code-counter', { method: 'POST', body: '{}' }, A
-    ),
-
   // ── Leads: bulk CSV import ──
   importLeads: (leads: AR[]) =>
     apiFetch<{ ok: boolean; imported: number; skipped: number; flagged?: number; errors: string[] }>(
@@ -1218,10 +1110,6 @@ export const mysqlAdmin = {
     status: string; label: string; position: number; showInPipeline: boolean;
     isTerminal: boolean; allowedNext: string[];
   }> }>('/admin/crm/pipeline', {}, A),
-  saveCrmPipeline: (stages: Array<Record<string, unknown>>) =>
-    apiFetch<{ ok: boolean; stages: Array<Record<string, unknown>> }>(
-      '/admin/crm/pipeline', { method: 'PUT', body: JSON.stringify({ stages }) }, A
-    ),
   getCrmAssignmentMembers: () => apiFetch<{ members: Array<Record<string, unknown>> }>(
     '/admin/crm/assignment-members', {}, A
   ),
@@ -1275,10 +1163,6 @@ export const mysqlAdmin = {
       {},
       A,
     ),
-  syncGoogleSheet: (sheetId: string, gid: string, autoAssign: string) =>
-    apiFetch<{ ok: boolean; imported: number; skipped: number; total: number; message?: string }>(
-      '/admin/leads/gsheet-sync', { method: 'POST', body: JSON.stringify({ sheetId, gid, autoAssign }) }, A
-    ),
   testGoogleSheet: (sheetId: string, gid: string) =>
     apiFetch<{ ok: boolean; accessible: boolean; rows?: number; headers?: string[]; reason?: string; hint?: string }>(
       '/admin/leads/gsheet-test', { method: 'POST', body: JSON.stringify({ sheetId, gid }) }, A
@@ -1288,13 +1172,6 @@ export const mysqlAdmin = {
       '/admin/leads/gsheet-sync-all', { method: 'POST', body: '{}' }, A
     ),
 
-  // ── WhatsApp ──
-  sendWhatsAppBulk: (phones: string[], message: string) =>
-    apiFetch<{ ok: boolean; sent: number; failed: number; errors: { phone: string; reason: string }[] }>(
-      '/admin/whatsapp-bulk', { method: 'POST', body: JSON.stringify({ phones, message }) }, A
-    ),
-  sendWhatsApp: (phone: string, message: string) =>
-    apiFetch<{ ok: boolean }>('/admin/whatsapp-send', { method: 'POST', body: JSON.stringify({ phone, message }) }, A),
   getWhatsAppConfig: () => apiFetch<{ provider: 'meta' | 'green-api'; instanceId: string; hasToken: boolean; metaPhoneId: string; hasMetaToken: boolean }>('/admin/whatsapp-config', {}, A),
   // Accepts the full config (provider + the relevant creds). Blank secrets are kept
   // server-side, so the form needn't re-send tokens it doesn't change.
@@ -1304,14 +1181,6 @@ export const mysqlAdmin = {
   getFbLeadConfig: () => apiFetch<Record<string, unknown>>('/admin/facebook-lead-ads-config', {}, A),
   saveFbLeadConfig: (cfg: Record<string, unknown>) =>
     apiFetch<{ ok: boolean }>('/admin/facebook-lead-ads-config', { method: 'PUT', body: JSON.stringify(cfg) }, A),
-
-  // WhatsApp credentials remain server-side; the browser never receives or stores tokens.
-  waProxyChats: () =>
-    apiFetch<unknown[]>('/admin/whatsapp-proxy/chats', { method: 'POST', body: '{}' }, A),
-  waProxyChatHistory: (chatId: string, count = 30) =>
-    apiFetch<unknown[]>('/admin/whatsapp-proxy/history', { method: 'POST', body: JSON.stringify({ chatId, count }) }, A),
-  waProxySend: (phone: string, message: string) =>
-    apiFetch<{ ok: boolean; idMessage?: string }>('/admin/whatsapp-proxy/send', { method: 'POST', body: JSON.stringify({ phone, message }) }, A),
 
   // ── Refresh Token ──
   refreshToken: () => apiFetch<{ ok: boolean }>('/auth/refresh', { method: 'POST', body: '{}' }, A),
@@ -1331,29 +1200,16 @@ export const mysqlAdmin = {
   // ── Content analytics ──
   getLessonAnalytics: (courseId: string) => apiFetch<AR[]>(`/admin/lesson-analytics/${encodeURIComponent(courseId)}`, {}, A),
 
-  // ── Referrals ──
-  listReferrals: () => apiFetch<AR[]>('/admin/referrals', {}, A),
 };
 
 // ── Public forms ──────────────────────────────────────────────────────────────
 export const mysqlForms = {
-  submitContact: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/contact', { method: 'POST', body: JSON.stringify(data) }),
   submitJoinUs: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/join-us', { method: 'POST', body: JSON.stringify(data) }),
   submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify(data) }),
-  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // ── Paymob payment helpers ────────────────────────────────────────────────────
 export const mysqlPaymob = {
-  /** Save pending order server-side BEFORE opening Paymob iframe.
-   *  On payment success, the server verifies HMAC and enrolls. */
-  reserveOrder: (data: AR) =>
-    apiFetch<{ ok: boolean }>('/orders/reserve', { method: 'POST', body: JSON.stringify(data) }),
-  /** Verify Paymob redirect params (HMAC-SHA512) and finalise enrollment on server */
-  verifyPayment: (params: Record<string, string>) =>
-    apiFetch<{ ok: boolean; verified: boolean; paid: boolean; alreadyProcessed?: boolean }>(
-      '/paymob/verify', { method: 'POST', body: JSON.stringify(params) }
-    ),
 };
 
 // ── Custom Auth ───────────────────────────────────────────────────────────────
@@ -1379,8 +1235,6 @@ export const mysqlAuth = {
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string }) =>
     apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
-  updateProfile: (name: string) =>
-    apiFetch<{ ok: boolean }>('/auth/update-profile', { method: 'PUT', body: JSON.stringify({ name }) }, true),
   updatePassword: (currentPassword: string, newPassword: string) =>
     apiFetch<{ ok: boolean }>('/auth/update-password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }, true),
   resetPassword: (resetToken: string, newPassword: string) =>

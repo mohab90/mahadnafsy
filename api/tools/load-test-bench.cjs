@@ -71,7 +71,6 @@ async function main() {
     ['leads', 'lead stats (KPIs)', routers.leads, '/api/admin/leads/stats', {}],
     ['leads', 'CRM insights', routers.leads, '/api/admin/leads/crm-insights', {}],
     ['leads', 'staff lead performance', routers.leads, '/api/admin/leads/staff-performance', {}],
-    ['leads', 'scored leads', routers.leads, '/api/admin/leads/scored', { query: { minScore: '60' } }],
     ['leads', 'sales rep — own leads page (2000)', routers.lists, '/api/staff/leads', { query: { limit: '2000' }, staff: SALES }],
     ['clients', 'admin clients — first page (500)', routers.lists, '/api/admin/subscribers', { query: { limit: '500' } }],
     ['clients', 'admin clients — page at 45,000', routers.lists, '/api/admin/subscribers', { query: { limit: '5000', offset: '45000' } }],

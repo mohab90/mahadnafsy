@@ -1,270 +1,210 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  RefreshCw, TrendingUp, TrendingDown, Users, DollarSign,
-  UserPlus, AlertCircle, Award, BarChart3, Activity,
+  Activity, AlertCircle, Award, BarChart3, CalendarClock, CheckCircle2, DollarSign, RefreshCw, TrendingDown, TrendingUp, UserPlus, Users, Wallet,
 } from 'lucide-react';
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
-} from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { numericTooltip } from '../../../lib/chartFormat';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
-import SecretRotationCard from '../../../components/SecretRotationCard';
+
+// «لوحة KPI للمدير»: the numbers a manager opens the panel for, from ONE server answer (GET /api/admin/kpi/summary, api/routes/analytics/dashboard.js):
+// the money against the SAME days of last month, the leads and what became of them, the clients, who is at work today, what waits for a decision (each a link
+// to where it is decided) and who collected most. Rebuilt on 5 Nov 2026 with the analytics page it used to sit beside.
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-
-type KpiData = {
-  revenue: { today: number; week: number; month: number; prevMonth: number; monthChange: number | null };
-  leads: { today: number; week: number };
-  subscribers: { total: number; active: number; newThis7Days: number };
-  alerts: { openTickets: number; pendingRefunds: number };
-  topStaff: { name: string; role: string; earned: number; deals: number }[];
+type Kpi = {
+  generatedAt: string;
+  money: { today: number; week: number; month: number; prevMonth: number; prevSameDays: number; changeVsSameDays: number | null; payments: number; average: number; certificates: number; expenses: number; net: number };
+  leads: { today: number; week: number; month: number; prevSameDays: number; changeVsSameDays: number | null; converted: number; conversionRate: number };
+  clients: { total: number; active: number; new7: number; new30: number; expiringIn30Days: number };
+  // null for a viewer without view_hr: who is at work, and the leaves and bonuses waiting, are HR's.
+  team: { staff: number; present: number; late: number; absent: number; onLeave: number; recorded: number } | null;
+  waiting: { tickets: number; refunds: number; leaves: number | null; bonuses: number | null };
+  topCollectors: { id: string; name: string; role: string; revenue: number; payments: number }[];
   revenueByDay: { day: string; revenue: number }[];
   leadsByDay: { day: string; count: number }[];
-  generatedAt: string;
 };
 
-const fmt = (n: number) =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}م`
-  : n >= 1000    ? `${(n / 1000).toFixed(1)}ك`
-  : String(Math.round(n));
+// Written out: Tailwind only keeps the classes it can read in the source, never ones assembled from a variable.
+const WAIT_TONES = {
+  amber: 'border-amber-200 text-amber-700 hover:bg-amber-50', rose: 'border-rose-200 text-rose-700 hover:bg-rose-50',
+  sky: 'border-sky-200 text-sky-700 hover:bg-sky-50', violet: 'border-violet-200 text-violet-700 hover:bg-violet-50',
+} as const;
 
-// d is a 'YYYY-MM-DD' Cairo day from the server. Through new Date() it was UTC
-// midnight, read back in the browser's zone — the day before, west of UTC.
-const dayLabel = (d: string) => {
-  const [, month, day] = String(d).slice(0, 10).split('-').map(Number);
-  return month && day ? `${day}/${month}` : String(d);
-};
+const n = (value: number) => Math.round(value).toLocaleString('ar-EG-u-nu-latn');
+const short = (value: number) => (value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}م` : value >= 1000 ? `${(value / 1000).toFixed(1)}ك` : String(Math.round(value)));
+// The server's days are Cairo days («YYYY-MM-DD»): cut, never run through Date (it reads them as UTC midnight).
+const dayLabel = (day: string) => { const [, month, date] = day.slice(0, 10).split('-').map(Number); return month && date ? `${date}/${month}` : day; };
+
+function Change({ value }: { value: number | null }) {
+  if (value === null) return <span className="text-[11px] text-gray-400">لا مقارنة</span>;
+  const up = value >= 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  return <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${up ? 'text-emerald-600' : 'text-rose-600'}`}><Icon size={12} />{up ? '+' : ''}{n(value)}٪ عن نفس الأيام الشهر اللي فات</span>;
+}
+
+function Card({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub?: React.ReactNode; icon: typeof Users; tone: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon size={18} /></div>
+      <div className="min-w-0">
+        <div className="text-2xl font-extrabold leading-tight text-gray-900">{value}</div>
+        <div className="text-xs text-gray-500">{label}</div>
+        {sub && <div className="mt-1">{sub}</div>}
+      </div>
+    </div>
+  );
+}
 
 export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
-  const [data, setData] = useState<KpiData | null>(null);
+  const [data, setData] = useState<Kpi | null>(null);
   const [loading, setLoading] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState('');
+  const [failed, setFailed] = useState(false);
+  const navigate = useNavigate();
   const notifyRef = useRef(notify);
-
-  useEffect(() => {
-    notifyRef.current = notify;
-  }, [notify]);
+  useEffect(() => { notifyRef.current = notify; }, [notify]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('mahad-token');
-      const res = await fetch('/api/admin/kpi/summary', {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-      setLastRefresh(new Date().toLocaleTimeString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }));
-    } catch (e: any) {
-      notifyRef.current('error', `خطأ في تحميل لوحة KPI: ${e.message}`);
+      setData(await mysqlAdmin.adminGet<Kpi>('/admin/kpi/summary'));
+      setFailed(false);
+    } catch (error) {
+      // What is on screen stays (a failed refresh is not an empty company); the page says so and offers the retry.
+      setFailed(true);
+      notifyRef.current('error', error instanceof Error ? error.message : 'تعذر تحميل لوحة الأداء');
     } finally { setLoading(false); }
   }, []);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => { load(); }, [load]);
-
-  if (!data && loading) {
+  if (!data) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-400" dir="rtl">
-        <RefreshCw size={28} className="animate-spin ml-3" /> جاري تحميل لوحة الأداء...
+      <div className="flex items-center justify-center gap-3 py-20 text-gray-400" dir="rtl">
+        {failed ? <><AlertCircle size={22} /> تعذر تحميل اللوحة <button type="button" onClick={() => void load()} className="font-bold text-indigo-600 underline">إعادة المحاولة</button></>
+          : <><RefreshCw size={24} className="animate-spin" /> جاري تحميل لوحة الأداء…</>}
       </div>
     );
   }
 
-  const monthUp = data ? (data.revenue.monthChange ?? 0) >= 0 : true;
+  const waiting: { label: string; count: number; to: string; tone: keyof typeof WAIT_TONES }[] = [
+    { label: 'تذكرة دعم مفتوحة', count: data.waiting.tickets, to: '/dashboard/customer_inbox', tone: 'amber' as const },
+    { label: 'طلب استرداد مستني قرار', count: data.waiting.refunds, to: '/dashboard/refund_requests', tone: 'rose' as const },
+    { label: 'إجازة أو إذن مستني اعتماد', count: data.waiting.leaves ?? 0, to: '/dashboard/hr', tone: 'sky' as const },
+    { label: 'مكافأة أو خصم مستني اعتماد', count: data.waiting.bonuses ?? 0, to: '/dashboard/hr', tone: 'violet' as const },
+  ].filter(item => item.count > 0);
+  const top = data.topCollectors[0]?.revenue || 1;
+  const team = data.team;
+  const attended = Boolean(team && team.recorded > 0);
+  const updated = new Date(data.generatedAt).toLocaleTimeString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="space-y-5 p-1" dir="rtl">
-
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-gray-800 flex items-center gap-2">
-            <BarChart3 size={22} className="text-indigo-600" />
-            لوحة KPI — المدير
-          </h2>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {lastRefresh ? `آخر تحديث: ${lastRefresh}` : 'نظرة شاملة على أداء النظام'}
-          </p>
+          <h2 className="flex items-center gap-2 text-xl font-extrabold text-gray-800"><BarChart3 size={22} className="text-indigo-600" /> لوحة KPI — المدير</h2>
+          <p className="mt-0.5 text-sm text-gray-400">آخر تحديث {updated}{failed ? ' — التحديث الأخير فشل، دي آخر أرقام وصلت' : ''}</p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          تحديث
+        <button type="button" onClick={() => void load()} disabled={loading}
+          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> تحديث
         </button>
       </div>
 
-      {/* Alert banners */}
-      {data && (data.alerts.openTickets > 0 || data.alerts.pendingRefunds > 0) && (
-        <div className="flex flex-wrap gap-3">
-          {data.alerts.openTickets > 0 && (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm text-amber-700 font-semibold">
-              <AlertCircle size={16} /> {data.alerts.openTickets} تذكرة دعم مفتوحة
-            </div>
-          )}
-          {data.alerts.pendingRefunds > 0 && (
-            <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 text-sm text-rose-700 font-semibold">
-              <AlertCircle size={16} /> {data.alerts.pendingRefunds} طلب استرداد معلق
-            </div>
-          )}
+      {waiting.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-800"><AlertCircle size={16} /> مستني قرارك</h3>
+          <div className="flex flex-wrap gap-2">
+            {waiting.map(item => (
+              <button key={item.label} type="button" onClick={() => navigate(item.to)}
+                className={`rounded-xl border bg-white px-3 py-2 text-sm font-semibold ${WAIT_TONES[item.tone]}`}>
+                <span className="ml-1 font-extrabold">{n(item.count)}</span>{item.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Primary KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          {
-            label: 'إيراد اليوم',
-            value: data ? `${fmt(data.revenue.today)} ج` : '—',
-            icon: DollarSign,
-            color: 'emerald',
-            sub: data?.revenue.week ? `أسبوعياً: ${fmt(data.revenue.week)} ج` : '',
-          },
-          {
-            label: 'إيراد الشهر',
-            value: data ? `${fmt(data.revenue.month)} ج` : '—',
-            icon: data && monthUp ? TrendingUp : TrendingDown,
-            color: data && monthUp ? 'emerald' : 'rose',
-            sub: data?.revenue.monthChange != null
-              ? `${data.revenue.monthChange > 0 ? '+' : ''}${data.revenue.monthChange}% من الشهر السابق`
-              : '',
-          },
-          {
-            label: 'ليدات جديدة (أسبوع)',
-            value: data ? String(data.leads.week) : '—',
-            icon: UserPlus,
-            color: 'blue',
-            sub: data ? `اليوم: ${data.leads.today}` : '',
-          },
-          {
-            label: 'مشتركون نشطون',
-            value: data ? String(data.subscribers.active) : '—',
-            icon: Users,
-            color: 'violet',
-            sub: data ? `+${data.subscribers.newThis7Days} هذا الأسبوع` : '',
-          },
-        ].map(kpi => {
-          const Icon = kpi.icon;
-          return (
-            <div key={kpi.label} className={`bg-${kpi.color}-50 border border-${kpi.color}-100 rounded-2xl p-4`}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-9 h-9 rounded-xl bg-${kpi.color}-100 flex items-center justify-center flex-shrink-0`}>
-                  <Icon size={18} className={`text-${kpi.color}-600`} />
-                </div>
-                <span className="text-xs text-gray-500 font-semibold">{kpi.label}</span>
-              </div>
-              <div className="text-2xl font-extrabold text-gray-900">{kpi.value}</div>
-              {kpi.sub && <div className="text-xs text-gray-500 mt-1">{kpi.sub}</div>}
-            </div>
-          );
-        })}
-      </div>
+      <section className="space-y-2">
+        <h3 className="text-sm font-bold text-gray-600">الفلوس — الشهر</h3>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Card label="إيراد الشهر (ج)" value={short(data.money.month)} icon={DollarSign} tone="bg-emerald-50 text-emerald-600" sub={<Change value={data.money.changeVsSameDays} />} />
+          <Card label="إيراد النهارده (ج)" value={short(data.money.today)} icon={Wallet} tone="bg-sky-50 text-sky-600" sub={<span className="text-[11px] text-gray-400">آخر 7 أيام {short(data.money.week)}</span>} />
+          <Card label="مصروفات الشهر (ج)" value={short(data.money.expenses)} icon={TrendingDown} tone="bg-rose-50 text-rose-600"
+            sub={<span className={`text-[11px] font-bold ${data.money.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>الصافي {data.money.net >= 0 ? '' : '−'}{short(Math.abs(data.money.net))} ج</span>} />
+          <Card label="متوسط الدفعة (ج)" value={short(data.money.average)} icon={Activity} tone="bg-violet-50 text-violet-600"
+            sub={<span className="text-[11px] text-gray-400">{n(data.money.payments)} دفعة{data.money.certificates > 0 ? ` · شهادات ${short(data.money.certificates)} ج بره الإيراد` : ''}</span>} />
+        </div>
+      </section>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <section className="space-y-2">
+        <h3 className="text-sm font-bold text-gray-600">الليدات والعملاء</h3>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Card label="ليدات الشهر" value={n(data.leads.month)} icon={UserPlus} tone="bg-blue-50 text-blue-600" sub={<Change value={data.leads.changeVsSameDays} />} />
+          <Card label="اتحولوا لعملاء الشهر" value={n(data.leads.converted)} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-600" sub={<span className="text-[11px] text-gray-400">معدل التحويل {n(data.leads.conversionRate)}٪ · النهارده {n(data.leads.today)} ليد</span>} />
+          <Card label="عملاء نشطين" value={n(data.clients.active)} icon={Users} tone="bg-teal-50 text-teal-600" sub={<span className="text-[11px] text-gray-400">من {n(data.clients.total)} · جداد 7 أيام {n(data.clients.new7)} · 30 يوم {n(data.clients.new30)}</span>} />
+          <Card label="اشتراكات بتخلص خلال 30 يوم" value={n(data.clients.expiringIn30Days)} icon={CalendarClock} tone="bg-amber-50 text-amber-600" sub={<span className="text-[11px] text-gray-400">فرصة تجديد</span>} />
+        </div>
+      </section>
 
-        {/* Revenue by day */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
-            <TrendingUp size={15} className="text-emerald-500" /> الإيراد — آخر 7 أيام
-          </h3>
-          <ResponsiveContainer width="100%" height={160}>
-            <AreaChart data={data?.revenueByDay.map(r => ({ ...r, day: dayLabel(r.day) })) ?? []}>
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#10b981" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-bold text-gray-700">الإيراد — آخر 30 يوم</h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={data.revenueByDay.map(row => ({ ...row, day: dayLabel(row.day) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} />
-              <Tooltip formatter={numericTooltip(v => [`${v.toLocaleString('ar-EG-u-nu-latn')} ج`, 'إيراد'])} />
-              <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="url(#revGrad)" strokeWidth={2} />
+              <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={4} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={short} />
+              <Tooltip formatter={numericTooltip(value => [`${value.toLocaleString('ar-EG-u-nu-latn')} ج`, 'الإيراد'])} />
+              <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="#d1fae5" name="الإيراد" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-
-        {/* Leads by day */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
-            <UserPlus size={15} className="text-blue-500" /> ليدات جديدة — آخر 7 أيام
-          </h3>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={data?.leadsByDay.map(r => ({ ...r, day: dayLabel(r.day) })) ?? []}>
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-bold text-gray-700">الليدات — آخر 30 يوم</h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={data.leadsByDay.map(row => ({ ...row, day: dayLabel(row.day) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" tick={{ fontSize: 10 }} />
+              <XAxis dataKey="day" tick={{ fontSize: 10 }} interval={4} />
               <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-              <Tooltip formatter={numericTooltip(v => [v, 'ليد'])} />
+              <Tooltip formatter={numericTooltip(value => [value, 'ليد'])} />
               <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} name="ليدات" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Top staff */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-          <Award size={16} className="text-amber-500" />
-          <h3 className="font-bold text-gray-700 text-sm">أفضل الموظفين — آخر 30 يوم (حسب العمولة)</h3>
-        </div>
-        <div className="divide-y divide-gray-50">
-          {data?.topStaff.length ? data.topStaff.map((s, i) => {
-            const maxEarned = data.topStaff[0]?.earned || 1;
-            return (
-              <div key={i} className="flex items-center gap-4 px-5 py-3">
-                <span className="text-lg">{['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-sm text-gray-800 truncate">{s.name}</span>
-                    <span className="text-xs text-amber-600 font-bold ml-2">{fmt(s.earned)} ج</span>
-                  </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full">
-                    <div
-                      className="h-1.5 rounded-full bg-amber-400"
-                      style={{ width: `${Math.round((s.earned / maxEarned) * 100)}%` }}
-                    />
-                  </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+          <h3 className="flex items-center gap-2 border-b border-gray-100 px-5 py-3 text-sm font-bold text-gray-700"><Award size={16} className="text-amber-500" /> أكتر ناس حصّلوا فلوس — الشهر ده</h3>
+          <div className="divide-y divide-gray-50">
+            {data.topCollectors.length ? data.topCollectors.map((row, index) => (
+              <div key={row.id} className="flex items-center gap-3 px-5 py-3">
+                <span className="w-6 text-center text-sm font-black text-gray-400">{index + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold text-gray-800">{row.name}</span><span className="shrink-0 text-xs font-bold text-amber-600">{short(row.revenue)} ج</span></div>
+                  <div className="h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full bg-amber-400" style={{ width: `${Math.max(3, Math.round((row.revenue / top) * 100))}%` }} /></div>
                 </div>
-                <span className="text-xs text-gray-400 flex-shrink-0">{s.deals} صفقة</span>
+                <span className="shrink-0 text-xs text-gray-400">{n(row.payments)} دفعة</span>
               </div>
-            );
-          }) : (
-            <div className="px-5 py-8 text-center text-gray-400 text-sm">لا توجد بيانات عمولات هذا الشهر</div>
-          )}
+            )) : <div className="px-5 py-8 text-center text-sm text-gray-400">مفيش دفعات متسجلة بإسم موظف الشهر ده</div>}
+          </div>
         </div>
-      </div>
 
-      {/* System health */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'إجمالي المشتركين', value: data ? String(data.subscribers.total) : '—', icon: Users, color: 'gray' },
-          { label: 'مشتركون نشطون', value: data ? String(data.subscribers.active) : '—', icon: Activity, color: 'emerald' },
-          { label: 'تذاكر مفتوحة', value: data ? String(data.alerts.openTickets) : '—', icon: AlertCircle, color: data?.alerts.openTickets ? 'amber' : 'gray' },
-          { label: 'استردادات معلقة', value: data ? String(data.alerts.pendingRefunds) : '—', icon: AlertCircle, color: data?.alerts.pendingRefunds ? 'rose' : 'gray' },
-        ].map(item => {
-          const Icon = item.icon;
-          return (
-            <div key={item.label} className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-lg bg-${item.color}-50 flex items-center justify-center flex-shrink-0`}>
-                <Icon size={16} className={`text-${item.color}-500`} />
-              </div>
-              <div>
-                <div className="text-xl font-extrabold text-gray-900">{item.value}</div>
-                <div className="text-xs text-gray-400">{item.label}</div>
-              </div>
+        {team && (
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-700"><Users size={16} className="text-teal-500" /> الفريق النهارده</h3>
+          {attended ? (
+            <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+              {[['حاضرين', team.present, 'text-emerald-600'], ['متأخرين', team.late, 'text-amber-600'], ['غايبين', team.absent, 'text-rose-600'], ['إجازة', team.onLeave, 'text-sky-600']].map(([label, value, tone]) => (
+                <div key={label as string} className="rounded-xl bg-gray-50 p-3"><div className={`text-2xl font-extrabold ${tone}`}>{n(value as number)}</div><div className="text-xs text-gray-500">{label}</div></div>
+              ))}
             </div>
-          );
-        })}
+          ) : <p className="py-4 text-sm text-gray-400">مفيش حضور متسجل النهارده لسه — البصمة بتترفع من «الموارد البشرية».</p>}
+          <p className="mt-3 text-xs text-gray-400">{n(team.staff)} موظف نشط في النظام.</p>
+        </div>
+        )}
       </div>
-      {/* The server's signing secrets: amber from day 330, before day 370 stops a restart. */}
-      <SecretRotationCard />
-
     </div>
   );
 }

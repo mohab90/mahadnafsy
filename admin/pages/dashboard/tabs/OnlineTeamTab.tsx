@@ -9,10 +9,11 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useAccess } from '../../../hooks/useAccess';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import OnlineLoadSection from './online-team/OnlineLoadSection';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
-type SubTab = 'overview' | 'online' | 'collection' | 'targets';
+type SubTab = 'overview' | 'online' | 'collection' | 'targets' | 'load';
 
 interface Props { notify: NotifyFn; }
 
@@ -115,13 +116,17 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   // guaranteed to have every save rejected.
   // From the context: staffMembers is empty for the ten roles that cannot read
   // the staff list, and this used to search it alone.
-  const canManageTargets = useAccess().can('manage_sales_team');
+  const access = useAccess();
+  const canManageTargets = access.can('manage_sales_team');
+  // The collections, the overdue instalments and the targets are the department's money (manage_subscribers). Whoever holds only view_perf_online opens this page
+  // for «توزيع العملاء» — figures that name no client and no amount.
+  const seesMoney = access.can('manage_subscribers');
   // What the teams collected, what is overdue and who holds how many clients, added up by the server for the period
   // (GET /api/admin/online-team-summary) instead of out of every online client and every payment of the period.
   const [summary, setSummary] = useState<OnlineTeamSummary | null>(null);
 
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>(seesMoney ? 'overview' : 'load');
   const [targets, setTargets] = useState<StaffTargets>({});
   const [editingTargets, setEditingTargets] = useState<StaffTargets>({});
   const [editMode, setEditMode] = useState(false);
@@ -133,6 +138,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     staffMembers.filter(s => s.role === 'collection' && s.status === 'active'), [staffMembers]);
 
   useEffect(() => {
+    if (!seesMoney) return;
     mysqlAdmin.listSalesTargets(month()).then((rows) => {
       const next: StaffTargets = {};
       rows.forEach((row) => {
@@ -142,14 +148,15 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
       });
       setTargets(next);
     }).catch(() => notify('error', 'تعذر تحميل أهداف فريق الأونلاين والتحصيل'));
-  }, [staffMembers, notify]);
+  }, [staffMembers, notify, seesMoney]);
   useEffect(() => {
+    if (!seesMoney) return undefined;
     let live = true;
     mysqlAdmin.adminGet<OnlineTeamSummary>(`/admin/online-team-summary?range=${timeRange}`)
       .then(answer => { if (live) setSummary(answer); })
       .catch(() => { if (live) notify('error', 'تعذر تحميل حركة التحصيل الموحّدة'); });
     return () => { live = false; };
-  }, [notify, timeRange]);
+  }, [notify, timeRange, seesMoney]);
 
   const paidThisPeriod = summary?.paid.total ?? 0;
   const paymentsInPeriod = summary?.paid.count ?? 0;
@@ -232,10 +239,13 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   ];
 
   const SUB_TABS: { key: SubTab; label: string; icon: React.ElementType }[] = [
-    { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
-    { key: 'online', label: 'فريق الأونلاين', icon: Monitor },
-    { key: 'collection', label: 'فريق التحصيل', icon: Wallet },
-    { key: 'targets', label: 'الأهداف', icon: Target },
+    ...(seesMoney ? [
+      { key: 'overview' as const, label: 'نظرة عامة', icon: BarChart3 },
+      { key: 'online' as const, label: 'فريق الأونلاين', icon: Monitor },
+      { key: 'collection' as const, label: 'فريق التحصيل', icon: Wallet },
+      { key: 'targets' as const, label: 'الأهداف', icon: Target },
+    ] : []),
+    { key: 'load', label: 'توزيع العملاء', icon: Users },
   ];
 
   // ── Rank medal helper ──────────────────────────────────────────────────
@@ -255,7 +265,8 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               الأونلاين ({onlineTeam.length}) · التحصيل ({collectionTeam.length}) · {month()}
             </p>
           </div>
-          <div className="flex bg-white/10 rounded-xl overflow-hidden">
+          {seesMoney && (
+<div className="flex bg-white/10 rounded-xl overflow-hidden">
             {RANGE_OPTIONS.map(opt => (
               <button key={opt.key} onClick={() => setTimeRange(opt.key)}
                 className={`px-3 py-1.5 text-sm font-medium transition-colors ${timeRange === opt.key ? 'bg-white text-teal-700' : 'text-teal-100 hover:bg-white/10'}`}>
@@ -263,9 +274,11 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               </button>
             ))}
           </div>
+)}
         </div>
 
         {/* KPI grid */}
+        {seesMoney && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
           {[
             { label: 'فريق الأونلاين', value: onlineTeam.length, icon: Monitor, bg: 'bg-teal-500/30' },
@@ -282,6 +295,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
             </div>
           ))}
         </div>
+        )}
       </div>
 
       {/* ── Sub-tabs nav ──────────────────────────────────────────── */}
@@ -297,6 +311,8 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
       </div>
 
       {/* ════════════════════ OVERVIEW ════════════════════ */}
+      {activeSubTab === 'load' && <OnlineLoadSection />}
+
       {activeSubTab === 'overview' && (
         <div className="space-y-5">
 

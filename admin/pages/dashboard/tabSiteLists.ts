@@ -51,25 +51,18 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // loaded clients and leads (Dashboard.tsx handleClientDbBook).
   client: ['subscribers', 'leads'],
   refund_requests: ['subscribers'],
-  installment_plans: ['subscribers'],
   subscriptions: ['subscribers'],
-  archived_clients: [],
   // Every part of it reads the server: the table, the board and the pools a page at a time, the reminders, the
   // counts and the performance figures as aggregates (LeadsTab.tsx). The 500 newest leads and clients it asked for
   // were 1 MB on the lab, and only ever a fallback that counted the page as the table.
   leads: [],
   sales_hub: ['leads', 'orders', 'subscribers'],
   sales_team: ['leads', 'orders'],
-  sales_reports: [], // the server's own figures (GET /api/admin/reports/sales-breakdown)
-  sales_planning: ['leads', 'orders'],
   staff_performance: ['leads', 'orders'],
   sales_daqqi_schedule: [],
   marketing_hub: ['leads', 'subscribers', 'discounts', 'automationWorkflows'],
   campaigns: [], // the messaging hub reads its own server routes
-  online_team: ['leads', 'subscribers'],
   online_hub: [],
-  // The four analyses (retention, cohort, revenue sources, expenses) are counted by the server (GET /api/admin/analytics-hub/*).
-  analytics_hub: [],
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.
   // The orders, leads and clients are counted by the server (GET /api/admin/analytics-summary).
   daqqi_stats: ['discounts', 'contactMessages'],

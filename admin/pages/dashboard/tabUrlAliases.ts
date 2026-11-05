@@ -22,7 +22,11 @@ const URL_TO_TAB: Record<string, TabKey> = {
   online_clients: 'online_clients',
   // Keys of screens since merged into a hub. Opened by an old link they drew
   // an empty page; they land on the screen that holds them now.
-  analytics: 'analytics_hub',
+  // Pages removed on 5 Nov 2026 (analytics, sales planning, sales reports, the clients' archive, online management, instalment plans): an old link or bookmark
+  // lands on the screen that now holds what it showed.
+  analytics: 'kpi_dashboard', analytics_hub: 'kpi_dashboard', retention: 'kpi_dashboard', cohort_analysis: 'kpi_dashboard', revenue_sources: 'kpi_dashboard', expense_analytics: 'kpi_dashboard',
+  sales_planning: 'sales_hub', sales_reports: 'sales_hub', followup_reminders: 'sales_hub', lead_scoring: 'sales_hub', forecast: 'sales_hub', sales_goals: 'sales_hub', revenue_forecast: 'sales_hub',
+  archived_clients: 'client', online_team: 'online_hub', installment_plans: 'online_clients',
   ai_dev: 'ask_ai',
   hub_advanced: 'content_hub',
   site_design: 'content_hub',

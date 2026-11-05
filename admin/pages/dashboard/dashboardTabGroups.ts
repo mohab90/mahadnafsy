@@ -29,10 +29,7 @@ export const contentHubRouteTabs = new Set<string>([
   // individually; their keys redirect into the matching section.
   'integrations',
   'security_center',
-  'analytics_hub',
   'campaigns',
-  'sales_planning',
-  'archived_clients',
   'cx_team',
   'branches_settings',
   'content_hub',
@@ -42,7 +39,6 @@ export const contentHubRouteTabs = new Set<string>([
   'team_inbox',
   'service_hub',
   'tasks_board',
-  'installment_plans',
   'tickets',
   'nps_dashboard',
   'daqqi_team',
@@ -56,8 +52,6 @@ export const contentHubRouteTabs = new Set<string>([
   'staff_performance',
   'sales_daqqi_schedule',
   'sales_team',
-  'sales_reports',
-  'online_team',
   'subscriptions',
   'consultation_calendar',
   'my_hr',
@@ -188,7 +182,6 @@ export const fullSubscriberTabs = new Set<string>([
   // subscribers array. Absent from every set they were counting the 500 newest
   // clients — and plans and renewals owed by the older ones are exactly the ones a
   // collection officer is looking for.
-  'installment_plans',
   'subscriptions',
 ]);
 

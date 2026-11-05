@@ -79,17 +79,6 @@ test('scoring credits every shade of interested', () => {
   assert.match(scoring, /if \(isInterestedLeadStatus\(status\)\) score \+= Number\(W\.status_interested\)/);
 });
 
-test('the forecast keeps booking ahead of the rest, and stops dropping followup', () => {
-  // interested_booking commits; the other shades sit in best_case.
-  // interested_followup used to miss both branches and land in pipeline,
-  // forecasting a warm lead as coldly as an untouched one.
-  const forecast = codeOnly(read('lib/crmForecast.js'));
-  const commitAt = forecast.indexOf("'interested_booking', 'qualified', 'negotiation'");
-  const bestCaseAt = forecast.indexOf('isInterestedLeadStatus(status)) return');
-  assert.ok(commitAt > 0 && bestCaseAt > 0, 'both branches must exist');
-  assert.ok(commitAt < bestCaseAt, 'booking must be tested before the general interested case');
-});
-
 test('grouping lives in one module, so a new status is classified once', () => {
   const module_ = codeOnly(read('lib/leadStatuses.js'));
   assert.match(module_, /TERMINAL_LEAD_STATUSES/);

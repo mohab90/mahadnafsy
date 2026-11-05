@@ -36,7 +36,7 @@ test("the institute's revenue is not readable by everyone with a staff login", (
   // view_dashboard — the permission that only means "is staff", which every
   // role holds down to «موظف»: a trainer's session cookie read the books.
   assert.ok(
-    !route.includes("router.get('/api/admin/dashboard/kpi'") && route.includes("router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePermission('view_reports')"),
+    !route.includes("router.get('/api/admin/dashboard/kpi'") && route.includes("router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePermission('view_financial')"),
     'the institute\'s KPI summary is open to a permission every employee holds (the second KPI route was removed on 3 Nov 2026)'
   );
   // The premise: view_dashboard really is universal.

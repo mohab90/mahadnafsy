@@ -259,7 +259,6 @@ export const mysqlClient = {
       '/me/quiz-attempts', { method: 'POST', body: JSON.stringify({ quizId, answers }) }, true
     ),
   checkIsStaff: () => apiFetch<{ isStaff: boolean; isAdmin: boolean; role?: string; staffId?: string }>('/me/is-staff', {}, true),
-  getStaffSelf: () => apiFetch<AR>('/staff/me', {}, true),
   saveLectureProgress,
   // Auth-gated: returns a short-lived media ticket only if enrollment policy allows access.
   getLectureAccess: (lectureId: string) =>
@@ -324,7 +323,6 @@ export const mysqlClient = {
   // «خطوتك الجاية»: the round's next session, what is owed for it, the certificates earned.
   getMyNextStep: () => apiFetch<MyNextStep>('/me/next-step', {}, true),
   getMyTimeline: () => apiFetch<AR[]>('/me/timeline', {}, true),
-  verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
   // «يظهر انه العميل عملها تحميل»: the desk's «شهادات المعهد» sees it.
   // Joining from the site counts as attending («محضروش اللايف قبل كدا»).
   // The client's own rating link (api/lib/selfRating.js) — no account needed.
@@ -333,7 +331,6 @@ export const mysqlClient = {
   sendSelfRating: (roundId: string, body: AR) =>
     apiFetch<AR>(`/public/rate/${encodeURIComponent(roundId)}`, { method: 'POST', body: JSON.stringify(body) }),
   joinLiveStream: (id: string) => apiFetch<AR>(`/me/live-streams/${encodeURIComponent(id)}/join`, { method: 'POST' }, true),
-  markCertificateDownloaded: (code: string) => apiFetch<AR>(`/me/completions/${encodeURIComponent(code)}/downloaded`, { method: 'POST' }, true),
   // Referral
   getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),
   getMyLoyalty: () => apiFetch<{ ok: boolean; balance: number; ledger: AR[] }>('/me/loyalty', {}, true),
@@ -355,18 +352,10 @@ export const mysqlForms = {
   submitJoinUs: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/join-us', { method: 'POST', body: JSON.stringify(data) }),
   // Each carries the visit's ad parameters (lib/attribution.ts), kept on the lead.
   submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }), headers: leadHeaders() }),
-  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }), headers: leadHeaders() }),
 };
 
 // ── Paymob payment helpers (gateway suspended — manual payment flow) ─────────
 export const mysqlPaymob = {
-  /** Reserve order in DB for manual payment tracking */
-  reserveOrder: (data: AR) =>
-    apiFetch<{ ok: boolean }>('/orders/reserve', { method: 'POST', body: JSON.stringify(data) }),
-  /** Paymob gateway suspended — always throws */
-  verifyPayment: (_params: Record<string, string>): Promise<never> => {
-    return Promise.reject(new Error('بوابة الدفع الإلكتروني غير متاحة حالياً — يرجى التواصل معنا عبر واتساب لإتمام الدفع.'));
-  },
 };
 
 // ── Custom Auth ───────────────────────────────────────────────────────────────
@@ -395,8 +384,6 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/update-password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }, true),
   resetPassword: (resetToken: string, newPassword: string) =>
     apiFetch<{ ok: boolean }>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ resetToken, newPassword }) }),
-  updateSubscriberCredentials: (subscriberId: string, currentEmail: string, opts: { newEmail?: string; newPassword?: string }) =>
-    apiFetch<{ ok: boolean }>(`/admin/subscribers/${subscriberId}/credentials`, { method: 'PUT', body: JSON.stringify({ currentEmail, ...opts }) }, true),
   forgotPassword: (email: string) =>
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>

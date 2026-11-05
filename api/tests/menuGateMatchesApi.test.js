@@ -58,12 +58,9 @@ test('no screen an HR account can open answers 403', () => {
   // Each pairing is the API the screen calls, read from the route file.
   const routes = {
     kpi_dashboard: read('api/routes/analytics/dashboard.js'),
-    sales_planning: read('api/routes/analytics/sales.js'),
   };
   assert.match(routes.kpi_dashboard, /router\.get\('\/api\/admin\/kpi\/summary', requireAuth, requireAdmin/,
     'the KPI summary is admin-only, so its tab cannot be gated on view_reports');
-  assert.match(routes.sales_planning, /router\.get\('\/api\/admin\/sales-targets', requireAuth, requireAdminOrStaff,\s+requireAnyPermission\('view_leads', 'manage_subscribers', 'view_perf_online'\)/,
-    'the targets need view_leads or the online team\'s keys — none of which HR holds');
   for (const permission of ['view_leads', 'manage_subscribers', 'view_perf_online']) assert.ok(!hr.has(permission), permission);
   // «أداء الموظفين» is the HR section's own screen, so its API takes view_hr as
   // well — the two gates agree, which is the rule this file is about. Keeping
@@ -74,7 +71,7 @@ test('no screen an HR account can open answers 403', () => {
   assert.deepEqual(hrOpens, ['view_hr'], 'the HR sidebar and the performance API no longer agree');
 
   // So none of these may be reachable by a permission HR holds.
-  for (const tab of ['overview', 'kpi_dashboard', 'sales_planning', 'sales_team', 'sales_reports', 'online_team', 'security_center']) {
+  for (const tab of ['overview', 'kpi_dashboard', 'sales_team', 'security_center']) {
     const allowed = gateFor(tab);
     const opensForHr = allowed.filter(permission => hr.has(permission));
     assert.deepEqual(opensForHr, [],
@@ -95,8 +92,4 @@ test('the team screens show the team they are named for', () => {
   assert.match(sales, /SALES_ROLES\.has\(String\(s\.role \|\| ''\)\.toLowerCase\(\)\)/,
     'it listed every staff member and ranked them all by conversion rate');
 
-  const online = codeOnly(read('admin/pages/dashboard/tabs/OnlineTeamMgmtTab.tsx'));
-  assert.ok(online.includes("'collection'"),
-    'the collection desk works the online pipeline and was excluded, leaving the screen all but empty');
-  assert.ok(!online.includes("['online_manager', 'support', 'consultant'].includes(s.role)"));
 });

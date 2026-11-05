@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ComponentProps } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BarChart3, CalendarDays, Target, Trophy, TrendingUp } from 'lucide-react';
+import { BarChart3, CalendarDays, FileText, Target, Trophy, TrendingUp } from 'lucide-react';
+import { useAccess } from '../../../hooks/useAccess';
 import type { SalesTarget } from '../../../types';
 
 const TeamDailyReport = lazy(() => import('./leads/TeamDailyReport').then(module => ({ default: module.TeamDailyReport })));
@@ -8,6 +9,7 @@ const CrmCoachingButton = lazy(() => import('./leads/CrmCoachingPanel').then(mod
 const LeadsTab = lazy(() => import('./LeadsTab'));
 const SalesHubTab = lazy(() => import('./SalesHubTab'));
 const SalesTeamTab = lazy(() => import('./SalesTeamTab'));
+const SalesReportSection = lazy(() => import('./sales-performance/SalesReportSection'));
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type LeadsTabProps = Omit<ComponentProps<typeof LeadsTab>, 'notify' | 'performanceOnly'>;
@@ -26,12 +28,15 @@ type LeadsTabProps = Omit<ComponentProps<typeof LeadsTab>, 'notify' | 'performan
  *                     scorecard and the charts — the rest of that tab
  *   لوحة الفريق       the leaderboard, follow-ups and the team's posts — «مركز المبيعات»
  *   الشهر             the month's leads, conversions and revenue per rep — «فريق المبيعات والتشغيل»
+ *   التقرير           the leads by status and source and the money by employee and by course — «تقارير المبيعات», removed as a page on 5 Nov 2026
+ *                     (manage_sales_team, like its endpoint). The day's report («الفريق النهارده») is the team's own and is left as it is.
  */
 const SECTIONS = [
   { key: 'today', label: 'الفريق النهارده', icon: CalendarDays },
   { key: 'performance', label: 'الأداء والأهداف', icon: Target },
   { key: 'board', label: 'لوحة الفريق', icon: Trophy },
   { key: 'month', label: 'الشهر', icon: BarChart3 },
+  { key: 'report', label: 'التقرير', icon: FileText },
 ] as const;
 type SectionKey = typeof SECTIONS[number]['key'];
 
@@ -49,8 +54,10 @@ export default function SalesPerformancePage({ notify, salesTargets, onOpenStaff
 }) {
   // In the address, so a link can open a section and a reload keeps it.
   const [params, setParams] = useSearchParams();
+  const canReport = useAccess().can('manage_sales_team');
+  const sections = SECTIONS.filter(item => item.key !== 'report' || canReport);
   const requested = params.get('section') as SectionKey | null;
-  const section: SectionKey = SECTIONS.some(item => item.key === requested) ? requested as SectionKey : 'today';
+  const section: SectionKey = sections.some(item => item.key === requested) ? requested as SectionKey : 'today';
   const choose = (key: SectionKey) => setParams(current => {
     const next = new URLSearchParams(current);
     next.set('section', key);
@@ -68,7 +75,7 @@ export default function SalesPerformancePage({ notify, salesTargets, onOpenStaff
       </header>
 
       <nav className="flex gap-1.5 overflow-x-auto rounded-xl bg-gray-100 p-1" role="tablist" aria-label="أقسام أداء المبيعات">
-        {SECTIONS.map(({ key, label, icon: Icon }) => (
+        {sections.map(({ key, label, icon: Icon }) => (
           <button key={key} type="button" role="tab" aria-selected={section === key} onClick={() => choose(key)}
             className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-sm transition ${section === key
               ? 'bg-white font-bold text-indigo-700 shadow-sm'
@@ -83,6 +90,7 @@ export default function SalesPerformancePage({ notify, salesTargets, onOpenStaff
         {section === 'performance' && <LeadsTab notify={notify} {...leadsTabProps} performanceOnly />}
         {section === 'board' && <SalesHubTab notify={notify} salesTargets={salesTargets} onOpenStaffProfile={onOpenStaffProfile} />}
         {section === 'month' && <SalesTeamTab notify={notify} salesTargets={salesTargets} onOpenStaffProfile={onOpenStaffProfile} />}
+        {section === 'report' && <SalesReportSection />}
       </Suspense>
     </div>
   );

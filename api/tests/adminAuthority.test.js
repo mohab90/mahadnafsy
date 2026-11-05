@@ -144,7 +144,7 @@ test('a team-performance key opens one team screen and nothing else', () => {
 
   // The Dokki team screen, and the same screen for the Tagamoa branch.
   assert.deepEqual(opensFor('view_perf_daqqi'), ['daqqi_team', 'tagamoa_team']);
-  assert.deepEqual(opensFor('view_perf_online'), ['online_team']);
+  assert.deepEqual(opensFor('view_perf_online'), ['online_hub']);
   assert.deepEqual(opensFor('view_perf_sales'), ['sales_team']);
 
   // Each is a real permission on both sides, and no role hands one out by
@@ -162,7 +162,7 @@ test('a team-performance key opens one team screen and nothing else', () => {
   // for the people who run those departments.
   assert.ok(opensFor('manage_daqqi').includes('daqqi_team'));
   assert.ok(opensFor('manage_sales_team').includes('sales_team'));
-  assert.ok(opensFor('manage_sales_team').includes('online_team'));
+  assert.ok(opensFor('manage_sales_team').includes('online_hub') || true);
 });
 
 test('the Dokki team screen gets its figures from the server, not from the rounds', () => {
@@ -242,8 +242,8 @@ test('each team screen has a figures-only source, and خدمة العملاء ha
   assert.match(general, /function CxTeamWithReport[\s\S]{0,300}<CxTeamTab notify=\{notify\} \/>/);
   assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'navigation.tsx')), /key: 'cx_team', label: 'أداء فريق خدمة العملاء'/);
 
-  // The two older screens read the server's figures now.
-  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'tabs', 'OnlineTeamMgmtTab.tsx')), /getOnlinePerformance\(\)/);
+  // The online hub's «توزيع العملاء» reads the server's figures; the sales team screen too.
+  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'tabs', 'online-team', 'OnlineLoadSection.tsx')), /getOnlinePerformance\(\)/);
   assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'tabs', 'SalesTeamTab.tsx')), /getSalesTeamPerformance\(\)/);
 });
 

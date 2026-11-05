@@ -1,10 +1,8 @@
 import React, { Suspense } from 'react';
 import IntegrationsTab from './tabs/IntegrationsTab';
 import SecurityCenterTab from './tabs/SecurityCenterTab';
-import AnalyticsHubTab from './tabs/AnalyticsHubTab';
 import StaffPerformanceHubTab from './tabs/StaffPerformanceHubTab';
 import CampaignsTab from './tabs/CampaignsTab';
-import SalesPlanningTab from './tabs/SalesPlanningTab';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
@@ -15,7 +13,6 @@ import { DokkiWeeklyPanel } from './tabs/daqqi/DokkiWeeklyPanel';
 import { useSiteData } from '../../context/SiteDataContext';
 import {
   AnalyticsTab,
-  ArchivedClientsTab,
   BranchesSettingsTab,
   BranchWorkspacesTab,
   ConsultationCalendarTab,
@@ -31,7 +28,6 @@ import {
   FinancialBranchTab,
   FinancialReportsHub,
   HrTab,
-  InstallmentPlansTab,
   InterviewsTab,
   JoinUsAdminTab,
   LeadSourcesSettingsTab,
@@ -40,11 +36,9 @@ import {
   NpsDashboardTab,
   NotifInboxMgmtTab,
   StaffAnnouncementsTab,
-  OnlineTeamMgmtTab,
   RecurringExpensesTab,
   SalesDaqqiScheduleTab,
   RegistrationsTab,
-  SalesReportsTab,
   SalesTeamTab,
   SettingsHubTab,
   SubscriptionsTab,
@@ -107,7 +101,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'team_inbox', Component: TeamInboxTab, spinner: 'emerald' },
   { key: 'service_hub', Component: ServiceHubTab, spinner: 'primary' },
   { key: 'tasks_board', Component: TasksBoardTab, spinner: 'primary' },
-  { key: 'installment_plans', Component: InstallmentPlansTab, spinner: 'primary' },
   { key: 'interviews', Component: InterviewsTab, spinner: 'primary' },
   { key: 'registrations', Component: RegistrationsTab, spinner: 'primary' },
   // The old «تذاكر الدعم» screen is the problems page now (8 Oct 2026); its links land there.
@@ -124,12 +117,9 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'staff_performance', Component: StaffPerformanceHubTab, spinner: 'indigo' },
   { key: 'sales_daqqi_schedule', Component: SalesDaqqiScheduleTab, spinner: 'amber' },
   { key: 'sales_team', Component: SalesTeamTab, spinner: 'indigo' },
-  { key: 'sales_reports', Component: SalesReportsTab, spinner: 'indigo' },
-  { key: 'online_team', Component: OnlineTeamMgmtTab, spinner: 'indigo' },
   { key: 'subscriptions', Component: SubscriptionsTab, spinner: 'indigo' },
   { key: 'consultation_calendar', Component: ConsultationCalendarTab, spinner: 'indigo' },
   { key: 'branches_settings', Component: BranchesSettingsTab, spinner: 'indigo' },
-  { key: 'archived_clients', Component: ArchivedClientsTab, spinner: 'indigo' },
   { key: 'offboarding', Component: OffboardingTab, spinner: 'indigo' },
   { key: 'settings_hub', Component: SettingsHubTab, spinner: 'indigo' },
   { key: 'lead_sources_settings', Component: LeadSourcesSettingsTab, spinner: 'blue' },
@@ -140,9 +130,7 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'system_settings', Component: SystemSettingsTab, spinner: 'indigo' },
   { key: 'integrations', Component: IntegrationsTab, spinner: 'indigo' },
   { key: 'security_center', Component: SecurityCenterTab, spinner: 'indigo' },
-  { key: 'analytics_hub', Component: AnalyticsHubTab, spinner: 'indigo' },
   { key: 'campaigns', Component: CampaignsTab, spinner: 'indigo' },
-  { key: 'sales_planning', Component: SalesPlanningTab, spinner: 'indigo' },
 ];
 
 function LoadingSpinner({ tone = 'indigo' }: { tone?: NotifyTabEntry['spinner'] }) {

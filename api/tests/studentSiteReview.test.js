@@ -47,7 +47,7 @@ test('a course inside a track shows the track\'s balance; its own balance wins',
 
 test('the account page reads the server\'s balances', () => {
   const route = read('api/routes/public.js');
-  assert.match(route, /const balanceMap = await itemBalances\(pool, \{ tenantId: req\.tenantId, subscriberId: sub\.id \}\);/);
+  assert.match(route, /itemBalances\(pool, \{ tenantId: req\.tenantId, subscriberId: sub\.id \}\)/);
   assert.match(route, /res\.json\(\{ \.\.\.mapped, enrolledCoursesData, balances \}\);/);
   const page = read('client/pages/UserDashboard.tsx');
   assert.match(page, /const coursePayMap = balancesByCourse\(balances, bundles\);/);

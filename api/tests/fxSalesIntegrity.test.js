@@ -26,7 +26,7 @@ test('money rows freeze their EGP value and financial reports consume the snapsh
   assert.match(finance, /fx\.source, paymentId, tenantId/);
   assert.match(finance, /sign < 0[\s\S]*snapshottedEgp/);
   assert.match(reports, /SUM\(amount_egp\)/);
-  assert.match(dashboard, /SUM\(amount_egp\)/);
+  assert.match(dashboard, /SUM\(p\.amount_egp\)/);
 });
 
 // The snapshot only protects a total that actually reads it.

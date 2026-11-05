@@ -42,10 +42,8 @@ import { TAB_PERMISSION_MAP } from '../dashboardShared';
 import { realCourseIds } from '../tabs/leads/leadCourseLabel';
 import { RETIRED_INTEGRATION_TABS } from '../tabs/IntegrationsTab';
 import { RETIRED_SECURITY_TABS } from '../tabs/SecurityCenterTab';
-import { RETIRED_ANALYTICS_TABS } from '../tabs/AnalyticsHubTab';
 import { RETIRED_CAMPAIGN_TABS } from '../tabs/CampaignsTab';
 import { RETIRED_STAFF_PERFORMANCE_TABS } from '../tabs/StaffPerformanceHubTab';
-import { RETIRED_SALES_TABS } from '../tabs/SalesPlanningTab';
 import { useSaveFailureToasts } from './useSaveFailureToasts';
 import { useAccess } from '../../../hooks/useAccess';
 import { visibleMenu } from '../../../lib/access';
@@ -55,9 +53,7 @@ import { visibleMenu } from '../../../lib/access';
 const RETIRED_SECTION_TABS: ReadonlyArray<readonly [string, Record<string, string>]> = [
   ['integrations', RETIRED_INTEGRATION_TABS],
   ['security_center', RETIRED_SECURITY_TABS],
-  ['analytics_hub', RETIRED_ANALYTICS_TABS],
   ['campaigns', RETIRED_CAMPAIGN_TABS],
-  ['sales_planning', RETIRED_SALES_TABS],
   ['staff_performance', RETIRED_STAFF_PERFORMANCE_TABS],
   ['marketing_hub', { automation: 'automation' }],
 ];
@@ -269,11 +265,6 @@ export function useDashboardModel() {
     for (const [base, map] of RETIRED_SECTION_TABS) {
       const section = map[urlTab as string];
       if (section) { navigate(`/dashboard/${base}/${section}`, { replace: true }); return; }
-    }
-    // توقعات الإيرادات and توقعات المبيعات were one-line re-exports of the same
-    // CrmForecastWorkspace — one screen listed twice. It lives under sales now.
-    if (urlTab === 'revenue_forecast') {
-      navigate('/dashboard/sales_planning/forecast', { replace: true }); return;
     }
     // The financial hub already contained these; the menu was repeating it.
     if (['balance_sheet', 'cash_flow', 'budget_tracker', 'recurring_expenses'].includes(String(urlTab))) {

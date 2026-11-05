@@ -608,7 +608,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   online_clients:     'view_subscribers',
   client:             'view_client_db',
 
-  archived_clients: 'delete_subscribers',
 
   branches_settings: 'manage_settings',
   registrations:      'view_leads',
@@ -621,8 +620,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // marketing section they have no business in. Campaign tooling and channel
   // configuration are the same job, so they share the same permission.
   marketing_hub:      ['manage_channel_settings', 'manage_automation'],
-  online_hub:         'manage_subscribers',
-  installment_plans:  'view_financial',
+  online_hub:         ['manage_subscribers', 'view_perf_online'],
   consultations:      'view_consultations',
   community:          'view_community',
   daqqi_schedule:     'manage_daqqi',
@@ -705,13 +703,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // It is held by online_manager, daqqi_manager and sales_collection_manager —
   // whose bar already lists sales_hub, so nothing they use moves.
   sales_team:         ['manage_sales_team', 'view_perf_sales'],
-  sales_reports:      'manage_sales_team',
   // Writing targets is a manager action (see POST /api/admin/sales-targets):
   // matched to the API gate so a sales rep doesn't see a tab that 403s.
   // إدارة فريق الأونلاين is a team screen too, and view_subscribers is what
   // every customer-facing role holds — so support and consultant were both
   // offered the online team's assignments.
-  online_team:        ['manage_sales_team', 'view_perf_online'],
   subscriptions:     'view_financial',
   consultation_calendar: 'view_consultations',
   // Every permission the seven merged screens used, so nobody loses a screen
@@ -731,7 +727,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // institute's revenue and where it goes. view_reports is held by HR, support,
   // the consultants and the experts so that each can read the reports of their
   // own job, and it was handing all four of them the company's finances.
-  analytics_hub:      'view_financial',
   campaigns:          'manage_channel_settings',
   // Sales planning is the mixed one: follow-ups on view_leads, scoring on
   // manage_leads, the forecast on view_reports and targets on manage_sales_team.
@@ -739,7 +734,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // quarter, and it was letting a consultant into the targets and forecast
   // screen. Anyone who works the pipeline (manage_leads) or runs the team
   // (manage_sales_team) still opens it.
-  sales_planning:     ['manage_leads', 'manage_sales_team'],
   // Managing the notification inbox is a marketing/ops tool, not something every
   // employee who can receive notifications should see — manage_notifications is
   // held by sales reps and support, which would have put the whole التسويق group

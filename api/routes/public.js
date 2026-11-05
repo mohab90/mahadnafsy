@@ -1050,13 +1050,15 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
     ]);
     if (!sub) return res.json(null);
 
-    const [enrollments] = await pool.query(
+    // The reads below depend only on the client, so they run together (five round trips in a row were the page's whole wait on a loaded database).
+    const [[enrollments], [payments], [certRequests], completionRows, [installmentPlans], balanceMap] = await Promise.all([
+    pool.query(
       `SELECT e.*, c.id AS c_id, c.title AS c_title, c.slug AS c_slug,
               c.thumbnail AS c_thumb, c.instructor AS c_instructor
        FROM enrollments e
        LEFT JOIN courses c ON c.id = e.course_id
-       WHERE e.subscriber_id = ? AND e.tenant_id=? AND e.status='active'`, [sub.id, req.tenantId]);
-    const [payments] = await pool.query(
+       WHERE e.subscriber_id = ? AND e.tenant_id=? AND e.status='active'`, [sub.id, req.tenantId]),
+    pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency, p.payment_type,
        p.payment_method, p.transaction_id, p.is_installment, p.\`date\`, p.note, p.status,
        p.staff_id, p.staff_name, p.from_account, p.source, p.item_title, p.cert_type,
@@ -1066,23 +1068,18 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
        LEFT JOIN financial_documents fd ON fd.tenant_id=p.tenant_id
          AND fd.document_type='invoice' AND fd.source_type='payment' AND fd.source_id=p.id
        WHERE p.subscriber_id = ? AND p.tenant_id=? AND p.deleted_at IS NULL
-       ORDER BY p.date DESC LIMIT 200`, [sub.id, req.tenantId]);
-    const [certRequests] = await pool.query(
+       ORDER BY p.date DESC LIMIT 200`, [sub.id, req.tenantId]),
+    pool.query(
       `SELECT cr.*, c.id AS c_id, c.title AS c_title
        FROM certificate_requests cr
        LEFT JOIN courses c ON c.id = cr.course_id
-       WHERE cr.subscriber_id = ? AND cr.tenant_id=? ORDER BY cr.requested_at DESC`, [sub.id, req.tenantId]);
+       WHERE cr.subscriber_id = ? AND cr.tenant_id=? ORDER BY cr.requested_at DESC`, [sub.id, req.tenantId]),
     // Lecture progress is tracked in the lecture_completions table (POST /api/me/progress),
     // but mapSubscriber historically read it from crm_json (never populated) → progress always 0.
     // Pull the real per-lecture progress here and merge it in so client progress actually computes.
-    let lectureProgressMap = {};
-    try {
-      const [completions] = await pool.query(
-        'SELECT lecture_id, progress_pct FROM lecture_completions WHERE subscriber_id = ? AND tenant_id=?', [sub.id, req.tenantId]);
-      for (const c of completions) lectureProgressMap[c.lecture_id] = Number(c.progress_pct) || 0;
-    } catch (_) { /* table may not exist on older schema — fall back to crm_json */ }
-
-    const [installmentPlans] = await pool.query(
+    pool.query('SELECT lecture_id, progress_pct FROM lecture_completions WHERE subscriber_id = ? AND tenant_id=?', [sub.id, req.tenantId])
+      .then(([rows]) => rows).catch(() => []), // table may not exist on older schema — fall back to crm_json
+    pool.query(
       `SELECT ip.id, ip.course_id, ip.title, ip.total_amount, ip.currency, ip.installments_count,
               ip.installment_amounts, ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.notes,
               ip.created_at, c.title AS course_title
@@ -1090,7 +1087,12 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
          LEFT JOIN courses c ON c.id = ip.course_id AND c.tenant_id = ip.tenant_id
         WHERE ip.subscriber_id = ? AND ip.tenant_id = ? ORDER BY ip.created_at DESC`,
       [sub.id, req.tenantId]
-    );
+    ),
+    // What the client owes, item by item, by the one rule the desk and the receipts use (lib/agreedPrice.js).
+    itemBalances(pool, { tenantId: req.tenantId, subscriberId: sub.id }),
+    ]);
+    const lectureProgressMap = {};
+    for (const c of completionRows) lectureProgressMap[c.lecture_id] = Number(c.progress_pct) || 0;
     let mapped = mapSubscriber({ ...sub, enrollments, payments, certRequests, installmentPlans });
     // Merge DB completions over any crm_json values (DB table is the source of truth).
     mapped = { ...mapped, lectureProgress: { ...(mapped.lectureProgress || {}), ...lectureProgressMap } };
@@ -1111,7 +1113,6 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
     // The page summed only pound payments — pending and refunded ones too —
     // against a price found on the first cash payment, so a riyal client had
     // paid nothing and a track had no row at all.
-    const balanceMap = await itemBalances(pool, { tenantId: req.tenantId, subscriberId: sub.id });
     const courseIds = [...balanceMap.values()].map(entry => entry.courseId).filter(Boolean);
     const bundleIds = [...balanceMap.values()].map(entry => entry.bundleId).filter(Boolean);
     const titles = new Map();

@@ -73,7 +73,7 @@ const brief = r => `${r.status}${r.json?.code ? ' ' + r.json.code : ''}${r.json?
   console.log('\nadmin reads the release changed');
   const reads = [
     '/api/admin/dashboard/kpi', '/api/admin/kpi/summary',
-    '/api/admin/analytics/churn-risk', '/api/admin/analytics/cohorts?year=2026',
+    '/api/admin/analytics/churn-risk',
     '/api/admin/analytics/expenses', '/api/admin/analytics/retention',
     '/api/admin/analytics/revenue-forecast', '/api/admin/analytics/revenue-sources',
     '/api/admin/analytics/staff-performance', '/api/admin/automation/stats',

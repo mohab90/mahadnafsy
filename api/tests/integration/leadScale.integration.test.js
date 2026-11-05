@@ -102,13 +102,6 @@ test('after a refresh the stored score is the formula, and the KPI figures are t
   assert.equal(body.avgScore, Math.round(Number(old.avg_score)));
   assert.equal(body.totalCommunications, Number(old.total_comms));
 
-  const scored = (await get('/api/admin/leads/scored', { minScore: '20', limit: '500' })).body;
-  const [[expected]] = await pool.query('SELECT COUNT(*) AS n FROM leads WHERE tenant_id = ? AND hidden = 0 AND score >= 20', [TENANT]);
-  assert.equal(scored.total, Number(expected.n));
-  assert.equal(scored.rows.length, Number(expected.n));
-  for (let i = 1; i < scored.rows.length; i++) assert.ok(scored.rows[i - 1].score >= scored.rows[i].score, 'highest first');
-  const withComms = scored.rows.find(r => r.id === 'ls-lead-04');
-  if (withComms) assert.equal(withComms.communicationCount, 2, 'the page carries its own communication counts');
 });
 
 test('indexed search finds what the substring scan found, and falls back to it for fragments', { skip }, async () => {
