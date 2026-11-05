@@ -26,7 +26,7 @@ const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/inst
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { nextReceiptNo } = require('../lib/receiptNumbers');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
-const { itemBalances } = require('../lib/agreedPrice');
+const { itemBalances, balanceFor } = require('../lib/agreedPrice');
 const { grantCourseEntitlement } = require('../lib/entitlements');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { isRealPhone } = require('../lib/phoneNumber');
@@ -76,7 +76,7 @@ router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAut
     // and that is the accounts' or the administration's.
     if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
       const item = bundleId ? `bundle:${bundleId}` : String(courseId || '');
-      const balance = item ? (await itemBalances(pool, { tenantId: req.tenantId, subscriberId })).get(item) : null;
+      const balance = item ? balanceFor(await itemBalances(pool, { tenantId: req.tenantId, subscriberId }), item) : null;
       if (!balance || Math.abs(Number(balance.remaining) - total) > 0.01 || String(balance.currency) !== String(currency || 'EGP')) {
         return res.status(403).json({
           error: `الخطة لازم تكون على الباقي من السعر المتفق عليه (${balance ? `${balance.remaining} ${balance.currency}` : 'مش معروف'}) — تغيير السعر من الحسابات أو الإدارة بس`,

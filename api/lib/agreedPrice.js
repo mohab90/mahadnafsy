@@ -54,8 +54,9 @@ async function agreedPrice(db, { tenantId, subscriberId, courseId = null, bundle
 /**
  * Every item one client holds or has paid for, with its currency, the price
  * agreed, what the system has recorded as paid, and what was paid before it.
+ * `foldTracks: false` keeps every course a line of its own — what track naming (lib/trackNaming.js) needs, to price a track from the courses before they move into it.
  */
-async function itemBalances(db, { tenantId, subscriberId }) {
+async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
   const held = await moneyOf(db, { tenantId, subscriberId });
   const [payments] = await db.query(
     `SELECT course_id, bundle_id, amount, currency, status, course_expected FROM payments
@@ -75,11 +76,49 @@ async function itemBalances(db, { tenantId, subscriberId }) {
   };
   for (const payment of payments) {
     const entry = touch(payment.bundle_id ? null : payment.course_id, payment.bundle_id, payment.currency);
+    entry.fromPayment = true;
     if (payment.currency !== entry.currency) continue;
     if (['paid', 'pending'].includes(payment.status)) entry.booked = Math.max(entry.booked, Number(payment.course_expected) || 0);
     if (payment.status === 'paid') entry.paid += Number(payment.amount) || 0;
   }
   for (const enrolment of enrolments) touch(enrolment.bundle_id ? null : enrolment.course_id, enrolment.bundle_id, null);
+
+  // A track is one line (the rule of the staff lists, api/lib/staffClientsView.js clientItems, and of the booking dialog): holding EVERY course of a track — however
+  // each was bought — is holding the track, at the track's price; and a course inside a held track is not a debt of its own, what was paid for it counts toward the
+  // track (in the same currency). `items.holders` says which line a folded course went into; `balanceFor` reads through it.
+  const holders = new Map();
+  const carried = new Map();
+  const enrolledCourses = new Set(enrolments.map(enrolment => enrolment.course_id).filter(Boolean).map(String));
+  const knownCourses = [...new Set([...[...items.values()].map(entry => entry.courseId).filter(Boolean).map(String), ...enrolledCourses])];
+  const knownTracks = [...items.values()].map(entry => entry.bundleId).filter(Boolean).map(String);
+  const members = new Map();
+  if (foldTracks && (knownCourses.length || knownTracks.length)) {
+    const clauses = []; const params = [tenantId];
+    if (knownTracks.length) { clauses.push(`bundle_id IN (${knownTracks.map(() => '?').join(',')})`); params.push(...knownTracks); }
+    if (knownCourses.length) {
+      clauses.push(`bundle_id IN (SELECT bundle_id FROM bundle_courses WHERE tenant_id=? AND course_id IN (${knownCourses.map(() => '?').join(',')}))`);
+      params.push(tenantId, ...knownCourses);
+    }
+    const [rows] = await db.query(`SELECT bundle_id, course_id FROM bundle_courses WHERE tenant_id=? AND (${clauses.join(' OR ')})`, params);
+    for (const row of rows) { const list = members.get(String(row.bundle_id)) || []; list.push(String(row.course_id)); members.set(String(row.bundle_id), list); }
+  }
+  for (const [bundleId, courseIds] of members) {
+    if (items.has(`bundle:${bundleId}`) || courseIds.length < 2 || !courseIds.every(id => enrolledCourses.has(id))) continue;
+    touch(null, bundleId, courseIds.map(id => items.get(id)).find(entry => entry?.fromPayment)?.currency);
+  }
+  for (const track of [...items.values()].filter(entry => entry.bundleId)) {
+    for (const courseId of members.get(String(track.bundleId)) || []) if (!holders.has(courseId)) holders.set(courseId, track.item);
+  }
+  for (const [courseId, trackItem] of holders) {
+    const row = items.get(courseId);
+    if (!row) continue;
+    items.delete(courseId);
+    const owner = items.get(trackItem);
+    if (!owner || (row.fromPayment && owner.currency !== row.currency)) continue;
+    const entry = carried.get(trackItem) || { paid: 0, priorPaid: 0 };
+    entry.paid += row.paid; entry.priorPaid += Number(held.priorPaid[row.item]) || 0;
+    carried.set(trackItem, entry);
+  }
 
   for (const entry of items.values()) {
     const catalogue = await resolveCatalogPrice(db, {
@@ -88,9 +127,18 @@ async function itemBalances(db, { tenantId, subscriberId }) {
     entry.catalogue = catalogue || 0;
     entry.expected = resolveAgreed({ custom: held.customPrices[entry.item], booked: entry.booked, paid: entry.paid, catalogue }) || 0;
     entry.priorPaid = Number(held.priorPaid[entry.item]) || 0;
+    // what was paid for the courses of a track counts after the price is found: it never raises it (as the list's expected, which is read before they are added)
+    const carry = carried.get(entry.item);
+    if (carry) { entry.paid += carry.paid; entry.priorPaid += carry.priorPaid; }
     entry.remaining = Math.max(0, entry.expected - entry.paid - entry.priorPaid);
   }
+  items.holders = holders;
   return items;
+}
+
+/** The balance line of an item — a course or `bundle:<id>` — read through the tracks that took courses in (`items.holders`). */
+function balanceFor(balances, item) {
+  return balances.get(item) || balances.get(balances.holders?.get(String(item))) || undefined;
 }
 
 /**
@@ -150,4 +198,4 @@ const isItemPaymentType = type => !type || ITEM_PAYMENT_TYPES.includes(String(ty
 // The same rule for SQL, written for the alias `p`: the payments that are the course's (or track's) own money.
 const ITEM_PAYMENT_SQL = "COALESCE(p.payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER')";
 
-module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, itemBalances, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };
+module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, itemBalances, balanceFor, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };

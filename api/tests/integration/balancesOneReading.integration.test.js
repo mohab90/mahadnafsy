@@ -38,7 +38,7 @@ before(async () => {
   }
   await pool.query("INSERT INTO bundles (id, tenant_id, title, description, price_egp, is_published) VALUES ('br-b1', ?, 'مسار', '', 4500, 1)", [T]);
   await pool.query("INSERT INTO bundle_courses (tenant_id, bundle_id, course_id) VALUES (?, 'br-b1', 'br-c1'), (?, 'br-b1', 'br-c2')", [T, T]);
-  const clients = ['A', 'B', 'C', 'D', 'E'];
+  const clients = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
   for (const [i, k] of clients.entries()) {
     await pool.query("INSERT INTO subscribers (id, tenant_id, client_code, name, phone, branch, crm_json) VALUES (?, ?, ?, ?, ?, 'DAQQI', '{}')", [`br-s${k}`, T, `BR${k}`, `عميل ${k}`, `10199000${i}1`]);
   }
@@ -58,6 +58,16 @@ before(async () => {
   await enrol('br-sE', 'br-c1'); await enrol('br-sE', 'br-c2');
   await pay('br-pE1', 'br-sE', { course: 'br-c1', amount: 1000, expected: 3000 });
   await pay('br-pE2', 'br-sE', { course: 'br-c2', amount: 500, expected: 2000 });
+  // F: one course of the track only — not the track, so a course on its own
+  await enrol('br-sF', 'br-c1'); await pay('br-pF', 'br-sF', { course: 'br-c1', amount: 1000, expected: 3000 });
+  // G: the track (booked as a track) and one more course outside it
+  await enrol('br-sG', 'br-c1', 'br-b1'); await enrol('br-sG', 'br-c2', 'br-b1'); await enrol('br-sG', 'br-c3');
+  await pay('br-pG1', 'br-sG', { bundle: 'br-b1', amount: 4500, expected: 4500, type: 'BUNDLE' }); await pay('br-pG2', 'br-sG', { course: 'br-c3', amount: 500, expected: 1500 });
+  // H: every course of the track held, bought apart, with money paid before the system on one of them and a price agreed for the track
+  await enrol('br-sH', 'br-c1'); await enrol('br-sH', 'br-c2');
+  await pay('br-pH', 'br-sH', { course: 'br-c2', amount: 700, expected: 2000 });
+  await pool.query("INSERT INTO client_item_money (tenant_id, subscriber_id, item_key, prior_paid) VALUES (?, 'br-sH', 'br-c1', 800)", [T]);
+  await pool.query("INSERT INTO client_item_money (tenant_id, subscriber_id, item_key, agreed_price) VALUES (?, 'br-sH', 'bundle:br-b1', 4000)", [T]);
 });
 after(async () => { if (ENABLED) { await clean(); await pool.end(); } });
 
@@ -74,7 +84,7 @@ test('the staff list and the SQL balance say the same remaining for every shape 
     courses: new Map(courses.map(row => [row.id, { price: priceOf(row) }])),
     bundles: new Map(bundles.map(row => [row.id, { price: priceOf(row), courseIds: row.course_ids ? String(row.course_ids).split(',') : [] }])),
   };
-  const clients = await staffClientTools.loadShapedByIds(T, ['br-sA', 'br-sB', 'br-sC', 'br-sD', 'br-sE']);
+  const clients = await staffClientTools.loadShapedByIds(T, ['br-sA', 'br-sB', 'br-sC', 'br-sD', 'br-sE', 'br-sF', 'br-sG', 'br-sH']);
   const answers = {};
   for (const client of clients) {
     const items = await itemBalances(pool, { tenantId: T, subscriberId: client.id });
@@ -86,9 +96,8 @@ test('the staff list and the SQL balance say the same remaining for every shape 
   // what a person would work out: A 3000-1000-500, B 4500-2000, C 1200, D 1500 (the course not touched)
   assert.deepEqual({ A: answers['br-sA'].sql, B: answers['br-sB'].sql, C: answers['br-sC'].sql, D: answers['br-sD'].sql }, { A: 1500, B: 2500, C: 1200, D: 1500 }, 'the SQL balance');
   assert.deepEqual({ A: answers['br-sA'].list, B: answers['br-sB'].list, C: answers['br-sC'].list, D: answers['br-sD'].list }, { A: 1500, B: 2500, C: 1200, D: 1500 }, 'the staff list balance');
-  for (const id of ['br-sA', 'br-sB', 'br-sC', 'br-sD']) assert.equal(answers[id].list, answers[id].sql, `${id}: the list says ${answers[id].list}, the SQL says ${answers[id].sql}`);
-  // E is the one deliberate difference, pinned so a change to either side is noticed: a client who holds EVERY course of a track is shown the track by the lists
-  // (api/lib/staffClientsView.js clientItems, as admin/lib/agreedPrice.ts), at the track's price 4500 less the 1500 paid for its courses = 3000; the SQL balance keeps the
-  // two courses apart (3000-1000 and 2000-500 = 3500). Which one the owner wants is a decision, not a bug found by this test.
-  assert.deepEqual(answers['br-sE'], { list: 3000, sql: 3500 });
+  for (const id of Object.keys(answers)) assert.equal(answers[id].list, answers[id].sql, `${id}: the list says ${answers[id].list}, the SQL says ${answers[id].sql}`);
+  // every course of a track held, bought apart, is the track to both: 4500 less the 1500 paid for its courses (3000); one course alone stays a course (2000);
+  // the track booked as a track plus another course owes only the course (1000); and a price agreed for the track (4000) less 700 paid and 800 paid before = 2500
+  assert.deepEqual({ E: answers['br-sE'].sql, F: answers['br-sF'].sql, G: answers['br-sG'].sql, H: answers['br-sH'].sql }, { E: 3000, F: 2000, G: 1000, H: 2500 });
 });

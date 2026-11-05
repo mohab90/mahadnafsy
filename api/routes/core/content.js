@@ -11,7 +11,7 @@ const { sanitize } = require('../../lib/helpers');
 const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { requireDeleteRight } = require('../../lib/deleteRights');
-const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
+const { itemBalances, balanceFor, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
 const { moneyOf } = require('../../lib/itemMoney');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
 const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClientCourse } = require('../../lib/clientCourseActions');
@@ -80,7 +80,7 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
     const balances = await itemBalances(pool, { tenantId, subscriberId: req.params.id });
     res.json(rows.map(r => {
       const item = itemKey({ courseId: r.course_id, bundleId: r.bundle_id });
-      const money = balances.get(item) || { currency: 'EGP', expected: Number(r.price_egp) || 0, paid: 0, priorPaid: 0, remaining: Number(r.price_egp) || 0 };
+      const money = balanceFor(balances, item) || { currency: 'EGP', expected: Number(r.price_egp) || 0, paid: 0, priorPaid: 0, remaining: Number(r.price_egp) || 0 };
       return {
       enrollmentId: r.id,
       courseId: r.course_id,
@@ -89,7 +89,7 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
       expiresAt: r.expiry_date,
       courseDefaultMonths: Number(r.access_months) > 0 ? r.access_months : DEFAULT_ACCESS_MONTHS,
       accessType: r.access_type,
-      item,
+      item: money.item || item, // a course inside a track the client holds is the track's line (lib/agreedPrice.js balanceFor)
       itemTitle: r.bundle_id ? (r.bundle_title || r.title_ar || r.title) : (r.title_ar || r.title),
       currency: money.currency,
       expected: money.expected,
@@ -241,7 +241,7 @@ router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrS
     }
     await conn.commit();
     const balances = await itemBalances(pool, { tenantId, subscriberId: req.params.id });
-    res.json({ ok: true, ...(balances.get(item) || {}) });
+    res.json({ ok: true, ...(balanceFor(balances, item) || {}) });
   } catch (e) {
     await conn.rollback().catch(() => {});
     logger.error('[item-money]', e.message);

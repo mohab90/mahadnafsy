@@ -68,7 +68,7 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
   if (!plan.length || dryRun) return plan.map(({ track }) => ({ trackId: track.id, title: track.title, courses: track.courses.length }));
 
   // What each course costs them now, before any of it moves.
-  const balances = await itemBalances(db, { tenantId, subscriberId });
+  const balances = await itemBalances(db, { tenantId, subscriberId, foldTracks: false });
   await db.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subscriberId, tenantId]);
   const held = await moneyOf(db, { tenantId, subscriberId });
   const customPrices = { ...held.customPrices };

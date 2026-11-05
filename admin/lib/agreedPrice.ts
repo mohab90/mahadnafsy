@@ -97,8 +97,10 @@ export function clientItems(
   // that money — no payment row, no saved price, no enrolment — had no item, so
   // the table said «لا يوجد» and «—» under المدفوع for money that is in the
   // database: 1,609 of the 1,919 Dokki clients. The money is the evidence.
+  // A course inside a track the client holds is kept here too, though it is no line of its own: its row is folded into the track below, which is how the money paid
+  // before the system for that course counts toward the track (it was dropped, so the table owed what the client had already paid; 5 Nov 2026).
   Object.entries(subscriber.priorPaid || {}).forEach(([item, amount]) => {
-    if (item && Number(amount) > 0 && !item.startsWith('multi:') && !inTracks.has(item)) keys.add(item);
+    if (item && Number(amount) > 0 && !item.startsWith('multi:')) keys.add(item);
   });
 
   const built = [...keys].map(item => {

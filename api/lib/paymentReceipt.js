@@ -15,7 +15,7 @@
 const { pool } = require('./db');
 const lifecycle = require('./lifecycle');
 const logger = require('./logger');
-const { itemBalances, itemKey } = require('./agreedPrice');
+const { itemBalances, balanceFor, itemKey } = require('./agreedPrice');
 
 // What the client can open now, course by course, after this payment.
 async function unlockedFor(db, tenantId, payment) {
@@ -50,7 +50,7 @@ async function unlockedFor(db, tenantId, payment) {
 // (lib/agreedPrice.js): the price agreed, less what was paid here and before.
 async function remainingFor(db, tenantId, payment) {
   const balances = await itemBalances(db, { tenantId, subscriberId: payment.subscriber_id });
-  const entry = balances.get(itemKey({ courseId: payment.bundle_id ? null : payment.course_id, bundleId: payment.bundle_id }));
+  const entry = balanceFor(balances, itemKey({ courseId: payment.bundle_id ? null : payment.course_id, bundleId: payment.bundle_id }));
   return entry && entry.expected > 0 ? entry.remaining : null;
 }
 

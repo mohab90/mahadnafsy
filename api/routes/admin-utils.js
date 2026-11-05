@@ -14,7 +14,7 @@ const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
 const { sqlCairoToday, cairoToday, cairoClock, addDaysToDateOnly, cairoDayStartUtc } = require('../lib/dates');
-const { itemBalances, itemKey } = require('../lib/agreedPrice');
+const { itemBalances, balanceFor, itemKey } = require('../lib/agreedPrice');
 const { itemTitle, parseItem } = require('../lib/clientCourseActions');
 const { logClientEvent } = require('../lib/clientHistory');
 
@@ -718,7 +718,7 @@ async function createRefundByAdmin(req, res) {
       if (!refund_method || refund_method === 'same_as_payment') {
         return res.status(400).json({ error: 'اختار الخزنة اللي الفلوس هتخرج منها' });
       }
-      const balance = (await itemBalances(pool, { tenantId, subscriberId: subscriber_id })).get(item);
+      const balance = balanceFor(await itemBalances(pool, { tenantId, subscriberId: subscriber_id }), item);
       const paidForItem = (Number(balance?.paid) || 0) + (Number(balance?.priorPaid) || 0);
       if (paidForItem > 0 && requestedAmount - paidForItem > 0.01) {
         return res.status(409).json({ error: `مبلغ الاسترداد أكبر من المدفوع للكورس ده (${paidForItem})` });

@@ -175,8 +175,10 @@ function clientItems(client, catalogue, fallbackCurrency) {
   const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
     .flatMap(item => catalogue.bundles.get(item.slice(7))?.courseIds || []));
   (client.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });
+  // A course inside a held track is kept too: its row is folded into the track below, which is how money paid before the system for that course counts toward the
+  // track — same rule as admin/lib/agreedPrice.ts.
   Object.entries(client.priorPaid || {}).forEach(([item, amount]) => {
-    if (item && Number(amount) > 0 && !item.startsWith('multi:') && !inTracks.has(item)) keys.add(item);
+    if (item && Number(amount) > 0 && !item.startsWith('multi:')) keys.add(item);
   });
   const built = [...keys].map(item => {
     const entry = item.startsWith('bundle:') ? catalogue.bundles.get(item.slice(7)) : catalogue.courses.get(item);

@@ -168,3 +168,12 @@ test('no staff route keeps its own copy of the completions query', () => {
   assert.match(read('routes/admin/subscribers.js'), /loadCompletions\(req\.tenantId, \[r\.id\], \{ printedBy: true \}\)/);
   assert.match(read('routes/admin/stafflists.js'), /loadCompletions: loadCompletionProjection/);
 });
+
+test('track naming prices a track from the courses as they were, so it reads the balances unfolded; every other reader folds', () => {
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  assert.match(read('lib/trackNaming.js'), /itemBalances\(db, \{ tenantId, subscriberId, foldTracks: false \}\)/);
+  for (const file of ['routes/core/content.js', 'routes/admin-utils.js', 'routes/installments.js', 'lib/paymentReceipt.js']) {
+    assert.match(read(file), /balanceFor\(/, `${file} reads a course's money through the track that took it in`);
+    assert.doesNotMatch(read(file), /itemBalances\([^)]*\)\)?\.get\(/, `${file} does not look a course up in the folded map directly`);
+  }
+});
