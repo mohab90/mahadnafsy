@@ -28,6 +28,7 @@ const routeModules = [
   ['/', '../routes/push'],
   ['/', '../routes/upload'],
   ['/', '../routes/course-documents'],
+  ['/', '../routes/admin-bootstrap'],
   ['/', '../routes/config'],
   ['/', '../routes/community'],
   ['/', '../routes/inbox'],

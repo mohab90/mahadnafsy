@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, Users, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
+import { mysqlAdmin } from '../../lib/mysqlapi';
 import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 import { StaffMessageScopeSelect, sentLabel, useStaffMessageTargets } from '../../components/StaffMessageScopeSelect';
@@ -56,7 +57,7 @@ export default function MessagesBell({
       lastUnread.current = count;
       setUnread(count);
     } else {
-      const r = await json<{ unread: number }>('/api/admin/hr/staff-messages/inbox');
+      const r = await mysqlAdmin.adminGet<{ unread: number }>('/admin/hr/staff-messages/inbox').catch(() => null);
       setUnread(r?.unread || 0);
     }
   }, [mode, notify, open]);
@@ -80,7 +81,7 @@ export default function MessagesBell({
       const rows = await json<StaffMessage[]>('/api/staff/me/messages');
       setMessages(rows || []);
     } else {
-      const r = await json<{ messages: StaffMessage[] }>('/api/admin/hr/staff-messages/inbox');
+      const r = await mysqlAdmin.adminGet<{ messages: StaffMessage[] }>('/admin/hr/staff-messages/inbox').catch(() => null);
       setMessages(r?.messages || []);
       if (markRead) {
         await fetch('/api/admin/hr/staff-messages/mark-read', {

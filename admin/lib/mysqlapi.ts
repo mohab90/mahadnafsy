@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
+import { cairoMonthOnly } from '../../shared/cairoDate';
 import { takePaymentAttribution } from './paymentAttribution';
 import { takePendingPhotos } from './paymentPhotos';
 import { noteReceipt } from './lastReceipt';
@@ -60,8 +61,69 @@ const canRetry = (options: RequestInit): boolean => {
   return method === 'GET' || method === 'HEAD';
 };
 
+// ── The panel's start-up, answered by two requests (5 Nov 2026) ──
+//
+// Opening the panel asked 26 routes, one by one. The first call below that names one of them makes ONE request to /admin/bootstrap, which runs those routes on the
+// server with their own permission guards and returns their answers keyed by the path asked (api/routes/admin-bootstrap.js); the overview page's four figures are a
+// second request of the same kind, made only when that page asks for them. A call that finds its path in the answer is served from it; a path that is absent or came
+// back null (a permission the account lacks, a failure) is asked of the network as before, and so gets its own answer or its own refusal. It is for the start-up
+// only: nothing is served after 10 seconds, and any write drops what is left, so no screen is shown what an earlier action has changed.
+const BOOTSTRAP_CORE = [
+  '/admin/staff', '/admin/content', '/admin/consultations?limit=500', '/admin/courses?limit=500', '/admin/bundles?limit=500', '/admin/therapists',
+  '/admin/notification-settings', '/admin/community/posts', '/community/library', '/community/videos', '/community/events', '/admin/inbox', '/branches',
+  '/staff/announcements/pending', '/admin/hr/staff-messages/inbox', '/admin/notifications', '/admin/payment-proofs?status=PENDING', '/admin/online-users',
+];
+const BOOTSTRAP_OVERVIEW = ['/admin/leads/stats', '/admin/leads/followups-due', '/admin/subscribers/stats?overview=1', '/admin/overview/revenue'];
+const BOOTSTRAP_MAX_AGE_MS = 10_000;
+const BOOTSTRAP_RETRY_MS = 30_000;
+type BootstrapSet = 'core' | 'overview';
+type BootstrapAnswer = { at: number; pieces: Record<string, unknown> };
+const bootstraps: Record<BootstrapSet, { request: Promise<BootstrapAnswer | null> | null; answer: BootstrapAnswer | null; failedAt: number }> = {
+  core: { request: null, answer: null, failedAt: 0 },
+  overview: { request: null, answer: null, failedAt: 0 },
+};
+
+function bootstrapSetOf(path: string): BootstrapSet | null {
+  if (BOOTSTRAP_OVERVIEW.includes(path)) return 'overview';
+  return BOOTSTRAP_CORE.includes(path) || path.startsWith('/admin/sales-targets?period=') ? 'core' : null;
+}
+
+async function loadBootstrap(set: BootstrapSet): Promise<BootstrapAnswer | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/admin/bootstrap?set=${set}&period=${encodeURIComponent(cairoMonthOnly())}`, { headers, credentials: 'include', cache: 'no-store', signal: controller.signal });
+    if (!res.ok) return null; // the calls that follow go to the network and meet their own answer, a 401 included
+    const body = await res.json() as { pieces?: Record<string, unknown> };
+    bootstraps[set].answer = body?.pieces && typeof body.pieces === 'object' ? { at: Date.now(), pieces: { ...body.pieces } } : null;
+    return bootstraps[set].answer;
+  } catch { return null; } finally { clearTimeout(timeoutId); }
+}
+
+/** The start-up answer for `path`, or undefined when the network has to be asked. Each caller gets its own copy. */
+async function takeBootstrapPiece(path: string): Promise<unknown> {
+  const set = bootstrapSetOf(path);
+  if (!set) return undefined;
+  const state = bootstraps[set];
+  // asked once; asked again only if the attempt failed (signed out at the time, a server restart) and half a minute has passed
+  if (!state.request || (state.failedAt && Date.now() - state.failedAt > BOOTSTRAP_RETRY_MS)) { state.failedAt = 0; state.request = loadBootstrap(set); }
+  const answer = await state.request;
+  if (!answer) { state.failedAt = state.failedAt || Date.now(); return undefined; }
+  if (Date.now() - answer.at > BOOTSTRAP_MAX_AGE_MS) return undefined;
+  const value = answer.pieces[path];
+  return value === null || value === undefined ? undefined : structuredClone(value);
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') for (const state of Object.values(bootstraps)) if (state.answer) state.answer.pieces = {};
+  if (method === 'GET' && _retry === 0) {
+    const served = await takeBootstrapPiece(path);
+    if (served !== undefined) return served as T;
+  }
   if (method === 'GET' && _retry === 0) {
     const key = `${auth ? 'a' : 'p'}:${path}`;
     const existing = inFlightGets.get(key);
