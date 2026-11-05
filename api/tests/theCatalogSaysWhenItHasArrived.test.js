@@ -165,6 +165,7 @@ test('a catalog that failed to load says so and can be asked again', async () =>
   const run = runCatalog();
   if (!run) return;
   run.render();
+  await settle(); // the bootstrap request is tried first (it fails under Node) and the lists are asked of their own routes
   run.api.calls.courses[0].resolve([{ id: 'c1' }]);
   run.api.calls.bundles[0].reject(new Error('network'));
   await settle();
@@ -176,6 +177,7 @@ test('a catalog that failed to load says so and can be asked again', async () =>
   state = run.render();
   assert.equal(state.remoteReady, false, 'retrying shows the loader again');
   assert.equal(state.catalogFailed, false);
+  await settle();
   assert.equal(run.api.calls.bundles.length, 2, 'retry asks the server again');
   run.api.calls.courses[1].resolve([{ id: 'c1' }]);
   run.api.calls.bundles[1].resolve([{ id: 'b1', courses: [] }]);
@@ -225,4 +227,79 @@ test('the enrolment form seeds its selection from the link once, not on every ca
   const page = read('client/pages/Enrollment.tsx');
   assert.match(page, /useState<string\[\]>\(\(\) => \{\s*const courseId = searchParams\.get\('course'\);/);
   assert.ok(!/\}, \[allOptions\]\);/.test(page), 'no effect keyed on the catalog writes the selection');
+});
+
+// ── the site's starting data in one request (/api/public/bootstrap, 5 Nov 2026) ─────────────────────────────────────────────────────────────────────────────────
+const withFetch = async (answer, body) => {
+  const original = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async url => { asked.push(String(url)); return answer(String(url)); };
+  try { return await body(asked); } finally { globalThis.fetch = original; }
+};
+const bootstrapOf = over => ({ content: { 'home.title': 'x' }, courses: [{ id: 'c1' }], bundles: [{ id: 'b1', courses: [] }], therapists: [{ id: 't1' }], testimonials: [{ id: 's1' }], prices: { items: {} }, paymentAvailability: { online: true }, ...over });
+
+test('the catalog is filled from one bootstrap request, without asking the list routes', async () => {
+  await withFetch(async () => ({ ok: true, json: async () => bootstrapOf() }), async asked => {
+    const run = runCatalog();
+    if (!run) return;
+    run.render();
+    await settle();
+    const state = run.render();
+    assert.deepEqual(asked, ['/api/public/bootstrap']);
+    assert.equal(run.api.calls.courses.length + run.api.calls.bundles.length, 0, 'courses and bundles were not asked of their own routes');
+    assert.equal(state.remoteReady, true);
+    assert.equal(state.catalogFailed, false);
+    assert.deepEqual(state.courses.map(course => course.id), ['c1']);
+    assert.deepEqual(state.bundles.map(bundle => bundle.id), ['b1']);
+    assert.deepEqual(state.therapists.map(row => row.id), ['t1']);
+    assert.deepEqual(state.testimonials.map(row => row.id), ['s1']);
+  });
+});
+
+test('a piece the bootstrap could not answer is asked of its own route, and the rest is taken as it came', async () => {
+  await withFetch(async () => ({ ok: true, json: async () => bootstrapOf({ bundles: null }) }), async () => {
+    const run = runCatalog();
+    if (!run) return;
+    run.render();
+    await settle();
+    assert.equal(run.api.calls.courses.length, 0, 'the courses came with the bootstrap');
+    assert.equal(run.api.calls.bundles.length, 1, 'the bundles did not: their own route is asked');
+    run.api.calls.bundles[0].resolve([{ id: 'b9', courses: [] }]);
+    await settle();
+    const state = run.render();
+    assert.deepEqual(state.bundles.map(bundle => bundle.id), ['b9']);
+    assert.deepEqual(state.courses.map(course => course.id), ['c1']);
+    assert.equal(state.remoteReady, true);
+  });
+});
+
+test('a bootstrap that does not answer at all changes nothing: the lists are asked of their own routes', async () => {
+  await withFetch(async () => ({ ok: false, json: async () => ({}) }), async () => {
+    const run = runCatalog();
+    if (!run) return;
+    run.render();
+    await settle();
+    assert.equal(run.api.calls.courses.length, 1);
+    assert.equal(run.api.calls.bundles.length, 1);
+  });
+});
+
+test('the prices and the payment state come from the same bootstrap, not from two more requests', async () => {
+  const esbuild = loadEsbuild();
+  if (!esbuild) return;
+  await withFetch(async () => ({ ok: true, json: async () => bootstrapOf({ prices: { items: { 'course:c1': { EGP: { base: 100, price: 80, discount: null } } } }, paymentAvailability: { online: true, manualMethods: ['cash'] } }) }), async asked => {
+    // One bundle holding both hooks, as the app ships them, so they share the one loader; the React stand-in exists before it is loaded.
+    const harness = hookHarness();
+    const entry = path.join(__dirname, 'support', `_bootstrap_hooks_${process.pid}.ts`);
+    fs.writeFileSync(entry, `export { usePriceList } from ${JSON.stringify(path.join(ROOT, 'client/lib/usePrices'))};
+export { usePaymentAvailability } from ${JSON.stringify(path.join(ROOT, 'client/lib/usePaymentAvailability'))};
+`);
+    let lib;
+    try { lib = bundleWithStubs(path.relative(ROOT, entry).split(path.sep).join('/')); } finally { fs.unlinkSync(entry); }
+    harness.use(() => ({ list: lib.usePriceList(), online: lib.usePaymentAvailability() }));
+    harness.render(); await settle(); const state = harness.render();
+    assert.deepEqual(asked, ['/api/public/bootstrap'], 'one request answered both');
+    assert.equal(state.list['course:c1'].EGP.price, 80);
+    assert.equal(state.online, true);
+  });
 });

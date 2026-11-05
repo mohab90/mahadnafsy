@@ -4,7 +4,7 @@ import { mysqlClient } from '../../lib/mysqlapi';
 import type { ConsultationItem, Course, SubscriberItem } from '../../types';
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
-type RuntimeUser = { uid?: string | null; email?: string | null } | null | undefined;
+type RuntimeUser = { uid?: string | null; email?: string | null; isStaff?: boolean } | null | undefined;
 
 interface ClientAccountRuntimeOptions {
   authUser: RuntimeUser;
@@ -128,12 +128,14 @@ export function useClientAccountRuntime({
       setIsStaff(false);
       return;
     }
+    // Answered with the sign-in check (/api/auth/me?include=isStaff); the separate request is only for an answer that did not carry it.
+    if (typeof authUser.isStaff === 'boolean') { setIsStaff(authUser.isStaff); return; }
     let cancelled = false;
     void mysqlClient.checkIsStaff()
       .then(result => { if (!cancelled) setIsStaff(result.isStaff); })
       .catch(() => { if (!cancelled) setIsStaff(false); });
     return () => { cancelled = true; };
-  }, [authUser?.uid, isAdmin]);
+  }, [authUser?.uid, authUser?.isStaff, isAdmin]);
 
   return { mySubscriberLoaded, mySubscriberId, refreshMySubscriber, isStaff };
 }

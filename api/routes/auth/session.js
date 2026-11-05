@@ -338,9 +338,22 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
         canManageDeleteRights = await deleteRights.isDeleteOwner(req);
       } catch (error) { logger.warn('[auth/me] delete rights unavailable', { error: error.message }); }
     }
+    // «Is this account a member of staff?» — what GET /api/me/is-staff answers, by the same rule (an active staff row of this institute by id or address, or the
+    // owner), here on request (?include=isStaff) so the public site does not make a second request on every page. The panel does not ask and pays nothing.
+    let isStaff;
+    if (req.query.include === 'isStaff') {
+      if (isInstituteOwner({ email: u.email, uid: u.id, tenantId: req.tenantId })) isStaff = true;
+      else {
+        const [[staffRow]] = await conn.execute(
+          `SELECT id FROM staff WHERE tenant_id = ? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) AND is_active = 1 AND deleted_at IS NULL LIMIT 1`,
+          [req.tenantId, u.id, String(u.email || '').trim().toLowerCase()]);
+        isStaff = Boolean(staffRow);
+      }
+    }
     res.json({ uid: u.id, email: u.email, emailVerified: Boolean(u.email) && Number(u.email_unverified) !== 1,
       displayName: u.name || '', phone, isAdmin,
-      permissions: isAdmin ? '*' : staffPermissions, canDelete, canManageDeleteRights });
+      permissions: isAdmin ? '*' : staffPermissions, canDelete, canManageDeleteRights,
+      ...(isStaff === undefined ? {} : { isStaff }) });
   } catch (err) {
     logger.error('[auth/me]', err);
     if (!res.headersSent) {

@@ -5,6 +5,7 @@ import type {
   CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem,
 } from '../../types';
 import { mysqlCatalog } from '../../lib/mysqlapi';
+import { loadPublicBootstrap } from '../../lib/publicBootstrap';
 
 interface CatalogDataArgs {
   initialCourses: Course[];
@@ -82,11 +83,14 @@ export function useCatalogData({
   // request left, so a visitor landing on a bundle page from an ad read
   // «المسار غير موجود» until the list arrived — and for good when it failed.
   // A failure is reported as such (catalogFailed + retryCatalog), not as "missing".
-  const loadCatalog = useCallback(async () => {
+  const loadCatalog = useCallback(async (fresh = false) => {
+    // One request for the texts, courses, tracks, therapists and testimonials (and the prices and payment state the pages ask for later). A visitor the panel
+    // serves (admin) needs only the texts. A piece the server could not answer is asked of its own route, as before.
+    const boot = isAdmin ? null : await loadPublicBootstrap(fresh);
     // The site's own words and the marketing pop-up come with the content, for everyone. They were fetched inside the
     // non-admin branch below, so an owner or a staff member looking at the live site — to check the pop-up they had just
     // switched on, through «معاينة» — saw the built-in defaults and no pop-up at all: «مش شغال ومش بيظهر».
-    const contentLoad = mysqlCatalog.getSiteContent().then((remote) => {
+    const contentLoad = (boot?.content ? Promise.resolve(boot.content) : mysqlCatalog.getSiteContent()).then((remote) => {
       if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
         mergeContent(remote);
       }
@@ -98,10 +102,10 @@ export function useCatalogData({
       try {
         // ── Batch A: courses/bundles/testimonials/therapists ──────────────────
         const [cRes, bRes, thRes, testRes] = await Promise.allSettled([
-          mysqlCatalog.listCourses(200),
-          mysqlCatalog.listBundles(100),
-          mysqlCatalog.listTherapists(100),
-          mysqlCatalog.listTestimonials(),
+          boot?.courses ?? mysqlCatalog.listCourses(200),
+          boot?.bundles ?? mysqlCatalog.listBundles(100),
+          boot?.therapists ?? mysqlCatalog.listTherapists(100),
+          boot?.testimonials ?? mysqlCatalog.listTestimonials(),
         ]);
         if (cRes.status === 'fulfilled' && cRes.value.length > 0)
           setCourses((cRes.value as unknown as Course[]).sort((a, b) => {
@@ -131,7 +135,7 @@ export function useCatalogData({
   const retryCatalog = useCallback(() => {
     setCatalogFailed(false);
     setRemoteReady(false);
-    void loadCatalog();
+    void loadCatalog(true);
   }, [loadCatalog]);
 
   useEffect(() => {

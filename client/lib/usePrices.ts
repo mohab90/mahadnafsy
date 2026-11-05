@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Currency } from '../types';
+import { loadPublicBootstrap } from './publicBootstrap';
 
 // The price of a course or path as the server charges it (api/lib/effectivePrice.js):
 // the catalogue price less the marketing discount running on it. Every page that
@@ -23,8 +24,9 @@ const TTL_MS = 5 * 60 * 1000;
 
 const fetchPrices = (): Promise<PriceList> => {
   if (!cached || Date.now() - cached.at > TTL_MS) {
-    const list = fetch('/api/public/prices')
-      .then(r => (r.ok ? r.json() : {}))
+    // the price list comes with the site's other starting data (one request); its own route answers when that did not
+    const list = loadPublicBootstrap()
+      .then(boot => boot?.prices ?? fetch('/api/public/prices').then(r => (r.ok ? r.json() : {})))
       .then((d: { items?: PriceList }) => (d && typeof d.items === 'object' && d.items ? d.items : {}))
       .catch(() => ({} as PriceList));
     cached = { at: Date.now(), list };

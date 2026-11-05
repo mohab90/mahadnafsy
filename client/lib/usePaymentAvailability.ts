@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_PAYMENT_METHODS, sanitizePaymentMethods, type PaymentMethodCode } from '../../shared/paymentMethods';
+import { loadPublicBootstrap } from './publicBootstrap';
 
 // Whether the payment gateway can actually take a card right now, answered by
 // the server. Three customer-facing screens used to state "الدفع الإلكتروني
@@ -33,8 +34,9 @@ const FALLBACK: PaymentAvailability = { online: false, manualMethods: DEFAULT_PA
 
 const fetchAvailability = (): Promise<PaymentAvailability> => {
   if (!cached) {
-    cached = fetch('/api/public/payment-availability')
-      .then(r => (r.ok ? r.json() : {}))
+    // with the site's other starting data (one request); its own route answers when that did not
+    cached = loadPublicBootstrap()
+      .then(boot => boot?.paymentAvailability ?? fetch('/api/public/payment-availability').then(r => (r.ok ? r.json() : {})))
       .then((d: { online?: unknown; manualMethods?: unknown }) => {
         const methods = sanitizePaymentMethods(d?.manualMethods);
         return {

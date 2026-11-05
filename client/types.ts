@@ -8,6 +8,8 @@ export interface AuthUser {
   isAdmin?: boolean;
   /** false while the sign-up email waits for its link or code; absent from older answers. */
   emailVerified?: boolean;
+  /** Whether the account is a member of staff (asked with the sign-in check, so no second request); absent from older answers. */
+  isStaff?: boolean;
 }
 
 export type MeetingProvider = 'zoom' | 'google_meet' | 'custom';

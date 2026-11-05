@@ -370,7 +370,7 @@ export const mysqlAuth = {
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string; ref?: string }) =>
     apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }) }, true),
-  me: () => apiFetch<AuthUser>('/auth/me', {}, true),
+  me: () => apiFetch<AuthUser>('/auth/me?include=isStaff', {}, true),
   // The email given at sign-up is proven by the link or the six-digit code in
   // the email sent then (api/lib/emailVerification.js).
   verifyEmailCode: (code: string) =>

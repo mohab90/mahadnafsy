@@ -23,11 +23,10 @@ const { expressPrice } = require('../lib/consultationRequests');
 // The rules aim at the express doctor when one is set; the price is the express one.
 const expressTarget = content => String(content['express.therapistId'] || 'express');
 
-router.get('/api/public/prices', publicLimiter, async (req, res) => {
-  const tenantId = req.tenantId || DEFAULT_TENANT_ID;
-  try {
-    // Short: an offer's countdown or a rule's last day changes the answer.
-    const data = await cached(`public-prices:${tenantId}`, 30 * 1000, async () => {
+// Every published item's price in each currency, discounts and offers applied — answered by the route below and by /api/public/bootstrap.
+// Short-lived: an offer's countdown or a rule's last day changes the answer.
+function loadPublicPrices(tenantId) {
+  return cached(`public-prices:${tenantId}`, 30 * 1000, async () => {
       const [courses] = await pool.query(
         'SELECT id, price_egp, price_sar, price_usd FROM courses WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
       const [bundles] = await pool.query(
@@ -53,7 +52,13 @@ router.get('/api/public/prices', publicLimiter, async (req, res) => {
       add('consultation', Object.fromEntries(CURRENCIES.map(c => [`price_${c.toLowerCase()}`, expressPrice(content, c)])),
         'consultation:express', expressTarget(content));
       return { items, rates };
-    });
+  });
+}
+
+router.get('/api/public/prices', publicLimiter, async (req, res) => {
+  const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+  try {
+    const data = await loadPublicPrices(tenantId);
     res.set('Cache-Control', 'public, max-age=30');
     res.json(data);
   } catch (e) {
@@ -94,3 +99,4 @@ router.post('/api/public/price-quote', publicLimiter, scalarFields('itemType', '
 });
 
 module.exports = router;
+module.exports.loadPublicPrices = loadPublicPrices;

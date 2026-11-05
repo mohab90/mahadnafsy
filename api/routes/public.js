@@ -26,6 +26,7 @@ const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { itemBalances } = require('../lib/agreedPrice');
+const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
 const joinApplication = require('../lib/joinApplication');
@@ -152,11 +153,9 @@ router.get('/api/qr', publicLimiter, async (req, res) => {
 });
 
 // GET /api/courses?limit=100&offset=0
-router.get('/api/courses', publicLimiter, async (req, res) => {
-  try {
-    const limit  = parseLimit(req.query.limit, 100, 500);
-    const offset = parseOffset(req.query.offset);
-    const data = await cached(`courses:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
+// the published courses, a page of them — answered by the route below and by /api/public/bootstrap (`req` carries the tenant only).
+function loadCourses(req, limit, offset) {
+  return cached(`courses:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT ${COURSE_LIST_COLS},
                 -- Archived customers were still counted as students here, while
@@ -176,7 +175,14 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
       // mapCourse's `materials`, and every course after the first shipped
       // `materials: <index>` — a number — to screens that iterate it.
       return rows.map(row => mapCourse(row));
-    });
+  });
+}
+
+router.get('/api/courses', publicLimiter, async (req, res) => {
+  try {
+    const limit  = parseLimit(req.query.limit, 100, 500);
+    const offset = parseOffset(req.query.offset);
+    const data = await loadCourses(req, limit, offset);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -712,10 +718,9 @@ router.get('/api/admin/referrals', requireAuth, requireAdmin, async (req, res) =
 });
 
 // GET /api/bundles?limit=50
-router.get('/api/bundles', publicLimiter, async (req, res) => {
-  try {
-    const limit = parseLimit(req.query.limit, 50, 200);
-    const data = await cached(`bundles:${req.tenantId}:${limit}`, 5 * 60 * 1000, async () => {
+// the published tracks with their courses — answered by the route below and by /api/public/bootstrap (`req` carries the tenant only).
+function loadBundles(req, limit) {
+  return cached(`bundles:${req.tenantId}:${limit}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT b.*, GROUP_CONCAT(bc.course_id ORDER BY bc.sort_order) AS course_ids_csv
          FROM bundles b
@@ -726,7 +731,13 @@ router.get('/api/bundles', publicLimiter, async (req, res) => {
       );
       const [courses] = await pool.query(`SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1 AND tenant_id=?`, [req.tenantId]);
       return rows.map(r => mapBundle(r, courses.map(row => mapCourse(row))));
-    });
+  });
+}
+
+router.get('/api/bundles', publicLimiter, async (req, res) => {
+  try {
+    const limit = parseLimit(req.query.limit, 50, 200);
+    const data = await loadBundles(req, limit);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -777,10 +788,9 @@ router.get('/api/chapters', publicLimiter, async (req, res) => {
 });
 
 // GET /api/therapists?limit=50
-router.get('/api/therapists', publicLimiter, async (req, res) => {
-  try {
-    const limit = parseLimit(req.query.limit, 50, 200);
-    const data = await cached(`therapists:${req.tenantId}:${limit}`, 10 * 60 * 1000, async () => {
+// the active therapists with their slots and blocked days — answered by the route below and by /api/public/bootstrap (`req` carries the tenant only).
+function loadTherapists(req, limit) {
+  return cached(`therapists:${req.tenantId}:${limit}`, 10 * 60 * 1000, async () => {
       const [therapists] = await pool.query(
         `SELECT id, name, specialty, image, experience, rating, title, bio,
          price_egp, price_sar, price_usd, is_consultation_enabled, session_duration_minutes,
@@ -808,29 +818,40 @@ router.get('/api/therapists', publicLimiter, async (req, res) => {
       // every one after it, which put the join links back on this public
       // response for all but one of them.
       return therapists.map(row => mapTherapist(row));
-    });
+  });
+}
+
+router.get('/api/therapists', publicLimiter, async (req, res) => {
+  try {
+    const limit = parseLimit(req.query.limit, 50, 200);
+    const data = await loadTherapists(req, limit);
     res.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=60');
     res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/testimonials
-router.get('/api/testimonials', publicLimiter, async (req, res) => {
-  try {
-    const data = await cached(`testimonials:${req.tenantId}`, 10 * 60 * 1000, async () => {
+// the active testimonials — answered by the route below and by /api/public/bootstrap (`req` carries the tenant only).
+function loadTestimonials(req) {
+  return cached(`testimonials:${req.tenantId}`, 10 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         'SELECT id, name, role, text, image, sort_order, is_active FROM testimonials WHERE is_active = 1 AND tenant_id=? ORDER BY sort_order ASC LIMIT 100', [req.tenantId]);
       return rows;
-    });
+  });
+}
+
+router.get('/api/testimonials', publicLimiter, async (req, res) => {
+  try {
+    const data = await loadTestimonials(req);
     res.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=60');
     res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/content  (public site content key-value store)
-router.get('/api/content', publicLimiter, async (req, res) => {
-  try {
-    const data = await cached(`site_content:${req.tenantId}`, 5 * 60 * 1000, async () => {
+// the site's texts, with the branding of the setup wizard laid over them — answered by the route below and by /api/public/bootstrap (`req` carries the tenant only).
+function loadSiteContent(req) {
+  return cached(`site_content:${req.tenantId}`, 5 * 60 * 1000, async () => {
       const [content, sysGeneral] = await Promise.all([
         getTenantSetting('content', { tenantId: req.tenantId, fallback: {} }),
         getTenantSetting('sys_general', { tenantId: req.tenantId, fallback: {} }),
@@ -844,12 +865,44 @@ router.get('/api/content', publicLimiter, async (req, res) => {
       if (sysGeneral?.brand_logo_url) merged['institute.logo'] = sysGeneral.brand_logo_url;
       if (sysGeneral?.brand_favicon_url) merged['institute.favicon'] = sysGeneral.brand_favicon_url;
       return merged;
-    });
+  });
+}
+
+router.get('/api/content', publicLimiter, async (req, res) => {
+  try {
+    const data = await loadSiteContent(req);
     // Short browser cache so admin content edits reflect on the site within ~30s
     // (the server-side 'site_content' cache is invalidated on save, so this is cheap).
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
     res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/public/bootstrap — everything every page of the site starts with, in ONE request instead of seven: the site's texts, the courses, the tracks, the
+// therapists, the testimonials, the prices and whether online payment is on. Each piece is the answer of the route that has always served it (the same cached
+// loader), so nothing is stale that was not already; a piece that fails is null and the page asks that one route for itself. The visitor's own country and currency
+// (/api/public/client-context) is not here: it is per visitor and never cached.
+// 30 seconds in the browser, as the texts have always been: an edit in the panel shows on the site within that.
+router.get('/api/public/bootstrap', publicLimiter, async (req, res) => {
+  const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+  const pieces = {
+    content: () => loadSiteContent(req),
+    courses: () => loadCourses(req, 200, 0),
+    bundles: () => loadBundles(req, 100),
+    therapists: () => loadTherapists(req, 100),
+    testimonials: () => loadTestimonials(req),
+    prices: () => require('./public-pricing').loadPublicPrices(tenantId),
+    paymentAvailability: () => require('./public-orders').loadPaymentAvailability(req.tenantId),
+  };
+  const names = Object.keys(pieces);
+  const settled = await Promise.allSettled(names.map(name => pieces[name]()));
+  const body = {};
+  settled.forEach((result, index) => {
+    body[names[index]] = result.status === 'fulfilled' ? result.value : null;
+    if (result.status === 'rejected') logger.error('[public/bootstrap]', names[index], result.reason?.message);
+  });
+  res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+  res.json(body);
 });
 
 // GET /api/quizzes — public listing so students can see a quiz exists and take it.

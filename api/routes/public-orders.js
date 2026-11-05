@@ -82,26 +82,31 @@ function manualMethodsFor(config) {
 // nothing public reported gateway state. Answers only a boolean and the
 // provider name — no keys, no ids, nothing that isn't already implied by the
 // payment page a customer is about to be sent to.
-router.get('/api/public/payment-availability', publicLimiter, async (req, res) => {
+async function loadPaymentAvailability(tenantId) {
   try {
-    const config = await getPaymentGatewaySettings(req.tenantId);
-    res.json({
+    const config = await getPaymentGatewaySettings(tenantId);
+    return {
       online: paymobReady(config),
       provider: paymobReady(config) ? 'paymob' : null,
       mode: config?.mode || 'sandbox',
       manualMethods: manualMethodsFor(config),
-    });
+    };
   } catch (e) {
     // A settings lookup that fails must not read as "we take cards" — fall
     // closed so the customer is offered the manual route that always works.
     // Which is also why the manual channels fall *open* here: a lookup failure
     // must not leave the only working payment path without a way to name it.
     logger.warn('[payment-availability]', e.message);
-    res.json({
+    return {
       online: false, provider: null, mode: 'sandbox',
       manualMethods: manualMethodsFor(null),
-    });
+    };
   }
+}
+
+// Answered by this route and by /api/public/bootstrap.
+router.get('/api/public/payment-availability', publicLimiter, async (req, res) => {
+  res.json(await loadPaymentAvailability(req.tenantId));
 });
 
 
@@ -426,4 +431,5 @@ router._test = {
 
 module.exports = router;
 module.exports.syncLeadDealValue = syncLeadDealValue;
+module.exports.loadPaymentAvailability = loadPaymentAvailability;
 module.exports._paymobCharge = paymobCharge;
