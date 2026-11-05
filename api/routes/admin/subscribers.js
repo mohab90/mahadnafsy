@@ -1,6 +1,6 @@
 'use strict';
 const { signerName } = require('../../lib/staffNames');
-const { loadHoldings, loadCertificateRequests, loadPayments } = require('../../lib/clientView');
+const { loadHoldings, loadCertificateRequests, loadPayments, loadCompletions } = require('../../lib/clientView');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, spellingsOf, sharedPhoneSlot, recordSharedPhone } = require('../../lib/phoneDuplicates');
 const { findLeadByContact } = require('../../lib/leadMatching');
@@ -263,34 +263,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       const enrolledBundleIds = held?.bundleIds || [];
       const courseAccess = held?.access || {};
       const extraCertificateRequests = (await loadCertificateRequests(req.tenantId, [r.id]))[r.id] || [];
-      const [completionRows] = await pool.query(
-        `SELECT cc.id,cc.course_id,cc.certificate_code,cc.completed_at,cc.status,cc.version,cc.revoked_at,cc.revoke_reason,
-                cc.printed_at,cc.printed_by,cc.print_count,cc.downloaded_at,cc.download_count,
-                COALESCE(NULLIF(c.title_ar, ''), c.title, b.title) AS title, (b.id IS NOT NULL AND c.id IS NULL) AS is_track
-         FROM course_completions cc
-         LEFT JOIN courses c ON c.id=cc.course_id AND c.tenant_id=cc.tenant_id
-         LEFT JOIN bundles b ON b.id=cc.course_id AND b.tenant_id=cc.tenant_id
-         WHERE cc.tenant_id=? AND cc.subscriber_id=? AND cc.deleted_at IS NULL
-         ORDER BY cc.completed_at DESC`,
-        [req.tenantId, r.id]
-      );
-      const certificates = completionRows.map(completion => ({
-        id: completion.id,
-        courseId: completion.course_id,
-        certificateNumber: completion.certificate_code,
-        issuedAt: safeIsoString(completion.completed_at) || null,
-        status: completion.status || 'active',
-        version: Number(completion.version || 1),
-        revokedAt: safeIsoString(completion.revoked_at) || undefined,
-        revokeReason: completion.revoke_reason || undefined,
-        title: completion.title || undefined,
-        isTrack: Boolean(Number(completion.is_track)),
-        printedAt: safeIsoString(completion.printed_at) || undefined,
-        printedBy: completion.printed_by || undefined,
-        printCount: Number(completion.print_count) || 0,
-        downloadedAt: safeIsoString(completion.downloaded_at) || undefined,
-        downloadCount: Number(completion.download_count) || 0,
-      }));
+      const certificates = (await loadCompletions(req.tenantId, [r.id], { printedBy: true }))[r.id] || [];
       const clientCode = r.client_code || crm.clientCode || null;
 
       const rawBranch = r.branch || crm.branch || null;

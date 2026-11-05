@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { loadHoldings, loadCertificateRequests, loadPayments } = require('../lib/clientView');
+const { loadHoldings, loadCertificateRequests, loadPayments, loadCompletions } = require('../lib/clientView');
 const { certificateDue } = require('../lib/certificatePricing');
 const { safeIsoString } = require('../lib/dates');
 
@@ -131,4 +131,40 @@ test('no staff route keeps its own copy of the client payment mapping', () => {
   assert.equal(read('routes/admin/stafflists.js').split('loadPayments(').length - 1, 4);
   assert.match(read('routes/admin/subscribers.js'), /loadPayments\(req\.tenantId, \[r\.id\], \{ staffName: 'recorded' \}\)/);
   assert.equal(read('routes/admin/subscribers.js').split('payRows').length - 1, 0);
+});
+
+// The two mappings the completions had: the lists' projection (no printer) and the profile's inline block (with the printer), kept as the oracle.
+const oldCompletion = (row, withPrinter) => ({
+  id: row.id, courseId: row.course_id, certificateNumber: row.certificate_code, issuedAt: safeIsoString(row.completed_at) || null, status: row.status || 'active',
+  version: Number(row.version || 1), revokedAt: safeIsoString(row.revoked_at) || undefined, revokeReason: row.revoke_reason || undefined, title: row.title || undefined,
+  isTrack: Boolean(Number(row.is_track)), printedAt: safeIsoString(row.printed_at) || undefined,
+  ...(withPrinter ? { printedBy: row.printed_by || undefined } : {}),
+  printCount: Number(row.print_count) || 0, downloadedAt: safeIsoString(row.downloaded_at) || undefined, downloadCount: Number(row.download_count) || 0,
+});
+
+test('completions: the lists and the profile get what they got before, the profile with the printer', async () => {
+  for (let round = 0; round < 100; round++) {
+    const rows = Array.from({ length: Math.floor(rnd() * 7) }, (_, i) => ({
+      id: 'k' + i, subscriber_id: pick(['s1', 's2']), course_id: pick(['c1', 'b1']), certificate_code: pick(['A-1', null]), completed_at: pick([null, new Date('2026-09-01T10:00:00Z')]),
+      status: pick(['active', 'revoked', null]), version: pick([null, 0, 2]), revoked_at: pick([null, new Date('2026-09-05T10:00:00Z')]), revoke_reason: pick([null, 'why']),
+      printed_at: pick([null, new Date('2026-09-02T10:00:00Z')]), printed_by: pick([null, 'staff-1']), print_count: pick([null, 0, 3]),
+      downloaded_at: pick([null, new Date('2026-09-03T10:00:00Z')]), download_count: pick([null, 2]), title: pick([null, 'عنوان']), is_track: pick([0, 1, '1', null]),
+    }));
+    const db = { query: async () => [rows] };
+    for (const withPrinter of [false, true]) {
+      const expected = {};
+      rows.forEach(row => (expected[row.subscriber_id] ||= []).push(oldCompletion(row, withPrinter)));
+      // JSON, not deepEqual: the profile's key order is part of what it sends
+      assert.equal(JSON.stringify(await loadCompletions('t', ['s1', 's2'], { printedBy: withPrinter }, db)), JSON.stringify(expected), `round ${round}, printer ${withPrinter}`);
+    }
+  }
+  assert.deepEqual(await loadCompletions('t', [], {}, { query: async () => { throw new Error('queried'); } }), {});
+});
+
+test('no staff route keeps its own copy of the completions query', () => {
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  assert.equal(read('routes/admin/stafflists.js').split('FROM course_completions').length - 1, 0);
+  assert.equal(read('routes/admin/subscribers.js').split('FROM course_completions').length - 1, 0);
+  assert.match(read('routes/admin/subscribers.js'), /loadCompletions\(req\.tenantId, \[r\.id\], \{ printedBy: true \}\)/);
+  assert.match(read('routes/admin/stafflists.js'), /loadCompletions: loadCompletionProjection/);
 });

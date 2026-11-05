@@ -36,8 +36,8 @@ test('a wrong certificate is deleted softly — revoked first — and the client
   assert.match(route, /requirePermission\('manage_courses'\)/);
   assert.match(route, /row\.status === 'active'\) return res\.status\(409\)/, 'a valid certificate is revoked before it can be deleted');
   assert.match(route, /UPDATE course_completions SET deleted_at=NOW\(\), deleted_by=\? WHERE id=\? AND tenant_id=\?/);
-  assert.match(read('api/routes/admin/subscribers.js'), /cc\.deleted_at IS NULL/);
-  assert.match(read('api/routes/admin/stafflists.js'), /cc\.deleted_at IS NULL/);
+  // the profile and the lists read their completions from one place (lib/clientView.js)
+  assert.match(read('api/lib/clientView.js'), /cc\.deleted_at IS NULL/);
   assert.match(read('api/routes/instituteCertificates.js'), /cc\.deleted_at IS NULL/);
 });
 
@@ -45,7 +45,7 @@ test('the desk\'s print is recorded, the client\'s download is recorded apart, a
   const desk = read('api/routes/instituteCertificates.js');
   assert.match(desk, /router\.post\('\/api\/admin\/institute-certificates\/:id\/printed'/);
   assert.match(desk, /SET printed_at = NOW\(\), printed_by = \?, print_count = print_count \+ 1/);
-  assert.match(read('api/routes/admin/subscribers.js'), /printedAt: safeIsoString\(completion\.printed_at\)[\s\S]*downloadedAt: safeIsoString\(completion\.downloaded_at\)/);
+  assert.match(read('api/lib/clientView.js'), /printedAt: safeIsoString\(row\.printed_at\)[\s\S]*downloadedAt: safeIsoString\(row\.downloaded_at\)/);
   const panel = read('admin/pages/unified-client/UnifiedClientCertificatesPanel.tsx');
   assert.match(panel, /اتطبعت في المعهد/);
   assert.match(panel, /العميل شافها ونزّلها من حسابه/);

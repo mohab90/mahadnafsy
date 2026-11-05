@@ -39,34 +39,7 @@ const { mapInstallmentPlan } = require('../../lib/installmentMath');
 const { buildOverview, readOverviewClients } = require('../../lib/staffOverview');
 
 // What each client holds is read once, in lib/clientView.js, for the lists and the single-client profile alike.
-const { loadHoldings: loadEnrollmentProjection, loadCertificateRequests, loadPayments } = require('../../lib/clientView');
-
-async function loadCompletionProjection(tenantId, subscriberIds) {
-  if (!subscriberIds.length) return {};
-  const [rows] = await pool.query(
-    `SELECT cc.id,cc.subscriber_id,cc.course_id,cc.certificate_code,cc.completed_at,cc.status,cc.version,cc.revoked_at,cc.revoke_reason,
-            cc.printed_at,cc.print_count,cc.downloaded_at,cc.download_count,
-            COALESCE(NULLIF(c.title_ar, ''), c.title, b.title) AS title, (b.id IS NOT NULL AND c.id IS NULL) AS is_track
-     FROM course_completions cc
-     LEFT JOIN courses c ON c.id=cc.course_id AND c.tenant_id=cc.tenant_id
-     LEFT JOIN bundles b ON b.id=cc.course_id AND b.tenant_id=cc.tenant_id
-     WHERE cc.tenant_id=? AND cc.deleted_at IS NULL AND cc.subscriber_id IN (${subscriberIds.map(() => '?').join(',')})
-     ORDER BY cc.completed_at DESC`,
-    [tenantId, ...subscriberIds]
-  );
-  return rows.reduce((projection, row) => {
-    (projection[row.subscriber_id] ||= []).push({
-      id: row.id, courseId: row.course_id, certificateNumber: row.certificate_code,
-      issuedAt: safeIsoString(row.completed_at) || null, status: row.status || 'active',
-      version: Number(row.version || 1), revokedAt: safeIsoString(row.revoked_at) || undefined,
-      revokeReason: row.revoke_reason || undefined,
-      title: row.title || undefined, isTrack: Boolean(Number(row.is_track)),
-      printedAt: safeIsoString(row.printed_at) || undefined, printCount: Number(row.print_count) || 0,
-      downloadedAt: safeIsoString(row.downloaded_at) || undefined, downloadCount: Number(row.download_count) || 0,
-    });
-    return projection;
-  }, {});
-}
+const { loadHoldings: loadEnrollmentProjection, loadCertificateRequests, loadPayments, loadCompletions: loadCompletionProjection } = require('../../lib/clientView');
 
 /**
  * GET /api/admin/online-performance — how the online team is doing, in numbers.
