@@ -11,8 +11,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 function sourcesUnder(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
     const full = path.join(dir, entry.name);

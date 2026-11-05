@@ -7,12 +7,12 @@
 // these keep it safe for the day it is.
 
 const test = require('node:test');
+const { ROOT } = require('./support/repo');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const Module = require('node:module');
 const { spawnSync } = require('node:child_process');
 
-const ROOT = path.join(__dirname, '..', '..');
 const SERVER = path.join(ROOT, 'ws-server', 'server.js');
 const API_MODULES = path.join(ROOT, 'api', 'node_modules');
 const jwt = require('jsonwebtoken');

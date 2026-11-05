@@ -12,11 +12,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('deleting a ticket is offered only to whoever can delete one', () => {
   // DELETE /api/admin/tickets/:id is requireAdmin, and الدعم والجودة opens on

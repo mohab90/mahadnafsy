@@ -24,12 +24,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const { BRANCH_ALIASES, branchIdForBranch, branchForId, normalizeBranch } =
   require('../lib/branches');
 const { VALID_BRANCHES } = require('../constants/permissions');
+const { ROOT, read } = require('./support/repo');
 
 test('the alias map, the id maps and the permission set name the same branches', () => {
   const fromAliases = new Set(Object.values(BRANCH_ALIASES));

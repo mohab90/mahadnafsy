@@ -11,9 +11,8 @@ const path = require('path');
 const {
   bookingRuleError, consultationSettings, expressPrice, openConsultationRequest, settleConsultationForOrder,
 } = require('../lib/consultationRequests');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // Rows kept in memory; each statement this module issues is matched by its shape.
 function fakeDb(consultations = []) {

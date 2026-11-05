@@ -17,11 +17,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 // The route's half — a deleted employee leaves the list and can be restored,
 // nobody deletes themselves, a failed create names its reason, HR may create a

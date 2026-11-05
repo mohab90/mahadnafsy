@@ -11,9 +11,8 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { paymentModalSource } = require('./_adminSplitSource');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 // [^\n]* rather than .*$ — `.` does not match \r, so on a CRLF file .*$ never
 // matches and a full-line comment is never stripped at all.
 const codeOnly = source => source

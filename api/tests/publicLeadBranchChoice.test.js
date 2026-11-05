@@ -16,14 +16,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { normalizeBranch, branchIdForBranch } = require('../lib/branches');
 const { branchForCountry } = require('../lib/clientContext');
+const { codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
 
 test('geolocation cannot name a physical branch, which is why the answer mattered', () => {
   assert.equal(branchForCountry('EG'), 'ONLINE_EGYPT');

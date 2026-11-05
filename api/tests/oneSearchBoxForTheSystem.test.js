@@ -23,6 +23,7 @@ stub('../routes/support', {
 });
 
 const { searchSystem, searchableKinds, personMatch } = require('../lib/systemSearch');
+const { ROOT } = require('./support/repo');
 
 function recorder(rows = {}) {
   const calls = [];
@@ -36,7 +37,6 @@ function recorder(rows = {}) {
     },
   };
 }
-const ROOT = path.join(__dirname, '..', '..');
 
 test('under two letters nothing is searched', async () => {
   const db = recorder();

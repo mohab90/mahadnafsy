@@ -13,8 +13,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 
-const ROOT = path.join(__dirname, '..', '..');
 const { overviewOf, candidatesOf, readBranchFacts } = require('../lib/dokkiClients');
+const { ROOT } = require('./support/repo');
 
 function bundleScreen() {
   let esbuild;

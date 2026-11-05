@@ -21,21 +21,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read, bundle: load } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-function load(entry) {
-  let esbuild;
-  try { esbuild = require(path.join(ROOT, 'admin', 'node_modules', 'esbuild')); } catch { return null; }
-  const out = esbuild.buildSync({
-    entryPoints: [path.join(ROOT, entry)], bundle: true, write: false, format: 'cjs', platform: 'node', logLevel: 'silent',
-    nodePaths: [path.join(ROOT, 'admin', 'node_modules')], define: { 'import.meta.env': '{}' },
-  });
-  const module = { exports: {} };
-  new Function('module', 'exports', 'require', out.outputFiles[0].text)(module, module.exports, require);
-  return module.exports;
-}
 
 const agreed = load('admin/lib/agreedPrice.ts');
 const groups = load('admin/pages/dashboard/tabs/leads/leadSourceGroups.ts');

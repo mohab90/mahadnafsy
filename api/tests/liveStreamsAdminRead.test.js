@@ -13,9 +13,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('the panel reads its own route, not the student one', () => {
   const api = read('admin/lib/mysqlapi.ts');

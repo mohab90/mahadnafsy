@@ -9,9 +9,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { revenueGroups, monthRevenue } = require('../lib/analyticsScreens');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('a month\'s revenue is the paid orders and the desk payments no order covers, per currency', () => {
   const groups = revenueGroups(

@@ -15,19 +15,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { ROOT, bundle: load } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-function load(entry) {
-  let esbuild;
-  try { esbuild = require(path.join(ROOT, 'admin', 'node_modules', 'esbuild')); } catch { return null; }
-  const out = esbuild.buildSync({
-    entryPoints: [path.join(ROOT, entry)], bundle: true, write: false, format: 'cjs', platform: 'node', logLevel: 'silent',
-    nodePaths: [path.join(ROOT, 'admin', 'node_modules')], define: { 'import.meta.env': '{}' },
-  });
-  const module = { exports: {} };
-  new Function('module', 'exports', 'require', out.outputFiles[0].text)(module, module.exports, require);
-  return module.exports;
-}
 const agreed = load('admin/lib/agreedPrice.ts');
 const courses = [{ id: 'c1', title: 'دبلومة', price: { EGP: 5000 } }];
 const dokki = extra => ({ id: 's', name: 'x', branch: 'DAQQI', paymentHistory: [], enrolledCourseIds: ['c1'], ...extra });

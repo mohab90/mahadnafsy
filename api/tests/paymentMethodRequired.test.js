@@ -14,15 +14,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 
 // Comments quote the rule they explain, and one of them quotes the Arabic
 // message verbatim. Matching against the source with comments left in lets a
 // deleted check keep passing on the strength of the paragraph describing it.
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
-
 
 // The server's half — a settled payment needs a method, a pending one does not, an
 // approver supplies it and it is kept, a rejection is not held to it — runs over

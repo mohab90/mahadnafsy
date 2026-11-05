@@ -21,16 +21,10 @@ const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ROLE_PERMS } = require('../constants/permissions');
+const { ROOT, read, codeOnly } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const exists = rel => fs.existsSync(path.join(ROOT, rel));
 
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
 
 /** Non-wildcard roles holding a permission. */
 const holders = permission => Object.entries(ROLE_PERMS)

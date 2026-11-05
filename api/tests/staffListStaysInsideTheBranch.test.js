@@ -16,8 +16,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const source = fs.readFileSync(path.join(ROOT, 'api', 'routes', 'staff.js'), 'utf8');
 const between = (from, to) => source.slice(source.indexOf(from), source.indexOf(to, source.indexOf(from)));
 

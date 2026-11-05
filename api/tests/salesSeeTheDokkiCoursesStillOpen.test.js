@@ -11,8 +11,8 @@ const path = require('node:path');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-sales-schedule-secret-0123456789-abcdefghijk';
 
 const { lectureToday, nextSessionDate } = require('../lib/daqqiLecture');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 function adminRule() {
   let esbuild;
   try { esbuild = require(path.join(ROOT, 'admin', 'node_modules', 'esbuild')); } catch { return null; }

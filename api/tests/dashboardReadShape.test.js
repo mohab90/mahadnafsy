@@ -10,11 +10,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { toNumbers } = require('../lib/mappers');
 const { EXPENSE_CATEGORY_LABEL } = require('../lib/expenseCategories');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('DECIMAL columns reach a screen as numbers, so adding two of them is addition', () => {
   const payslips = [

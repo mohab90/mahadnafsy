@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const support = fs.readFileSync(
   path.join(__dirname, '..', 'routes', 'support.js'), 'utf8');
@@ -18,9 +19,6 @@ const tab = fs.readFileSync(
 
 // Comments quote the endpoints they describe, and a doesNotMatch run against the
 // raw file would be answered by the prose instead of by the code.
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('the customer page reaches both halves of the thread the server exposes', () => {
   const code = codeOnly(tab);

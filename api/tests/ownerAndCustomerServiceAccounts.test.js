@@ -12,9 +12,8 @@ const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 const { ROLE_PERMS, DATA_SCOPE, hasPermission } = require('../constants/permissions');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('a password typed on a staff page is set, and a reset shows what it set', () => {
   const panel = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');

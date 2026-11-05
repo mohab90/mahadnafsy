@@ -10,19 +10,8 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { foldText, searchNumber } = require('../lib/searchText');
 const { leadTableSearch } = require('../lib/leadTableFilter');
+const { ROOT, bundle: load } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-function load(entry) {
-  let esbuild;
-  try { esbuild = require(path.join(ROOT, 'admin', 'node_modules', 'esbuild')); } catch { return null; }
-  const out = esbuild.buildSync({
-    entryPoints: [path.join(ROOT, entry)], bundle: true, write: false, format: 'cjs', platform: 'node', logLevel: 'silent',
-    nodePaths: [path.join(ROOT, 'admin', 'node_modules')], define: { 'import.meta.env': '{}' },
-  });
-  const module = { exports: {} };
-  new Function('module', 'exports', 'require', out.outputFiles[0].text)(module, module.exports, require);
-  return module.exports;
-}
 const panel = load('admin/lib/clientSearch.ts');
 
 const person = { name: 'أسماء أحمد', phone: '1012345678', email: 'asmaa@x.test', code: 'C141762', nationalId: '29801011234567' };

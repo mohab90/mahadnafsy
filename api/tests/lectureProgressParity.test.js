@@ -24,15 +24,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { codeOnly } = require('./support/repo');
 
 const CLIENT = path.join(__dirname, '..', '..', 'client');
 const read = rel => fs.readFileSync(path.join(CLIENT, rel), 'utf8');
 
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
 
 const player = codeOnly(read('components/UserDashboardVideoPlayer.tsx'));
 const surface = codeOnly(read('components/VideoSurface.tsx'));

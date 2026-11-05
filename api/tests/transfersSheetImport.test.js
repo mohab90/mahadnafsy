@@ -13,9 +13,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const { importTransfers } = require('../lib/incomingTransfers');
+const { ROOT, read } = require('./support/repo');
 
 let sheet = null;
 try {

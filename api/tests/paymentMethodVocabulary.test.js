@@ -24,29 +24,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { browserSources, codeOnly } = require('./support/repo');
 
 const ROOT = path.join(__dirname, '..', '..');
 const SHARED = 'shared/paymentMethods.ts';
 
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
-
-function browserSources() {
-  const out = [];
-  const walk = dir => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'dist') continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.tsx?$/.test(entry.name)) out.push(full);
-    }
-  };
-  for (const app of ['admin', 'client', 'shared']) walk(path.join(ROOT, app));
-  return out.map(f => path.relative(ROOT, f).split(path.sep).join('/'));
-}
 
 const read = rel => codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
 

@@ -1,5 +1,6 @@
 'use strict';
 const { financeRouteSource } = require('./_authRouteSource');
+const { ROOT, read, bundle: load } = require('./support/repo');
 
 /**
  * Reported from the Dokki desk on 3 Oct 2026:
@@ -19,20 +20,7 @@ const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-function load(entry) {
-  let esbuild;
-  try { esbuild = require(path.join(ROOT, 'admin', 'node_modules', 'esbuild')); } catch { return null; }
-  const out = esbuild.buildSync({
-    entryPoints: [path.join(ROOT, entry)], bundle: true, write: false, format: 'cjs', platform: 'node', logLevel: 'silent',
-    nodePaths: [path.join(ROOT, 'admin', 'node_modules')], define: { 'import.meta.env': '{}' },
-  });
-  const module = { exports: {} };
-  new Function('module', 'exports', 'require', out.outputFiles[0].text)(module, module.exports, require);
-  return module.exports;
-}
 const utils = load('admin/pages/dashboard/tabs/daqqi/daqqiScheduleUtils.ts');
 
 const { resolveAttendeeMoney, attachAttendeeMoney } = require('../lib/daqqiAttendeeMoney');

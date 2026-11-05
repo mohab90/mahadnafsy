@@ -11,12 +11,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const TOOLS = path.join(__dirname, '..', 'tools');
 const read = name => fs.readFileSync(path.join(TOOLS, name), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 // Every suite that signs in. Adding one here is cheaper than discovering months
 // later that it has been dead since the day auth changed.

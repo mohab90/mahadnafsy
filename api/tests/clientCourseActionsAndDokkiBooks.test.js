@@ -30,21 +30,8 @@ require.cache[entitlementsFile] = {
 delete require.cache[require.resolve('../lib/clientCourseActions')];
 const { isCourseManager, removeClientCourse, transferClientCourse } = require('../lib/clientCourseActions');
 const { listCustomerTimeline } = require('../lib/customerTimeline');
+const { fakeDb } = require('./support/repo');
 
-function fakeDb(answers) {
-  const calls = [];
-  return {
-    calls,
-    async query(sql, params = []) {
-      const flat = sql.replace(/\s+/g, ' ');
-      calls.push({ sql: flat, params });
-      for (const [pattern, answer] of answers) {
-        if (pattern.test(flat)) return typeof answer === 'function' ? answer(params) : answer;
-      }
-      return [{ affectedRows: 0 }];
-    },
-  };
-}
 const find = (db, pattern) => db.calls.find(call => pattern.test(call.sql));
 // The client's money is rows of client_item_money (lib/itemMoney.js): what was written to them, [item, price, priorPaid] in order.
 const moneyWritten = db => db.calls.filter(call => /^INSERT INTO client_item_money/.test(call.sql)).map(call => call.params.slice(2));

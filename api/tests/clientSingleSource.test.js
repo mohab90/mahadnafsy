@@ -8,9 +8,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read, codeOnly } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const walk = (dir, out = []) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -22,11 +21,6 @@ const walk = (dir, out = []) => {
   return out;
 };
 
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
 
 test("the institute's WhatsApp number is written once", () => {
   const files = walk(path.join(ROOT, 'client'));
@@ -41,8 +35,10 @@ test("the institute's WhatsApp number is written once", () => {
   // content['footer.whatsapp'] already seeds this default, so every
   // `|| '201096203090'` at a call site was a second copy that could never fire
   // and would be missed the day the institute changes its number. One left: the
-  // seed itself.
-  assert.deepEqual(carriers, ['client/context/SiteDataContext.tsx']);
+  // seed itself, which since 5 Nov 2026 is shared/siteContentDefaults.ts for the site and the admin's editor alike.
+  assert.deepEqual(carriers, []);
+  assert.ok(codeOnly(read('shared/siteContentDefaults.ts')).includes('201096203090'), 'the seed holds it');
+  assert.ok(!codeOnly(read('admin/context/siteDataSeed.ts')).includes('201096203090'), 'and the admin does not keep a copy of its own');
 });
 
 test('every WhatsApp link on the site resolves the number through one helper', () => {

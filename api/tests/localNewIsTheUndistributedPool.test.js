@@ -17,9 +17,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { TERMINAL_LEAD_STATUSES: SERVER_TERMINAL } = require('../lib/leadStatuses');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 let groups;
 test.before(async () => {

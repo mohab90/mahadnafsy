@@ -7,9 +7,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { buildTeamDailyReport, reportRange, MAX_DAYS } = require('../lib/teamDailyReport');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('the range is Cairo days, defaults to today, and is bounded', () => {
   const today = reportRange({}).today;

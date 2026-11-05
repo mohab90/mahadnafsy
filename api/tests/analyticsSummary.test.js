@@ -13,8 +13,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { combineOrders, summarizeOrders, rangeDays, lastSixMonths, RANGES } = require('../lib/analyticsSummary');
 const { addDaysToDateOnly } = require('../lib/dates');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 const RATES = { EGP: 1, SAR: 13, USD: 48 };
 const toEGP = (amount, currency) => amount * (RATES[currency] ?? 1);

@@ -9,8 +9,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const nm = path.join(ROOT, 'admin', 'node_modules');
 
 function load() {

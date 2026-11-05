@@ -14,9 +14,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('the tab strip draws no gear when the page owns the settings', () => {
   const strip = read('admin/pages/dashboard/tabs/SectionCustomTabs.tsx');

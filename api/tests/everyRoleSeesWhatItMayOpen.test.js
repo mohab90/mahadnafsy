@@ -16,9 +16,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const before = require('./fixtures/visibleTabsByRole.json');
 const server = require('../constants/permissions');
+const { ROOT, read } = require('./support/repo');
 
 function bundle() {
   let esbuild;
@@ -125,8 +125,7 @@ test('a permission means what the server says it means', { skip }, () => {
 });
 
 test('the gate, the menu and the bars ask the one rule over the server\'s answer', () => {
-  const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-  const hook = read('admin/hooks/useAccess.ts');
+    const hook = read('admin/hooks/useAccess.ts');
   assert.match(hook, /serverPermissions: authUser\?\.permissions/, 'the permissions are /api/auth/me\'s');
   const model = read('admin/pages/dashboard/shell/useDashboardModel.tsx');
   assert.match(model, /return visibleMenu\(groups, access\.viewer\);/);

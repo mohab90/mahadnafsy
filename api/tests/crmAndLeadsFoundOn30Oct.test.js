@@ -17,9 +17,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('the follow-up helpers ask the DATETIME column for a day as a range, not through DATE_FORMAT and crm_json', () => {
   const { dueOn, dueBy, overdueBefore, FOLLOW_UP_DATE } = require('../lib/leadFollowUps');

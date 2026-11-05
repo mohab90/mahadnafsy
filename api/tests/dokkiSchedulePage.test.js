@@ -10,9 +10,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // The schedule's own helpers, bundled on the spot, so the figures are computed
 // rather than read. Skipped where the admin's packages are not installed.

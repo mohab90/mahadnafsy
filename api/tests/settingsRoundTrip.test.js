@@ -19,11 +19,9 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { resolveCertificatePrice } = require('../lib/certificatePricing');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('a certificate keeps its name across a save', () => {
   const shared = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));

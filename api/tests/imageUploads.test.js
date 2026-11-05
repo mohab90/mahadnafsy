@@ -10,9 +10,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('a picture is the one long string the sanitizer lets through', () => {
   const { sanitizeBody } = require('../middleware/sanitize');

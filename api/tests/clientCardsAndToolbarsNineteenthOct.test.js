@@ -8,9 +8,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const sections = 'admin/pages/dashboard/tabs/online-clients-sections';
 
 test('the client card names each course with what was paid and what is left, and the round, certificate and follow-up under them', () => {

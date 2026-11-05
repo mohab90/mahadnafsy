@@ -16,8 +16,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 // Directives only. The comment above the block in that file names the
 // directives it is explaining, and every assertion below matched the comment
 // instead of the configuration until this stripped them.

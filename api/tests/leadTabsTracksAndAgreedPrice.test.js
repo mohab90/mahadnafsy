@@ -9,9 +9,8 @@ const assert = require('node:assert/strict');
 const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('a tab whose filters hide its pool says so, with a way to show it all', () => {
   const tab = read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx');

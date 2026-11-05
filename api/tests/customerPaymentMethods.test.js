@@ -11,15 +11,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 
 /** Source with comments removed, so a comment quoting a pattern cannot satisfy a doesNotMatch. */
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
 
 test('the public availability endpoint reports which manual channels are configured', () => {
   const route = codeOnly(checkoutSource());

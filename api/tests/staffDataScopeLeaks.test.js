@@ -14,15 +14,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ROLE_PERMS, DATA_SCOPE } = require('../constants/permissions');
+const { ROOT, read, codeOnly } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
-  .join('\n');
 
 /** Every non-wildcard role holding a permission, with its data scope. */
 const holders = permission => Object.entries(ROLE_PERMS)

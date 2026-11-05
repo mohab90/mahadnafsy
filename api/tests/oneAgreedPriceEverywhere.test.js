@@ -14,9 +14,8 @@ const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { itemBalances, resolveAgreed } = require('../lib/agreedPrice');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('the rule: their own price, else the booking\'s (never under what was paid), else the catalogue', () => {
   assert.equal(resolveAgreed({ custom: 2800, booked: 3400, paid: 700, catalogue: 3400 }), 2800);

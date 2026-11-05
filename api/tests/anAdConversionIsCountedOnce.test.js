@@ -28,8 +28,7 @@ stub('../lib/db', {
 });
 
 const metaCapi = require('../lib/metaCapi');
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const { ROOT, read } = require('./support/repo');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 
 const calls = [];

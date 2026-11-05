@@ -8,11 +8,9 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { saveCourseMaterials, loadCourseMaterials, mapCourse } = require('../lib/mappers');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 // A db that records what it was asked to do and answers the reads.
 function recordingDb(rows = []) {

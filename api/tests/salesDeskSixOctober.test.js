@@ -26,10 +26,9 @@ const assert = require('node:assert/strict');
 const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
+const { ROOT, read } = require('./support/repo');
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-sales-desk-secret-0123456789-abcdefghijklmnop';
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const db = {
   calls: [],

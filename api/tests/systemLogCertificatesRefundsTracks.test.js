@@ -18,21 +18,8 @@ const path = require('path');
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 const { departmentOf, describeLabel, describeRequest, summarizeBody } = require('../lib/activityDescribe');
 const { nameCompletedTracks, planTracks } = require('../lib/trackNaming');
+const { fakeDb } = require('./support/repo');
 
-function fakeDb(answers) {
-  const calls = [];
-  return {
-    calls,
-    async query(sql, params = []) {
-      const flat = sql.replace(/\s+/g, ' ');
-      calls.push({ sql: flat, params });
-      for (const [pattern, answer] of answers) {
-        if (pattern.test(flat)) return typeof answer === 'function' ? answer(params) : answer;
-      }
-      return [{ affectedRows: 0 }];
-    },
-  };
-}
 const find = (db, pattern) => db.calls.find(call => pattern.test(call.sql));
 // The client's money is rows of client_item_money (lib/itemMoney.js): the rows a client holds, as the stub answers them, and the maps / writes the code ends with.
 const moneyRows = (customPrices = {}, priorPaid = {}) => [...new Set([...Object.keys(customPrices), ...Object.keys(priorPaid)])]

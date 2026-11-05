@@ -12,9 +12,8 @@ const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { resolvePermissions, hasPermission } = require('../constants/permissions');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('the managers may set a client\'s price; sales, collection and support may not', () => {
   for (const role of ['ONLINE_MANAGER', 'DAQQI_MANAGER', 'SALES_COLLECTION_MANAGER', 'TAGAMOA_MANAGER', 'MANAGER']) {

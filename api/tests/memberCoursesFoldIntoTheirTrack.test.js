@@ -12,8 +12,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-member-cours
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 
 function adminClientItems() {
   let esbuild;

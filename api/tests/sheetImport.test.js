@@ -12,8 +12,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const ROOT = path.join(__dirname, '..', '..');
 const server = require('../lib/sheetCells');
+const { ROOT, read } = require('./support/repo');
 
 let screen = null;
 try {
@@ -204,8 +204,7 @@ test('an .xlsx is read tab by tab, with no library', { skip: !screen && 'esbuild
 });
 
 test('the upload screens read through the one reader and write through the import', () => {
-  const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-  const panel = read('admin/pages/dashboard/tabs/online/OldDataImportPanel.tsx');
+    const panel = read('admin/pages/dashboard/tabs/online/OldDataImportPanel.tsx');
   assert.match(panel, /from '\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/shared\/sheetImport'/);
   assert.match(panel, /accept="\.xlsx,\.xlsm,\.csv,\.tsv,\.txt"/);
   assert.doesNotMatch(panel, /importRow\b/, 'no row-by-row save left');

@@ -10,9 +10,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createCollectionPicker, sanitizeCollectionConfig, subscriberMarket } = require('../lib/collectionDistribution');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 let utils;
 test.before(async () => {

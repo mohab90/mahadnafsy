@@ -10,8 +10,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const view = require('../lib/staffClientsView');
+const { ROOT } = require('./support/repo');
 
 function bundleScreen() {
   let esbuild;

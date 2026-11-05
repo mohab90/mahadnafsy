@@ -10,12 +10,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const ADMIN = path.join(__dirname, '..', '..', 'admin');
 const read = rel => fs.readFileSync(path.join(ADMIN, ...rel.split('/')), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 // The real function is lifted out and run rather than restated, so a rewrite of
 // the rules fails here instead of passing against a stale copy.

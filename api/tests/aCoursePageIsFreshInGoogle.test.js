@@ -35,8 +35,7 @@ stub('../lib/db', {
 
 const { cacheInvalidate } = require('../lib/db');
 const router = require('../routes/seo-pages');
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const { ROOT, read } = require('./support/repo');
 
 const shellFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'seo-shell-')), 'index.html');
 process.env.SEO_SHELL_FILE = shellFile;

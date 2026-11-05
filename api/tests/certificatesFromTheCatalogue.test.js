@@ -11,9 +11,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const catalogue = {
   social_solidarity: { egyptianEGP: 1400, residentEGP: 1900, residentSAR: 200, foreignUSD: 60, label: 'شهادة التضامن الاجتماعي' },

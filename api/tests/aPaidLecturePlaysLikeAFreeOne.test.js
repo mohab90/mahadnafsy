@@ -27,8 +27,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const { playableRedirect } = require('../lib/mediaAccess');
+const { ROOT } = require('./support/repo');
 
 const encode = url => {
   const key = 'mhd-nafsy-2026';

@@ -10,9 +10,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../lib/installmentPlansBySubscriber');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('each subscriber gets their plans from the table, in the shape the table column reads', async () => {
   const db = { async query(sql, params) {

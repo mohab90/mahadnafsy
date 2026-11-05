@@ -14,8 +14,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const api = require('../constants/permissions');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const ADMIN_SOURCE = fs.readFileSync(
   path.join(ROOT, 'admin', 'constants', 'permissions.ts'), 'utf8'
 );

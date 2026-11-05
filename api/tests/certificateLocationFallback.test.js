@@ -17,12 +17,10 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { resolveCertificatePrice } = require('../lib/certificatePricing');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const route = fs.readFileSync(
   path.join(__dirname, '..', 'routes', 'certificates.js'), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('an unresolved location no longer refuses the request', () => {
   const code = codeOnly(route);

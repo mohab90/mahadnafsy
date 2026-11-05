@@ -17,10 +17,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const MODULE = path.join(ROOT, 'admin', 'context', 'site-data-hooks', 'normalizeOrders.ts');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // The real module with its types stripped, not a copy of its rules.
 function load() {

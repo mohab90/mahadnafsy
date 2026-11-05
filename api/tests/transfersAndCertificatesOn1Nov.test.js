@@ -10,9 +10,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { hasPermission, PERMISSIONS } = require('../constants/permissions');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('confirming transfers is its own permission: customer service has it, sales and collection do not, and it opens no finance screen', () => {
   assert.equal(PERMISSIONS.CONFIRM_TRANSFERS, 'confirm_transfers');

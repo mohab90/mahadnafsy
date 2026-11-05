@@ -29,10 +29,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const CLIENT = path.join(ROOT, 'client');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // Comments are blanked before anything is asserted against them: the comment
 // explaining why controls=0 matters contains the string controls=0, and an

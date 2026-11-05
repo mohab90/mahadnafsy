@@ -29,8 +29,7 @@ stub('../lib/db', {
 });
 
 const metaCapi = require('../lib/metaCapi');
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const { ROOT, read } = require('./support/repo');
 
 const calls = [];
 let answer = async () => ({ ok: true, status: 200, json: async () => ({ events_received: 1 }) });

@@ -23,12 +23,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const ROOT = path.join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, ...rel.split('/')), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const community = codeOnly(read('api/routes/community.js'));
 

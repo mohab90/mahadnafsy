@@ -27,8 +27,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const SHARED = path.join(ROOT, 'shared', 'paymentMethods.ts');
 const source = () => fs.readFileSync(SHARED, 'utf8');
 

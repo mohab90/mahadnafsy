@@ -16,11 +16,9 @@ const assert = require('node:assert/strict');
 const {
   ARABIC_WEEKDAY_TO_MYSQL, mysqlWeekdayFromArabic, arabicWeekdaysForDate,
 } = require('../lib/daqqiSchedule');
+const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = name => fs.readFileSync(path.join(__dirname, '..', 'routes', name), 'utf8');
-const codeOnly = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('the weekday translation round-trips, and both spellings of Monday survive', () => {
   // 2026-09-08 is a Tuesday, 2026-09-07 a Monday.

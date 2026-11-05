@@ -19,9 +19,8 @@ const assert = require('node:assert/strict');
 const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROOT, read } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
-const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 function loadAdminModule(rel) {
   let esbuild;

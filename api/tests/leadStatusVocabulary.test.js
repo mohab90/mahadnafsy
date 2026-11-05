@@ -13,8 +13,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const statuses = require('../lib/leadStatuses');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const shared = fs.readFileSync(path.join(ROOT, 'shared', 'leadStatuses.ts'), 'utf8');
 
 const listIn = (source, name) => {

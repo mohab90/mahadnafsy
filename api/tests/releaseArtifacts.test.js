@@ -21,8 +21,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { ROOT } = require('./support/repo');
 
-const ROOT = path.join(__dirname, '..', '..');
 const loadGate = () => import(pathToFileURL(path.join(ROOT, 'tools', 'verifyPrerender.mjs')).href);
 
 const SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
