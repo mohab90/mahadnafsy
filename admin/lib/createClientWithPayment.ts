@@ -30,7 +30,7 @@ import { bookingTierFields } from './bookingIdentity';
  * allowed and takes the other branch.
  */
 
-export type NewClientResult = {
+type NewClientResult = {
   subscriberId?: string;
   /** The payment was recorded as pending because the caller cannot approve it. */
   approvalRequired: boolean;

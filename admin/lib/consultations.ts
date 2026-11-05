@@ -70,7 +70,7 @@ export const sortConsultationsByDate = (rows: ConsultationItem[]) =>
  * «كل استشارة لازم تبان عاجلة خلال 60 دقيقة ولا استشارة بموعد» (25 Oct 2026): an express session
  * (source site_express) is answered within the hour; every other booking has a day and, usually, an hour.
  */
-export type ConsultationTiming = { urgent: boolean; label: string; when: string };
+type ConsultationTiming = { urgent: boolean; label: string; when: string };
 
 export function consultationTiming(item: Pick<ConsultationItem, 'source' | 'sessionDate' | 'scheduledAt' | 'date' | 'sessionTime' | 'createdAt'>): ConsultationTiming {
   if (item.source === 'site_express') {

@@ -35,10 +35,10 @@ export const calcCurrentLecture = (startDate: string, postponedWeeks?: string[])
 // 02:00 or 03:00, so a week postponed then was filed under a key nothing read.
 export const getCurrentWeekKey = (): string => cairoWeekStart(1);
 
-export const normalizeDaqqiBranchId = (value?: string | null) =>
+const normalizeDaqqiBranchId = (value?: string | null) =>
   String(value || '').toUpperCase().replace(/[-\s]/g, '_');
 
-export const parseDaqqiBranchIds = (content: Record<string, string>) => {
+const parseDaqqiBranchIds = (content: Record<string, string>) => {
   const ids = new Set<string>(['daqqi', 'DAQQI']);
   try {
     const raw = content['institute.branches'];
@@ -90,7 +90,7 @@ export function roundLabel(round: DaqqiRound, courses: Course[] = []): string {
 export const courseIdsHeldIn = (rounds: Pick<DaqqiRound, 'courseId'>[], bundles: Bundle[], enrolledIds: string[]): string[] =>
   [...new Set(rounds.map(round => round.courseId))].filter(courseId => isEnrolledInCourse(bundles, enrolledIds, courseId));
 
-export type HousingDecision = { kind: 'already' } | { kind: 'move'; from: DaqqiRound } | { kind: 'add' };
+type HousingDecision = { kind: 'already' } | { kind: 'move'; from: DaqqiRound } | { kind: 'add' };
 
 /**
  * What seating this client in this round means. A client already in it is told so;

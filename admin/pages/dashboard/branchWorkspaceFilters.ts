@@ -1,4 +1,4 @@
-export function normalizeBranchKey(value?: string | null) {
+function normalizeBranchKey(value?: string | null) {
   return String(value || '').trim().toUpperCase().replace(/[-\s]+/g, '_');
 }
 

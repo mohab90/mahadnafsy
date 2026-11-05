@@ -17,20 +17,16 @@ const { foldText } = require('../../lib/searchText');
 const { personMatch } = require('../../lib/systemSearch');
 const { hasPermission } = require('../../constants/permissions');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
+const { createTtlCache } = require('../../lib/ttlCache');
 
 const router = express.Router();
 const PAGE_MAX = 100;
 // The counts walk every lead against the clients (seconds at hundreds of thousands of rows) and change slowly: the same question inside a minute is answered once.
 const COUNT_TTL_MS = 60 * 1000;
-const memo = new Map();
-async function remembered(key, load) {
-  const hit = memo.get(key);
-  if (hit && Date.now() - hit.at < COUNT_TTL_MS) return hit.value;
-  const value = await load();
-  memo.set(key, { at: Date.now(), value });
-  if (memo.size > 200) memo.delete(memo.keys().next().value);
-  return value;
-}
+// Held a minute; once expired the old count is returned at once for up to ten minutes more while a new one is computed behind (lib/ttlCache.js): the first
+// screen of the day waits for the 3–5 s count at 600,000 leads, nobody after it does.
+const memo = createTtlCache({ max: 200 });
+const remembered = (key, load) => memo.cached(key, COUNT_TTL_MS, load, { staleMs: 10 * 60 * 1000 });
 // A page reads at most this many rows from each population: deeper than that is what the filters and the search are for.
 const DEEP_MAX = 20000;
 

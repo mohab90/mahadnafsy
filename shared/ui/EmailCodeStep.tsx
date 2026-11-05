@@ -7,7 +7,7 @@ import React, { FormEvent, useEffect, useState } from 'react';
  * `onVerify` resolves when the session is open (the cookie is set by the API) and rejects with the message to show; `onResend` asks for
  * a new code and resolves with how long to wait before asking again.
  */
-export interface EmailCodeStepProps {
+interface EmailCodeStepProps {
   hint: string;
   initialResendIn?: number;
   onVerify: (code: string) => Promise<void>;

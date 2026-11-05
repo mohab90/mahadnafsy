@@ -43,7 +43,7 @@ export const paymentTypeLabels: Record<PaymentItemType, string> = {
 };
 
 
-export const normalizeBranchId = (value?: string | null) =>
+const normalizeBranchId = (value?: string | null) =>
   String(value || '').trim().toUpperCase().replace(/[-\s]/g, '_');
 
 export const branchMatches = (value: string | undefined | null, filter?: string) => {

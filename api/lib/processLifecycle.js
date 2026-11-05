@@ -95,7 +95,8 @@ function registerProcessLifecycle({ logger, pool, proc = process, exit = code =>
     // already in flight finish.
     httpServer.close(() => {
       clearInterval(idleSweep);
-      pool.end().catch(() => {}).finally(() => {
+      // The route counters of the last minute are written before the pool closes.
+      Promise.resolve().then(() => require('./routeUsage').flushRouteUsage(pool)).catch(() => {}).then(() => pool.end()).catch(() => {}).finally(() => {
         logger.info(`[${signal}] graceful shutdown complete`);
         exit(exitCode);
       });

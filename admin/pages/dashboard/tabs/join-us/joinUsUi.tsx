@@ -56,7 +56,7 @@ export function kindOfApplicant(type?: string | null, sourceForm?: string | null
 }
 
 export const kindOf = (app: JoinUsApplication): Kind => kindOfApplicant(app.type, app.sourceForm);
-export const groupOf = (app: JoinUsApplication): Group => (kindOf(app) === 'staff' ? 'staff' : 'teaching');
+const groupOf = (app: JoinUsApplication): Group => (kindOf(app) === 'staff' ? 'staff' : 'teaching');
 
 export const KindBadge: React.FC<{ kind: Kind; size?: 'sm' | 'md' }> = ({ kind, size = 'sm' }) => {
   const { label, badge, Icon } = KIND[kind];

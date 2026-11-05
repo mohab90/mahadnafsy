@@ -13,7 +13,7 @@ const UnifiedClientPaymentDetailModal = React.lazy(() => import('./UnifiedClient
 
 type ModalProps<T extends React.ElementType> = React.ComponentProps<T>;
 
-export interface UnifiedClientModalsHostProps {
+interface UnifiedClientModalsHostProps {
   access?: ModalProps<typeof UnifiedClientAccessModal>;
   certificateView?: ModalProps<typeof UnifiedClientCertificateViewModal>;
   certificateData?: ModalProps<typeof ClientCertificateDataModal>;

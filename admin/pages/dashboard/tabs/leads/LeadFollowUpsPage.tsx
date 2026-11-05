@@ -19,7 +19,7 @@ import WhatsAppLink from './WhatsAppLink';
  * brings them back on that day — api/lib/leadInteractions.js), push it to
  * tomorrow, or mark it done.
  */
-export type FollowUpGroup = 'overdue' | 'today' | 'week' | 'promised' | 'untouched';
+type FollowUpGroup = 'overdue' | 'today' | 'week' | 'promised' | 'untouched';
 
 const GROUPS: Array<{ key: FollowUpGroup; label: string; tone: string; empty: string }> = [
   { key: 'overdue', label: 'متأخرة', tone: 'red', empty: 'مفيش متابعات متأخرة' },

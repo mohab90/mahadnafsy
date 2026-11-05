@@ -29,7 +29,7 @@ const n = (value: number) => Math.round(value || 0).toLocaleString('ar-EG-u-nu-l
 const rate = (converted: number, assigned: number) => (assigned ? `${Math.round((converted / assigned) * 1000) / 10}%` : '—');
 
 /** The Saturday that starts the week holding `day` (YYYY-MM-DD). Noon, so the Cairo day is the day named. */
-export function saturdayOf(day: string): string {
+function saturdayOf(day: string): string {
   return cairoDaysAgo((new Date(`${day}T12:00:00Z`).getUTCDay() + 1) % 7, `${day}T12:00:00Z`);
 }
 const shift = (day: string, days: number) => cairoDaysAhead(days, `${day}T12:00:00Z`);

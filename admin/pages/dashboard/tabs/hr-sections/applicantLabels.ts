@@ -50,7 +50,7 @@ export const PHONE_RESULTS: Record<string, { label: string; tone: string }> = {
  */
 export const EXPERIENCE_ORDER = ['none', 'under_1', '1-3', '3-5', '5-10', '10plus'];
 
-export const experienceRank = (value: string | null | undefined): number => {
+const experienceRank = (value: string | null | undefined): number => {
   const index = EXPERIENCE_ORDER.indexOf(String(value || ''));
   return index === -1 ? -1 : index;
 };

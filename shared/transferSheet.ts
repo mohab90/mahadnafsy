@@ -24,7 +24,7 @@
  */
 import { foldText, latinDigits, parseAmount, readDateColumn, sheetCellText, type SheetCell, type SheetTab } from './sheetImport';
 
-export type TransferColumn = 'date' | 'customer' | 'sales' | 'course' | 'kind' | 'place' | 'reference' | 'sender' | 'amount' | 'withdrawal';
+type TransferColumn = 'date' | 'customer' | 'sales' | 'course' | 'kind' | 'place' | 'reference' | 'sender' | 'amount' | 'withdrawal';
 
 /** In the order a heading is tried: «رقم العملية» before «الرقم المحول منه». */
 const HEADINGS: [TransferColumn, RegExp][] = [
@@ -40,10 +40,10 @@ const HEADINGS: [TransferColumn, RegExp][] = [
   ['place', /مكان|الحضور|الفرع/],
 ];
 
-export type TransferLayout = { headerRow: number; columns: Partial<Record<TransferColumn, number>> };
+type TransferLayout = { headerRow: number; columns: Partial<Record<TransferColumn, number>> };
 
 /** The heading row (the first that names an operation number or an amount) and its columns. */
-export function detectTransferLayout(rows: SheetCell[][]): TransferLayout | null {
+function detectTransferLayout(rows: SheetCell[][]): TransferLayout | null {
   for (let r = 0; r < Math.min(rows.length, 10); r++) {
     const columns: Partial<Record<TransferColumn, number>> = {};
     rows[r].forEach((cell, index) => {
@@ -73,7 +73,7 @@ export function detectTransferLayout(rows: SheetCell[][]): TransferLayout | null
   return null;
 }
 
-export type SheetTransfer = {
+type SheetTransfer = {
   /** 1-based, as Excel numbers it. */
   row: number;
   receivedOn: string;
@@ -89,7 +89,7 @@ export type SheetTransfer = {
   warnings: string[];
 };
 
-export type SkippedRow = { row: number; reason: string };
+type SkippedRow = { row: number; reason: string };
 
 const clean = (value: SheetCell | undefined) => {
   const text = sheetCellText(value);
@@ -243,8 +243,8 @@ export const guessCurrency = (tabName: string, box: string | null) =>
 
 // ── which transfer is this payment's ──────────────────────────────────────────
 
-export type MatchPayment = { amount: number; currency: string; method?: string | null; reference?: string | null; customerName?: string | null; date?: string | null };
-export type MatchTransfer = { amount: number; currency: string; method: string; reference: string | null; senderName: string | null; note: string | null; receivedOn: string };
+type MatchPayment = { amount: number; currency: string; method?: string | null; reference?: string | null; customerName?: string | null; date?: string | null };
+type MatchTransfer = { amount: number; currency: string; method: string; reference: string | null; senderName: string | null; note: string | null; receivedOn: string };
 
 const nameWords = (text: string | null | undefined) => foldText(text || '').split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 3);
 

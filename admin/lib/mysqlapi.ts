@@ -245,7 +245,7 @@ type AR = Record<string, unknown>;
  * page normalises what comes back regardless, so the shape here only has to be
  * honest about the transport.
  */
-export type SectionTabsWire = Record<string, Array<{
+type SectionTabsWire = Record<string, Array<{
   id: string;
   label: string;
   source: string | null;
@@ -288,8 +288,8 @@ export const mysqlClient = {
 };
 
 // ── Messaging channels ────────────────────────────────────────────────────────
-export type MessagingChannelKind = 'whatsapp' | 'messenger';
-export type MessagingChannelStatus = 'pending' | 'connected' | 'disconnected' | 'error';
+type MessagingChannelKind = 'whatsapp' | 'messenger';
+type MessagingChannelStatus = 'pending' | 'connected' | 'disconnected' | 'error';
 
 export interface RegistrationItem {
   id: string;
@@ -336,7 +336,7 @@ export interface WapilotInstance {
   subscriptionEndsAt: string | null;
 }
 
-export interface MessagingChannelInput {
+interface MessagingChannelInput {
   kind: MessagingChannelKind;
   provider: string;
   label: string;
@@ -372,7 +372,7 @@ export interface WhatsappCampaign {
   created_at: string;
 }
 
-export interface WhatsappCampaignInput {
+interface WhatsappCampaignInput {
   name: string;
   messageTemplate: string;
   audience?: WhatsappCampaign['audience'];

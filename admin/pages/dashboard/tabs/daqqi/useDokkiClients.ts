@@ -19,7 +19,7 @@ function useSettled<T>(value: T, ms: number): T {
   return settled;
 }
 
-export interface DokkiOverviewFigures { clients: number; waiting: number }
+interface DokkiOverviewFigures { clients: number; waiting: number }
 
 /**
  * How many clients the branch has and how many wait for a seat. Asked again when the rounds' seats change (`signature`)
@@ -49,7 +49,7 @@ export function useDokkiOverview(branch: string, signature: string): DokkiOvervi
   return figures;
 }
 
-export interface DokkiCandidateFilters {
+interface DokkiCandidateFilters {
   /** A course the client must hold ('' for any). */
   enrolled: string;
   housing: 'any' | 'unhoused' | 'housed';

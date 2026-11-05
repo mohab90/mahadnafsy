@@ -22,7 +22,7 @@ import { X } from 'lucide-react';
  * promptDialog returns null when cancelled, exactly as window.prompt did, so
  * the null-checks already written around every call site still hold.
  */
-export type PromptOptions = {
+type PromptOptions = {
   title?: string;
   message?: string;
   defaultValue?: string;

@@ -3,7 +3,7 @@ import { Modal } from '../../../../shared/ui/Modal';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { arabicReason } from '../../../lib/apiErrorText';
 
-export type CertificateEditRow = {
+type CertificateEditRow = {
   id: string; subscriberName: string; courseTitle: string;
   /** What the certificate prints now, and what was changed on this certificate (null = as the sources say). */
   printed: { name: string | null; course: string | null; duration: string; trainer: string };

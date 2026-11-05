@@ -12,14 +12,14 @@ export type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 
 export const GRADES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'R', 'W'] as const;
 export type Grade = typeof GRADES[number];
 
-export const GRADE_TINT: Record<Grade, string> = {
+const GRADE_TINT: Record<Grade, string> = {
   'A+': 'bg-emerald-50 text-emerald-700', A: 'bg-emerald-50 text-emerald-600',
   'B+': 'bg-sky-50 text-sky-700', B: 'bg-sky-50 text-sky-600',
   'C+': 'bg-amber-50 text-amber-700', C: 'bg-amber-50 text-amber-600',
   R: 'bg-red-50 text-red-600', W: 'bg-gray-100 text-gray-500',
 };
 
-export const GRADE_STYLE: Record<Grade, string> = {
+const GRADE_STYLE: Record<Grade, string> = {
   'A+': 'bg-emerald-600 text-white',
   A: 'bg-emerald-500 text-white',
   'B+': 'bg-sky-600 text-white',
@@ -77,7 +77,7 @@ export interface JobApplicant {
 }
 
 /** Held = graded: an interview with a grade has happened, whatever its date. */
-export const gradedRow = (row: JobApplicant) => Boolean(row.interview_grade || row.second_interview_grade);
+const gradedRow = (row: JobApplicant) => Boolean(row.interview_grade || row.second_interview_grade);
 
 export interface InterviewActions {
   onGrade: (row: JobApplicant, grade: Grade, round: 1 | 2) => void;

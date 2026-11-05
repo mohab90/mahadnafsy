@@ -5,7 +5,7 @@
  */
 
 export type Money = { currency: string; amount: number };
-export type ToEgp = (amount: number, currency: string) => number;
+type ToEgp = (amount: number, currency: string) => number;
 
 export const monthRevenueEgp = (amounts: Money[] | undefined, toEgp: ToEgp) =>
   (amounts ?? []).reduce((total, money) => total + toEgp(money.amount, money.currency), 0);

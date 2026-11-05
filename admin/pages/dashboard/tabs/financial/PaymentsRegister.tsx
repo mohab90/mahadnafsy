@@ -44,7 +44,7 @@ type Register = { rows: RegisterRow[]; total: number; totalEgp: number; facets: 
 const PAGE_SIZE = 50;
 const STATUS_LABEL: Record<string, string> = { paid: 'مؤكدة', pending: 'قيد المراجعة', refunded: 'مستردة', failed: 'فاشلة' };
 const fmt = (value: number) => Math.round(value).toLocaleString('ar-EG-u-nu-latn');
-export const paymentNumber = (n: number | null, branch?: string | null) => (n == null ? '—' : branch ? `${branch} #${n}` : `#${n}`);
+const paymentNumber = (n: number | null, branch?: string | null) => (n == null ? '—' : branch ? `${branch} #${n}` : `#${n}`);
 
 /** A printable receipt carrying the operation number. Every value is escaped. */
 function printReceipt(row: RegisterRow) {

@@ -14,7 +14,7 @@ import { isCollected } from '../../lib/money';
 import type { Bundle, Course, PaymentHistoryEntry } from '../../types';
 import type { SubjectInfo } from './paymentModalTypes';
 
-export interface HeldOption { cid: string; label: string; px: number; paid: number; remaining: number | null; isBnd: boolean }
+interface HeldOption { cid: string; label: string; px: number; paid: number; remaining: number | null; isBnd: boolean }
 
 type Priced = Record<string, number> | undefined;
 const priceIn = (price: unknown, currency: string): number => {

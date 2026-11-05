@@ -42,12 +42,12 @@ const emptyDraft = () => ({
   startsOn: '', endsOn: '', isActive: true,
 });
 
-export const offerValueLabel = (offer: SalesOffer) =>
+const offerValueLabel = (offer: SalesOffer) =>
   offer.valueType === 'percent'
     ? `${offer.value}%`
     : `${Number(offer.value).toLocaleString('ar-EG-u-nu-latn')} ج.م`;
 
-export function offerScopeLabel(offer: SalesOffer, catalog: Catalog): string {
+function offerScopeLabel(offer: SalesOffer, catalog: Catalog): string {
   if (offer.scopeType === 'course') {
     return catalog.courses.find(c => c.id === offer.scopeId)?.title || 'كورس';
   }
@@ -67,7 +67,7 @@ export function offerScopeLabel(offer: SalesOffer, catalog: Catalog): string {
  * and a bonus read differently on purpose — a discount is what the customer
  * gets, a bonus is what the rep gets — so they do not share a colour.
  */
-export function OfferCard({ offer, catalog, onDelete }: {
+function OfferCard({ offer, catalog, onDelete }: {
   offer: SalesOffer; catalog: Catalog; onDelete?: (id: string) => void;
 }) {
   const discount = offer.kind === 'discount';

@@ -3,7 +3,7 @@ import { Camera, Expand } from 'lucide-react';
 import Picture from '../Picture';
 import { Reveal } from './Reveal';
 
-export type GalleryPhoto = { src: string; alt: string; widths: number[] };
+type GalleryPhoto = { src: string; alt: string; widths: number[] };
 
 // Graduation days at the institute — real photos, not stock.
 export const GRADUATION_PHOTOS: GalleryPhoto[] = [

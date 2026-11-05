@@ -23,8 +23,8 @@ import { useModalKeyboard } from './useModalKeyboard';
  * here rather than a class string each caller reinvents.
  */
 
-export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
-export type ModalTone = 'neutral' | 'indigo' | 'red' | 'emerald' | 'amber' | 'violet';
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
+type ModalTone = 'neutral' | 'indigo' | 'red' | 'emerald' | 'amber' | 'violet';
 
 /**
  * Where the panel sits.
@@ -33,7 +33,7 @@ export type ModalTone = 'neutral' | 'indigo' | 'red' | 'emerald' | 'amber' | 'vi
  *            long forms a thumb has to reach.
  *   drawer — pinned to the side, full height. For lists and detail panes.
  */
-export type ModalAlign = 'center' | 'sheet' | 'drawer';
+type ModalAlign = 'center' | 'sheet' | 'drawer';
 
 export interface ModalProps {
   open: boolean;

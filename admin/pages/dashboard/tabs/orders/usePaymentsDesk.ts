@@ -4,15 +4,15 @@ import { CRM_CHANGED_EVENT } from '../../../../lib/crmChanged';
 import type { PaymentHistoryEntry } from '../../../../types';
 
 /** One payment of the person's own clients, with the client it belongs to (GET /api/staff/payments). */
-export type DeskPayment = PaymentHistoryEntry & {
+type DeskPayment = PaymentHistoryEntry & {
   clientId: string; clientName: string; clientCode: string; clientEmail?: string;
 };
 
-export type DeskTab = 'review' | 'accepted' | 'failed';
+type DeskTab = 'review' | 'accepted' | 'failed';
 const STATUS_OF_TAB: Record<DeskTab, string> = { review: 'pending', accepted: 'paid', failed: 'declined' };
 const PAGE = 200;
 
-export interface DeskTotals {
+interface DeskTotals {
   pending: number; accepted: number; declined: number;
   groupSumEgp: number; acceptedTodayEgp: number; acceptedMonthEgp: number;
 }

@@ -5,7 +5,7 @@ import { arabicReason } from '../lib/apiErrorText';
 import { useSiteData } from '../context/SiteDataContext';
 import type { Course } from '../types';
 
-export type RetakeOption = { cid: string; label: string; remaining: number | null };
+type RetakeOption = { cid: string; label: string; remaining: number | null };
 type Currency = 'EGP' | 'SAR' | 'USD';
 
 const RETAKE_PERCENT_OFF = 50;

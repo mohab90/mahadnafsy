@@ -4,7 +4,7 @@
  * the recommendation come from the real course list — nothing is typed twice,
  * so a course the institute adds or reprices shows up here by itself.
  */
-export type GoalCourse = {
+type GoalCourse = {
   id: string;
   category?: string;
   students?: number;
@@ -13,7 +13,7 @@ export type GoalCourse = {
 
 export type Goal = { id: string; label: string; hint: string; count: number };
 
-export const GOAL_TEXT: Record<string, { label: string; hint: string }> = {
+const GOAL_TEXT: Record<string, { label: string; hint: string }> = {
   Therapy: { label: 'العلاج النفسي', hint: 'أدوات علاجية وتطبيق مع الحالات' },
   Diagnosis: { label: 'التشخيص والتقييم', hint: 'أدوات القياس وبناء التقييم' },
   Child: { label: 'الطفل والمراهق', hint: 'سلوك الطفل والتعامل مع الأسرة' },

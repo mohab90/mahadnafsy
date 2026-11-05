@@ -27,7 +27,7 @@ import { AlertTriangle, X } from 'lucide-react';
  * A plain string is accepted so the simplest sites stay one line; the object
  * form adds a title and a confirm label where the extra clarity is worth it.
  */
-export type ConfirmOptions = {
+type ConfirmOptions = {
   title?: string;
   /** Body text. Newlines are preserved, matching what window.confirm did. */
   message?: string;

@@ -11,7 +11,7 @@ import type { PaymentHistoryEntry, SubscriberItem } from '../types';
  *
  * `reason` is what the rejecter wrote: the server appends it to the payment's note as «Review: …».
  */
-export type RejectedPayment = { payment: PaymentHistoryEntry; reason: string; day: string };
+type RejectedPayment = { payment: PaymentHistoryEntry; reason: string; day: string };
 
 export function rejectedPaymentOf(client: Pick<SubscriberItem, 'paymentHistory'> | null | undefined): RejectedPayment | null {
   const history = client?.paymentHistory || [];

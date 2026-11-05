@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useAccess } from '../../../hooks/useAccess';
 import type { SubscriberStats } from '../../../types';
 
 /**
@@ -17,11 +18,16 @@ import type { SubscriberStats } from '../../../types';
  *
  * Scoped server-side by the same rule as the subscriber list, so a rep's count
  * matches the list they can actually see.
+ *
+ * Not asked for by an account without view_subscribers (the accountant opens the overview and the accounts screens): the answer was a 403 on every one of them
+ * (5 Nov 2026), and the caller's fallback — the array it holds — is what such an account always drew.
  */
 export function useSubscriberStats(overview = false): SubscriberStats | null {
   const [stats, setStats] = useState<SubscriberStats | null>(null);
+  const mayRead = useAccess().can('view_subscribers');
 
   useEffect(() => {
+    if (!mayRead) return undefined;
     let cancelled = false;
     void (async () => {
       try {
@@ -33,7 +39,7 @@ export function useSubscriberStats(overview = false): SubscriberStats | null {
       }
     })();
     return () => { cancelled = true; };
-  }, [overview]);
+  }, [overview, mayRead]);
 
   return stats;
 }

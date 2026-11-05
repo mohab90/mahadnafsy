@@ -19,7 +19,7 @@ import type { LeadItem, LeadStatus, SubscriberItem } from '../../types';
  * Rows without a date sort last: an undated row is not new, and floating it to
  * the top would put the least-known records in front of today's work.
  */
-export const newestFirst = <T extends { createdAt?: string | null }>(rows: T[]): T[] =>
+const newestFirst = <T extends { createdAt?: string | null }>(rows: T[]): T[] =>
   [...rows].sort((a, b) => {
     const left = String(a.createdAt || '');
     const right = String(b.createdAt || '');
@@ -63,7 +63,7 @@ export function mergeSubscribers(current: SubscriberItem[], incoming: Subscriber
  * holds a page, and nothing when no screen has asked for the list. A reload used to download the whole lead table
  * (27k rows, six pages) whatever was held — usually the 500-row page or nothing at all.
  */
-export type HeldRows = 'whole' | 'page' | 'none';
+type HeldRows = 'whole' | 'page' | 'none';
 export const heldRowsOf = (wholeTable: boolean, heldCount: number): HeldRows =>
   (wholeTable ? 'whole' : heldCount > 0 ? 'page' : 'none');
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 // api/lib/courseRatings.js): a rating counts while the rater holds the course.
 // One request per page load, shared by every card on the page.
 
-export type CourseRating = { avg: number; count: number };
+type CourseRating = { avg: number; count: number };
 type Ratings = Record<string, CourseRating>;
 
 let cached: Promise<Ratings> | null = null;

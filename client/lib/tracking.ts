@@ -26,7 +26,7 @@ const CONSENT_KEY = 'mahad-ad-consent';
 const ORDER_KEY = 'mahad-checkout-order';
 const SENT_KEY = 'mahad-purchase-sent';
 
-export function adConsentDenied(): boolean {
+function adConsentDenied(): boolean {
   try {
     if ((navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true) return true;
   } catch { /* no navigator */ }
@@ -85,7 +85,7 @@ export function trackCompleteRegistration(): void {
 }
 
 // ── Checkout and purchase ────────────────────────────────────────────────────
-export type CheckoutItem = { id: string; type: string; title: string; value: number; currency: string };
+type CheckoutItem = { id: string; type: string; title: string; value: number; currency: string };
 
 export function trackInitiateCheckout(item: CheckoutItem): void {
   fbq('track', 'InitiateCheckout', {

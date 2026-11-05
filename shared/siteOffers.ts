@@ -24,12 +24,12 @@
  *   popup.delaySeconds · popup.theme · popup.version (bumped on every save so
  *   a changed pop-up is shown again to people who closed the old one)
  */
-export type OfferContent = Record<string, string | undefined>;
-export type OfferCurrency = 'EGP' | 'SAR' | 'USD';
+type OfferContent = Record<string, string | undefined>;
+type OfferCurrency = 'EGP' | 'SAR' | 'USD';
 
 export const OFFER_DEFAULT_HOURS = 24;
 export const OFFER_MAX_HOURS = 24 * 30;
-export const POPUP_FREQUENCIES = ['once', 'daily', 'session', 'always'] as const;
+const POPUP_FREQUENCIES = ['once', 'daily', 'session', 'always'] as const;
 export type PopupFrequency = (typeof POPUP_FREQUENCIES)[number];
 export const POPUP_THEMES = ['royal', 'sunset', 'emerald'] as const;
 export type PopupTheme = (typeof POPUP_THEMES)[number];
@@ -102,7 +102,7 @@ export function popupTheme(content: OfferContent): PopupTheme {
   return (POPUP_THEMES as readonly string[]).includes(value) ? (value as PopupTheme) : 'royal';
 }
 
-export type PopupVideo = { kind: 'frame' | 'file'; src: string };
+type PopupVideo = { kind: 'frame' | 'file'; src: string };
 
 /**
  * «محتاج يبقى في إمكانية إنه يظهر بفيديو»: the address the owner pasted, as something a page can play — a YouTube or Vimeo

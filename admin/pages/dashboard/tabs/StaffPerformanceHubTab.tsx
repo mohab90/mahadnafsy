@@ -13,7 +13,7 @@ const StaffOverviewSection = lazy(() => import('./staff-performance/StaffOvervie
 const StaffPerformanceTab = lazy(() => import('./StaffPerformanceTab'));
 const HrAnalyticsTab = lazy(() => import('./HrAnalyticsTab'));
 
-export const STAFF_PERFORMANCE_SECTIONS: TabSection[] = [
+const STAFF_PERFORMANCE_SECTIONS: TabSection[] = [
   { id: 'overview', label: 'نظرة عامة', icon: LayoutDashboard, permission: 'view_hr', alsoPermissions: ['manage_sales_team', 'view_perf_sales'], Component: StaffOverviewSection },
   { id: 'team', label: 'أداء الفريق', icon: TrendingUp, permission: 'view_hr', alsoPermissions: ['view_leads'], Component: StaffPerformanceTab as TabSection['Component'] },
   { id: 'hr', label: 'تحليلات الموارد البشرية', icon: BarChart3, permission: 'view_hr', Component: HrAnalyticsTab },

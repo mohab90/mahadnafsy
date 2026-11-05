@@ -28,7 +28,7 @@ export function foldText(value: unknown): string {
 
 const digitsOf = (value: unknown) => foldText(value).replace(/\D/g, '');
 
-export interface SearchFields {
+interface SearchFields {
   name?: string | null;
   phone?: string | null;
   phones?: Array<string | null | undefined>;

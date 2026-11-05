@@ -3404,6 +3404,7 @@ CREATE TABLE `leads` (
   KEY `idx_leads_tenant_merged` (`tenant_id`,`merged_into_lead_id`),
   KEY `idx_leads_tenant_branch_created` (`tenant_id`,`branch_id`,`created_at`),
   KEY `idx_leads_tenant_sales_created` (`tenant_id`,`assigned_sales_id`,`created_at`),
+  KEY `idx_leads_tenant_sales_branch_status` (`tenant_id`,`assigned_sales_id`,`branch`,`status`),
   KEY `idx_leads_tenant_sales_updated` (`tenant_id`,`assigned_sales_id`,`updated_at`),
   KEY `idx_leads_tenant_forecast_close` (`tenant_id`,`expected_close_date`,`forecast_category`,`assigned_sales_id`,`hidden`),
   KEY `idx_leads_assigned_today` (`tenant_id`,`assigned_sales_id`,`assigned_at`),
@@ -4775,6 +4776,24 @@ CREATE TABLE `retargeting_log` (
   KEY `idx_retarget_lead` (`lead_id`),
   KEY `idx_retargeting_tenant_lead` (`tenant_id`,`lead_id`,`sent_at`),
   CONSTRAINT `fk_retarget_lead` FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `route_usage`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `route_usage` (
+  `day` date NOT NULL,
+  `method` varchar(8) NOT NULL,
+  `route` varchar(190) NOT NULL,
+  `hits` int(10) unsigned NOT NULL DEFAULT 0,
+  `errors` int(10) unsigned NOT NULL DEFAULT 0,
+  `last_seen` datetime DEFAULT NULL,
+  PRIMARY KEY (`day`,`method`,`route`),
+  KEY `idx_route_usage_route` (`route`,`method`,`day`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 /** Height of the bar track; both series are scaled into it. */
 export const BAR_TRACK_PX = 72;
 
-export interface ActivityDay {
+interface ActivityDay {
   day: string;
   label: string;
   calls: number;

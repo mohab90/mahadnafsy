@@ -1,10 +1,10 @@
 import { blankPaymentDraft, type PaymentDraft } from '../components/PaymentModal';
 import { currencyForBranch } from './branchCurrency';
 
-export type ClientActionBookingType = 'new_booking' | 'installment';
-export type ClientActionCurrency = 'EGP' | 'SAR' | 'USD';
+type ClientActionBookingType = 'new_booking' | 'installment';
+type ClientActionCurrency = 'EGP' | 'SAR' | 'USD';
 
-export interface ClientPaymentDraftOptions {
+interface ClientPaymentDraftOptions {
   courseId?: string;
   branch?: string;
   currency?: ClientActionCurrency;

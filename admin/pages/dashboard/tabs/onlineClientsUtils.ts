@@ -3,7 +3,7 @@ import { normBranchId } from '../dashboardShared';
 import { cairoDay } from '../../../../shared/cairoDate';
 
 export type SubscriberSavePayload = Partial<SubscriberItem> & Record<string, unknown>;
-export type BulkAssignCollectionResult = { ok: boolean; assigned: number; staffCount: number; staff: string[] };
+type BulkAssignCollectionResult = { ok: boolean; assigned: number; staffCount: number; staff: string[] };
 
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error || '');

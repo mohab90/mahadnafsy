@@ -9,7 +9,7 @@
  * because the photo was large. A file that is already smaller than any
  * re-encoding is kept as it is.
  */
-export type ImageKind = 'cover' | 'gallery' | 'photo' | 'avatar' | 'receipt' | 'certificate';
+type ImageKind = 'cover' | 'gallery' | 'photo' | 'avatar' | 'receipt' | 'certificate';
 
 export const IMAGE_KINDS: Record<ImageKind, { maxPx: number; maxBytes: number; quality: number }> = {
   // An event's picture, a course's gallery: shown wide.
@@ -25,7 +25,7 @@ export const IMAGE_KINDS: Record<ImageKind, { maxPx: number; maxBytes: number; q
 };
 
 /** Larger than any phone photo; beyond it the browser is asked to decode too much. */
-export const IMAGE_SOURCE_MAX_BYTES = 15_000_000;
+const IMAGE_SOURCE_MAX_BYTES = 15_000_000;
 
 export function dataUrlByteLength(value: string): number {
   const comma = value.indexOf(',');

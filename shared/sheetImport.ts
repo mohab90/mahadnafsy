@@ -76,7 +76,7 @@ export const SHEET_FIELDS: { key: SheetField; label: string; words: string[] }[]
   { key: 'name', label: 'الاسم', words: ['اسم', 'الايم', 'العميل', 'الطالب', 'name', 'client', 'student', 'customer'] },
 ];
 
-export type ColumnMap = Partial<Record<SheetField, number>>;
+type ColumnMap = Partial<Record<SheetField, number>>;
 
 /** The fields a heading could name, most likely first. */
 export function fieldsOfHeading(heading: SheetCell | undefined): SheetField[] {

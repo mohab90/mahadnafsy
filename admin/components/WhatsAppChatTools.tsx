@@ -154,7 +154,7 @@ export function HandOverDialog({ jid, leadId, onClose, onDone, notify }: { jid: 
 }
 
 // The statuses a conversation moves a lead through. A sale («converted») is made by a booking, not by choosing it here.
-export const CHAT_LEAD_STATUSES: Array<[string, string]> = [
+const CHAT_LEAD_STATUSES: Array<[string, string]> = [
   ['new', 'جديد'], ['contacted', 'اتكلّم معاه'], ['interested', 'مهتم'], ['interested_followup', 'مهتم — متابعة'],
   ['interested_booking', 'عايز يحجز'], ['no_answer', 'مردّش'], ['postpone_month', 'مؤجل شهر'], ['with_colleague', 'مع زميل'],
   ['not_interested', 'مش مهتم'], ['wrong_number', 'رقم غلط'],

@@ -9,12 +9,12 @@
  * badge, survives a round-trip, and can be swapped for a real course later —
  * but every place that needs an actual course id must filter it out first.
  */
-export const RAW_COURSE_PREFIX = 'raw:';
+const RAW_COURSE_PREFIX = 'raw:';
 
 export const isRawCourse = (id: string): boolean =>
   typeof id === 'string' && id.startsWith(RAW_COURSE_PREFIX);
 
-export const rawCourseText = (id: string): string =>
+const rawCourseText = (id: string): string =>
   isRawCourse(id) ? id.slice(RAW_COURSE_PREFIX.length) : id;
 
 export const toRawCourse = (text: string): string =>
@@ -35,7 +35,7 @@ export const realCourseIds = (ids: readonly string[] | undefined | null): string
  */
 const FILLER_WORDS = ['دبلومه', 'دبلوم', 'كورس', 'دوره', 'برنامج', 'شهاده', 'اعداد', 'احتراف'];
 
-export function normalizeCourseName(value: string): string {
+function normalizeCourseName(value: string): string {
   let s = String(value || '')
     .replace(/^\uFEFF/, '')
     .replace(/[ً-ْـ]/g, '')      // diacritics + tatweel

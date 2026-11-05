@@ -7,7 +7,7 @@ export interface Column<T> {
   className?: string;
 }
 
-export interface DataTableProps<T> {
+interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
   loading?: boolean;

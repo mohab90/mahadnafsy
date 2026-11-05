@@ -8,7 +8,7 @@ import { commTypeMeta } from './constants';
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 
 /** One contact, from GET /api/staff/subscribers/:id/communications. */
-export type ContactEntry = {
+type ContactEntry = {
   id: string; type: string; date: string; notes: string; outcome: string | null; nextFollowUp: string | null;
   staffName: string | null; stage: 'client' | 'lead'; direction: 'out' | 'in';
 };
@@ -16,7 +16,7 @@ export type ContactEntry = {
 const CONTACT_TYPES = ['call', 'whatsapp', 'meeting', 'payment_followup', 'note'] as const;
 const OUTCOMES = ['رد وهيدفع', 'رد ومحتاج متابعة', 'مردش', 'الرقم مقفول', 'طلب يتكلم بعدين', 'اتحلت المشكلة', 'مصمم على الاسترداد', 'وافق يكمل'];
 
-export function useClientContacts(subscriberId: string | null | undefined) {
+function useClientContacts(subscriberId: string | null | undefined) {
   const [entries, setEntries] = useState<ContactEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const reload = useCallback(async () => {
@@ -35,7 +35,7 @@ export function useClientContacts(subscriberId: string | null | undefined) {
  * The history of a client's contacts as a timeline: who spoke to them, when,
  * how, and what was said — the contacts made while they were a lead included.
  */
-export function ContactTimeline({ entries, loading, compact = false }: { entries: ContactEntry[]; loading: boolean; compact?: boolean }) {
+function ContactTimeline({ entries, loading, compact = false }: { entries: ContactEntry[]; loading: boolean; compact?: boolean }) {
   if (loading && !entries.length) return <p className="py-6 text-center text-xs text-gray-400">جاري التحميل…</p>;
   if (!entries.length) return <p className="py-6 text-center text-xs text-gray-400">لسه مفيش أي تواصل متسجل مع العميل ده.</p>;
   return (

@@ -35,7 +35,7 @@ type SimpleEditorProps = BaseProps & {
  * labelled «العنوان»), else under `mainTitle`. Sections keep the order their
  * first field appears in, which is the order the page draws them.
  */
-export function sectionsFromFields(fields: ContentField[], mainTitle: string): EditorSection[] {
+function sectionsFromFields(fields: ContentField[], mainTitle: string): EditorSection[] {
   const sections: EditorSection[] = [];
   const byTitle = new Map<string, EditorSection>();
   for (const field of fields) {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Flame, Quote, Sparkles, Target, TrendingUp, Sunrise } from 'lucide-react';
 
-export interface MotivationStats {
+interface MotivationStats {
   convertedThisMonth: number;
   convRate: number;
   callsThisMonth: number;

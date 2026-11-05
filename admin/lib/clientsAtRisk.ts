@@ -1,7 +1,7 @@
 // «مؤشر عميل في خطر: تقييم واطي، وغاب محاضرتين، وعليه فلوس» — two of the three
 // (api/lib/clientsAtRisk.js holds the same rule for the customer-service list).
 // «Missed» is against the sessions the round's attendance was taken for.
-export const MISSED_LECTURES = 2;
+const MISSED_LECTURES = 2;
 export const LOW_RATING = 5;
 
 export function riskOf({ latestRating = null, sessions = 0, attended = 0, owed = 0 }: {

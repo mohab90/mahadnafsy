@@ -11,7 +11,7 @@ import { useSiteData } from '../context/SiteDataContext';
 // system, with nothing recorded. For an employee whose own WhatsApp is linked to the system (tabs/whatsapp/WhatsAppWebTab),
 // those links now open that chat instead, and a message written in the system goes out from the system.
 
-export const IN_SYSTEM_WHATSAPP_PATH = '/dashboard/whatsapp_web';
+const IN_SYSTEM_WHATSAPP_PATH = '/dashboard/whatsapp_web';
 
 /** The in-system chat for a number, with the message to start from. */
 export function inSystemChatUrl({ phone, name, text }: { phone: string; name?: string; text?: string }): string {
@@ -37,7 +37,7 @@ export function parseWhatsAppHref(href: string): { phone: string; text: string }
 }
 
 /** Whether this account has its own WhatsApp in the system (the same rule as the «واتسابي» tab). */
-export function useInSystemWhatsApp(): boolean {
+function useInSystemWhatsApp(): boolean {
   const { isAdmin, currentStaff } = useSiteData();
   return useMemo(() => {
     if (isAdmin) return true;

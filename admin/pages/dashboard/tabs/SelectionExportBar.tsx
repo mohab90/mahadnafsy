@@ -32,7 +32,7 @@ export function useRowPicker<T extends { id: string }>(visible: T[]) {
   };
 }
 
-export type RowPicker<T extends { id: string }> = ReturnType<typeof useRowPicker<T>>;
+type RowPicker<T extends { id: string }> = ReturnType<typeof useRowPicker<T>>;
 
 export function SelectionExportBar<T extends { id: string }>({ picker, shown, noun = 'شهادة', onDownload, notify }: {
   picker: RowPicker<T>;

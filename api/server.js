@@ -74,6 +74,8 @@ migrationReady.then(migrationResult => {
       else logger.warn('[clock] a clock is not UTC — see «مراقبة السيرفر» → ساعة السيستم', clock);
     }).catch(() => {});
     require('./lib/rbacOverrides').startRbacRefresh();
+    // Which routes are called, per day, kept (migration 363): the list to delete unused routes from. Production only, like the jobs.
+    if (process.env.NODE_ENV === 'production') require('./lib/routeUsage').startRouteUsage({ pool, logger });
     require('./lib/messageTemplates').startTemplatesRefresh();
     // MAHAD_ROLE=web leaves the jobs to worker.js (lib/processRole.js).
     if (role === 'all') {

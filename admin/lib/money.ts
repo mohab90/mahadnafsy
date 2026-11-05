@@ -16,7 +16,7 @@
 /** Mirrors _FX_FALLBACK in api/lib/finance.js. */
 export const FX_FALLBACK: Record<string, number> = { EGP: 1, SAR: 13, USD: 48 };
 
-export type FxRates = Record<string, number>;
+type FxRates = Record<string, number>;
 
 /** The configured rates, or the fallbacks where a setting is missing or unusable. */
 export function fxRates(content?: Record<string, string> | null): FxRates {

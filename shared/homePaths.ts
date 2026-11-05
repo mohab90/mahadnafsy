@@ -5,7 +5,7 @@
  * list is one click away on /bundles.
  */
 export const HOME_PATHS_MAX = 3;
-export const HOME_PATHS_HIDDEN_TITLES = ['العلاج النفسي المتكامل'];
+const HOME_PATHS_HIDDEN_TITLES = ['العلاج النفسي المتكامل'];
 
 export function bundlesForHome<T extends { title?: string }>(bundles: T[]): T[] {
   return bundles

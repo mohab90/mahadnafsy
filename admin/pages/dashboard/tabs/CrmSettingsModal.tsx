@@ -30,7 +30,7 @@ const SECTION_TITLES: Record<CrmSettingsSection, string> = {
   assign: 'التوزيع على السيلز',
   gsheet: 'الشيتات ومزامنتها',
 };
-export type GSheet = { id: string; name: string; sheetId: string; gid: string; autoSync: boolean; defaultCourse?: string };
+type GSheet = { id: string; name: string; sheetId: string; gid: string; autoSync: boolean; defaultCourse?: string };
 export type CrmSettings = {
   leadSources: string[];
   autoAssign: 'none' | 'rr' | 'least';

@@ -14,7 +14,7 @@ export type ClientCardAction = {
   tone?: 'default' | 'good' | 'info' | 'danger';
 };
 
-export type ClientCardCourse = { id: string; label: string; expected: number; paid: number; remaining: number; currency: string };
+type ClientCardCourse = { id: string; label: string; expected: number; paid: number; remaining: number; currency: string };
 
 const HOVER: Record<NonNullable<ClientCardAction['tone']>, string> = {
   default: 'hover:text-gray-800',

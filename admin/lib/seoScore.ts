@@ -28,9 +28,9 @@ export interface SeoInput {
   published?: boolean;
 }
 
-export type SeoState = 'good' | 'partial' | 'bad';
+type SeoState = 'good' | 'partial' | 'bad';
 
-export interface SeoCheck {
+interface SeoCheck {
   id: string;
   label: string;
   weight: number;
@@ -40,7 +40,7 @@ export interface SeoCheck {
   tip?: string;
 }
 
-export interface SeoReport {
+interface SeoReport {
   /** 0–10, one decimal. */
   score: number;
   grade: string;
@@ -61,7 +61,7 @@ export function normalizeForSearch(value?: string | null): string {
     .replace(/ى/g, 'ي');
 }
 
-export const wordCount = (value?: string | null) => clean(value).split(' ').filter(Boolean).length;
+const wordCount = (value?: string | null) => clean(value).split(' ').filter(Boolean).length;
 
 export const focusKeyword = (keywords?: string | null) =>
   String(keywords ?? '').split(/[,،]/).map(k => k.trim()).find(Boolean) ?? '';

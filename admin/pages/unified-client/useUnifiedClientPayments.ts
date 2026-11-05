@@ -35,7 +35,7 @@ interface Params {
   reloadSubscribers: () => Promise<unknown>;
 }
 
-export interface UnifiedClientBooking {
+interface UnifiedClientBooking {
   paidEGP: number;
   expectedEGP?: number;
   discount?: number;

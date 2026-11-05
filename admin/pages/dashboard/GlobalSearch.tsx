@@ -36,7 +36,7 @@ export function canUseGlobalSearch(isAdmin: boolean, staff: StaffMember | null |
 }
 
 /** Where a result goes. */
-export function hitPath(hit: Hit): string {
+function hitPath(hit: Hit): string {
   if (hit.open.client) return `/client/${encodeURIComponent(hit.open.client)}`;
   const tab = hit.open.tab || 'overview';
   return `/dashboard/${tab}${hit.open.ticket ? `?focus=${encodeURIComponent(hit.open.ticket)}` : ''}`;

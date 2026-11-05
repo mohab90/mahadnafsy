@@ -48,7 +48,7 @@ export function pendingFor(subscriber: Pick<SubscriberItem, 'paymentHistory'>, i
 
 type PricedCatalogueItem = { id: string; title: string; price?: unknown; courses?: { id: string }[] };
 
-export type ClientItem = {
+type ClientItem = {
   item: string; title: string; isTrack: boolean; currency: string;
   expected: number; paid: number; remaining: number;
   /** Recorded but not yet approved — not counted in `paid`. */

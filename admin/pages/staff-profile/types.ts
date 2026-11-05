@@ -12,7 +12,7 @@ export interface TimelinePoint {
   touches: number;
 }
 
-export interface LeaderboardRow {
+interface LeaderboardRow {
   position: number;
   id: string;
   name: string;

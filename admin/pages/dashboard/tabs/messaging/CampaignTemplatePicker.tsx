@@ -10,7 +10,7 @@ import { NewTemplateForm } from './NewTemplateForm';
  * fills each {{1}}, {{2}}… — a fixed text, or {{name}} / {{clientCode}} for
  * each person's own.
  */
-export type MetaTemplate = { name: string; language: string; body: string; params: number; category: string; usable: boolean };
+type MetaTemplate = { name: string; language: string; body: string; params: number; category: string; usable: boolean };
 export type TemplateChoice = { name: string; language: string; params: string[]; body: string } | null;
 
 const FILLERS = [

@@ -16,7 +16,7 @@ export interface ExportColumn {
   format?: (v: unknown) => string; // Custom formatter
 }
 
-export interface ExportOptions {
+interface ExportOptions {
   filename: string;         // Without extension
   title?: string;           // Sheet / PDF title
   subtitle?: string;        // PDF subtitle
@@ -114,7 +114,7 @@ export async function exportToPDF<T extends Record<string, unknown>>(
 }
 
 // ── Convenience: export both ──────────────────────────────────────────────────
-export async function exportData<T extends Record<string, unknown>>(
+async function exportData<T extends Record<string, unknown>>(
   rows: T[],
   columns: ExportColumn[],
   opts: ExportOptions,

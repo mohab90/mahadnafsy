@@ -7,8 +7,8 @@ import type { Course, DaqqiRound, SubscriberItem } from '../../../../types';
 import { getCurrentWeekKey } from './daqqiScheduleUtils';
 import { DaqqiRoundPicker } from './DaqqiRoundPicker';
 
-export type DaqqiTransferModalState = { subscriberId: string; fromRoundId: string } | null;
-export type DaqqiPostponeModalState = { roundId: string; newDate: string } | null;
+type DaqqiTransferModalState = { subscriberId: string; fromRoundId: string } | null;
+type DaqqiPostponeModalState = { roundId: string; newDate: string } | null;
 
 const courseTitle = (courses: Course[], courseId?: string) => {
   const course = courses.find(c => c.id === courseId);

@@ -24,7 +24,7 @@ interface QuickCommunicationDraft {
   alsoSend: boolean;
 }
 
-export interface QuickLogContactPanelProps {
+interface QuickLogContactPanelProps {
   canManageLeads: boolean;
   showAddComm: boolean;
   setShowAddComm: React.Dispatch<React.SetStateAction<boolean>>;

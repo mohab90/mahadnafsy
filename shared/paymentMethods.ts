@@ -104,7 +104,7 @@ const ALIASES: Record<string, string> = {
  * raw. The same rail therefore appeared under two names depending on who
  * recorded it.
  */
-export const SAME_AS_PAYMENT = 'same_as_payment';
+const SAME_AS_PAYMENT = 'same_as_payment';
 
 /**
  * A box money is counted into rather than transferred to («نقدي», «خزنة

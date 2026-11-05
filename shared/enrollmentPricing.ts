@@ -18,7 +18,7 @@ export const INSTALL_DISCOUNT = 0.07;   // off the base price when paying in ins
 export const INSTALL_FIRST_PCT = 0.25;  // the first instalment, as a share of the discounted total
 
 export type PayMode = 'cash' | 'installment';
-export type EnrollmentRates = { cash: number; install: number; first: number };
+type EnrollmentRates = { cash: number; install: number; first: number };
 
 export const DEFAULT_RATES: EnrollmentRates = { cash: CASH_DISCOUNT, install: INSTALL_DISCOUNT, first: INSTALL_FIRST_PCT };
 /** The most a discount can be set to — a typo of «150» must not give a course away. */

@@ -427,7 +427,7 @@ ROLE_DEFAULT_PERMISSIONS.reception_tagamoa = [...(ROLE_DEFAULT_PERMISSIONS.recep
 
 // ── 7. DATA SCOPE PER ROLE ────────────────────────────────────────────────────
 // Controls what rows the server returns from the unified /api/staff/subscribers endpoint.
-export type DataScope = 'all' | 'assigned_sales' | 'assigned_cs' | 'none' | `branch:${string}`;
+type DataScope = 'all' | 'assigned_sales' | 'assigned_cs' | 'none' | `branch:${string}`;
 
 export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
   admin:                    'all',

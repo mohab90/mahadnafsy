@@ -16,7 +16,7 @@ import { DEFAULT_PAYMENT_METHODS, sanitizePaymentMethods, type PaymentMethodCode
 // hardcode that list — one in Arabic, one in codes — so the admin setting was
 // unreachable from the customer's side entirely.
 
-export type PaymentAvailability = {
+type PaymentAvailability = {
   online: boolean;
   manualMethods: PaymentMethodCode[];
 };

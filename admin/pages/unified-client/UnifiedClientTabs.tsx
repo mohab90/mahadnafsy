@@ -1,6 +1,6 @@
 import type { UnifiedClientTab } from './useUnifiedClientActiveTab';
 
-export type UnifiedClientTabItem = [UnifiedClientTab, string];
+type UnifiedClientTabItem = [UnifiedClientTab, string];
 
 interface BuildUnifiedClientTabsInput {
   isSubscriber: boolean;

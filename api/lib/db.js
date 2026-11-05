@@ -192,36 +192,21 @@ async function dbExecute(sql, params) { return pool.execute(sql, params); }
 // ── In-memory Cache ───────────────────────────────────────────────────────────
 // Lightweight TTL cache with LRU eviction — avoids hammering DB for public endpoints.
 // Max 500 entries; when full, the oldest-inserted key is evicted before adding new ones.
-const CACHE_MAX = 500;
-const _cache = new Map();
-const _pendingCache = new Map();
+const { createTtlCache } = require('./ttlCache');
+const ttlCache = createTtlCache({ max: 500 });
 function cached(key, ttlMs, fn) {
   // In development, keep the catalog cache very short so admin edits (new courses,
   // price changes, etc.) appear almost immediately instead of after the full TTL.
   if (process.env.NODE_ENV !== 'production') ttlMs = Math.min(ttlMs, 3000);
-  const hit = _cache.get(key);
-  if (hit && Date.now() - hit.ts < ttlMs) return Promise.resolve(hit.data);
-  const pending = _pendingCache.get(key);
-  if (pending) return pending;
-  const promise = Promise.resolve().then(fn).then(data => {
-    if (_cache.size >= CACHE_MAX) _cache.delete(_cache.keys().next().value);
-    _cache.set(key, { data, ts: Date.now() });
-    return data;
-  }).finally(() => _pendingCache.delete(key));
-  _pendingCache.set(key, promise);
-  return promise;
+  // «figures:» are the panel's counters and reports, dropped by the first write after them (lib/httpApp.js dropFiguresAfterWrites): when one has just expired the
+  // old answer is handed back at once and a new one is computed behind (lib/ttlCache.js), so a 2–5 s aggregate is waited for once, not once per window.
+  // Staleness is at most twice the ttl more, and only for an entry nothing in this process wrote through.
+  const staleMs = key.startsWith('figures:') ? ttlMs * 2 : 0;
+  return ttlCache.cached(key, ttlMs, fn, { staleMs });
 }
 // This process only. «figures:» (lib/httpApp.js) is dropped on every write and
 // lives fifteen seconds; sharing it would be one insert per request for nothing.
-function cacheInvalidateLocal(...prefixes) {
-  if (prefixes.length === 0) { _cache.clear(); _pendingCache.clear(); return; }
-  for (const k of _cache.keys()) {
-    if (prefixes.some(p => k.startsWith(p))) _cache.delete(k);
-  }
-  for (const k of _pendingCache.keys()) {
-    if (prefixes.some(p => k.startsWith(p))) _pendingCache.delete(k);
-  }
-}
+function cacheInvalidateLocal(...prefixes) { ttlCache.invalidate(...prefixes); }
 
 // A catalogue, price, branch or site-content save drops these in every API
 // process (lib/cacheBus.js), not only the one that took it. No prefixes: all.

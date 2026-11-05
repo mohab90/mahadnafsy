@@ -96,7 +96,7 @@ export function badgesFor(numbers: PulseNumbers): Badge[] {
 }
 
 /** The milestones of the target crossed, for a celebration of each once. */
-export const MILESTONES = [0.5, 0.75, 1] as const;
+const MILESTONES = [0.5, 0.75, 1] as const;
 export function milestonesReached(revenue: number, target: number): number[] {
   if (target <= 0) return [];
   return MILESTONES.filter(step => revenue >= target * step).map(step => Math.round(step * 100));

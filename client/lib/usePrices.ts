@@ -12,7 +12,7 @@ import type { Currency } from '../types';
 // consultation:<doctor id> (the express one as consultation:express), with the
 // discount marketing aimed at consultations.
 
-export type PriceDiscount = { source: string; percent: number | null; label: string; expiresAt: string | null; code?: string | null };
+type PriceDiscount = { source: string; percent: number | null; label: string; expiresAt: string | null; code?: string | null };
 type Entry = { base: number; price: number; discount: PriceDiscount | null };
 type PriceList = Record<string, Partial<Record<Currency, Entry>>>;
 
@@ -43,7 +43,7 @@ export function usePriceList(): PriceList {
   return list;
 }
 
-export type EffectivePrice = { base: number; price: number; discount: PriceDiscount | null; loaded: boolean };
+type EffectivePrice = { base: number; price: number; discount: PriceDiscount | null; loaded: boolean };
 
 /**
  * One item's price in one currency. Until the list has loaded (or for an item

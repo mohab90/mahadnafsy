@@ -170,7 +170,7 @@ export const normalizeInterestLevel = (value?: string | null): string =>
  * about to buy, counted in neither step, so the funnel showed a contact-rate
  * collapse that was an artifact of the array literal.
  */
-export const INTERESTED_STATUSES = new Set([
+const INTERESTED_STATUSES = new Set([
   'interested', 'interested_booking', 'interested_followup',
 ]);
 

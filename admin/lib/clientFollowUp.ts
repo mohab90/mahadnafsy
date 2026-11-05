@@ -9,10 +9,10 @@ import type { SubscriberItem } from '../types';
 // them (the latest communication's «المتابعة القادمة»), and an installment that has fallen
 // due. The more urgent of the two decides the status.
 
-export type FollowStatus = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later' | 'none';
-export type FollowReason = 'contact' | 'installment';
+type FollowStatus = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later' | 'none';
+type FollowReason = 'contact' | 'installment';
 
-export interface FollowUp {
+interface FollowUp {
   /** The earliest date the client is due, YYYY-MM-DD. */
   date: string | null;
   status: FollowStatus;
@@ -30,14 +30,14 @@ const dayOf = (value?: string | null): string | null => {
 };
 
 /** The next contact the team set: the field on the client, else the latest communication's. */
-export function contactFollowUpOf(row: Pick<SubscriberItem, 'nextFollowUpDate' | 'communications'>): string | null {
+function contactFollowUpOf(row: Pick<SubscriberItem, 'nextFollowUpDate' | 'communications'>): string | null {
   const comms = row.communications || [];
   const last = comms.length ? [...comms].sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] : null;
   return dayOf(row.nextFollowUpDate) || dayOf(last?.nextFollowUp);
 }
 
 /** The earliest unpaid installment's due date. */
-export function installmentDueOf(row: Pick<SubscriberItem, 'installmentPlans'>): string | null {
+function installmentDueOf(row: Pick<SubscriberItem, 'installmentPlans'>): string | null {
   let first: string | null = null;
   for (const plan of row.installmentPlans || []) {
     for (const entry of plan.entries || []) {

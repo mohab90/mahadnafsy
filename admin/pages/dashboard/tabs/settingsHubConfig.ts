@@ -32,7 +32,7 @@ export interface SettingsEntry {
   links?: { label: string; href: string }[];
 }
 
-export interface SettingsGroup {
+interface SettingsGroup {
   key: string;
   title: string;
   blurb: string;
@@ -178,7 +178,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 ];
 
 /** Arabic as typed: no tashkeel, one alef, ه for ة, ي for ى. */
-export function normalizeQuery(value: string): string {
+function normalizeQuery(value: string): string {
   return value.toLowerCase()
     .replace(/[ً-ْـ]/g, '')
     .replace(/[أإآ]/g, 'ا')

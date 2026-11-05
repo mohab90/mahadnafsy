@@ -20,7 +20,7 @@ import {
 
 import type { TabKey } from './navigation';
 
-export type ContentHubTab = {
+type ContentHubTab = {
   key: TabKey;
   label: string;
   icon: LucideIcon;
@@ -28,7 +28,7 @@ export type ContentHubTab = {
   description: string;
 };
 
-export type ContentHubAction = {
+type ContentHubAction = {
   key: TabKey;
   label: string;
   description: string;

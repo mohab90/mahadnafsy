@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { useAccess } from '../../../../hooks/useAccess';
 import type { Course, LeadItem, LeadStats, LeadStatus, StaffMember, SubscriberStats } from '../../../../types';
 
 /**
@@ -57,8 +58,10 @@ export function statusCounts(stats: LeadStats | null, leads: LeadItem[]) {
 export function useNewestLeads(loaded: LeadItem[], active: boolean): LeadItem[] | null {
   const [rows, setRows] = useState<LeadItem[]>([]);
   const empty = loaded.length === 0;
+  // An account without view_leads (the accountant) has no newest leads to draw: the request was a 403 on every overview load.
+  const mayRead = useAccess().can('view_leads');
   useEffect(() => {
-    if (!active || !empty) return;
+    if (!active || !empty || !mayRead) return;
     let cancelled = false;
     mysqlAdmin.listLeadsPage(5, 0)
       .then(page => {
@@ -67,7 +70,7 @@ export function useNewestLeads(loaded: LeadItem[], active: boolean): LeadItem[] 
       })
       .catch(() => { /* the card says «لا توجد بيانات بعد» */ });
     return () => { cancelled = true; };
-  }, [active, empty]);
+  }, [active, empty, mayRead]);
   return empty ? rows : null;
 }
 
@@ -97,4 +100,4 @@ export const cardRows = {
   },
 };
 
-export type OverviewSubscriberStats = SubscriberStats | null;
+type OverviewSubscriberStats = SubscriberStats | null;

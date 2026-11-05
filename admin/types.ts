@@ -443,7 +443,7 @@ export interface StaffMember {
   updatedAt?: string;
 }
 
-export interface StaffAbsence {
+interface StaffAbsence {
   id: string;
   date: string;          // YYYY-MM-DD
   type: 'absence' | 'leave' | 'sick' | 'late';
@@ -1477,7 +1477,7 @@ export interface SubscriberStats {
 
 /** One rep's week, as counted by the database rather than by filtering the
  *  leads array in the browser. */
-export interface CrmScorecardRow {
+interface CrmScorecardRow {
   staffId: string;
   calls: number;
   wa: number;
@@ -1490,7 +1490,7 @@ export interface CrmScorecardRow {
 
 /** A lead nobody has touched for `daysSilent` days. A whole LeadItem, because
  *  the panel's reassign button saves the object straight back. */
-export interface CrmRedistCandidate {
+interface CrmRedistCandidate {
   lead: LeadItem;
   lastDate: string;
   daysSilent: number;

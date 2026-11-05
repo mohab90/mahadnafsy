@@ -62,7 +62,7 @@ const clock = (seconds: number) => {
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
-export interface VideoSurfaceProps {
+interface VideoSurfaceProps {
   /** The stored URL, obfuscated or not. */
   url: string;
   /** Shown on the poster, and read out to screen readers. Ours, never YouTube's. */

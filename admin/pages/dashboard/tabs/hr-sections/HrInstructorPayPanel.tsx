@@ -20,7 +20,7 @@ export type Instructor = {
   revenue_share_pct: number | null; retention_bonus_type: 'fixed' | 'percentage' | null; retention_bonus_value: number | null;
   currency: string | null; pending_rate_change: number;
 };
-export type Fee = {
+type Fee = {
   id: string; staff_id: string; fee_type: string; status: string; total_amount: number; currency: string;
   hours: number | null; lecture_date: string | null; note: string | null; source_key: string | null;
   course_title: string | null; subscriber_name: string | null;
@@ -38,7 +38,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 /** How an instructor is paid, in one line. */
-export function describeRate(instructor: Instructor): string {
+function describeRate(instructor: Instructor): string {
   if (!instructor.pay_basis) return 'لسه ما اتحددش';
   const currency = instructor.currency || 'EGP';
   const base = instructor.pay_basis === 'per_lecture'
@@ -53,7 +53,7 @@ export function describeRate(instructor: Instructor): string {
 }
 
 /** What one hand-added lecture is worth at the instructor's rate, or null when they are not paid by the lecture. */
-export function lectureAmount(instructor: Instructor, hours: number | null): number | null {
+function lectureAmount(instructor: Instructor, hours: number | null): number | null {
   if (instructor.pay_basis === 'per_lecture') return Number(instructor.lecture_rate) > 0 ? Number(instructor.lecture_rate) : null;
   if (instructor.pay_basis === 'per_hour') {
     const h = Number(hours) > 0 ? Number(hours) : Number(instructor.lecture_hours) > 0 ? Number(instructor.lecture_hours) : 2;

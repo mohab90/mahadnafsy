@@ -49,7 +49,7 @@ function youtubeId(url: string): string {
     || '';
 }
 
-export type EmbedOptions = {
+type EmbedOptions = {
   autoplay?: boolean;
   /** Resume position, in seconds. */
   startSeconds?: number;

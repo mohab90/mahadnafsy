@@ -1,7 +1,7 @@
 import { BookOpen, CreditCard, ExternalLink, MessageSquare, Phone, Trash2, UserPlus } from 'lucide-react';
 import { cairoDay } from '../../../../../shared/cairoDate';
 
-export type ClientDbCardRow = {
+type ClientDbCardRow = {
   id: string;
   clientCode: string;
   name: string;

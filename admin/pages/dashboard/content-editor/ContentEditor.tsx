@@ -7,7 +7,7 @@ import type { EditorApi, EditorField, EditorSection, NotifyFn, SectionSlot } fro
 
 type ContentMap = Record<string, string>;
 
-export type ContentEditorProps = {
+type ContentEditorProps = {
   title: string;
   subtitle?: string;
   icon?: ReactNode;

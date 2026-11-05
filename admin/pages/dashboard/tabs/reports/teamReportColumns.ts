@@ -1,7 +1,7 @@
 // What each team's report table shows, in the words the owner used — shared by
 // «تقارير الإدارة» and each team's own screen (api/lib/teamReports.js).
 export type TeamKey = 'sales' | 'online' | 'support' | 'daqqi' | 'tagamoa';
-export type TeamColumn = { key: string; label: string; money?: boolean };
+type TeamColumn = { key: string; label: string; money?: boolean };
 
 export const TEAM_LABELS: Record<TeamKey, string> = {
   sales: 'المبيعات', online: 'الأونلاين (التحصيل)', support: 'خدمة العملاء', daqqi: 'الدقي', tagamoa: 'التجمع',

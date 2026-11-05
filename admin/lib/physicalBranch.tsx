@@ -7,9 +7,9 @@
 // server half).
 import React, { createContext, useContext } from 'react';
 
-export type PhysicalBranchKey = 'DAQQI' | 'TAGAMOA';
+type PhysicalBranchKey = 'DAQQI' | 'TAGAMOA';
 
-export interface PhysicalBranchInfo {
+interface PhysicalBranchInfo {
   key: PhysicalBranchKey;
   /** «الدقي» / «التجمع» */
   label: string;

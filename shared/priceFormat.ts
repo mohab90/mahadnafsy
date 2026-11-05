@@ -19,7 +19,7 @@
  * bank transfer should be the ones on their keyboard.
  */
 
-export type PriceCurrency = 'EGP' | 'SAR' | 'USD';
+type PriceCurrency = 'EGP' | 'SAR' | 'USD';
 
 const SYMBOL: Record<string, string> = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
 

@@ -61,7 +61,7 @@ const FILTERS: [FilterKey, string][] = [
  * the work — open their file, take their booking — lived on another screen
  * they had to find the person on again.
  */
-export interface LoginAccountActions {
+interface LoginAccountActions {
   /** Open this person's file. Given a subscriber id when they are already a client. */
   onOpenProfile?: (row: { id: string; subscriberId: string | null; clientCode: string | null; name: string | null }) => void;
   /** Book and take payment — converting them to a client first when they are not one. */

@@ -27,7 +27,7 @@ export const DEFAULT_CERT_TYPES = [
   { key: 'other', label: 'شهادة أخرى' },
 ];
 
-export function parseCertPricing(raw: string | undefined | null): CertPricingMap {
+function parseCertPricing(raw: string | undefined | null): CertPricingMap {
   try { return JSON.parse(raw || '{}') || {}; } catch { return {}; }
 }
 
@@ -43,7 +43,7 @@ export function certificateTypes(map: CertPricingMap): { key: string; label: str
 }
 
 /** A request's name: what the client wrote, else the catalogue's, else the code. */
-export function certificateLabel(map: CertPricingMap, type?: string | null, customName?: string | null): string {
+function certificateLabel(map: CertPricingMap, type?: string | null, customName?: string | null): string {
   if (customName) return customName;
   const code = String(type || '').toLowerCase();
   if (!code) return 'شهادة';

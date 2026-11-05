@@ -19,7 +19,7 @@ export type DaqqiPayModalState = {
 // never read anywhere, and courseExpected is not a draft field at all — it is
 // computed at submit from the price, the discount and any override, exactly as
 // PaymentModal already computes it.
-export const createDaqqiPayDraft = (overrides: Partial<PaymentDraft> = {}): PaymentDraft => ({
+const createDaqqiPayDraft = (overrides: Partial<PaymentDraft> = {}): PaymentDraft => ({
   ...blankPaymentDraft(),
   ...overrides,
 });

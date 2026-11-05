@@ -3,9 +3,9 @@
 import { mysqlAdmin } from './mysqlapi';
 
 export type PriceTierKey = 'DAQQI' | 'DAQQI_FOREIGN' | 'TAGAMOA' | 'ONLINE_EGYPT' | 'ONLINE_EGYPT_FOREIGN' | 'ONLINE_SAUDI' | 'ONLINE_ABROAD';
-export type TierCurrency = 'EGP' | 'SAR' | 'USD';
+type TierCurrency = 'EGP' | 'SAR' | 'USD';
 
-export interface PriceTierDef {
+interface PriceTierDef {
   key: PriceTierKey;
   label: string;
   currency: TierCurrency;
@@ -31,10 +31,10 @@ export interface TierPrice {
 }
 
 export type BonusRole = 'sales' | 'service' | 'instructor';
-export interface BookingBonus { type: 'fixed' | 'percent'; value: number }
+interface BookingBonus { type: 'fixed' | 'percent'; value: number }
 export type BookingBonuses = Partial<Record<BonusRole, BookingBonus>>;
 
-export interface ItemPricing { tiers: TierPrice[]; bonuses: BookingBonuses }
+interface ItemPricing { tiers: TierPrice[]; bonuses: BookingBonuses }
 export interface CatalogPricing {
   tiers: PriceTierDef[];
   items: { course: Record<string, ItemPricing>; bundle: Record<string, ItemPricing> };

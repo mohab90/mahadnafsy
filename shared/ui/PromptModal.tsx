@@ -15,7 +15,7 @@ import { Modal } from './Modal';
  * `validate` returns an error string to keep the dialog open and show it, or
  * null to accept — so a bad date is caught here rather than by the API.
  */
-export interface PromptModalProps {
+interface PromptModalProps {
   title: string;
   label: string;
   hint?: string;

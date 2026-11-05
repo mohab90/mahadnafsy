@@ -4,6 +4,7 @@ const path = require('path');
 const { monitorEventLoopDelay } = require('node:perf_hooks');
 const express = require('express');
 const compression = require('compression');
+const { recordRouteUsage } = require('./routeUsage');
 const cors = require('cors');
 const helmet = require('helmet');
 const logger = require('./logger');
@@ -207,6 +208,8 @@ function timeRequests(req, res, next) {
         method: req.method, route: matched || (req.path.startsWith('/api/') ? 'unmatched /api' : 'static or other'),
         status: res.statusCode, ms: Date.now() - started, bytes, store,
       });
+      // Kept per day across restarts (lib/routeUsage.js): the only way to know which routes nobody calls.
+      if (matched) recordRouteUsage(req.method, matched, res.statusCode);
     });
     next();
   });

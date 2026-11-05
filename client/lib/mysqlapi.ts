@@ -150,7 +150,7 @@ const queueProgress = (lectureId: string, pct: number, watchSeconds = 0) => {
   } else queued.push({ lectureId, pct, watchSeconds });
   writeProgressQueue(queued);
 };
-export async function flushLectureProgressQueue() {
+async function flushLectureProgressQueue() {
   const queued = readProgressQueue();
   if (!queued.length || !getToken()) return 0;
   const remaining: QueuedProgress[] = [];

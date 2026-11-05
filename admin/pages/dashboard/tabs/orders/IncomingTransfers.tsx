@@ -24,7 +24,7 @@ export type IncomingTransfer = {
 const money = (n: number) => Number(n).toLocaleString('ar-EG-u-nu-latn');
 
 /** «باقي ربط من تحويل 3,000» on a remainder; «جزء من تحويل 3,000» on the part that was linked. */
-export function TransferSplitBadge({ transfer }: { transfer: IncomingTransfer }) {
+function TransferSplitBadge({ transfer }: { transfer: IncomingTransfer }) {
   const whole = Number(transfer.originalAmount) || 0;
   if (!whole || whole <= Number(transfer.amount)) return null;
   return transfer.parentTransferId && !transfer.paymentId

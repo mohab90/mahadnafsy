@@ -427,7 +427,7 @@ export const footerFields: ContentField[] = [
 // ── Site design and the rotating home hero ───────────────────────────────────
 // The lists themselves (DESIGNS, HERO_VARIANTS) are shared/siteDesigns.ts, read
 // by the site too; these are only how the panel words each key.
-export const HERO_TEXT_FIELDS: { field: keyof HeroText; label: string; multiline: boolean; hint?: string }[] = [
+const HERO_TEXT_FIELDS: { field: keyof HeroText; label: string; multiline: boolean; hint?: string }[] = [
   { field: 'badge', label: 'الشارة الصغيرة فوق العنوان', multiline: false },
   { field: 'title', label: 'العنوان الرئيسي', multiline: true },
   { field: 'highlight', label: 'الكلمات الملونة من العنوان', multiline: false, hint: 'انسخها من العنوان زي ما هي بالظبط، وهتتلون وتتعلم بخط تحتها' },

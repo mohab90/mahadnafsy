@@ -9,7 +9,7 @@ import type { SubscriberItem } from '../../../types';
  * screen used to hold every client in the person's scope with their payments — 5,000 on the production-scale lab,
  * 7,400 for the Dokki branch — and filter and page them itself.
  */
-export interface StaffClientsFilters {
+interface StaffClientsFilters {
   view: string; q: string; from: string; to: string; course: string; collector: string;
   status: string; cert: string; remaining: string; follow: string;
   /** The branch workspace a link names (?branch=), or — on the Dokki screen — the physical branch itself. */
@@ -19,10 +19,10 @@ export interface StaffClientsFilters {
 }
 
 /** Which of the two server screens asks: the clients of an employee's scope, or the Dokki branch's. */
-export type StaffClientsSource = 'staff' | 'dokki';
+type StaffClientsSource = 'staff' | 'dokki';
 
 type Answer = Awaited<ReturnType<typeof mysqlAdmin.dokkiClientsPage>>;
-export interface StaffClientsPage extends Omit<Answer, 'rows'> { rows: SubscriberItem[] }
+interface StaffClientsPage extends Omit<Answer, 'rows'> { rows: SubscriberItem[] }
 
 /** The server's views; the tabs the other screen has (booking years, imports) read as «النشطين» on this one. */
 const SERVER_VIEWS: Record<StaffClientsSource, string[]> = {

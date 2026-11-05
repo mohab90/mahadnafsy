@@ -44,7 +44,7 @@ function readableFg(rgb: [number, number, number]): string {
 }
 
 /** Build a Tailwind-like 50→900 scale anchored on the base as the 600 step. */
-export function buildBrandScale(baseHex: string): Record<string, string> {
+function buildBrandScale(baseHex: string): Record<string, string> {
   const rgb = hexToRgb(baseHex) || hexToRgb(DEFAULT_PRIMARY)!;
   return {
     '50':  mix(rgb, 0.92),

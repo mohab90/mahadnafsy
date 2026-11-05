@@ -3,9 +3,9 @@ import { mysqlAdmin } from '../../lib/mysqlapi';
 import { CRM_CHANGED_EVENT } from '../../lib/crmChanged';
 import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 
-export interface DueClient { id: string; name: string; clientCode: string; amount: number; currency: string; date: string }
+interface DueClient { id: string; name: string; clientCode: string; amount: number; currency: string; date: string }
 
-export interface StaffOverview {
+interface StaffOverview {
   clients: number;
   money: { today: number; week: number; month: number; total: number; remaining: number };
   last30: Array<{ day: string; rev: number }>;

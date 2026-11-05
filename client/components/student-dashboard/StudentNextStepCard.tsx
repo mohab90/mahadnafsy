@@ -43,7 +43,7 @@ function sessionDay(date: string): string {
 }
 
 /** The first lecture not yet watched, in the first course that has one. Pure. */
-export function nextOnlineLecture(
+function nextOnlineLecture(
   courses: Course[], progress: Record<string, number>, lecturesOf: (courseId: string) => CourseLectureItem[],
 ): { course: Course; lecture: CourseLectureItem } | null {
   for (const course of courses) {
@@ -59,7 +59,7 @@ export function nextOnlineLecture(
  * Everything owed, item by item: the portal's own balances first, then a
  * round's when the course or track it is for is not already among them.
  */
-export function owedItems(balances: ItemBalance[], rounds: MyNextStep['rounds'], courses: Course[]) {
+function owedItems(balances: ItemBalance[], rounds: MyNextStep['rounds'], courses: Course[]) {
   const titleOf = (courseId: string | null) => courses.find(course => String(course.id) === String(courseId))?.title || '';
   const items = balances
     .filter(balance => balance.remaining > 0)

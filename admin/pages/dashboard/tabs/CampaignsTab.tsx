@@ -12,7 +12,7 @@ import { SectionedTab, type TabSection } from './SectionedTab';
 
 const MessagingHubTab = lazy(() => import('./MessagingHubTab'));
 
-export const CAMPAIGN_SECTIONS: TabSection[] = [
+const CAMPAIGN_SECTIONS: TabSection[] = [
   { id: 'messaging', label: 'صندوق الرسائل والقنوات', icon: MessageCircle, permission: 'manage_channel_settings', Component: MessagingHubTab },
 ];
 

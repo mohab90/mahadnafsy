@@ -13,7 +13,7 @@ import type { PaymentHistoryEntry } from '../../types';
  * screen and the database cannot disagree about who has paid.
  */
 
-export type CoursePaymentState = {
+type CoursePaymentState = {
   paid: number;
   expected: number;
   /** Expected is known and covered. Undefined expectation is never "settled". */

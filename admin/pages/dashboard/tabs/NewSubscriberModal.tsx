@@ -16,7 +16,7 @@ import { cairoDateOnly } from '../../../../shared/cairoDate';
  *                      through the booking endpoint, so a collection officer's customer still waits for
  *                      the manager and a Dokki one still lands on the branch's books.
  */
-export type NewSubscriberCourse = { courseId: string; accessType: 'full' | 'limited'; videoCount: string; discount: string; customPrice: string };
+type NewSubscriberCourse = { courseId: string; accessType: 'full' | 'limited'; videoCount: string; discount: string; customPrice: string };
 export type NewSubscriberDraft = {
   name: string; phone: string; email: string; password: string; branch: string;
   amount: string; currency: 'EGP' | 'SAR' | 'USD'; paymentMethod: string; date: string; transactionId: string;

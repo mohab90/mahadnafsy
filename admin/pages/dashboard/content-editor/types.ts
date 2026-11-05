@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
  * tracks what changed and saves the whole page in one setContentValues call.
  */
 
-export type FieldType =
+type FieldType =
   | 'text'
   | 'textarea'
   | 'number'
@@ -19,7 +19,7 @@ export type FieldType =
   /** A URL of a picture, previewed. */
   | 'image';
 
-export type FieldOption = { value: string; label: string };
+type FieldOption = { value: string; label: string };
 
 export interface EditorField {
   key: string;

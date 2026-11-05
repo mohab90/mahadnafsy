@@ -15,7 +15,7 @@ const egp = (value: number) => `${Math.round(value || 0).toLocaleString('ar-EG-u
 const dateOf = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', year: 'numeric', timeZone: CAIRO_TIME_ZONE }) : '—');
 
 /** Suggested before any are in use; the team's own labels join them as they are used. */
-export const STARTER_LABELS = ['مهتم', 'سأل عن السعر', 'حجز', 'متابعة', 'شكوى', 'عميل حالي', 'مش مهتم'];
+const STARTER_LABELS = ['مهتم', 'سأل عن السعر', 'حجز', 'متابعة', 'شكوى', 'عميل حالي', 'مش مهتم'];
 
 /** How long the customer has been waiting on us, and how worried to be. */
 export function waitingFor(lastInboundAt: string | null, now = Date.now()): { text: string; tone: string } | null {

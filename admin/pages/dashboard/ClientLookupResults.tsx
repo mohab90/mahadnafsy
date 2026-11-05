@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, Lock, Wallet } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
-export type LookupType = 'lead' | 'online' | 'daqqi' | 'tagamoa';
+type LookupType = 'lead' | 'online' | 'daqqi' | 'tagamoa';
 export type LookupRow = {
   kind: 'subscriber' | 'lead';
   type: LookupType;

@@ -6,8 +6,8 @@ import type { SubscriberItem } from '../types';
 
 export type BranchTest = (branch: string | null | undefined) => boolean;
 
-export const placementsOf = (client: Pick<SubscriberItem, 'coursePlacements'>): Record<string, string> => client.coursePlacements || {};
-export const isSplit = (client: Pick<SubscriberItem, 'coursePlacements'>): boolean => Object.keys(placementsOf(client)).length > 0;
+const placementsOf = (client: Pick<SubscriberItem, 'coursePlacements'>): Record<string, string> => client.coursePlacements || {};
+const isSplit = (client: Pick<SubscriberItem, 'coursePlacements'>): boolean => Object.keys(placementsOf(client)).length > 0;
 
 /** The branch a course is in: where it was placed, else the client's own. */
 export const itemBranch = (client: Pick<SubscriberItem, 'branch' | 'coursePlacements'>, item: string): string | null | undefined =>

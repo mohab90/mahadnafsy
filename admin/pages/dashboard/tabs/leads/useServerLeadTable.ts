@@ -14,7 +14,7 @@ import { BRANCH_ENUM_LABELS, calcLeadScore, getStaleDays } from '../leadUtils';
  * predicate as useLeadFilteringData (checked case by case against it) and sends
  * one page and the true total.
  */
-export type LeadTableFilters = {
+type LeadTableFilters = {
   searchTerm: string;
   assignFilter: Set<string>;
   tagFilter: string | null;
@@ -29,7 +29,7 @@ export type LeadTableFilters = {
 };
 
 /** The filter bar as the query string GET /admin/leads/table and /board read. */
-export function leadTableQuery(filters: LeadTableFilters, instituteBranches: BranchOption[]): string {
+function leadTableQuery(filters: LeadTableFilters, instituteBranches: BranchOption[]): string {
   const params = new URLSearchParams();
   const set = (key: string, value: string | null | undefined) => { if (value) params.set(key, value); };
   set('q', filters.searchTerm.trim());
@@ -51,7 +51,7 @@ export function leadTableQuery(filters: LeadTableFilters, instituteBranches: Bra
   return params.toString();
 }
 
-export const SERVER_TABLE_PAGE_SIZE = 100;
+const SERVER_TABLE_PAGE_SIZE = 100;
 
 /** The most rows one export reads: a file this long is the whole desk's list, not a day's work. */
 const EXPORT_LIMIT = 20000;

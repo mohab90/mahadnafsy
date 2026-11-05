@@ -10,7 +10,7 @@
 
 const KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'] as const;
 type Key = typeof KEYS[number];
-export type VisitAttribution = Partial<Record<Key, string>>;
+type VisitAttribution = Partial<Record<Key, string>>;
 
 const STORE_KEY = 'mahad-visit-attribution';
 const COOKIE = 'mahad_attr';

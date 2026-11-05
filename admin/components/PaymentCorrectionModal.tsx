@@ -12,7 +12,7 @@ import { usePaymentBoxes } from '../lib/paymentMethods';
 import { useStaticData } from '../context/siteDataSlices';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../constants/branches';
 
-export type CorrectablePayment = {
+type CorrectablePayment = {
   id: string;
   amount: number;
   currency?: string;

@@ -3,9 +3,9 @@ import type { PaymentHistoryEntry, SubscriberItem } from '../../../../types';
 import { paymentTypeLabels } from './financialTabUtils';
 import { cairoDay } from '../../../../../shared/cairoDate';
 
-export const ONLINE_CHANNEL = '__online_paymob__';
+const ONLINE_CHANNEL = '__online_paymob__';
 
-export interface FinancialOrderRow {
+interface FinancialOrderRow {
   key: string;
   title: string;
   name: string;

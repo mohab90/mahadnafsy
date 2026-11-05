@@ -14,7 +14,7 @@ import type { PoolBreakdown, PoolReason } from './leadSourceGroups';
  * narrows it to one kind (waiting, closed, archived, hidden) and `breakdown`
  * counts each.
  */
-export type LeadPoolView = 'localNew' | 'dawli' | 'archive';
+type LeadPoolView = 'localNew' | 'dawli' | 'archive';
 
 type PoolResponse = { rows: LeadItem[]; total: number; truncated: boolean; breakdown: PoolBreakdown | null };
 

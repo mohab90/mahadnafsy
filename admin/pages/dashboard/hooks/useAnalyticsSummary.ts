@@ -9,7 +9,7 @@ import { CRM_CHANGED_EVENT } from '../../../lib/crmChanged';
  * currency: the screen converts it with the rates the institute configured.
  */
 export type Money = { currency: string; amount: number };
-export interface AnalyticsSummary {
+interface AnalyticsSummary {
   range: string;
   months: string[];
   orders: null | {
@@ -26,7 +26,7 @@ export interface AnalyticsSummary {
   };
 }
 /** The applications to join the institute by stage (GET /api/admin/join-us/counts). */
-export interface JoinCounts { total: number; byStatus: Record<string, number> }
+interface JoinCounts { total: number; byStatus: Record<string, number> }
 
 export function useAnalyticsSummary(range: string): { summary: AnalyticsSummary | null; joins: JoinCounts | null } {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);

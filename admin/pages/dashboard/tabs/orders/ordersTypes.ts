@@ -14,7 +14,7 @@ export const ORDER_METHOD_FILTERS: string[] = [
 
 export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
-export type OrdersStats = {
+type OrdersStats = {
   total: number;
   paid: number;
   failed: number;

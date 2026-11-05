@@ -24,7 +24,7 @@ function setMeta(selector: string, attribute: 'content' | 'href', value: string)
 // What a page that gives no description of its own says: the institute's, not the previous page's. Before this a page without
 // one (the sign-in page, the checkout) kept the description of whichever page the visitor had just left.
 export const DEFAULT_DESCRIPTION = 'معهد الدراسات النفسية — رواد التعليم النفسي منذ 2010. دبلومات معتمدة في الصحة النفسية والعلاج النفسي والإرشاد الأسري.';
-export const DEFAULT_IMAGE = `${SITE}/brand/og.jpg`;
+const DEFAULT_IMAGE = `${SITE}/brand/og.jpg`;
 
 export type SeoInput = {
   /** Shown in the tab and as the share card's headline. */

@@ -58,7 +58,7 @@ export interface ListItem {
    * "الفرع الأقرب" picker on the website. */
   internal_only?: boolean;
 }
-export interface CertItem { type: string; label: string; egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number; }
+interface CertItem { type: string; label: string; egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number; }
 export interface ExchangeRates { sar_to_egp: number; usd_to_egp: number; }
 export interface General {
   institute_name: string;

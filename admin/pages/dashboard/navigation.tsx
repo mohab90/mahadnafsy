@@ -148,13 +148,13 @@ export type TabKey =
   | 'waitlist'
   | 'staff_home';
 
-export type DashboardMenuItem = {
+type DashboardMenuItem = {
   key: TabKey;
   label: string;
   icon: LucideIcon;
 };
 
-export type DashboardMenuGroup = {
+type DashboardMenuGroup = {
   key: string;
   label: string;
   /** What the top bar shows when the full label is too wide for it. */

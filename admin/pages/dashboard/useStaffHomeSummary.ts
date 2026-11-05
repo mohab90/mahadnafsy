@@ -13,7 +13,7 @@ import type { LeadItem, StaffMember } from '../../types';
  * two minutes and at every return to the tab: 37,000 leads for one rep on the production-scale lab. Here it is a
  * small answer, refreshed after a write (lib/crmChanged.ts) and on a slow timer while the page is in view.
  */
-export type StaffHomeSummary = {
+type StaffHomeSummary = {
   totalLeads: number;
   converted: number;
   convertedThisMonth: number;
