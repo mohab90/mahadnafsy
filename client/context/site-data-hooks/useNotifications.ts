@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { NotificationBroadcast } from '../../types';
 import { mysqlClient } from '../../lib/mysqlapi';
+import { studentPiece } from '../../lib/studentExtras';
 
 /** Customer broadcasts loaded from the tenant notification settings endpoint. */
 export function useNotifications(
@@ -20,7 +21,7 @@ export function useNotifications(
     }
     if (!enabled) return;
     let cancelled = false;
-    void mysqlClient.getBroadcastNotifications().then((result) => {
+    void studentPiece(authUserUid, () => mysqlClient.getStudentExtras(), 'notifications', () => mysqlClient.getBroadcastNotifications()).then((result) => {
       if (!cancelled) {
         setNotifications(result.notifications as unknown as NotificationBroadcast[]);
         setReadIds(result.readIds);

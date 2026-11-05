@@ -26,6 +26,7 @@ const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { itemBalances } = require('../lib/agreedPrice');
+const { answerOfRoute } = require('../lib/internalRoute');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
@@ -1363,6 +1364,30 @@ router.get('/api/faq', publicLimiter, async (req, res) => {
     );
     res.json(rows);
   } catch (e) { logger.error('[public/faq]', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/me/student-extras — what the student dashboard shows besides the courses, in ONE request instead of five: the broadcasts (with which of them the
+// student has read), the live streams, the quizzes, the student's own quiz attempts and their consultations. Each piece is the answer of the route that has always
+// served it, run against this same request (lib/internalRoute.js), so who may see what is decided exactly as before; a piece that fails or is refused is null and
+// the page asks that route for itself. Private: it is this student's.
+router.get('/api/me/student-extras', publicLimiter, requireAuth, async (req, res) => {
+  const configRouter = require('./config');
+  const pieces = {
+    notifications: () => answerOfRoute(configRouter, '/api/notifications/broadcasts', req),
+    liveStreams: () => answerOfRoute(router, '/api/live-streams', req),
+    quizzes: () => answerOfRoute(router, '/api/quizzes', req, { limit: '200' }),
+    quizAttempts: () => answerOfRoute(router, '/api/me/quiz-attempts', req),
+    consultations: () => answerOfRoute(router, '/api/me/consultations', req),
+  };
+  const names = Object.keys(pieces);
+  const settled = await Promise.allSettled(names.map(name => pieces[name]()));
+  const body = {};
+  settled.forEach((result, index) => {
+    body[names[index]] = result.status === 'fulfilled' ? result.value : null;
+    if (result.status === 'rejected') logger.error('[me/student-extras]', names[index], result.reason?.message);
+  });
+  res.set('Cache-Control', 'private, no-store');
+  res.json(body);
 });
 
 module.exports = router;

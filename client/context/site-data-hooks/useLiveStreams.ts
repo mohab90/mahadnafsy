@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { LiveStream } from '../../types';
-import { mysqlCatalog } from '../../lib/mysqlapi';
+import { mysqlCatalog, mysqlClient } from '../../lib/mysqlapi';
+import { studentPiece } from '../../lib/studentExtras';
 
 /** Published live streams; all management remains in the admin app. */
 export function useLiveStreams(initialLiveStreams: LiveStream[], authUserUid?: string, isAdmin = false, enabled = true) {
@@ -13,7 +14,7 @@ export function useLiveStreams(initialLiveStreams: LiveStream[], authUserUid?: s
     }
     if (!enabled) return;
     let cancelled = false;
-    void mysqlCatalog.listLiveStreams().then((rows) => {
+    void studentPiece(authUserUid, () => mysqlClient.getStudentExtras(), 'liveStreams', () => mysqlCatalog.listLiveStreams()).then((rows) => {
       if (!cancelled) setLiveStreams(rows as unknown as LiveStream[]);
     }).catch(() => {});
     return () => { cancelled = true; };

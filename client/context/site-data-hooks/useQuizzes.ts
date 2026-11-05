@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CourseQuiz, QuizAttempt, AuthUser } from '../../types';
 import { mysqlCatalog, mysqlClient } from '../../lib/mysqlapi';
+import { studentPiece } from '../../lib/studentExtras';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -20,7 +21,7 @@ export function useQuizzes(
   useEffect(() => {
     if (!authUser?.uid || isAdmin || !enabled) return;
     let cancelled = false;
-    void mysqlCatalog.listQuizzes().then((list) => {
+    void studentPiece(authUser.uid, () => mysqlClient.getStudentExtras(), 'quizzes', () => mysqlCatalog.listQuizzes()).then((list) => {
       if (!cancelled) setCourseQuizzes(list as unknown as CourseQuiz[]);
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -31,7 +32,7 @@ export function useQuizzes(
     // Once, when the client's own record is known (it asked again each time the subscribers list changed, which is twice on every load).
     if (!authUser?.uid || isAdmin || !enabled || !mySubscriberId) return;
     let cancelled = false;
-    mysqlClient.getMyQuizAttempts().then((list) => {
+    studentPiece(authUser.uid, () => mysqlClient.getStudentExtras(), 'quizAttempts', () => mysqlClient.getMyQuizAttempts()).then((list) => {
       if (cancelled) return;
       setQuizAttempts((list as unknown as QuizAttempt[]).sort((a, b) => (b.takenAt || '').localeCompare(a.takenAt || '')));
     }).catch(() => {});

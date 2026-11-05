@@ -2,6 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
+import type { StudentExtras } from './studentExtras';
 import { AuthUser, type CommunityEventItem } from '../types';
 import { visitAttribution } from './attribution';
 import { leadHeaders } from './tracking';
@@ -305,6 +306,8 @@ export const mysqlClient = {
   registerForCommunityEvent: (id: string, body: { name: string; phone: string; studiedBefore: boolean }) =>
     apiFetch<{ ok: boolean; alreadyRegistered: boolean }>(
       `/community/events/${encodeURIComponent(id)}/register`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Broadcasts, live streams, quizzes, attempts and consultations in one answer (lib/studentExtras.ts). */
+  getStudentExtras: () => apiFetch<StudentExtras>('/me/student-extras', {}, true),
   getBroadcastNotifications: () =>
     apiFetch<{ notifications: AR[]; readIds: string[] }>('/notifications/broadcasts', {}, true),
   markBroadcastNotificationRead: (id: string) =>

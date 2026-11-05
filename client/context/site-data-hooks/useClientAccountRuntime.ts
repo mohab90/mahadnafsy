@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { mysqlClient } from '../../lib/mysqlapi';
+import { studentPiece } from '../../lib/studentExtras';
 import type { ConsultationItem, Course, SubscriberItem } from '../../types';
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
@@ -112,7 +113,7 @@ export function useClientAccountRuntime({
     // account, and a WhatsApp-only account has no email to gate on.
     if (!authUser?.uid || isAdmin || !consultationsWanted) return;
     let cancelled = false;
-    void mysqlClient.getMyConsultations()
+    void studentPiece(authUser.uid, () => mysqlClient.getStudentExtras(), 'consultations', () => mysqlClient.getMyConsultations())
       .then(list => {
         if (!cancelled) {
           setConsultations((list as unknown as ConsultationItem[])
