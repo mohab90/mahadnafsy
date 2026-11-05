@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react';
+import { useShownRows } from '../../../../hooks/useShownRows';
 import type { ExpenseItem } from '../../../../types';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 
@@ -16,6 +17,7 @@ interface ExpenseTableProps {
 }
 
 export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, onDelete, deletingId }: ExpenseTableProps) {
+  const { shown, hidden, more, all } = useShownRows(filteredExpenses, 100);
   return (
     <>
       <div className="mr-auto flex items-center gap-3 flex-wrap">
@@ -34,7 +36,7 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
       <table className="w-full text-sm min-w-[720px]">
         <thead><tr className="text-right border-b border-gray-100"><th className="py-2">رقم العملية</th><th className="py-2">البند</th><th className="py-2">الوصف</th><th className="py-2">المبلغ</th><th className="py-2">الفرع</th><th className="py-2">القائم بالعملية</th><th className="py-2">التاريخ</th><th className="py-2">إجراءات</th></tr></thead>
         <tbody>
-          {filteredExpenses.map((expense) => (
+          {shown.map((expense) => (
             <tr key={expense.id} className="border-b border-gray-50 hover:bg-gray-50/50">
               <td className="py-2.5 font-mono text-xs font-bold text-gray-700 whitespace-nowrap">{operationNo(expense)}</td>
               <td className="py-2.5"><span className="bg-red-50 text-red-700 text-xs px-2 py-0.5 rounded-full border border-red-200">{expense.category}</span></td>
@@ -55,6 +57,13 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
         </tbody>
       </table>
       </div>
+      {hidden > 0 && (
+        <div className="flex items-center justify-center gap-3 py-3 text-xs text-gray-500">
+          <span>معروض {shown.length.toLocaleString('ar-EG-u-nu-latn')} من {filteredExpenses.length.toLocaleString('ar-EG-u-nu-latn')} — المجموع والتصدير على الكل</span>
+          <button type="button" onClick={more} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200">عرض ١٠٠ كمان</button>
+          <button type="button" onClick={all} className="rounded-lg px-3 py-1.5 font-bold text-primary-600 hover:bg-primary-50">عرض الكل</button>
+        </div>
+      )}
     </>
   );
 }

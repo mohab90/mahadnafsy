@@ -1,7 +1,7 @@
 // The full orders and payments desk: review, accepted, failed, transfers.
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo, cairoStamp, cairoWeekStart } from '../../../../../shared/cairoDate';
 import { CheckCircle, Clock, CreditCard, Download, Pencil, Plus, Search, TrendingUp, Trash2, Wallet, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PaymentCorrectionModal } from '../../../../components/PaymentCorrectionModal';
 import { toEgp } from '../../../../lib/money';
 import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../shared/paymentMethods';
@@ -26,6 +26,9 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
   // A recorded payment is voided or corrected by a manager through the payments
   // route, which reverses its books; the orders route only archives an unpaid order.
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
+  // The table drew its first 300 rows and said «use the filters»; it now draws 100 and offers 100 more (back to 100 when the filters change the list).
+  const [shownOrders, setShownOrders] = useState(100);
+  useEffect(() => { setShownOrders(100); }, [filteredOrders.length, orderReviewTab]);
   // Wiping a payment or an order is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDelete = useCanDelete();
   const access = useAccess();
@@ -333,7 +336,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         </thead>
                         <tbody>
                           {orderReviewTab === 'review' && clientRequests.rows}
-                          {tabRows.slice(0, 300).map((row, i) => {
+                          {tabRows.slice(0, shownOrders).map((row, i) => {
                             const isPending  = row.status === 'pending';
                             const isFailed   = row.status === 'failed' || row.status === 'refunded';
                             const rowBg = isPending ? 'bg-amber-50/40 hover:bg-amber-50/70' : isFailed ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-emerald-50/20';
@@ -484,9 +487,11 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         )}
                       </table>
                     </div>
-                    {tabRows.length > 300 && (
-                      <div className="text-center text-xs text-gray-400 py-3 border-t border-gray-100">
-                        يعرض أول 300 طلب. استخدم الفلاتر لتضييق النتائج.
+                    {tabRows.length > shownOrders && (
+                      <div className="flex items-center justify-center gap-3 py-3 text-xs text-gray-500 border-t border-gray-100">
+                        <span>معروض {shownOrders.toLocaleString('ar-EG-u-nu-latn')} من {tabRows.length.toLocaleString('ar-EG-u-nu-latn')} — الإجمالي والتصدير على الكل</span>
+                        <button type="button" onClick={() => setShownOrders(count => count + 100)} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200">عرض ١٠٠ كمان</button>
+                        <button type="button" onClick={() => setShownOrders(tabRows.length)} className="rounded-lg px-3 py-1.5 font-bold text-primary-600 hover:bg-primary-50">عرض الكل</button>
                       </div>
                     )}
                   </div>
