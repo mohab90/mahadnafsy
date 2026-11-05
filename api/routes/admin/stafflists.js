@@ -40,26 +40,8 @@ const { buildView: buildClientsView, dueInstallments, readFilters: readClientFil
 const { mapInstallmentPlan } = require('../../lib/installmentMath');
 const { buildOverview, readOverviewClients } = require('../../lib/staffOverview');
 
-async function loadEnrollmentProjection(tenantId, subscriberIds) {
-  if (!subscriberIds.length) return {};
-  const [rows] = await pool.query(
-    `SELECT subscriber_id,course_id,bundle_id,access_type,lecture_limit FROM enrollments
-     WHERE tenant_id=? AND status='active' AND subscriber_id IN (${subscriberIds.map(() => '?').join(',')})`,
-    [tenantId, ...subscriberIds]
-  );
-  return rows.reduce((projection, row) => {
-    const entry = projection[row.subscriber_id] ||= { ids: [], bundleIds: [], access: {} };
-    // The track a course was opened through: the online screen shows a
-    // track booking as the track, not as the courses inside it.
-    if (row.bundle_id && !entry.bundleIds.includes(String(row.bundle_id))) entry.bundleIds.push(String(row.bundle_id));
-    if (!row.course_id) return projection;
-    const courseId = String(row.course_id);
-    if (!entry.ids.includes(courseId)) entry.ids.push(courseId);
-    entry.access[courseId] = row.access_type === 'limited'
-      ? { mode: 'limited', lectureLimit: Number(row.lecture_limit) || 1 } : 'full';
-    return projection;
-  }, {});
-}
+// What each client holds is read once, in lib/clientView.js, for the lists and the single-client profile alike.
+const { loadHoldings: loadEnrollmentProjection } = require('../../lib/clientView');
 
 async function loadCompletionProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};

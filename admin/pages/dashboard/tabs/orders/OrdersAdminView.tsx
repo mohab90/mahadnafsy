@@ -8,6 +8,7 @@ import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../share
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
+import { useAccess } from '../../../../hooks/useAccess';
 import { useClientRequests } from './ClientRequestRows';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { TransferProofLink } from '../../../../components/TransferProofLink';
@@ -27,9 +28,11 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
   // Wiping a payment or an order is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDelete = useCanDelete();
+  const access = useAccess();
   // The new clients a collection officer sent wait in this table's «قيد المراجعة» rows, not in a block above it.
   const clientRequests = useClientRequests({
-    enabled: canManageFinancial, notify, onChanged: () => { void reloadSubscribers(); },
+    // GET /api/admin/subscriber-requests needs manage_financial; canManageFinancial also holds confirm_transfers (the support desk), which it answers 403.
+    enabled: canManageFinancial && access.can('manage_financial'), notify, onChanged: () => { void reloadSubscribers(); },
     titleOf: (courseId, bundleId) => (bundleId ? bundles.find(bundle => bundle.id === bundleId)?.title : courses.find(course => course.id === courseId)?.title) || '—',
   });
   // A transfer a manager corrects (canAcceptDirectly is the manager's line).

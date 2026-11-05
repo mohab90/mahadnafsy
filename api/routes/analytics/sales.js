@@ -99,7 +99,7 @@ router.get('/api/admin/marketing/overview', requireAuth, requireAdminOrStaff, re
     const moneyIn = async (start, end) => {
       const params = [req.tenantId, ...moneyScope.params];
       let when = '';
-      if (start) { when = ' AND p.date >= ? AND p.date <= ?'; params.push(start, end); }
+      if (start) { when = ' AND p.date >= ? AND p.date < ?'; params.push(start, addDaysToDateOnly(end, 1)); }
       const [[row]] = await pool.query(
         `SELECT COALESCE(SUM(p.amount_egp), 0) AS revenue, COUNT(*) AS payments
            FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
@@ -110,7 +110,7 @@ router.get('/api/admin/marketing/overview', requireAuth, requireAdminOrStaff, re
     // The daily line is the last 30 days at most, whatever the range, so «all» does not draw years.
     const lineFrom = days && days <= 30 ? from : addDaysToDateOnly(today, -29);
     const lineLeadParams = [req.tenantId, ...leadRange.params, ...cairoDayBoundsUtc(lineFrom, today)];
-    const lineMoneyParams = [req.tenantId, ...moneyScope.params, lineFrom, today];
+    const lineMoneyParams = [req.tenantId, ...moneyScope.params, lineFrom, addDaysToDateOnly(today, 1)];
     const [current, previous, currentMoney, previousMoney, [lineLeads], [lineMoney], [[stale]]] = await Promise.all([
       leadsIn(from, today),
       before ? leadsIn(before.from, before.to) : Promise.resolve(null),
@@ -123,7 +123,7 @@ router.get('/api/admin/marketing/overview', requireAuth, requireAdminOrStaff, re
         `SELECT DATE_FORMAT(p.date, '%Y-%m-%d') AS day, COALESCE(SUM(p.amount_egp), 0) AS revenue
            FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
           WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}
-            AND p.date >= ? AND p.date <= ? GROUP BY 1`, lineMoneyParams),
+            AND p.date >= ? AND p.date < ? GROUP BY 1`, lineMoneyParams),
       leadRange.none ? [[{ n: 0 }]] : pool.query(
         `SELECT COUNT(*) AS n FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${leadRange.sql}
             AND LOWER(COALESCE(NULLIF(l.status, ''), 'new')) = 'new' AND l.created_at < NOW() - INTERVAL 2 DAY`, [req.tenantId, ...leadRange.params]),
@@ -165,7 +165,8 @@ router.get('/api/admin/reports/sales-breakdown', requireAuth, requireAdminOrStaf
     if (from) { leadWhen = ' AND l.created_at >= ? AND l.created_at < ?'; const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to); leadParams.push(fromUtc, toUtc); }
     const moneyParams = [req.tenantId, ...moneyScope.params];
     let moneyWhen = '';
-    if (from) { moneyWhen = ' AND p.date >= ? AND p.date <= ?'; moneyParams.push(from, to); }
+    // `p.date <= to` would stop at midnight of the last day: payments carry the time they were made (NOW()), so the last day's own money dropped out of the report.
+    if (from) { moneyWhen = ' AND p.date >= ? AND p.date < ?'; moneyParams.push(from, addDaysToDateOnly(to, 1)); }
     const moneyFrom = `FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
         WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}${moneyWhen}`;
 

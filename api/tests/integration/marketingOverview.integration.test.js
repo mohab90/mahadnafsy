@@ -13,6 +13,8 @@ const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
 const skip = !ENABLED && 'no DB_* configured';
 const T = 'tenant-marketing-overview-it';
+// The institute's day is Cairo's; the database session's CURDATE() is UTC's, which is still yesterday between 00:00 and 02:00 Cairo (the test failed in that window).
+const { cairoToday, addDaysToDateOnly } = require('../../lib/dates');
 let pool, router;
 
 async function clean() {
@@ -33,9 +35,12 @@ before(async () => {
   await pool.query("INSERT INTO subscribers (id, tenant_id, client_code, name, phone, branch) VALUES ('mo-s1', ?, 'MO1', 'عميل', '1019300001', 'ONLINE_EGYPT')", [T]);
   await pool.query(
     `INSERT INTO payments (id, tenant_id, subscriber_id, amount, currency, fx_rate_to_egp, amount_egp, payment_type, status, date) VALUES
-       ('mo-p1', ?, 'mo-s1', 1000, 'EGP', 1, 1000, 'COURSE', 'paid', CURDATE()),
-       ('mo-p2', ?, 'mo-s1', 100, 'SAR', 14, 1400, 'COURSE', 'paid', CURDATE() - INTERVAL 10 DAY),
-       ('mo-p3', ?, 'mo-s1', 500, 'EGP', 1, 500, 'COURSE', 'pending', CURDATE())`, [T, T, T]);
+       ('mo-p1', ?, 'mo-s1', 1000, 'EGP', 1, 1000, 'COURSE', 'paid', ?),
+       ('mo-p2', ?, 'mo-s1', 100, 'SAR', 14, 1400, 'COURSE', 'paid', ?),
+       ('mo-p3', ?, 'mo-s1', 500, 'EGP', 1, 500, 'COURSE', 'pending', ?),
+       -- a payment made at 14:30 today, as the online and instalment writers store them (NOW()): a date-only upper bound stopped at midnight and lost it
+       ('mo-p4', ?, 'mo-s1', 250, 'EGP', 1, 250, 'COURSE', 'paid', ?)`,
+    [T, cairoToday(), T, addDaysToDateOnly(cairoToday(), -10), T, cairoToday(), T, `${cairoToday()} 14:30:00`]);
   await pool.query(
     `INSERT INTO leads (id, tenant_id, name, phone, source, status, branch, hidden, created_at) VALUES
        ('mo-l1', ?, 'ليد ١', '1019400001', 'facebook', 'new', 'ONLINE_EGYPT', 0, NOW()),
@@ -50,20 +55,20 @@ test('7 days: this week\'s leads and money, the week before it, a line per day, 
   assert.equal(statusCode, 200);
   assert.equal(body.range, '7d');
   assert.deepEqual(body.current.leads.map(row => [row.status, row.source, row.n]).sort(), [['converted', 'facebook', 1], ['new', 'facebook', 1]]);
-  assert.equal(body.current.revenue, 1000, 'only the paid 1,000 of today; the pending 500 and the 10-day-old payment are outside');
+  assert.equal(body.current.revenue, 1250, 'the paid 1,000 of today and the 250 paid at 14:30; the pending 500 and the 10-day-old payment are outside');
   assert.deepEqual(body.previous.leads.map(row => [row.status, row.source, row.n]), [['new', 'instagram', 1]], 'the week before holds the lead of ten days ago');
   assert.equal(body.previous.revenue, 1400);
   assert.equal(body.daily.length, 7, 'one point per day of the range');
   assert.equal(body.daily.at(-1).leads, 2);
   assert.equal(body.daily.at(-1).converted, 1);
-  assert.equal(body.daily.at(-1).revenue, 1000);
+  assert.equal(body.daily.at(-1).revenue, 1250, 'today\'s last day holds the payment made at 14:30 too');
   assert.equal(body.untouchedLeads, 1, 'the new lead of 10 days ago; the hidden one does not count');
 });
 
 test('all time has nothing to compare with and still draws only thirty days', { skip }, async () => {
   const { body } = await get({ range: 'all' });
   assert.equal(body.previous, null);
-  assert.equal(body.current.revenue, 2400);
+  assert.equal(body.current.revenue, 2650);
   assert.equal(body.current.leads.reduce((sum, row) => sum + row.n, 0), 3);
   assert.equal(body.daily.length, 30);
 });

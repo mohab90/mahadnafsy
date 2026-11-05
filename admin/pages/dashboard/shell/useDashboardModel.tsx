@@ -46,6 +46,7 @@ import { RETIRED_CAMPAIGN_TABS } from '../tabs/CampaignsTab';
 import { RETIRED_STAFF_PERFORMANCE_TABS } from '../tabs/StaffPerformanceHubTab';
 import { useSaveFailureToasts } from './useSaveFailureToasts';
 import { useAccess } from '../../../hooks/useAccess';
+import { useFinancialScope } from '../../../hooks/useAggregateFinance';
 import { visibleMenu } from '../../../lib/access';
 
 
@@ -578,19 +579,23 @@ export function useDashboardModel() {
 
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
   const clientsArePaged = staffClientsArePaged(activeTab);
+  const mayReadLeads = access.can('view_leads');
+  const mayReadClients = access.can('view_subscribers');
   useEffect(() => {
     if (onProfilePage) return;
-    if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
-    else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
+    // A whole table is asked for only by an account that may read it: the accountant opens «الاشتراكات المتكررة» (view_financial) and the full load of the clients
+    // answered 403 twice and surfaced as «مفيش عندك صلاحية» (5 Nov 2026). Such an account sees the screen without the rows it may not read.
+    if (fullCrmDataTabs.has(activeTab)) { if (mayReadLeads && mayReadClients) void loadFullCrmData(); }
+    else if (fullLeadTabs.has(activeTab)) { if (mayReadLeads) void loadFullLeads(); }
     // «عملائي» for an employee reads a page at a time from the server: no full list, in the context or out of it.
-    else if (fullSubscriberTabs.has(activeTab) && !clientsArePaged) void loadFullSubscribers();
+    else if (fullSubscriberTabs.has(activeTab) && !clientsArePaged) { if (mayReadClients) void loadFullSubscribers(); }
     // Then the lists the screen reads that no longer come with the panel —
     // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
     // After the full loads above, so a list a full load is bringing waits for it.
     // An employee's version of a screen that pages from the server does not read the lists the administration's does.
     const skipped = readsOwnPayments ? staffSkipsSiteLists(activeTab) : (usesStaffScopedData ? staffSkipsSiteLists(activeTab).filter(list => list !== 'orders') : []);
     void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));
-  }, [onProfilePage, activeTab, clientsArePaged, usesStaffScopedData, readsOwnPayments, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
+  }, [onProfilePage, activeTab, clientsArePaged, usesStaffScopedData, readsOwnPayments, mayReadLeads, mayReadClients, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
 
   // Drawn over every screen, so they ask for their own lists: the follow-up
   // drawer lists the loaded leads' follow-ups (its bell counts on the server —
@@ -608,10 +613,12 @@ export function useDashboardModel() {
   // payments). Refreshed on a slow timer while the tab is in view; a failure
   // leaves the browser's figure on screen, as before.
   const [booksRevenue, setBooksRevenue] = useState<{ totalEgp: number; monthEgp: number; todayEgp: number; payments?: number } | null>(null);
+  // GET /api/admin/overview/revenue is refused (403) to an account whose data scope is none — HR — so it is not asked every five minutes on every screen.
+  const financialScope = useFinancialScope();
   const refreshBooksRevenue = useCallback(() => {
-    if (!authUser) return;
+    if (!authUser || financialScope === 'none') return;
     mysqlAdmin.getOverviewRevenue().then(setBooksRevenue).catch(() => { /* keep the local figure */ });
-  }, [authUser]);
+  }, [authUser, financialScope]);
   useVisibleInterval(refreshBooksRevenue, 5 * 60 * 1000);
 
   const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats, booksRevenue);

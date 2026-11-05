@@ -128,7 +128,10 @@ test('«تعديل الرصيد العام»: only the general adjustment moves,
 test('the boxes report carries balance, today and yesterday; only the institute\'s books can change a balance', () => {
   const route = read('api/routes/finance/budgets.js');
   assert.match(route, /AS total_y,/);
-  assert.match(route, /yesterday, yesterday, req\.tenantId/);
+  // «أمس» is a range (>= yesterday, < today) and the window ends before tomorrow: payments carry the time they were made, so `= yesterday` and `<= today` lost money (5 Nov 2026).
+  assert.match(route, /yesterday, today, yesterday, today, req\.tenantId, since\(30\), addDaysToDateOnly\(today, 1\)/);
+  assert.match(route, /p\.date >= \? AND p\.date < \? THEN p\.amount ELSE 0 END\) AS total_y/);
+  assert.doesNotMatch(route, /p\.date = \?|p\.date <= \?/);
   assert.match(route, /if \(!scope\.branchId\) \{\s*const current = await currentBalances\(pool/, 'a branch sees no balances');
   assert.match(route, /const mainBooks = \[requireAuth, requireAdminOrStaff, requirePermission\('manage_financial'\)\];/);
   assert.match(route, /BOXES_MAIN_BOOKS_ONLY/);

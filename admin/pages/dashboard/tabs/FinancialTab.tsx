@@ -21,6 +21,7 @@ import type { PaymentHistoryEntry, ExpenseItem, OrderItem, SubscriberItem } from
 import { useBranchAccounting } from './financial/useBranchAccounting';
 import { fetchClientsByIds } from '../useClientsByIds';
 import { BRANCH_SUB_TABS, branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
+import { useAggregateFinance } from '../../../hooks/useAggregateFinance';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
 import { isOnlinePaidOrder } from '../../../context/site-data-hooks/normalizeOrders';
@@ -109,11 +110,14 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   // A branch's books open on its boxes; the main books on the cockpit — unless
   // the address names a screen: /dashboard/financial/<screen>. The screen is in
   // the URL so a refresh, the back button and a shared link land on it.
+  // An account that sees only its own clients' money (the collection desk) has no books to read: the cockpit, the boxes, the P&L and the receipt gaps answer 403 for it.
+  const aggregate = useAggregateFinance();
   const navigate = useNavigate();
   const { tab: routeTab, param: routeScreen } = useParams<{ tab?: string; param?: string }>();
   const screenAllowed = useCallback((screen?: string): screen is FinancialSubTab =>
-    !!screen && (FINANCIAL_SCREENS as string[]).includes(screen) && (!branchFilter || BRANCH_SUB_TABS.includes(screen as FinancialSubTab)), [branchFilter]);
-  const defaultScreen: FinancialSubTab = branchFilter ? 'boxes' : 'cockpit';
+    !!screen && (FINANCIAL_SCREENS as string[]).includes(screen) && (!branchFilter || BRANCH_SUB_TABS.includes(screen as FinancialSubTab))
+      && (aggregate || (screen !== 'cockpit' && screen !== 'boxes')), [branchFilter, aggregate]);
+  const defaultScreen: FinancialSubTab = !aggregate ? 'overview' : branchFilter ? 'boxes' : 'cockpit';
   const [financialSubTab, setFinancialSubTabState] = useState<FinancialSubTab>(() => (screenAllowed(routeScreen) ? routeScreen : defaultScreen));
   useEffect(() => {
     setFinancialSubTabState(screenAllowed(routeScreen) ? routeScreen : defaultScreen);
@@ -175,6 +179,7 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   const [ledgerFilteredPnl, setLedgerFilteredPnl] = useState<LedgerPnl | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(true);
   React.useEffect(() => {
+    if (!aggregate) { setLedgerLoading(false); return undefined; }
     let active = true;
     setLedgerLoading(true);
     const today = cairoDateOnly();
@@ -195,7 +200,7 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
       if (active) setLedgerLoading(false);
     });
     return () => { active = false; };
-  }, [branchFilter, globalDateFrom, globalDateTo]);
+  }, [branchFilter, globalDateFrom, globalDateTo, aggregate]);
 
   // ── Orders tab extra filters ──
   const [orderSearch, setOrderSearch] = useState('');
@@ -497,7 +502,7 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
       {/* «المفروض يظهر اي تنبيه في حسابات الدقي والحسابات الرئيسية»: a break in a branch's receipt
           numbers is said where its money is kept — the branch's own accounts for that branch, the
           main accounts for every branch — and nowhere else. Nothing is drawn while the run is whole. */}
-      <ReceiptGapsAlert branch={branchFilter ? branchFilter.toUpperCase() : undefined} />
+      {aggregate && <ReceiptGapsAlert branch={branchFilter ? branchFilter.toUpperCase() : undefined} />}
       {/* Branch filter banner */}
       {branchFilter && (
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
@@ -545,7 +550,7 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
       </div>
       <FinancialSubTabs
         activeTab={financialSubTab}
-        allowed={branchFilter ? BRANCH_SUB_TABS : undefined}
+        allowed={aggregate ? (branchFilter ? BRANCH_SUB_TABS : undefined) : (branchFilter ? BRANCH_SUB_TABS : FINANCIAL_SCREENS).filter(screen => screen !== 'cockpit' && screen !== 'boxes')}
         pendingProofsCount={pendingProofsCount}
         pendingReviewCount={pendingReviewCount}
         onChange={setFinancialSubTab}

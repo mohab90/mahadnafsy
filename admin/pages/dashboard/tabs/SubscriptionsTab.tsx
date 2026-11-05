@@ -3,6 +3,7 @@ import { cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/ca
 import { BookOpen, Users, DollarSign, BarChart3, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { usePaidBySubscriber } from '../../../hooks/usePaidBySubscriber';
+import { useAccess } from '../../../hooks/useAccess';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 type Range = 'month' | '3months' | '6months' | 'all';
@@ -45,6 +46,7 @@ function getRangeStart(range: Range): string {
 
 export default function SubscriptionsTab() {
   const { subscribers, courses } = useSiteData();
+  const mayReadClients = useAccess().can('view_subscribers');
   // What each client paid (the list itself carries no total).
   const paid = usePaidBySubscriber();
   const [range, setRange] = useState<Range>('6months');
@@ -94,6 +96,15 @@ export default function SubscriptionsTab() {
   const activeCount = filtered.filter(s => s.clientStatus === 'active' || !s.clientStatus).length;
 
   const statusOptions = ['all', 'active', 'finished', 'paused', 'refunded', 'leads'];
+
+  // The page is the clients' sign-ups and what they paid: without the right to read the clients it has nothing to draw, and says so instead of drawing zeros.
+  if (!mayReadClients) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800" dir="rtl">
+        الشاشة دي بتعرض اشتراكات العملاء وإيراد كل واحد، ومحتاجة صلاحية «عرض العملاء». كلّم الإدارة لو محتاجها.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5" dir="rtl">

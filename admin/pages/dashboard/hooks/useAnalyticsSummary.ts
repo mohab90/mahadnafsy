@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAccess } from '../../../hooks/useAccess';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { CRM_CHANGED_EVENT } from '../../../lib/crmChanged';
 
@@ -45,8 +46,12 @@ export function useAnalyticsSummary(range: string): { summary: AnalyticsSummary 
     window.addEventListener(CRM_CHANGED_EVENT, onChanged);
     return () => { cancelled = true; clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
   }, [range]);
+  // The applications' counts are the recruiting desk's (view_join_us / branch_hr): the Dokki reception opens these figures and was answered 403.
+  const access = useAccess();
+  const mayReadJoins = access.can('view_join_us') || access.can('branch_hr');
   useEffect(() => {
+    if (!mayReadJoins) return;
     mysqlAdmin.adminGet<JoinCounts>('/admin/join-us/counts').then(setJoins).catch(() => setJoins(null));
-  }, []);
+  }, [mayReadJoins]);
   return { summary, joins };
 }

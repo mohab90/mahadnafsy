@@ -161,19 +161,21 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
     const today = dateOnlyInTimeZone();
     const since = days => addDaysToDateOnly(today, 1 - days);
     const yesterday = addDaysToDateOnly(today, -1);
+    // payments.date is a DATETIME and most writers store NOW(): «أمس» is the day's range (>= yesterday, < today), and the window ends BEFORE tomorrow —
+    // `= yesterday` matched only a payment at exactly 00:00:00 and `<= today` dropped today's own payments (5 Nov 2026).
     const [rows] = await pool.query(
       `SELECT COALESCE(NULLIF(REGEXP_REPLACE(TRIM(p.payment_method), ' {2,}', ' '), ''), 'غير محدد') AS method, p.currency,
               ${BOX_WINDOWS.map(days => `SUM(CASE WHEN p.date >= ? THEN p.amount ELSE 0 END) AS total_${days},
               SUM(CASE WHEN p.date >= ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_${days}`).join(',\n              ')},
-              SUM(CASE WHEN p.date = ? THEN p.amount ELSE 0 END) AS total_y,
-              SUM(CASE WHEN p.date = ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_y
+              SUM(CASE WHEN p.date >= ? AND p.date < ? THEN p.amount ELSE 0 END) AS total_y,
+              SUM(CASE WHEN p.date >= ? AND p.date < ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_y
          FROM payments p
          LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
         WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND (p.status = 'paid' OR p.status IS NULL)
-          AND p.date >= ? AND p.date <= ?${scope.branchId ? ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)' : ''}
+          AND p.date >= ? AND p.date < ?${scope.branchId ? ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)' : ''}
         GROUP BY method, p.currency
         ORDER BY total_30 DESC`,
-      [...BOX_WINDOWS.flatMap(days => [since(days), since(days)]), yesterday, yesterday, req.tenantId, since(30), today,
+      [...BOX_WINDOWS.flatMap(days => [since(days), since(days)]), yesterday, today, yesterday, today, req.tenantId, since(30), addDaysToDateOnly(today, 1),
         ...(scope.branchId ? [scope.branchId] : [])]);
     // One box per channel: «فودافون كاش 7722» typed two ways is one box (lib/paymentChannels.js); two numbers the desk says are one box are read
     // as one through the aliases (lib/boxAliases.js).

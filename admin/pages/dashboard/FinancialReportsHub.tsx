@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BarChart3, BookOpen, FileText, RotateCcw, Target, TrendingUp } from 'lucide-react';
 import type { NotifyFn } from '../../types';
+import { useAggregateFinance } from '../../hooks/useAggregateFinance';
 
 const BalanceSheetTab = lazy(() => import('./tabs/BalanceSheetTab'));
 const CashFlowTab = lazy(() => import('./tabs/CashFlowTab'));
@@ -32,10 +33,21 @@ export default function FinancialReportsHub({ notify, initial }: { notify: Notif
   // The report is in the address — /dashboard/financial_reports/<report> — so a
   // refresh or a shared link opens the same statement.
   const navigate = useNavigate();
+  const aggregate = useAggregateFinance();
   const { param } = useParams<{ param?: string }>();
   const wanted = param || initial;
   const active = reports.some((item) => item.key === wanted) ? String(wanted) : 'chart_of_accounts';
   const Current = reports.find((item) => item.key === active)?.Component;
+
+  // The books are the company's or a branch's. An account that sees only the money of its own clients (the collection desk) is refused every one of these by the
+  // server (403 «Aggregate financial reports are not available for this data scope»); it is told so here instead of getting six empty reports.
+  if (!aggregate) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800" dir="rtl">
+        التقارير المحاسبية على مستوى الشركة أو الفرع، وحسابك بيشوف فلوس عملاءه بس. لو محتاجها كلّم الإدارة.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4" dir="rtl">

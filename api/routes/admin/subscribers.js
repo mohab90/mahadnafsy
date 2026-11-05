@@ -2,6 +2,7 @@
 const { certificateDue } = require('../../lib/certificatePricing');
 const { certificatePricing } = require('../../lib/certificatePayments');
 const { signerName } = require('../../lib/staffNames');
+const { loadHoldings } = require('../../lib/clientView');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, spellingsOf, sharedPhoneSlot, recordSharedPhone } = require('../../lib/phoneDuplicates');
 const { findLeadByContact } = require('../../lib/leadMatching');
@@ -279,22 +280,10 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
           fromAccountNumber: p.from_account || null, senderName: p.sender_name || null, source: p.source || null, itemTitle: p.item_title || null,
           certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null };
       });
-      const [enrollmentRows] = await pool.query(
-        "SELECT course_id,bundle_id,access_type,lecture_limit FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND status='active'",
-        [req.tenantId, r.id]
-      );
-      const enrolledCourseIds = [...new Set(enrollmentRows.flatMap(enrollment => {
-        if (enrollment.course_id) return [String(enrollment.course_id)];
-        if (enrollment.bundle_id) return [`bundle:${enrollment.bundle_id}`];
-        return [];
-      }))];
-      const enrolledBundleIds = [...new Set(enrollmentRows.filter(row => row.bundle_id).map(row => String(row.bundle_id)))];
-      const courseAccess = Object.fromEntries(enrollmentRows.filter(row => row.course_id).map(row => [
-        String(row.course_id),
-        row.access_type === 'limited'
-          ? { mode: 'limited', lectureLimit: Number(row.lecture_limit) || 1 }
-          : 'full',
-      ]));
+      const held = (await loadHoldings(req.tenantId, [r.id]))[r.id];
+      const enrolledCourseIds = held?.withBundles || [];
+      const enrolledBundleIds = held?.bundleIds || [];
+      const courseAccess = held?.access || {};
       const [certificateRows] = await pool.query(
         `SELECT id, course_id, type, custom_name, name_ar, name_en, nationality, id_number,
                 status, price, paid_amount, currency, note, admin_note, requested_at, issued_at

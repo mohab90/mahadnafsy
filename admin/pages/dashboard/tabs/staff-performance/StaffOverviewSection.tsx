@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Clock, Loader2, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { useAccess } from '../../../../hooks/useAccess';
 import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -33,6 +34,9 @@ function lastMonths(count: number) {
  * who is late, and who brings the money. Each half is drawn only for the viewer who may read it: the attendance half needs view_hr, the sales half the sales-performance key.
  */
 export function StaffOverviewSection({ notify }: { notify: NotifyFn }) {
+  const access = useAccess();
+  const mayReadAttendance = access.can('view_hr') || access.can('branch_hr');
+  const maySeeSales = access.can('manage_sales_team') || access.can('view_perf_sales');
   const months = useMemo(() => lastMonths(6), []);
   const [monthKey, setMonthKey] = useState(months[0].key);
   const [attendance, setAttendance] = useState<AttendanceRow[] | null>(null);
@@ -45,15 +49,16 @@ export function StaffOverviewSection({ notify }: { notify: NotifyFn }) {
     const from = `${picked.key}-01`;
     const lastDay = new Date(Date.UTC(picked.year, picked.month, 0)).getUTCDate();
     const to = `${picked.key}-${String(lastDay).padStart(2, '0')}`;
+    // Each half is asked for only by an account that may read it (the HR account has no sales key and answered 403 to the second; 5 Nov 2026).
     const [att, perf] = await Promise.allSettled([
-      mysqlAdmin.adminGet<AttendanceRow[]>(`/admin/hr/attendance/summary?month=${picked.month}&year=${picked.year}`),
-      mysqlAdmin.adminGet<{ staff: SalesRow[] }>(`/admin/reports/sales-performance?from=${from}&to=${to}`),
+      mayReadAttendance ? mysqlAdmin.adminGet<AttendanceRow[]>(`/admin/hr/attendance/summary?month=${picked.month}&year=${picked.year}`) : Promise.reject(new Error('no permission')),
+      maySeeSales ? mysqlAdmin.adminGet<{ staff: SalesRow[] }>(`/admin/reports/sales-performance?from=${from}&to=${to}`) : Promise.reject(new Error('no permission')),
     ]);
     setAttendance(att.status === 'fulfilled' && Array.isArray(att.value) ? att.value : null);
     setSales(perf.status === 'fulfilled' && Array.isArray(perf.value?.staff) ? perf.value.staff : null);
-    if (att.status === 'rejected' && perf.status === 'rejected') notify('error', 'تعذّر تحميل أرقام الفريق');
+    if (att.status === 'rejected' && perf.status === 'rejected' && (mayReadAttendance || maySeeSales)) notify('error', 'تعذّر تحميل أرقام الفريق');
     setLoading(false);
-  }, [monthKey, months, notify]);
+  }, [monthKey, months, notify, mayReadAttendance, maySeeSales]);
   useEffect(() => { void load(); }, [load]);
 
   const attendanceView = useMemo(() => {
