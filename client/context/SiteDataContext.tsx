@@ -1,13 +1,12 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
-import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DiscountRule, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, SubscriberItem, CourseLectureItem, CourseChapterItem, TestimonialItem, CommunityComment, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, CourseQuiz, QuizAttempt, LiveStream } from '../types';
+import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, SubscriberItem, CourseLectureItem, CourseChapterItem, TestimonialItem, CommunityComment, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, CourseQuiz, QuizAttempt, LiveStream } from '../types';
 import { mysqlForms } from '../lib/mysqlapi';
 import { trackLead } from '../lib/tracking';
 import { useAuth } from './AuthContext';
 import { useActivityLog } from './site-data-hooks/useActivityLog';
 import { useCurrency } from './site-data-hooks/useCurrency';
 import { useSiteContent } from './site-data-hooks/useSiteContent';
-import { useDiscounts } from './site-data-hooks/useDiscounts';
 import { useNotifications } from './site-data-hooks/useNotifications';
 import { useLiveStreams } from './site-data-hooks/useLiveStreams';
 import { useCourseCurriculum } from './site-data-hooks/useCourseCurriculum';
@@ -33,7 +32,6 @@ interface SiteDataShape {
   /** Fetch community posts, library, videos and events — once, on the one screen that shows them. */
   loadCommunity: () => Promise<void>;
   content: Record<string, string>;
-  discounts: DiscountRule[];
   notifications: NotificationBroadcast[];
   notificationReadIds: string[];
   markBroadcastNotificationRead: (id: string) => Promise<boolean>;
@@ -67,6 +65,8 @@ interface SiteDataShape {
   mySubscriberId: string | null;
   refreshMySubscriber: () => void;
   reloadLectures: () => Promise<void>;
+  /** The student dashboard asks for what only it shows — lectures, chapters, quizzes, attempts, live streams, broadcasts, the client's consultations — instead of every page loading it. */
+  ensureStudentData: () => void;
   logout: () => void;
   refreshAuth: () => void;
 }
@@ -120,7 +120,6 @@ const seedData = {
   communityEvents: defaultCommunityEvents,
   loadCommunity: async () => {},
   content: defaultContent,
-  discounts: [] as DiscountRule[],
   notifications: [] as NotificationBroadcast[],
 };
 
@@ -140,16 +139,21 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { track } = useActivityLog(authUser, []);
   const { currency, setCurrency } = useCurrency();
   const { content, mergeContent } = useSiteContent(initial.content);
-  const { discounts } = useDiscounts((initial as typeof seedData & { discounts?: DiscountRule[] }).discounts || []);
+  // What only the dashboard shows is loaded when it asks (ensureStudentData), once, not by every page for every signed-in student. (The discount rules were
+  // fetched on every page and read by none: the server prices with them.)
+  const [studentDataWanted, setStudentDataWanted] = useState(false);
+  const ensureStudentData = useCallback(() => setStudentDataWanted(true), []);
   const { notifications, readIds: notificationReadIds, markRead: markBroadcastNotificationRead, markAllRead: markAllBroadcastNotificationsRead } = useNotifications(
     (initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || [],
     authUser?.uid,
     isAdmin,
+    studentDataWanted,
   );
   const { liveStreams } = useLiveStreams(
     (initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [],
     authUser?.uid,
     isAdmin,
+    studentDataWanted,
   );
   const {
     setLectures, setChapters,
@@ -168,19 +172,12 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     track,
   );
   const {
-    courseQuizzes, quizAttempts, submitQuizAttempt,
-  } = useQuizzes(
-    (initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || [],
-    (initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || [],
-    authUser, isAdmin, subscribers, track,
-  );
-  const {
     courses, setCourses, bundles, therapists, testimonials,
     remoteReady, catalogFailed, retryCatalog, loadCommunity,
   } = useCatalogData({
     initialCourses: initial.courses, initialBundles: initial.bundles,
     initialTherapists: initial.therapists, initialTestimonials: initial.testimonials,
-    isAdmin, authUserUid: authUser?.uid, mergeContent,
+    isAdmin, authUserUid: authUser?.uid, curriculumWanted: studentDataWanted, mergeContent,
     setLectures, setChapters,
     setCommunityPosts, setCommunityLibraryItems, setCommunityVideos, setCommunityEvents,
   });
@@ -196,7 +193,15 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setSubscribers,
     setCourses,
     setConsultations,
+    consultationsWanted: studentDataWanted,
   });
+  const {
+    courseQuizzes, quizAttempts, submitQuizAttempt,
+  } = useQuizzes(
+    (initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || [],
+    (initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || [],
+    authUser, isAdmin, mySubscriberId, studentDataWanted, track,
+  );
 
   // addPublicLead: for public registration forms — uses MySQL /api/registrations (no auth needed).
   const addPublicLead = async (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }): Promise<void> => {
@@ -256,7 +261,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       communityVideos,
       communityEvents,
       content,
-      discounts,
       notifications,
       liveStreams,
     };
@@ -265,7 +269,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       writeVersionedCache(STORAGE_KEY, DATA_VERSION, payloadObject);
     }, 500);
     return () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); };
-  }, [courses, bundles, therapists, testimonials, communityPosts, communityLibraryItems, communityVideos, communityEvents, content, discounts, notifications, liveStreams]);
+  }, [courses, bundles, therapists, testimonials, communityPosts, communityLibraryItems, communityVideos, communityEvents, content, notifications, liveStreams]);
 
   // (AI/messaging settings persist removed — admin-app-only)
 
@@ -283,7 +287,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     communityEvents,
     loadCommunity,
     content,
-    discounts,
     notifications,
     notificationReadIds,
     markBroadcastNotificationRead,
@@ -313,6 +316,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     mySubscriberId,
     refreshMySubscriber,
     reloadLectures,
+    ensureStudentData,
     logout,
     refreshAuth,
     // Keyed on the data, not on the action functions this value also carries.
@@ -325,7 +329,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [courses, bundles, therapists, testimonials, subscribers, isStaff, consultations,
     communityPosts, communityLibraryItems, communityVideos,
-    communityEvents, content, discounts, notifications, notificationReadIds, courseQuizzes, quizAttempts,
+    communityEvents, content, notifications, notificationReadIds, courseQuizzes, quizAttempts,
     liveStreams, currency, authUser, isAdmin, isStaff, remoteReady, catalogFailed, retryCatalog,
     mySubscriberId, mySubscriberLoaded, getCourseChapters, getCourseLectures]);
 

@@ -245,7 +245,6 @@ test('community UI waits for persistence and keeps admin publishing controls per
 
 test('customer discounts, broadcasts, quizzes and live sessions hydrate from canonical APIs', () => {
   const configRoute = read('api/routes/config.js');
-  const discounts = read('client/context/site-data-hooks/useDiscounts.ts');
   const notifications = read('client/context/site-data-hooks/useNotifications.ts');
   const quizzes = read('client/context/site-data-hooks/useQuizzes.ts');
   const streams = read('client/context/site-data-hooks/useLiveStreams.ts');
@@ -254,13 +253,15 @@ test('customer discounts, broadcasts, quizzes and live sessions hydrate from can
 
   assert.match(configRoute, /router\.get\('\/api\/discounts',\s*publicLimiter/);
   assert.match(configRoute, /router\.get\('\/api\/notifications\/broadcasts',\s*requireAuth/);
-  assert.match(discounts, /mysqlCatalog\.listDiscounts\(\)/);
+  // The site never read the discount rules (the server prices with them), so it stopped fetching them on every page (5 Nov 2026); the public route stays.
+  assert.doesNotMatch(read('client/context/SiteDataContext.tsx'), /useDiscounts|listDiscounts/);
+  assert.doesNotMatch(read('client/lib/mysqlapi.ts'), /listDiscounts/);
   assert.match(notifications, /mysqlClient\.getBroadcastNotifications\(\)/);
   assert.match(quizzes, /mysqlCatalog\.listQuizzes\(\)/);
   assert.match(streams, /mysqlCatalog\.listLiveStreams\(\)/);
   assert.match(adminRuntime, /mysqlAdmin\.getNotificationSettings\(\)/);
   assert.doesNotMatch(catalog, /mysqlAdmin|saveCourse|deleteCourse|saveBundle/);
-  for (const source of [discounts, notifications, quizzes, streams]) {
+  for (const source of [notifications, quizzes, streams]) {
     assert.doesNotMatch(source, /mysqlAdmin/);
   }
 });

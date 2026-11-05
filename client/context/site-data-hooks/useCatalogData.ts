@@ -13,6 +13,8 @@ interface CatalogDataArgs {
   initialTestimonials: TestimonialItem[];
   isAdmin: boolean;
   authUserUid: string | undefined;
+  /** The screens that show the bulk lectures and chapters (the student dashboard) asked for them. */
+  curriculumWanted: boolean;
   mergeContent: (data: Record<string, string>) => void;
   setLectures: React.Dispatch<React.SetStateAction<CourseLectureItem[]>>;
   setChapters: React.Dispatch<React.SetStateAction<CourseChapterItem[]>>;
@@ -30,7 +32,7 @@ interface CatalogDataArgs {
  */
 export function useCatalogData({
   initialCourses, initialBundles, initialTherapists, initialTestimonials,
-  isAdmin, authUserUid, mergeContent,
+  isAdmin, authUserUid, curriculumWanted, mergeContent,
   setLectures, setChapters,
   setCommunityPosts, setCommunityLibraryItems, setCommunityVideos, setCommunityEvents,
 }: CatalogDataArgs) {
@@ -151,7 +153,8 @@ export function useCatalogData({
   }, [authUserUid, isAdmin]);
 
   // Bulk lectures/chapters (~530 KB) are only consumed by the logged-in student
-  // dashboard, which needs per-lecture progress across every enrolled course.
+  // dashboard, which needs per-lecture progress across every enrolled course — and
+  // which asks for them (ensureStudentData in SiteDataContext); no other page does.
   // Anonymous visitors browsing the homepage/catalog never touch it, and the
   // public course page (CourseDetails) fetches its own course's lectures on
   // demand — so this loads once, only after a real user id appears, instead of
@@ -159,7 +162,7 @@ export function useCatalogData({
   // resolves after that guarded effect has already fired.
   const lecturesLoadedRef = useRef(false);
   useEffect(() => {
-    if (isAdmin || !authUserUid || lecturesLoadedRef.current) return;
+    if (isAdmin || !authUserUid || !curriculumWanted || lecturesLoadedRef.current) return;
     lecturesLoadedRef.current = true;
     (async () => {
       const [lRes, chRes] = await Promise.allSettled([
@@ -171,7 +174,7 @@ export function useCatalogData({
       if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
         setChapters(chRes.value as unknown as CourseChapterItem[]);
     })();
-  }, [isAdmin, authUserUid, setLectures, setChapters]);
+  }, [isAdmin, authUserUid, curriculumWanted, setLectures, setChapters]);
 
   // Auto-refresh the catalog when the visitor returns to the tab, so courses/bundles
   // added or edited in the admin show up without a manual page reload. Throttled to ~15s.

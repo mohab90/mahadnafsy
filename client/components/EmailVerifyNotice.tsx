@@ -19,14 +19,10 @@ const EmailVerifyNotice: React.FC = () => {
   const [closed, setClosed] = useState(false);
   const linkResult = new URLSearchParams(search).get('emailVerified');
 
+  // The account the auth context already read from /api/auth/me carries the flag; asking again was a second identical request on every page.
   useEffect(() => {
-    if (!authUser?.uid) { setPending(false); return; }
-    let cancelled = false;
-    mysqlAuth.me()
-      .then(me => { if (!cancelled) setPending(Boolean(me.email) && me.emailVerified === false); })
-      .catch(() => { /* the notice is optional */ });
-    return () => { cancelled = true; };
-  }, [authUser?.uid, linkResult]);
+    setPending(Boolean(authUser?.uid && authUser.email) && authUser?.emailVerified === false);
+  }, [authUser?.uid, authUser?.email, authUser?.emailVerified, linkResult]);
 
   const verify = async () => {
     if (code.length !== 6) return;

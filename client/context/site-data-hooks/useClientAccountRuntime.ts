@@ -12,6 +12,8 @@ interface ClientAccountRuntimeOptions {
   setSubscribers: Setter<SubscriberItem[]>;
   setCourses: Setter<Course[]>;
   setConsultations: Setter<ConsultationItem[]>;
+  /** The client's own consultations are read by the student dashboard only, which asks for them. */
+  consultationsWanted: boolean;
 }
 
 export function useClientAccountRuntime({
@@ -20,6 +22,7 @@ export function useClientAccountRuntime({
   setSubscribers,
   setCourses,
   setConsultations,
+  consultationsWanted,
 }: ClientAccountRuntimeOptions) {
   const [mySubscriberLoaded, setMySubscriberLoaded] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -107,7 +110,7 @@ export function useClientAccountRuntime({
   useEffect(() => {
     // uid, not email: the consultations endpoint resolves the client from the
     // account, and a WhatsApp-only account has no email to gate on.
-    if (!authUser?.uid || isAdmin) return;
+    if (!authUser?.uid || isAdmin || !consultationsWanted) return;
     let cancelled = false;
     void mysqlClient.getMyConsultations()
       .then(list => {
@@ -118,7 +121,7 @@ export function useClientAccountRuntime({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [authUser?.uid, authUser?.email, isAdmin, setConsultations]);
+  }, [authUser?.uid, authUser?.email, isAdmin, setConsultations, consultationsWanted]);
 
   useEffect(() => {
     if (!authUser?.uid || isAdmin) {

@@ -7,6 +7,8 @@ export function useNotifications(
   initialNotifications: NotificationBroadcast[],
   authUserUid?: string,
   isAdmin = false,
+  // Asked for by the screens that show them (the student dashboard), not by every page: one request less on each other page.
+  enabled = true,
 ) {
   const [notifications, setNotifications] = useState<NotificationBroadcast[]>(initialNotifications);
   const [readIds, setReadIds] = useState<string[]>([]);
@@ -16,6 +18,7 @@ export function useNotifications(
       setNotifications([]);
       return;
     }
+    if (!enabled) return;
     let cancelled = false;
     void mysqlClient.getBroadcastNotifications().then((result) => {
       if (!cancelled) {
@@ -26,7 +29,7 @@ export function useNotifications(
       if (!cancelled) { setNotifications([]); setReadIds([]); }
     });
     return () => { cancelled = true; };
-  }, [authUserUid, isAdmin]);
+  }, [authUserUid, isAdmin, enabled]);
 
   const markRead = async (id: string) => {
     try {

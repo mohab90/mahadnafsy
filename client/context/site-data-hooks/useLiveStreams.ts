@@ -3,7 +3,7 @@ import type { LiveStream } from '../../types';
 import { mysqlCatalog } from '../../lib/mysqlapi';
 
 /** Published live streams; all management remains in the admin app. */
-export function useLiveStreams(initialLiveStreams: LiveStream[], authUserUid?: string, isAdmin = false) {
+export function useLiveStreams(initialLiveStreams: LiveStream[], authUserUid?: string, isAdmin = false, enabled = true) {
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>(initialLiveStreams);
 
   useEffect(() => {
@@ -11,12 +11,13 @@ export function useLiveStreams(initialLiveStreams: LiveStream[], authUserUid?: s
       if (!authUserUid) setLiveStreams([]);
       return;
     }
+    if (!enabled) return;
     let cancelled = false;
     void mysqlCatalog.listLiveStreams().then((rows) => {
       if (!cancelled) setLiveStreams(rows as unknown as LiveStream[]);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [authUserUid, isAdmin]);
+  }, [authUserUid, isAdmin, enabled]);
 
   return { liveStreams };
 }

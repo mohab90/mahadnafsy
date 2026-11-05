@@ -207,7 +207,6 @@ export const mysqlCatalog = {
   listTestimonials: () => apiFetch<AR[]>('/testimonials'),
   listQuizzes: (limit = 200) => apiFetch<AR[]>(`/quizzes?limit=${limit}`, {}, true),
   listLiveStreams: (limit = 200) => apiFetch<AR[]>(`/live-streams?limit=${limit}`),
-  listDiscounts: () => apiFetch<AR[]>('/discounts'),
   listCommunityPosts: () => apiFetch<AR[]>('/community/posts'),
   listCommunityLibrary: () => apiFetch<AR[]>('/community/library'),
   listCommunityVideos: () => apiFetch<AR[]>('/community/videos'),
