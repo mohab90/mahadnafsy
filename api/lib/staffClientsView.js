@@ -134,7 +134,8 @@ function matchesFollow(status, filter) {
 
 // ── What the client holds and owes (admin/lib/agreedPrice.ts) ───────────────────────────────────────────────
 const itemKeyOf = payment => (payment.bundleId ? `bundle:${payment.bundleId}` : (payment.courseId || ''));
-const isCoursePayment = payment => !payment.paymentType || payment.paymentType === 'course'
+// A row typed «bundle» (a payment proof or an instalment for a track) is the track's money, as the SQL balance counts it — same rule as admin/lib/agreedPrice.ts.
+const isCoursePayment = payment => !payment.paymentType || payment.paymentType === 'course' || payment.paymentType === 'bundle'
   || (payment.paymentType === 'other' && Boolean(payment.courseId || payment.bundleId));
 const catalogueIn = (price, currency) => Number((price || {})[currency]) || Number((price || {}).EGP) || 0;
 

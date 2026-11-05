@@ -112,3 +112,17 @@ test('the dialog takes its money from that one function and the Dokki desk\'s ro
   const desk = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
   assert.equal((desk.match(/&& isCoursePayment\(p\)/g) || []).length, 2);
 });
+
+test('a track paid by a payment proof or an instalment (typed «bundle») is paid on the screens as well as on the client\'s page', () => {
+  const holdings = load('admin/components/payment-modal/clientHoldings.ts');
+  const client = {
+    enrolledCourseIds: ['A', 'B', 'C'], enrolledBundleIds: ['X'],
+    paymentHistory: [pay({ amount: 2000, bundleId: 'X', paymentType: 'bundle', courseExpected: 3000 })],
+  };
+  if (holdings) {
+    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP');
+    assert.equal(result.enrolledOptions[0].paid, 2000, 'the browser counts it');
+    assert.equal(result.enrolledOptions[0].remaining, 1000);
+  }
+  assert.equal(balanceOf({ ...client, branch: 'ONLINE_EGYPT' }, serverCatalogue).remainingEgp, 1000, 'the server table counts it too');
+});

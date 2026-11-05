@@ -18,7 +18,11 @@ export const itemKeyOf = (payment: Pick<PaymentHistoryEntry, 'courseId' | 'bundl
 // A row that names a course or track and is typed «other» is that course's money:
 // 'other' is what the API says for a row whose payment_type was never set, and
 // leaving it out turned an old booking into «المدفوع 0».
+// A row typed «bundle» is a track's money too: a payment proof or an instalment for a track is stored that way (as the SQL balance, api/lib/agreedPrice.js, counts it);
+// without it a confirmed track payment read «المدفوع 0» on the staff screens while the client's page and the receipt showed it paid (5 Nov 2026). The API sends
+// 'bundle' although the union does not list it.
 export const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymentType || payment.paymentType === 'course'
+  || (payment.paymentType as string) === 'bundle'
   || (payment.paymentType === 'other' && Boolean(payment.courseId || payment.bundleId));
 
 /** What has come in for an item, optionally in one currency. */
