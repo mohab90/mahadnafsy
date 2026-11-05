@@ -26,7 +26,8 @@ const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, 
 const { paymobLimiter, whatsappSendLimiter, publicLimiter, contactLimiter } = require('../../middleware/rateLimits');
 const { safeDateOnly } = require('../../lib/dates');
 const { isString, validateBody } = require('../../middleware/validate');
-const { textValue, numberValue, sendFieldError } = require('../../lib/inputFields');
+const { textValue, numberValue, urlValue, sendFieldError } = require('../../lib/inputFields');
+const { integrationStatus, createMeeting, deleteMeeting } = require('../../lib/meetingProvider');
 const { getNextSalesRep } = require('../../lib/leadAssignment');
 const { branchIdForBranch } = require('../../lib/branches');
 const { normalizeQuizDefinition } = require('../../lib/quizValidation');
@@ -419,7 +420,8 @@ router.post('/api/admin/quizzes', requireAuth, requireAdminOrStaff, requirePermi
          updated_at=CURRENT_TIMESTAMP`,
       [id, req.tenantId, courseId, title, JSON.stringify(questions), passingScore,
        requiredForCompletion ? 1 : 0,
-       q.created_at||new Date().toISOString()]
+       // the database takes «YYYY-MM-DD HH:MM:SS»; an ISO string with a «Z» is refused by a strict one (which MariaDB is by default)
+       (q.created_at && !Number.isNaN(liveInstant(q.created_at).getTime())) ? sqlUtc(liveInstant(q.created_at)) : sqlUtc(new Date())]
     );
     res.json({ ok: true, id });
   } catch (e) {
@@ -448,12 +450,20 @@ router.get('/api/admin/live-streams', requireAuth, requireAdminOrStaff, requireP
     res.json(rows.map(mapLiveStream));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
+// The hour of a live as the administration sends it is the UTC wall clock («YYYY-MM-DD HH:MM»), which a bare `new Date()` would read as the server's local time.
+const sqlUtc = date => date.toISOString().slice(0, 19).replace('T', ' ');
+const liveInstant = value => {
+  if (value instanceof Date) return value;
+  const raw = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(raw) ? new Date(`${raw.replace(' ', 'T')}${raw.length === 16 ? ':00' : ''}Z`) : new Date(raw);
+};
+
 router.post('/api/admin/live-streams', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const s = req.body;
     const id = s.id || uuidv4();
-    const streamUrl      = s.stream_url         ?? s.streamUrl         ?? '';
-    const scheduledAt    = s.scheduled_at       ?? s.scheduledAt       ?? new Date().toISOString();
+    let streamUrl        = urlValue(s.stream_url ?? s.streamUrl, { field: 'stream_url', label: 'رابط البث' });
+    const scheduledInput = s.scheduled_at       ?? s.scheduledAt       ?? new Date();
     const durationMins   = s.duration_minutes   ?? s.durationMinutes   ?? 60;
     let instructorName = s.instructor_name    ?? s.instructorName    ?? s.instructor ?? null;
     // The lecturer's own account (8 Oct 2026): they open it from «لايفاتي» and are told it is coming.
@@ -465,46 +475,81 @@ router.post('/api/admin/live-streams', requireAuth, requireAdminOrStaff, require
     }
     const targetIds      = s.target_course_ids_json ??
                            (Array.isArray(s.targetCourseIds) ? JSON.stringify(s.targetCourseIds) : null);
-    const platform  = (s.platform  || 'ZOOM').toUpperCase().replace('-','_');
+    let platform  = (s.platform  || 'ZOOM').toUpperCase().replace('-','_');
     const visibility= (s.visibility|| 'ALL_SUBSCRIBERS').toUpperCase().replace(/-/g,'_');
     const status    = (s.status    || 'UPCOMING').toUpperCase();
     let before = null;
     if (s.id) {
-      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned, scheduled_at, announced_at FROM live_streams WHERE id=? LIMIT 1', [req.tenantId, s.id]);
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned, scheduled_at, announced_at, stream_url, host_url, meeting_id, meeting_provider FROM live_streams WHERE id=? LIMIT 1', [req.tenantId, s.id]);
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Live stream not found' });
       before = anyRow || null;
     }
+    // The room. With the institute's Zoom / Google Meet account set up (Settings → the meeting integration) a NEW live typed with no link gets its room from the system:
+    // the join link, the host link and the meeting are kept on the live. A live the system made a room for, moved to another time, gets a new room (the old one is taken
+    // down). A link typed by hand is the administration's own choice: it is kept as typed, and it replaces a room the system had made. An edit that sends no link
+    // changes none: the live keeps the one it has.
+    let room = null;
+    if (Number.isNaN(liveInstant(scheduledInput).getTime())) return res.status(400).json({ error: 'حدّد تاريخ وساعة اللايف' });
+    // stored as the UTC wall clock the database takes (an ISO string with a «Z» is refused by a strict one)
+    const scheduledAt = sqlUtc(liveInstant(scheduledInput));
+    const movedTime = Boolean(before) && liveInstant(before.scheduled_at).getTime() !== liveInstant(scheduledAt).getTime();
+    // the edit form sends the stored link back with every save: that is no new link, only one that differs from the stored one is
+    const typedLink = Boolean(streamUrl) && streamUrl !== (before?.stream_url || '');
+    if (!typedLink && before) streamUrl = before.stream_url || '';
+    const needsRoom = !typedLink && (before ? Boolean(before.meeting_id) && movedTime : true);
+    if (needsRoom && (await integrationStatus(req.tenantId)).configured) {
+      try {
+        room = await createMeeting(req.tenantId, {
+          topic: s.title || 'معهد الدراسات النفسية', startLocal: liveInstant(scheduledAt).toISOString().slice(0, 19), timeZone: 'UTC', durationMinutes: durationMins,
+        });
+      } catch (error) {
+        logger.error('[live-streams] meeting provider', error.message);
+      }
+      if (!room?.joinUrl) return res.status(502).json({ error: 'السيستم معرفش يعمل غرفة اللايف دلوقتي — جرب تاني بعد شوية أو اكتب الرابط بإيدك', code: 'LIVE_ROOM' });
+      streamUrl = room.joinUrl;
+      platform = room.provider === 'zoom' ? 'ZOOM' : 'MEET';
+    }
+    if (before?.meeting_id && (room || typedLink)) {
+      deleteMeeting(req.tenantId, { provider: before.meeting_provider, meetingId: before.meeting_id }).catch(() => false);
+    }
     await pool.query(
       `INSERT INTO live_streams (id, tenant_id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
-         stream_url, platform, visibility, target_course_ids_json, status, description, recording_url, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         stream_url, platform, visibility, target_course_ids_json, status, description, recording_url, created_at, host_url, meeting_id, meeting_provider)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), instructor_id=VALUES(instructor_id), instructor_name=VALUES(instructor_name),
          scheduled_at=VALUES(scheduled_at), stream_url=VALUES(stream_url),
          platform=VALUES(platform), visibility=VALUES(visibility),
          target_course_ids_json=VALUES(target_course_ids_json),
          status=VALUES(status), description=VALUES(description),
-         recording_url=VALUES(recording_url)`,
+         recording_url=VALUES(recording_url),
+         host_url=IF(?, VALUES(host_url), host_url), meeting_id=IF(?, VALUES(meeting_id), meeting_id), meeting_provider=IF(?, VALUES(meeting_provider), meeting_provider)`,
       [id, req.tenantId, s.title||'', instructorId, instructorName||'', scheduledAt, durationMins,
        streamUrl, platform, visibility, targetIds, status,
        s.description||null, s.recording_url||s.recordingUrl||null,
-       s.created_at||new Date().toISOString()]
+       (s.created_at && !Number.isNaN(liveInstant(s.created_at).getTime())) ? sqlUtc(liveInstant(s.created_at)) : sqlUtc(new Date()),
+       room?.hostUrl || null, room?.meetingId || null, room?.provider || null,
+       // a made room replaces the old one's fields; a typed link clears them; otherwise they stay
+       (room || typedLink) ? 1 : 0, (room || typedLink) ? 1 : 0, (room || typedLink) ? 1 : 0]
     );
     // A new live — or one moved to another time — is announced to the lecturer
     // and the course's clients (lib/liveStreams.js); each message once.
-    const moved = before && new Date(before.scheduled_at).getTime() !== new Date(scheduledAt).getTime();
+    const moved = movedTime;
     let announced = null;
     if (status === 'UPCOMING' && (!before || !before.announced_at || moved)) {
       announced = await announceLiveStream(pool, { tenantId: req.tenantId, streamId: id })
         .catch(error => { logger.warn('[live-streams] announce failed', { id, error: error.message }); return null; });
     }
-    res.json({ ok: true, id, announced });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+    res.json({ ok: true, id, announced, streamUrl, systemMade: Boolean(room) });
+  } catch (e) { if (sendFieldError(res, e)) return; logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/live-streams/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
+    const [[gone]] = await pool.query('SELECT meeting_id, meeting_provider FROM live_streams WHERE id = ? AND tenant_id = ? LIMIT 1', [req.params.id, req.tenantId]);
     const [r] = await pool.query('DELETE FROM live_streams WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Live stream not found' });
+    // the room the system made goes with the live (best effort: an empty room costs nothing)
+    if (gone?.meeting_id) deleteMeeting(req.tenantId, { provider: gone.meeting_provider, meetingId: gone.meeting_id }).catch(() => false);
     res.json({ ok: true });
   }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

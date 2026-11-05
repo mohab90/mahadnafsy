@@ -19,6 +19,7 @@ const { certificateHtml, certificateFormHtml } = require('../lib/certificateHtml
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials, LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
+const { completeCourse } = require('../lib/courseCompletion');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
@@ -1159,7 +1160,13 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       const [courseRows] = await pool.query(
         `SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND id IN (${placeholders})`, [req.tenantId, ...allEnrolledIds]);
       const materialsByCourse = await loadCourseMaterials(pool, courseRows.map(row => row.id));
-      enrolledCoursesData = courseRows.map(row => mapCourse(row, materialsByCourse.get(row.id) || []));
+      // A «full» material (a link to a file) goes only to a client whose access to that course is full. The screen hid it for a limited (preview) client, but the
+      // address was in the answer: anybody reading the network tab had it. Now it is not sent (5 Nov 2026).
+      const fullAccessCourses = new Set(enrollments
+        .filter(row => row.course_id && String(row.access_type || 'full').toLowerCase() !== 'limited')
+        .map(row => String(row.course_id)));
+      enrolledCoursesData = courseRows.map(row => mapCourse(row, (materialsByCourse.get(row.id) || [])
+        .filter(material => material.accessLevel !== 'full' || fullAccessCourses.has(String(row.id)))));
     }
     // What the client owes, item by item, by the one rule the desk and the
     // receipts use (lib/agreedPrice.js): the price agreed, what was paid here
@@ -1317,6 +1324,7 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
     // says how many were right, which is how a quiz is solved by brute force.
     const conn = await pool.getConnection();
     let result;
+    let completionArgs = null;
     try {
       await conn.beginTransaction();
       const [[enrolled]] = await conn.query(
@@ -1342,12 +1350,24 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
       // is the actor; the subscriber id is the fallback for a WhatsApp-only client
       // who has no email at all.
       const actor = req.user?.email || req.user?.uid || sub.id;
-      result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor }, conn);
+      // The attempt is recorded and committed HERE, under the lock; finishing the course is done after the lock is let go (below). Finished inside, it ran on a second
+      // connection and asked for the subscriber and enrolment rows this one still held (a foreign key holds the subscriber's row while the attempt is inserted): each
+      // waited for the other until the database gave up after 50 seconds, and every PASSING attempt came back as an error and was rolled back.
+      result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor, completionService: async args => { completionArgs = args; return null; } }, conn);
       await conn.commit();
     } catch (error) {
       await conn.rollback().catch(() => {});
       throw error;
     } finally { conn.release(); }
+    if (result.passed && completionArgs) {
+      try {
+        result.completion = await completeCourse(completionArgs);
+      } catch (error) {
+        // not yet eligible (not fully watched, not fully paid) keeps the attempt and says the completion is pending; anything else is not swallowed
+        if (error.statusCode !== 409) throw error;
+        result.completionPending = true;
+      }
+    }
     res.json({ ok: true, ...result });
   } catch (e) {
     logger.error('[quiz-attempt]', e.message);

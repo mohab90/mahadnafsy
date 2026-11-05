@@ -129,6 +129,16 @@ router.get('/api/admin/meeting-integration', requireAuth, requireAdminOrStaff, r
   try { res.json(await integrationStatus(req.tenantId)); } catch (error) { fail(res, error, 'meeting-integration'); }
 });
 
+// What the live-stream form needs to know and nothing else: whether the system can make a room (so the link may be left empty) and by which platform. Open to whoever
+// manages courses, since the form is theirs; the keys and the owner's account stay behind manage_settings above.
+router.get('/api/admin/live-streams/room-maker', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+  try {
+    const status = await integrationStatus(req.tenantId);
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ configured: Boolean(status.configured), provider: status.configured ? status.provider : null });
+  } catch (error) { fail(res, error, 'room-maker'); }
+});
+
 router.put('/api/admin/meeting-integration', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
   try {
     const provider = String(req.body?.provider || '');

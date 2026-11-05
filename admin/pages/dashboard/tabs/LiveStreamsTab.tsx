@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calendar, Plus, Save, Users, Video } from 'lucide-react';
 import { useCrmData, useStaticData } from '../../../context/siteDataSlices';
 import { LiveAudienceModal } from './LiveAudienceModal';
 import type { LiveStream } from '../../../types';
 import { cairoDateTime, cairoDateTimeInput, cairoInputToUtc } from '../../../../shared/cairoDate';
 import { webLink } from '../../../lib/webLink';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -38,6 +39,13 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
   const [lsDraft, setLsDraft] = useState<LiveStreamDraft>(blankLiveStreamDraft());
   const [lsFormOpen, setLsFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  // With the institute's Zoom / Google Meet account set up the system makes the room, so the link may be left empty (api/lib/meetingProvider.js).
+  const [roomMaker, setRoomMaker] = useState<{ configured: boolean; provider: 'zoom' | 'google_meet' | null }>({ configured: false, provider: null });
+  useEffect(() => {
+    let alive = true;
+    mysqlAdmin.getRoomMaker().then(value => { if (alive) setRoomMaker(value); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const handleSaveLiveStream = async () => {
     const now = new Date().toISOString();
@@ -50,7 +58,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
       ? await updateLiveStream({ ...lsEdit, ...draft })
       : await addLiveStream({ ...draft, id: `ls-${Date.now()}`, createdAt: now });
     setSaving(false);
-    if (!saved) { notify('error', 'تعذر حفظ البث المباشر.'); return; }
+    if (!saved) { notify('error', roomMaker.configured && !lsDraft.streamUrl ? 'تعذر حفظ البث المباشر — السيستم معرفش يعمل الغرفة دلوقتي، جرّب تاني أو اكتب الرابط بإيدك.' : 'تعذر حفظ البث المباشر.'); return; }
     setLsFormOpen(false); setLsEdit(null); setLsDraft(blankLiveStreamDraft());
     notify('success', 'تم حفظ البث المباشر.');
   };
@@ -90,7 +98,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
             </div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">موعد البث *</label><input type="datetime-local" value={lsDraft.scheduledAt} onChange={e => setLsDraft(d => ({ ...d, scheduledAt: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">المدة (دقيقة)</label><input type="number" value={lsDraft.durationMinutes || ''} onChange={e => setLsDraft(d => ({ ...d, durationMinutes: Number(e.target.value) }))} placeholder="60" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>
-            <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">رابط البث *</label><input type="url" value={lsDraft.streamUrl} onChange={e => setLsDraft(d => ({ ...d, streamUrl: e.target.value }))} placeholder="https://zoom.us/j/... أو https://youtube.com/live/..." className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" dir="ltr" /></div>
+            <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">رابط البث{!roomMaker.configured && ' *'}{roomMaker.configured && <span className="font-normal text-emerald-700"> — سيبه فاضي والسيستم هيعمل غرفة {roomMaker.provider === 'zoom' ? 'Zoom' : 'Google Meet'} لوحده</span>}</label><input type="url" value={lsDraft.streamUrl} onChange={e => setLsDraft(d => ({ ...d, streamUrl: e.target.value }))} placeholder="https://zoom.us/j/... أو https://youtube.com/live/..." className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" dir="ltr" /></div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">المنصة</label><select value={lsDraft.platform} onChange={e => setLsDraft(d => ({ ...d, platform: e.target.value as LiveStream['platform'] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="zoom">Zoom</option><option value="youtube">YouTube Live</option><option value="meet">Google Meet</option><option value="other">أخرى</option></select></div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">الحالة</label><select value={lsDraft.status} onChange={e => setLsDraft(d => ({ ...d, status: e.target.value as LiveStream['status'] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="upcoming">📅 قادم</option><option value="live">🔴 مباشر الآن</option><option value="ended">✔ انتهى</option></select></div>
             <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">الظهور للمشتركين <span className="font-normal text-gray-400">— إشعار الواتساب بيروح لعملاء الكورسات المحددة اللي دفعوا 90% ومحضروش لايف قبل كده</span></label><select value={lsDraft.visibility} onChange={e => setLsDraft(d => ({ ...d, visibility: e.target.value as LiveStream['visibility'], targetCourseIds: [] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="all_subscribers">كل المشتركين</option><option value="course_subscribers">مشتركين كورسات محددة</option><option value="community_all">كل أعضاء المجتمع</option><option value="community_and_subscribers">المجتمع + المشتركين</option></select></div>
@@ -111,7 +119,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
             {lsDraft.status === 'ended' && <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">رابط التسجيل</label><input type="url" value={lsDraft.recordingUrl || ''} onChange={e => setLsDraft(d => ({ ...d, recordingUrl: e.target.value }))} placeholder="https://..." dir="ltr" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>}
           </div>
           <div className="flex gap-3">
-            <button onClick={() => void handleSaveLiveStream()} disabled={saving || !lsDraft.title || !lsDraft.streamUrl || !lsDraft.instructorName} className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2"><Save size={15} />{lsEdit ? 'تحديث البث' : 'حفظ البث'}</button>
+            <button onClick={() => void handleSaveLiveStream()} disabled={saving || !lsDraft.title || (!lsDraft.streamUrl && !roomMaker.configured) || !lsDraft.instructorName} className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2"><Save size={15} />{lsEdit ? 'تحديث البث' : 'حفظ البث'}</button>
             <button onClick={() => { setLsFormOpen(false); setLsEdit(null); }} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm transition">إلغاء</button>
           </div>
         </div>
