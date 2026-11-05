@@ -1,7 +1,5 @@
 'use strict';
-const { certificateDue } = require('../../lib/certificatePricing');
 const { loadPlacements, placeCourse, ownOrPlaced } = require('../../lib/coursePlacement');
-const { certificatePricing } = require('../../lib/certificatePayments');
 const { CONVERTED_SQL, TERMINAL_SQL } = require('../../lib/leadStatuses');
 const { FOLLOW_UP_DATE: NEXT_FOLLOWUP, FOLLOW_UP_OPEN } = require('../../lib/leadFollowUps');
 const { ARCHIVE_SOURCE_PREFIXES } = require('../../lib/leadArchive');
@@ -41,7 +39,7 @@ const { mapInstallmentPlan } = require('../../lib/installmentMath');
 const { buildOverview, readOverviewClients } = require('../../lib/staffOverview');
 
 // What each client holds is read once, in lib/clientView.js, for the lists and the single-client profile alike.
-const { loadHoldings: loadEnrollmentProjection } = require('../../lib/clientView');
+const { loadHoldings: loadEnrollmentProjection, loadCertificateRequests, loadPayments } = require('../../lib/clientView');
 
 async function loadCompletionProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -426,82 +424,12 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     // A course placed in another branch than the client's (lib/coursePlacement.js).
     const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const placeholders = ids.map(() => '?').join(',');
-    const [payRows] = await pool.query(
-      `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
-              payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-              status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type,
-              certificate_request_id, branch
-       FROM payments
-       WHERE tenant_id=? AND subscriber_id IN (${placeholders}) AND deleted_at IS NULL
-       ORDER BY \`date\` ASC`,
-      [req.tenantId, ...ids]
-    );
-    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
-    const payBySubId = {};
-    payRows.forEach(p => {
-      if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
-      const dateStr = safeDateOnly(p.date);
-      payBySubId[p.subscriber_id].push({
-        id: p.id,
-        amount: Number(p.amount) || 0,
-        currency: p.currency || 'EGP',
-        paymentType: (p.payment_type || 'other').toLowerCase(),
-        paymentMethod: p.payment_method || null,
-        transactionId: p.transaction_id || null,
-        isInstallment: !!p.is_installment,
-        courseId: p.course_id || null,
-        bundleId: p.bundle_id || null,
-        courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
-        note: p.note || null,
-        at: dateStr,
-        status: p.status || 'paid',
-        staffId: p.staff_id || null,
-        staffName: executors.get(String(p.id)) ?? null,
-        fromAccountNumber: p.from_account || null, senderName: p.sender_name || null,
-        source: p.source || null,
-        itemTitle: p.item_title || null,
-        certType: p.cert_type || null,
-        certId: p.certificate_request_id || null,
-        branch: p.branch || null,
-      });
-    });
+    const payBySubId = await loadPayments(req.tenantId, ids);
 
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
 
-    const [certificateRows] = await pool.query(
-      `SELECT id, subscriber_id, course_id, type, custom_name, name_ar, name_en,
-              nationality, id_number, status, price, paid_amount, currency, note,
-              admin_note, requested_at, issued_at
-       FROM certificate_requests
-       WHERE tenant_id=? AND subscriber_id IN (${placeholders})
-       ORDER BY requested_at DESC`,
-      [req.tenantId, ...ids]
-    );
-    // The price a certificate shows is the price list's for its type and currency (lib/certificatePricing.js certificateDue).
-    const certificatePricingConfig = await certificatePricing(pool, req.tenantId);
-    const certificatesBySub = {};
-    certificateRows.forEach(request => {
-      if (!certificatesBySub[request.subscriber_id]) certificatesBySub[request.subscriber_id] = [];
-      certificatesBySub[request.subscriber_id].push({
-        id: request.id,
-        courseId: request.course_id || undefined,
-        type: String(request.type || 'OTHER').toLowerCase(),
-        customName: request.custom_name || undefined,
-        nameAr: request.name_ar || undefined,
-        nameEn: request.name_en || undefined,
-        nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
-        idNumber: request.id_number || undefined,
-        status: String(request.status || 'PENDING').toLowerCase(),
-        price: certificateDue(certificatePricingConfig, request) || undefined,
-        paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
-        currency: request.currency || undefined,
-        requestedAt: safeIsoString(request.requested_at) || null,
-        issuedAt: safeIsoString(request.issued_at) || undefined,
-        note: request.note || undefined,
-        adminNote: request.admin_note || undefined,
-      });
-    });
+    const certificatesBySub = await loadCertificateRequests(req.tenantId, ids);
 
     res.json(rows.map(r => {
       const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
@@ -625,33 +553,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
   const moneyBySub = await loadItemMoney(pool, { tenantId, subscriberIds: ids });
   // A course placed in another branch than the client's (lib/coursePlacement.js).
   const placementsBySub = await loadPlacements(pool, tenantId, ids);
-  const [payRows] = await pool.query(
-    `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
-            payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-            status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type,
-            certificate_request_id, branch
-     FROM payments
-     WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
-     ORDER BY \`date\` ASC`,
-    [tenantId, ...ids]
-  );
-  const executors = lite ? new Map() : await resolvePaymentExecutors(pool, tenantId, payRows);
-  const payBySubId = {};
-  payRows.forEach(p => {
-    if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
-    const dateStr = safeDateOnly(p.date);
-    payBySubId[p.subscriber_id].push({
-      id: p.id, amount: Number(p.amount)||0, currency: p.currency||'EGP',
-      paymentType: (p.payment_type||'other').toLowerCase(), paymentMethod: p.payment_method||null,
-      transactionId: p.transaction_id||null, isInstallment: !!p.is_installment,
-      courseId: p.course_id||null, bundleId: p.bundle_id||null,
-      courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
-      note: p.note||null, at: dateStr,
-      status: p.status||'paid', staffId: p.staff_id||null, staffName: executors.get(String(p.id)) ?? null,
-      fromAccountNumber: p.from_account||null, senderName: p.sender_name||null, source: p.source||null, itemTitle: p.item_title||null,
-      certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null,
-    });
-  });
+  const payBySubId = await loadPayments(tenantId, ids, { staffName: lite ? 'none' : 'executor' });
 
   const enrollmentProjection = await loadEnrollmentProjection(tenantId, ids);
   const completionProjection = await loadCompletionProjection(tenantId, ids);
@@ -663,38 +565,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
   );
   const latestSubscription = new Map(subscriptionDays.map(row => [row.subscriber_id, row.latest]));
 
-  const [staffCertificateRows] = lite ? [[]] : await pool.query(
-    `SELECT id, subscriber_id, course_id, type, custom_name, name_ar, name_en,
-            nationality, id_number, status, price, paid_amount, currency, note,
-            admin_note, requested_at, issued_at
-     FROM certificate_requests
-     WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')})
-     ORDER BY requested_at DESC`,
-    [tenantId, ...ids]
-  );
-  const certificatePricingConfig = lite ? null : await certificatePricing(pool, tenantId);
-  const staffCertificatesBySub = {};
-  staffCertificateRows.forEach(request => {
-    if (!staffCertificatesBySub[request.subscriber_id]) staffCertificatesBySub[request.subscriber_id] = [];
-    staffCertificatesBySub[request.subscriber_id].push({
-      id: request.id,
-      courseId: request.course_id || undefined,
-      type: String(request.type || 'OTHER').toLowerCase(),
-      customName: request.custom_name || undefined,
-      nameAr: request.name_ar || undefined,
-      nameEn: request.name_en || undefined,
-      nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
-      idNumber: request.id_number || undefined,
-      status: String(request.status || 'PENDING').toLowerCase(),
-      price: certificateDue(certificatePricingConfig, request) || undefined,
-      paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
-      currency: request.currency || undefined,
-      requestedAt: safeIsoString(request.requested_at) || null,
-      issuedAt: safeIsoString(request.issued_at) || undefined,
-      note: request.note || undefined,
-      adminNote: request.admin_note || undefined,
-    });
-  });
+  const staffCertificatesBySub = lite ? {} : await loadCertificateRequests(tenantId, ids);
 
   return rows.map(r => {
     const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
@@ -938,30 +809,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
-    const [payRows] = await pool.query(
-      `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
-              payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
-              status, staff_id, staff_name, from_account, sender_name, source, item_title
-       FROM payments
-       WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
-       ORDER BY \`date\` ASC`,
-      [req.tenantId, ...ids]
-    );
-    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
-    const payBySubId = {};
-    payRows.forEach(p => {
-      if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
-      const dateStr = safeDateOnly(p.date);
-      payBySubId[p.subscriber_id].push({
-        id: p.id, amount: Number(p.amount) || 0, currency: p.currency || 'EGP',
-        paymentType: (p.payment_type || 'other').toLowerCase(), paymentMethod: p.payment_method || null,
-        transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
-        courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
-        status: p.status || 'paid', staffId: p.staff_id || null,
-        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null, senderName: p.sender_name || null,
-        source: p.source || null, itemTitle: p.item_title || null,
-      });
-    });
+    const payBySubId = await loadPayments(req.tenantId, ids, { shape: 'slim' });
 
     res.json(rows.map(r => {
       const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));
@@ -1014,29 +862,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
-    const [payRows] = await pool.query(
-      `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
-              payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
-              status, staff_id, staff_name, from_account, sender_name, source, item_title
-       FROM payments
-       WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
-       ORDER BY \`date\` ASC`,
-      [req.tenantId, ...ids]
-    );
-    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
-    const payBySubId = {};
-    payRows.forEach(p => {
-      if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
-      const dateStr = safeDateOnly(p.date);
-      payBySubId[p.subscriber_id].push({
-        id: p.id, amount: Number(p.amount) || 0, currency: p.currency || 'EGP',
-        paymentType: (p.payment_type || 'other').toLowerCase(), paymentMethod: p.payment_method || null,
-        transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
-        courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
-        status: p.status || 'paid', staffId: p.staff_id || null, staffName: executors.get(String(p.id)) ?? null,
-        fromAccountNumber: p.from_account || null, senderName: p.sender_name || null, source: p.source || null, itemTitle: p.item_title || null,
-      });
-    });
+    const payBySubId = await loadPayments(req.tenantId, ids, { shape: 'slim' });
 
     res.json(rows.map(r => {
       const crm = withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id));

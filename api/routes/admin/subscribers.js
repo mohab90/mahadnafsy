@@ -1,8 +1,6 @@
 'use strict';
-const { certificateDue } = require('../../lib/certificatePricing');
-const { certificatePricing } = require('../../lib/certificatePayments');
 const { signerName } = require('../../lib/staffNames');
-const { loadHoldings } = require('../../lib/clientView');
+const { loadHoldings, loadCertificateRequests, loadPayments } = require('../../lib/clientView');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, spellingsOf, sharedPhoneSlot, recordSharedPhone } = require('../../lib/phoneDuplicates');
 const { findLeadByContact } = require('../../lib/leadMatching');
@@ -33,7 +31,7 @@ const {
 } = require('../../middleware/auth');
 const { requireDeleteRight } = require('../../lib/deleteRights');
 const { DATA_SCOPE, VALID_BRANCHES, FULL_ACCESS_ROLES, hasPermission, resolveDataScope } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly } = require('../../lib/dates');
+const { safeIsoString } = require('../../lib/dates');
 const { canBookAnyClient } = require('../../lib/bookingAccess');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
@@ -259,58 +257,12 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
           }
         }
       }
-      const [payRows] = await pool.query(
-        `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
-                payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-                status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type,
-                certificate_request_id, branch
-         FROM payments
-         WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL
-         ORDER BY \`date\` ASC`, [req.tenantId, r.id]
-      );
-      const paymentHistory = payRows.map(p => {
-        const dateStr = safeDateOnly(p.date);
-        return { id: p.id, amount: Number(p.amount)||0, currency: p.currency||'EGP',
-          paymentType: (p.payment_type||'other').toLowerCase(), paymentMethod: p.payment_method||null,
-          transactionId: p.transaction_id||null, isInstallment: !!p.is_installment,
-          courseId: p.course_id||null, bundleId: p.bundle_id||null,
-          courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
-          note: p.note||null, at: dateStr,
-          status: p.status || 'paid', staffId: p.staff_id || null, staffName: p.staff_name || null,
-          fromAccountNumber: p.from_account || null, senderName: p.sender_name || null, source: p.source || null, itemTitle: p.item_title || null,
-          certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null };
-      });
+      const paymentHistory = (await loadPayments(req.tenantId, [r.id], { staffName: 'recorded' }))[r.id] || [];
       const held = (await loadHoldings(req.tenantId, [r.id]))[r.id];
       const enrolledCourseIds = held?.withBundles || [];
       const enrolledBundleIds = held?.bundleIds || [];
       const courseAccess = held?.access || {};
-      const [certificateRows] = await pool.query(
-        `SELECT id, course_id, type, custom_name, name_ar, name_en, nationality, id_number,
-                status, price, paid_amount, currency, note, admin_note, requested_at, issued_at
-           FROM certificate_requests
-          WHERE tenant_id=? AND subscriber_id=?
-          ORDER BY requested_at DESC`,
-        [req.tenantId, r.id]
-      );
-      const certificatePricingConfig = await certificatePricing(pool, req.tenantId);
-      const extraCertificateRequests = certificateRows.map(request => ({
-        id: request.id,
-        courseId: request.course_id || undefined,
-        type: String(request.type || 'OTHER').toLowerCase(),
-        customName: request.custom_name || undefined,
-        nameAr: request.name_ar || undefined,
-        nameEn: request.name_en || undefined,
-        nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
-        idNumber: request.id_number || undefined,
-        status: String(request.status || 'PENDING').toLowerCase(),
-        price: certificateDue(certificatePricingConfig, request) || undefined,
-        paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
-        currency: request.currency || undefined,
-        requestedAt: safeIsoString(request.requested_at) || null,
-        issuedAt: safeIsoString(request.issued_at) || undefined,
-        note: request.note || undefined,
-        adminNote: request.admin_note || undefined,
-      }));
+      const extraCertificateRequests = (await loadCertificateRequests(req.tenantId, [r.id]))[r.id] || [];
       const [completionRows] = await pool.query(
         `SELECT cc.id,cc.course_id,cc.certificate_code,cc.completed_at,cc.status,cc.version,cc.revoked_at,cc.revoke_reason,
                 cc.printed_at,cc.printed_by,cc.print_count,cc.downloaded_at,cc.download_count,

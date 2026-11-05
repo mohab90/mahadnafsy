@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { loadHoldings } = require('../lib/clientView');
+const { loadHoldings, loadCertificateRequests, loadPayments } = require('../lib/clientView');
+const { certificateDue } = require('../lib/certificatePricing');
+const { safeIsoString } = require('../lib/dates');
 
 // The two mappings this module replaced, kept here as the oracle: the staff lists' batch projection and the single-client profile's inline block.
 function oldListProjection(rows) {
@@ -55,9 +57,36 @@ test('it answers exactly what the lists and the profile answered before, over ra
   }
 });
 
+// The mapping the lists and the profile each carried before (identical in all three copies), kept as the oracle.
+function oldCertificate(request, pricing) {
+  return { id: request.id, courseId: request.course_id || undefined, type: String(request.type || 'OTHER').toLowerCase(), customName: request.custom_name || undefined,
+    nameAr: request.name_ar || undefined, nameEn: request.name_en || undefined, nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
+    idNumber: request.id_number || undefined, status: String(request.status || 'PENDING').toLowerCase(), price: certificateDue(pricing, request) || undefined,
+    paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0, currency: request.currency || undefined, requestedAt: safeIsoString(request.requested_at) || null,
+    issuedAt: safeIsoString(request.issued_at) || undefined, note: request.note || undefined, adminNote: request.admin_note || undefined };
+}
+
+test('certificate requests: the same objects, grouped by client, in the order the query returned them', async () => {
+  for (let round = 0; round < 100; round++) {
+    const rows = Array.from({ length: Math.floor(rnd() * 8) }, (_, i) => ({
+      id: 'r' + i, subscriber_id: pick(['s1', 's2', 's3']), course_id: pick([null, 'c1']), type: pick(['EXTRA', 'extra', null, 'OTHER']),
+      custom_name: pick([null, 'x']), name_ar: pick([null, 'اسم']), name_en: pick([null, 'Name']), nationality: pick([null, 'EGYPTIAN', 'Foreign']),
+      id_number: pick([null, '123']), status: pick(['PENDING', 'PRICED', null, 'DELIVERED']), price: pick([null, 0, 150]), paid_amount: pick([null, 0, 75]),
+      currency: pick([null, 'EGP', 'SAR']), requested_at: pick([null, new Date('2026-10-01T10:00:00Z')]), issued_at: pick([null, new Date('2026-10-03T10:00:00Z')]),
+      note: pick([null, 'n']), admin_note: pick([null, 'a']),
+    }));
+    const db = { query: async sql => (/certificate_requests/.test(sql) ? [rows] : [[]]) };
+    const got = await loadCertificateRequests('t', ['s1', 's2', 's3'], db);
+    const expected = {};
+    rows.forEach(request => (expected[request.subscriber_id] ||= []).push(oldCertificate(request, {})));
+    assert.deepEqual(got, expected, 'round ' + round);
+  }
+});
+
 test('no ids, no query', async () => {
   const db = { query: async () => { throw new Error('queried'); } };
   assert.deepEqual(await loadHoldings('t', [], db), {});
+  assert.deepEqual(await loadCertificateRequests('t', [], db), {});
 });
 
 test('the lists and the profile read it from here, not from a copy', () => {
@@ -65,4 +94,41 @@ test('the lists and the profile read it from here, not from a copy', () => {
   assert.match(read('routes/admin/stafflists.js'), /loadHoldings: loadEnrollmentProjection\b.*lib\/clientView/);
   assert.match(read('routes/admin/subscribers.js'), /loadHoldings\(req\.tenantId, \[r\.id\]\)/);
   assert.doesNotMatch(read('routes/admin/subscribers.js'), /FROM enrollments WHERE tenant_id=\? AND subscriber_id=\? AND status='active'/);
+  // and none of the three admin copies of the certificate-request query remains
+  assert.match(read('routes/admin/subscribers.js'), /loadCertificateRequests\(req\.tenantId, \[r\.id\]\)/);
+  assert.equal(read('routes/admin/stafflists.js').split('FROM certificate_requests').length - 1, 0);
+  assert.equal(read('routes/admin/subscribers.js').split('SELECT id, course_id, type, custom_name').length - 1, 0);
+  assert.equal(read('routes/admin/stafflists.js').split('loadCertificateRequests(').length - 1, 2);
+});
+
+test('payments: full and slim shapes, recorded and absent staff names, grouped per client in query order', async () => {
+  const rows = [
+    { id: 'p1', subscriber_id: 's1', course_id: 'c1', bundle_id: null, amount: '150.50', currency: null, payment_type: 'COURSE', payment_method: 'cash', transaction_id: null, is_installment: 1,
+      course_expected: '400', date: new Date('2026-10-02T09:00:00Z'), note: 'n', status: null, staff_id: 'st1', staff_name: 'Rep', from_account: '010', sender_name: 'X', source: 'web',
+      item_title: 'T', cert_type: 'extra', certificate_request_id: 'cr1', branch: 'DOKKI' },
+    { id: 'p2', subscriber_id: 's2', course_id: null, bundle_id: 'b1', amount: null, currency: 'SAR', payment_type: null, payment_method: null, transaction_id: 't', is_installment: 0,
+      course_expected: null, date: new Date('2026-10-03T09:00:00Z'), note: null, status: 'pending', staff_id: null, staff_name: '', from_account: null, sender_name: null, source: null,
+      item_title: null, cert_type: null, certificate_request_id: null, branch: null },
+  ];
+  const db = { query: async () => [rows] };
+  const full = await loadPayments('t', ['s1', 's2'], { staffName: 'recorded' }, db);
+  assert.deepEqual(Object.keys(full), ['s1', 's2']);
+  assert.deepEqual(full.s1[0], {
+    id: 'p1', amount: 150.5, currency: 'EGP', paymentType: 'course', paymentMethod: 'cash', transactionId: null, isInstallment: true, courseId: 'c1', bundleId: null, courseExpected: 400,
+    note: 'n', at: '2026-10-02', status: 'paid', staffId: 'st1', staffName: 'Rep', fromAccountNumber: '010', senderName: 'X', source: 'web', itemTitle: 'T',
+    certType: 'extra', certId: 'cr1', branch: 'DOKKI' });
+  assert.equal(full.s2[0].staffName, null, 'an empty recorded name is null');
+  assert.equal(full.s2[0].paymentType, 'other');
+  const slim = await loadPayments('t', ['s1', 's2'], { shape: 'slim', staffName: 'none' }, db);
+  for (const key of ['courseExpected', 'certType', 'certId', 'branch']) assert.equal(key in slim.s1[0], false, key);
+  assert.equal(slim.s1[0].staffName, null);
+  assert.deepEqual(await loadPayments('t', [], {}, { query: async () => { throw new Error('queried'); } }), {});
+});
+
+test('no staff route keeps its own copy of the client payment mapping', () => {
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  assert.equal(read('routes/admin/stafflists.js').split('const [payRows] = await pool.query(').length - 1, 0);
+  assert.equal(read('routes/admin/stafflists.js').split('loadPayments(').length - 1, 4);
+  assert.match(read('routes/admin/subscribers.js'), /loadPayments\(req\.tenantId, \[r\.id\], \{ staffName: 'recorded' \}\)/);
+  assert.equal(read('routes/admin/subscribers.js').split('payRows').length - 1, 0);
 });
