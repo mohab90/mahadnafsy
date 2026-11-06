@@ -7,7 +7,7 @@
  *   FIRST_PAYMENT   a client who booked the course and paid a first payment on it
  *   EIGHTY_PERCENT  the full document, once 80% or more of the course's price is paid
  *
- * The file lives in a private folder (COURSE_DOCUMENT_DIR, default <api>/uploads/documents — nothing serves it as a static path) and is handed out only by the route
+ * The file lives in a private folder (COURSE_DOCUMENT_DIR; see defaultRoot below for where it lives when that is not set — nothing serves it as a static path) and is handed out only by the route
  * that asks this module, per request, who may open it. A PDF's address is never sent to a screen: a screen is sent the file's name, its size and whether it is open
  * for the person looking, and asks the server for the file.
  *
@@ -23,19 +23,27 @@ const { safeTenantSegment } = require('./uploadSafety');
 const { itemBalances, balanceFor } = require('./agreedPrice');
 const { resolveSubscriberRow } = require('./subscriberIdentity');
 
-// Where the files live when COURSE_DOCUMENT_DIR is not set. On the server the API may write only /var/lib/mahad (deploy/systemd/mahad-api.service: ProtectSystem=strict) and a
-// release replaces its own folder, so the default there is the sibling of the videos' folder, or /var/lib/mahad/documents: written, and kept across releases, with no
-// setting to remember. Anywhere else (a laptop, a test) it is the api's own uploads folder.
-function defaultRoot() {
-  if (process.env.VIDEO_UPLOAD_DIR) return path.join(path.dirname(path.resolve(process.env.VIDEO_UPLOAD_DIR)), 'documents');
-  if (process.platform === 'linux' && fs.existsSync('/var/lib/mahad')) return '/var/lib/mahad/documents';
-  return path.join(__dirname, '..', 'uploads', 'documents');
+// A release replaces the API's folder, so documents kept inside it would go with the next deploy (as videos would: VIDEO_UPLOAD_DIR). The server says so at boot.
+const RELEASE_ROOT = path.resolve(__dirname, '..');
+const insideRelease = (dir, releaseRoot = RELEASE_ROOT) => dir === releaseRoot || dir.startsWith(`${releaseRoot}${path.sep}`);
+
+// Where the files live when COURSE_DOCUMENT_DIR is not set, in this order:
+//   1. the sibling `documents` of the videos' folder (VIDEO_UPLOAD_DIR), when that is outside the release folder: written and kept across releases with no setting to remember;
+//   2. /var/lib/mahad/documents when the server has /var/lib/mahad: the one place the API may write (deploy/systemd/mahad-api.service: ProtectSystem=strict) and that a release
+//      does not replace. This also wins over a videos folder inside the release folder, whose sibling would be inside the release too;
+//   3. <api>/uploads/documents anywhere else (a laptop, a test). deploy-release.sh carries uploads/ across releases, but it is not the folder the server is meant to write to.
+// The three inputs are parameters so a test can state each case.
+function defaultRoot({ env = process.env, platform = process.platform, exists = fs.existsSync, releaseRoot = RELEASE_ROOT } = {}) {
+  const persistent = platform === 'linux' && exists('/var/lib/mahad') ? '/var/lib/mahad/documents' : null;
+  if (env.VIDEO_UPLOAD_DIR) {
+    const sibling = path.join(path.dirname(path.resolve(env.VIDEO_UPLOAD_DIR)), 'documents');
+    if (!(persistent && insideRelease(sibling, releaseRoot))) return sibling;
+  }
+  return persistent || path.join(releaseRoot, 'uploads', 'documents');
 }
 const ROOT = path.resolve(process.env.COURSE_DOCUMENT_DIR || defaultRoot());
 const TEMP_DIR = path.join(ROOT, '.tmp');
-// A release replaces the API's folder, so documents kept inside it would go with the next deploy (as videos would: VIDEO_UPLOAD_DIR). The server says so at boot.
-const RELEASE_ROOT = path.resolve(__dirname, '..');
-const ROOT_IN_RELEASE = ROOT === RELEASE_ROOT || ROOT.startsWith(`${RELEASE_ROOT}${path.sep}`);
+const ROOT_IN_RELEASE = insideRelease(ROOT);
 const TIERS = Object.freeze(['FREE', 'FIRST_PAYMENT', 'EIGHTY_PERCENT']);
 const MAX_BYTES = Math.min(Math.max(Number(process.env.COURSE_DOCUMENT_MAX_BYTES) || 50 * 1024 * 1024, 1024 * 1024), 200 * 1024 * 1024);
 const EIGHTY_PERCENT = 0.8;
@@ -186,6 +194,6 @@ function describeFor(rows, earned) {
 }
 
 module.exports = {
-  ROOT, ROOT_IN_RELEASE, TEMP_DIR, TIERS, MAX_BYTES, REQUIREMENT,
+  ROOT, ROOT_IN_RELEASE, TEMP_DIR, defaultRoot, TIERS, MAX_BYTES, REQUIREMENT,
   normalizeTier, courseDirectory, filePathOf, inspectPdf, listDocuments, publicShape, saveDocument, removeDocument, clientEarned, describeFor,
 };
