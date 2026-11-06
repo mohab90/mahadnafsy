@@ -59,9 +59,18 @@ test.describe('a cash box opens its own transactions', () => {
       && /^\d{4}-\d{2}/.test(p.at || ''));
     test.skip(!manual.length, 'no manual payment with a named box on this environment');
 
+    // The month is the newest manual payment's. The box is one the overview offers for that month, read from the breakdown
+    // the screen draws (GET /api/admin/finance/revenue-breakdown): the overview merges boxes the way the register does («CASH»
+    // and the Dokki cash box are one channel), so a raw payment_method is not always a button.
     const target = manual[0];
-    const box = target.paymentMethod!;
     const month = target.at.slice(0, 7);
+    const breakdownResponse = await page.request.get(`${ADMIN}/api/admin/finance/revenue-breakdown?month=${month}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    expect(breakdownResponse.ok(), `the revenue breakdown is not readable as this admin: ${breakdownResponse.status()}`).toBeTruthy();
+    const channels = ((await breakdownResponse.json()) as { channels: Record<string, number> }).channels;
+    const box = Object.entries(channels).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+    test.skip(!box, `no desk money in ${month} on this environment`);
     const expected = manual.filter(p => p.paymentMethod === box && p.at.startsWith(month));
 
     // The login above is already this browser's session: page.request shares the

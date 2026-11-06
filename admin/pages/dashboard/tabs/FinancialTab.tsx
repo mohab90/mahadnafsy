@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
@@ -111,6 +111,10 @@ export default function FinancialTab({ notify, branchFilter, subscribers: _allSu
   const aggregate = useAggregateFinance();
   const navigate = useNavigate();
   const { tab: routeTab, param: routeScreen } = useParams<{ tab?: string; param?: string }>();
+  // A box opened from «الخزائن» travels in the address (?method=&from=&to=): every step through the panel rebuilds the screen (App.tsx keys its error boundary on the path), so state set here would be gone before the register drew.
+  const [registerQuery] = useSearchParams();
+  const orderMethodFilter = registerQuery.get('method') || '';
+  const registerRange = { from: registerQuery.get('from') || undefined, to: registerQuery.get('to') || undefined };
   const screenAllowed = useCallback((screen?: string): screen is FinancialSubTab =>
     !!screen && (FINANCIAL_SCREENS as string[]).includes(screen) && (!branchFilter || BRANCH_SUB_TABS.includes(screen as FinancialSubTab))
       && (aggregate || (screen !== 'cockpit' && screen !== 'boxes')), [branchFilter, aggregate]);
@@ -172,7 +176,6 @@ export default function FinancialTab({ notify, branchFilter, subscribers: _allSu
   // ── خزنة date filter ──
   const currentMonth = cairoMonthOnly();
   const [vaultMonth, setVaultMonth] = useState(currentMonth);
-  const [registerRange, setRegisterRange] = useState<{ from?: string; to?: string }>({});
   const breakdown = useRevenueBreakdown(vaultMonth, branchFilter, financialSubTab === 'overview' || financialSubTab === 'pl' || financialSubTab === 'monthly');
 
   // ── Global date range filter (for overview / P&L) ──
@@ -228,7 +231,6 @@ export default function FinancialTab({ notify, branchFilter, subscribers: _allSu
   const pendingReviewCount = branchFilter
     ? branchAccounting.pendingReview
     : subscribers.flatMap(s => s.paymentHistory ?? []).filter(p => p.status === 'pending').length;
-  const [orderMethodFilter, setOrderMethodFilter] = useState('');
   const [isIncomeFormOpen, setIsIncomeFormOpen] = useState(false);
   const [commissionMonth, setCommissionMonth] = useState(cairoMonthOnly());
   const [commissionFrom, setCommissionFrom] = useState(() => cairoMonthStart(2).slice(0, 7));
@@ -328,9 +330,8 @@ export default function FinancialTab({ notify, branchFilter, subscribers: _allSu
   const openBox = (method: string) => {
     const [year, month] = vaultMonth.split('-').map(Number);
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    setFinancialSubTab('orders');
-    setOrderMethodFilter(method);
-    setRegisterRange({ from: `${vaultMonth}-01`, to: `${vaultMonth}-${String(lastDay).padStart(2, '0')}` });
+    const range = new URLSearchParams({ method, from: `${vaultMonth}-01`, to: `${vaultMonth}-${String(lastDay).padStart(2, '0')}` });
+    navigate(`/dashboard/${routeTab || 'financial'}/orders?${range}`);
   };
 
   const revenueByMethodFiltered: Record<string, number> = breakdown?.channels ?? {};
@@ -509,7 +510,6 @@ export default function FinancialTab({ notify, branchFilter, subscribers: _allSu
           onlineRevenueFiltered={onlineRevenueFiltered}
           revenueByMethodFiltered={revenueByMethodFiltered}
           setFinancialSubTab={setFinancialSubTab}
-          setOrderMethodFilter={setOrderMethodFilter}
           onOpenBox={openBox}
           paymentMethods={PAYMENT_METHODS}
           revenueByCourse={revenueByCourse}

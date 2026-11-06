@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+// Aimed at the LIVE admin. `npx playwright test` (the release gate's stage 4) picks up every file in tests/, so this ran on every release
+// and signed in to production with a password written here. It now runs only when someone names the live account in the environment.
+const LIVE_EMAIL = process.env.LIVE_ADMIN_EMAIL;
+const LIVE_PASSWORD = process.env.LIVE_ADMIN_PASSWORD;
+
 test.describe('Mahad Nafsy - Robust Live Admin UI Audit', () => {
+  test.skip(!LIVE_EMAIL || !LIVE_PASSWORD, 'LIVE_ADMIN_EMAIL / LIVE_ADMIN_PASSWORD not set: this spec signs in to the live admin');
   test.use({ baseURL: 'https://admin.mahadnafsy.com' });
 
   test('End-to-End Dashboard Button & Action Test', async ({ page }) => {
@@ -16,10 +22,10 @@ test.describe('Mahad Nafsy - Robust Live Admin UI Audit', () => {
 
       // Fill correct credentials with number 1 instead of exclamation mark
       const emailInput = page.locator('input[type="email"], input[name="email"], input[name="username"]').first();
-      await emailInput.fill('mr.mohab1@gmail.com');
+      await emailInput.fill(LIVE_EMAIL!);
       
       const passwordInput = page.locator('input[type="password"], input[name="password"]').first();
-      await passwordInput.fill('11223344');
+      await passwordInput.fill(LIVE_PASSWORD!);
       
       const submitBtn = page.locator('button[type="submit"], button:has-text("تسجيل الدخول"), button:has-text("Login")').first();
       await submitBtn.click();

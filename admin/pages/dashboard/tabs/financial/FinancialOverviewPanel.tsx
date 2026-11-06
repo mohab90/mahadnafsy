@@ -48,7 +48,6 @@ interface Props {
   onlineRevenueFiltered: number;
   revenueByMethodFiltered: Record<string, number>;
   setFinancialSubTab: React.Dispatch<React.SetStateAction<FinancialSubTab>>;
-  setOrderMethodFilter: React.Dispatch<React.SetStateAction<string>>;
   /** Open the transactions behind one box for the month on screen. */
   onOpenBox: (method: string) => void;
   paymentMethods: string[];
@@ -81,7 +80,6 @@ export function FinancialOverviewPanel({
   onlineRevenueFiltered,
   revenueByMethodFiltered,
   setFinancialSubTab,
-  setOrderMethodFilter,
   onOpenBox,
   paymentMethods,
   revenueByCourse,

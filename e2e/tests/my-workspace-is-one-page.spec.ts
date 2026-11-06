@@ -27,7 +27,7 @@ test.describe('ملفي الشخصي', () => {
 
   test('greets the person once, with the tabs at the top', async ({ page }) => {
     test.setTimeout(90_000);
-    await loginAdmin(page, ADMIN, 'uat.sales@mahad.test', PASSWORD);
+    await loginAdmin(page, ADMIN, process.env.TEST_SALES_EMAIL || 'uat.sales@mahad.test', PASSWORD);
     await page.goto(`${ADMIN}/dashboard/staff_home`);
     await expect.poll(async () => (await page.locator('#root section').first().innerText()).length,
       { timeout: 15_000 }).toBeGreaterThan(20);
@@ -57,14 +57,14 @@ test.describe('ملفي الشخصي', () => {
   test('shows a salesperson their target and the HR manager none of it', async ({ page }) => {
     test.setTimeout(120_000);
 
-    await loginAdmin(page, ADMIN, 'uat.sales@mahad.test', PASSWORD);
+    await loginAdmin(page, ADMIN, process.env.TEST_SALES_EMAIL || 'uat.sales@mahad.test', PASSWORD);
     await page.goto(`${ADMIN}/dashboard/staff_home`);
     await expect(page.getByRole('button', { name: 'أدائي' })).toHaveCount(1);
     await page.getByRole('button', { name: 'أدائي' }).click();
     await expect(page.locator('#root section').first()).toContainText('تحويلات الشهر');
 
     await page.context().clearCookies();
-    await loginAdmin(page, ADMIN, 'uat.hr-manager@mahad.test', PASSWORD);
+    await loginAdmin(page, ADMIN, process.env.TEST_HR_MANAGER_EMAIL || 'uat.hr-manager@mahad.test', PASSWORD);
     await page.goto(`${ADMIN}/dashboard/staff_home`);
     await expect.poll(async () => (await page.locator('#root section').first().innerText()).length,
       { timeout: 15_000 }).toBeGreaterThan(20);
