@@ -21,6 +21,7 @@ import type { PaymentHistoryEntry, ExpenseItem, OrderItem, SubscriberItem } from
 import { useBranchAccounting } from './financial/useBranchAccounting';
 import { fetchClientsByIds } from '../useClientsByIds';
 import { BRANCH_SUB_TABS, branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
+import { useExpensesPage } from './financial/useExpensesPage';
 import { useAggregateFinance } from '../../../hooks/useAggregateFinance';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
@@ -55,8 +56,8 @@ const FinancialStatementPanel = React.lazy(() => import('./financial/FinancialSt
  * reads the context's, «حسابات الدقي» (FinancialBranchTab) holds no list of clients at all and asks the server for
  * what it shows of them (useBranchAccounting, the payment search).
  */
-export default function FinancialTab({ notify, branchFilter, orders: _allOrders, subscribers: _allSubscribers, expenses: _allExpenses }: {
-  notify: NotifyFn; branchFilter?: string; orders: OrderItem[]; subscribers: SubscriberItem[]; expenses: ExpenseItem[];
+export default function FinancialTab({ notify, branchFilter, orders: _allOrders, subscribers: _allSubscribers }: {
+  notify: NotifyFn; branchFilter?: string; orders: OrderItem[]; subscribers: SubscriberItem[];
 }) {
   const {
     recordSubscriberPayment, reloadSubscribers, staffMembers,
@@ -85,7 +86,6 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
 
   // Apply branch filter: daqqi_accounting passes branchFilter='daqqi' to restrict data to that branch only
   const subscribers = branchFilter ? _allSubscribers.filter(s => branchMatches(s.branch, branchFilter)) : _allSubscribers;
-  const expenses    = branchFilter ? _allExpenses.filter(e => !e.branchType || branchMatches(e.branchType, branchFilter)) : _allExpenses;
   // Online (Paymob) orders don't carry branch — exclude when filtering a specific branch (they belong to online branch)
   const orders = branchFilter ? [] : _allOrders;
 
@@ -124,6 +124,11 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   }, [routeScreen, screenAllowed, defaultScreen]);
   const subTabRef = useRef(financialSubTab);
   subTabRef.current = financialSubTab;
+  const expensePage = useExpensesPage({
+    branch: branchFilter, category: expenseCategoryFilter, from: expenseDateFrom, to: expenseDateTo,
+    enabled: financialSubTab === 'expenses' || financialSubTab === 'overview' || financialSubTab === 'pl',
+    pageSize: financialSubTab === 'expenses' ? 100 : 1,
+  });
   const setFinancialSubTab = useCallback((next: SetStateAction<FinancialSubTab>) => {
     const value = typeof next === 'function' ? next(subTabRef.current) : next;
     if (value === subTabRef.current) return;
@@ -210,10 +215,10 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   const [ordersPage, setOrdersPage] = useState(1);
   const ORDERS_PAGE_SIZE = 50;
 
-  const exportFullReport = () => {
+  const exportFullReport = async () => {
     if (!ledgerAllPnl) return notify('error', 'تعذر التصدير: دفتر الأستاذ غير متاح.');
     try {
-      exportFullFinancialReport({ content, orders, subscribers, expenses, officialTotals: ledgerAllPnl });
+      exportFullFinancialReport({ content, orders, subscribers, expenses: await expensePage.all(true), officialTotals: ledgerAllPnl });
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تصدير التقرير المالي.');
     }
@@ -222,7 +227,10 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
     try { exportPaymentsExcelReport({ content, orders, subscribers }); }
     catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر تصدير المدفوعات.'); }
   };
-  const exportExpensesPDF = () => exportExpensesPdfReport(expenses);
+  const exportExpensesPDF = async () => {
+    try { exportExpensesPdfReport(await expensePage.all(true)); }
+    catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر تصدير المصروفات.'); }
+  };
 
   const pendingReviewCount = branchFilter
     ? branchAccounting.pendingReview
@@ -445,16 +453,15 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
     carneh: manualByType('carneh'),
     other: allManualPayments.filter(p => !p.paymentType || p.paymentType === 'other').reduce((s, p) => s + toEGP(p.amount, p.currency), 0),
   };
-  const expenseByCategory = expenses.reduce((acc: Record<string, number>, e) => {
-    acc[e.category] = (acc[e.category] || 0) + toEGP(e.amount, e.currency);
+  // The category split and the filtered total are the database's sums over every expense, converted here at the screen's rates as before
+  // (api/routes/admin-operations.js GET /api/admin/expenses/page); the rows are the page on screen.
+  const expenseByCategory = expensePage.byCategory.reduce((acc: Record<string, number>, item) => {
+    acc[item.category] = (acc[item.category] || 0) + toEGP(item.amount, item.currency);
     return acc;
   }, {});
-  const filteredExpenses = expenses.filter(e => {
-    const matchCat = expenseCategoryFilter === 'all' || e.category === expenseCategoryFilter;
-    const matchFrom = !expenseDateFrom || e.date >= expenseDateFrom;
-    const matchTo = !expenseDateTo || e.date <= expenseDateTo;
-    return matchCat && matchFrom && matchTo;
-  });
+  const filteredExpenses = expensePage.rows;
+  const filteredExpensesEGP = expensePage.filteredTotals.reduce((sum, item) => sum + toEGP(item.amount, item.currency), 0);
+  const saveAndReload = <A extends unknown[]>(action: (...args: A) => Promise<void>) => async (...args: A) => { await action(...args); await expensePage.reload(); };
   // الإعدادات › فئات المصاريف — the list was saved there and never read here.
   const EXPENSE_CATS = expenseCategories;
   const expenseBranch = branchFilter === 'tagamoa' ? 'TAGAMOA' : branchFilter ? 'DAQQI' : null;
@@ -664,11 +671,15 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
           expenseDateTo={expenseDateTo}
           setExpenseDateTo={setExpenseDateTo}
           filteredExpenses={filteredExpenses}
-          toEGP={toEGP}
+          matchingCount={expensePage.total}
+          filteredTotalEGP={filteredExpensesEGP}
+          loadMoreExpenses={expensePage.more}
+          loadAllMatching={() => expensePage.all()}
+          expensesError={expensePage.error}
           exportCSV={exportCSV}
-          addExpense={addExpense}
-          updateExpense={updateExpense}
-          deleteExpense={deleteExpense}
+          addExpense={saveAndReload(addExpense)}
+          updateExpense={saveAndReload(updateExpense)}
+          deleteExpense={saveAndReload(deleteExpense)}
           notify={notify}
         />
       )}

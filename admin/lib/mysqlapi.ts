@@ -301,6 +301,14 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
 
 type AR = Record<string, unknown>;
 
+/** One page of expenses and the figures over all of them: how many match, what they add up to per currency, and the whole scope's amounts by category label. */
+export interface ExpensesPage {
+  rows: AR[];
+  total: number;
+  filteredTotals: Array<{ currency: string; amount: number }>;
+  byCategory: Array<{ category: string; currency: string; amount: number }>;
+}
+
 /**
  * Staff-built tabs, per section. Kept structural rather than importing the
  * page's type: lib/ is below pages/ and must not depend upwards on it. The
@@ -780,6 +788,12 @@ export const mysqlAdmin = {
   listAllStaff:            ()             => apiFetch<AR[]>('/admin/staff', {}, A),
   listAllConsultations:    (limit = 500)  => apiFetch<AR[]>(`/admin/consultations?limit=${limit}`, {}, A),
   listAllExpenses:         ()             => apiFetch<AR[]>('/admin/expenses', {}, A),
+  // The expenses screen, a page at a time, with the figures the database adds up over the whole scope (api/routes/admin-operations.js).
+  getExpensesPage:         (query: { limit?: number; offset?: number; category?: string; from?: string; to?: string; branch?: string }): Promise<ExpensesPage> => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '' && value !== 'all') params.set(key, String(value));
+    return apiFetch<ExpensesPage>(`/admin/expenses/page?${params}`, {}, A);
+  },
   listActivityLogs:        (limit = 200)  => apiFetch<AR[]>(`/admin/activity-logs?limit=${limit}`, {}, A),
   listAllOrders:           (limit = 500)  => apiFetch<AR[]>(`/admin/orders?limit=${limit}`, {}, A),
   runAbandonedCheckout:    (hours = 24, limit = 100) => apiFetch<{ ok: boolean; scanned: number; sent: number; failed: number; skipped: number }>('/admin/automation/abandoned-checkout/run', { method: 'POST', body: JSON.stringify({ hours, limit }) }, A),

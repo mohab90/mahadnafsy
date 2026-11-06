@@ -1,5 +1,4 @@
 import FinancialTab from './FinancialTab';
-import { useSiteData } from '../../../context/SiteDataContext';
 import type { OrderItem, SubscriberItem } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -11,6 +10,5 @@ const NO_CLIENTS: SubscriberItem[] = [];
 
 /** «حسابات الدقي» / «حسابات التجمع» (FinancialTab holds the screen). */
 export default function FinancialBranchTab({ notify, branchFilter }: { notify: NotifyFn; branchFilter?: string }) {
-  const { expenses } = useSiteData();
-  return <FinancialTab notify={notify} branchFilter={branchFilter} orders={NO_ORDERS} subscribers={NO_CLIENTS} expenses={expenses} />;
+  return <FinancialTab notify={notify} branchFilter={branchFilter} orders={NO_ORDERS} subscribers={NO_CLIENTS} />;
 }

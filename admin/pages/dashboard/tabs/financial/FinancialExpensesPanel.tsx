@@ -23,7 +23,11 @@ interface Props {
   expenseDateTo: string;
   setExpenseDateTo: React.Dispatch<React.SetStateAction<string>>;
   filteredExpenses: ExpenseItem[];
-  toEGP: (amount: number, currency: string) => number;
+  matchingCount: number;
+  filteredTotalEGP: number;
+  loadMoreExpenses: () => Promise<void>;
+  loadAllMatching: () => Promise<ExpenseItem[]>;
+  expensesError?: string;
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
   addExpense: (expense: ExpenseItem) => Promise<void>;
   updateExpense: (expense: ExpenseItem) => Promise<void>;
@@ -48,7 +52,11 @@ export function FinancialExpensesPanel({
   expenseDateTo,
   setExpenseDateTo,
   filteredExpenses,
-  toEGP,
+  matchingCount,
+  filteredTotalEGP,
+  loadMoreExpenses,
+  loadAllMatching,
+  expensesError = '',
   exportCSV,
   addExpense,
   updateExpense,
@@ -118,9 +126,13 @@ export function FinancialExpensesPanel({
               <input type="date" className="border border-gray-300 rounded-xl px-3 py-2 text-sm" value={expenseDateFrom} onChange={e => setExpenseDateFrom(e.target.value)} />
               <input type="date" className="border border-gray-300 rounded-xl px-3 py-2 text-sm" value={expenseDateTo} onChange={e => setExpenseDateTo(e.target.value)} />
             </div>
+            {expensesError && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{expensesError}</p>}
             <ExpenseTable
               filteredExpenses={filteredExpenses}
-              totalEGP={filteredExpenses.reduce((sum, expense) => sum + toEGP(expense.amount, expense.currency), 0)}
+              matchingCount={matchingCount}
+              totalEGP={filteredTotalEGP}
+              loadMore={loadMoreExpenses}
+              loadAllMatching={loadAllMatching}
               exportCSV={exportCSV}
               onEdit={(expense) => { setExpenseDraft({ category: expense.category, description: expense.description, amount: expense.amount, currency: expense.currency, date: expense.date, receiptUrl: expense.receiptUrl || '', boxMethod: expense.boxMethod || '', branchType: expense.branchType }); setEditingExpenseId(expense.id); setIsExpenseFormOpen(true); }}
               onDelete={removeExpense}

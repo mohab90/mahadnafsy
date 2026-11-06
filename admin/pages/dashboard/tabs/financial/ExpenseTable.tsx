@@ -1,5 +1,5 @@
 import { Download } from 'lucide-react';
-import { useShownRows } from '../../../../hooks/useShownRows';
+import { useState } from 'react';
 import type { ExpenseItem } from '../../../../types';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 
@@ -8,26 +8,39 @@ const operationNo = (expense: ExpenseItem) => (expense.expenseNo != null ? `${ex
 const branchLabel = (value?: string) => { const key = normalizeBranch(value); return key ? BRANCH_LABELS_AR[key] : '—'; };
 
 interface ExpenseTableProps {
+  /** The rows loaded so far (a page at a time from the server). */
   filteredExpenses: ExpenseItem[];
+  /** How many expenses match the filters in all, and what they add up to — the database's figures, not a sum of the rows on screen. */
+  matchingCount: number;
   totalEGP: number;
+  loadMore: () => Promise<void>;
+  /** Every matching expense, for the CSV. */
+  loadAllMatching: () => Promise<ExpenseItem[]>;
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
   onEdit: (expense: ExpenseItem) => void;
   onDelete: (id: string) => Promise<void>;
   deletingId?: string;
 }
 
-export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, onDelete, deletingId }: ExpenseTableProps) {
-  const { shown, hidden, more, all } = useShownRows(filteredExpenses, 100);
+export function ExpenseTable({ filteredExpenses, matchingCount, totalEGP, loadMore, loadAllMatching, exportCSV, onEdit, onDelete, deletingId }: ExpenseTableProps) {
+  const [busy, setBusy] = useState(false);
+  const hidden = Math.max(0, matchingCount - filteredExpenses.length);
+  const step = async (action: () => Promise<unknown>) => { setBusy(true); try { await action(); } finally { setBusy(false); } };
+  const downloadCsv = () => step(async () => {
+    const rows = await loadAllMatching();
+    exportCSV(
+      'expenses.csv',
+      rows.map((expense) => [operationNo(expense), expense.category, expense.description, String(expense.amount), expense.currency, expense.date, branchLabel(expense.branchType), expense.staffName || '']),
+      ['رقم العملية', 'البند', 'الوصف', 'المبلغ', 'العملة', 'التاريخ', 'الفرع', 'القائم بالعملية']
+    );
+  });
   return (
     <>
       <div className="mr-auto flex items-center gap-3 flex-wrap">
         <span className="text-sm text-gray-500">المجموع: <span className="font-bold text-red-600">{totalEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span></span>
         <button
-          onClick={() => exportCSV(
-            'expenses.csv',
-            filteredExpenses.map((expense) => [operationNo(expense), expense.category, expense.description, String(expense.amount), expense.currency, expense.date, branchLabel(expense.branchType), expense.staffName || '']),
-            ['رقم العملية', 'البند', 'الوصف', 'المبلغ', 'العملة', 'التاريخ', 'الفرع', 'القائم بالعملية']
-          )}
+          disabled={busy || matchingCount === 0}
+          onClick={() => void downloadCsv()}
           className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl px-3 py-1.5 text-xs font-bold transition">
           <Download size={13} /> تصدير CSV
         </button>
@@ -36,7 +49,7 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
       <table className="w-full text-sm min-w-[720px]">
         <thead><tr className="text-right border-b border-gray-100"><th className="py-2">رقم العملية</th><th className="py-2">البند</th><th className="py-2">الوصف</th><th className="py-2">المبلغ</th><th className="py-2">الفرع</th><th className="py-2">القائم بالعملية</th><th className="py-2">التاريخ</th><th className="py-2">إجراءات</th></tr></thead>
         <tbody>
-          {shown.map((expense) => (
+          {filteredExpenses.map((expense) => (
             <tr key={expense.id} className="border-b border-gray-50 hover:bg-gray-50/50">
               <td className="py-2.5 font-mono text-xs font-bold text-gray-700 whitespace-nowrap">{operationNo(expense)}</td>
               <td className="py-2.5"><span className="bg-red-50 text-red-700 text-xs px-2 py-0.5 rounded-full border border-red-200">{expense.category}</span></td>
@@ -59,9 +72,8 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
       </div>
       {hidden > 0 && (
         <div className="flex items-center justify-center gap-3 py-3 text-xs text-gray-500">
-          <span>معروض {shown.length.toLocaleString('ar-EG-u-nu-latn')} من {filteredExpenses.length.toLocaleString('ar-EG-u-nu-latn')} — المجموع والتصدير على الكل</span>
-          <button type="button" onClick={more} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200">عرض ١٠٠ كمان</button>
-          <button type="button" onClick={all} className="rounded-lg px-3 py-1.5 font-bold text-primary-600 hover:bg-primary-50">عرض الكل</button>
+          <span>معروض {filteredExpenses.length.toLocaleString('ar-EG-u-nu-latn')} من {matchingCount.toLocaleString('ar-EG-u-nu-latn')} — المجموع والتصدير على الكل</span>
+          <button type="button" disabled={busy} onClick={() => void step(loadMore)} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-50">عرض ١٠٠ كمان</button>
         </div>
       )}
     </>

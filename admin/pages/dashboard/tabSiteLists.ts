@@ -37,12 +37,12 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // The Dokki clients page from the server (GET /api/admin/dokki/clients) for everyone.
   daqqi_clients: ['daqqiRounds'],
   // The accounts: the orders, and the clients the ?branch= filter and the
-  // refund popup match them against. The finance screens add the expenses.
+  // refund popup match them against. The expenses are not here: the screen asks the server for them a page at a time (useExpensesPage).
   orders: ['orders', 'subscribers'],
-  financial: ['orders', 'subscribers', 'expenses'],
-  // The branch's books: the expenses; its clients' plans, the payments waiting for review and the person a payment is for
+  financial: ['orders', 'subscribers'],
+  // The branch's books: its expenses come from the server a page at a time (useExpensesPage); its clients' plans, the payments waiting for review and the person a payment is for
   // come from the server (FinancialBranchTab).
-  daqqi_accounting: ['expenses'],
+  daqqi_accounting: [],
   // The books and statements read their own endpoints; «الميزانية مقابل الفعلي» takes the month's revenue from the server
   // (GET /api/admin/analytics-hub/month-revenue).
   financial_reports: [],

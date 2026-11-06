@@ -74,6 +74,93 @@ async function expenseBox(db, tenantId, raw) {
   return applyAlias(canonicalChannel(name), catalog.aliases);
 }
 
+/** One expense row as the screens read it (the list and the paged list answer the same shape). */
+function shapeExpense({ staff_name: staffName, ...row }, categories) {
+  return {
+    ...toNumbers(row, EXPENSE_MONEY),
+    category: expenseCategoryLabel(row.category, categories),
+    categoryCode: row.category,
+    date: safeDateOnly(row.date),
+    receiptUrl: row.receipt_url || '',
+    boxMethod: row.box_method || '',
+    branchType: branchForId(row.branch_id),
+    // «رقم العملية» of a branch's expense: 1, 2, 3 … per branch (null for an online one).
+    expenseNo: row.expense_no != null ? Number(row.expense_no) : null,
+    receiptBranch: expenseSeriesOf(row.branch_id),
+    // «القائم بالعملية»: the name as it was when the expense was entered.
+    staffName: staffName && !looksLikeAddress(staffName) ? staffName : null,
+    createdAt: row.created_at,
+  };
+}
+
+const EXPENSE_COLUMNS = `e.id, e.description, e.amount, e.currency, e.fx_rate_to_egp, e.amount_egp, e.fx_source,
+       e.category, e.date, e.receipt_url, e.note, e.staff_id, e.branch_id, e.box_method,
+       e.vat_rate, e.vat_amount, e.amount_before_vat, e.created_at, e.expense_no,
+       COALESCE(e.created_by_name, st.name) AS staff_name`;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The expenses screen, a page at a time (6 Nov 2026). It used to download up to 5,000 rows and add them up in the browser: the cards, the category split and the
+ * «المجموع» were sums over whatever had arrived. Here the page is `limit` rows (`offset`), and the figures are the database's, over EVERY expense in the account's scope:
+ *   total          how many expenses match the filters (category — by its label, as the screen shows it —, from, to)
+ *   filteredTotals what they add up to, per currency (the screen converts, as it always has)
+ *   byCategory     the whole scope's amounts by category label and currency, whatever the filters — the category cards
+ * The scope is the list route's: the account's financial scope and ?branch=; an account that sees only its own clients' money sees no expenses.
+ */
+router.get('/api/admin/expenses/page', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
+    if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') return res.json({ rows: [], total: 0, filteredTotals: [], byCategory: [] });
+    const tenantId = scopedTenantId(req);
+    const limit = parseLimit(req.query.limit, 100, 500);
+    const offset = parseOffset(req.query.offset);
+    const from = DAY.test(String(req.query.from || '')) ? String(req.query.from) : null;
+    const to = DAY.test(String(req.query.to || '')) ? String(req.query.to) : null;
+    const wanted = String(req.query.category || '').trim();
+    const categories = await loadExpenseCategories(tenantId);
+
+    // the conditions after «tenant_id = ? and not deleted»: the branch, then the dates
+    const where = [];
+    const params = [tenantId];
+    if (scope.branchId) { where.push('AND e.branch_id=?'); params.push(scope.branchId); }
+    const dated = [...where];
+    const datedParams = [...params];
+    if (from) { dated.push('AND e.date >= ?'); datedParams.push(from); }
+    if (to) { dated.push('AND e.date < DATE_ADD(?, INTERVAL 1 DAY)'); datedParams.push(to); }
+
+    const [[perCategory], [perCategoryDated]] = await Promise.all([
+      pool.query(`SELECT e.category AS code, e.currency, SUM(e.amount) AS amount, COUNT(*) AS n FROM expenses e WHERE e.tenant_id=? AND e.deleted_at IS NULL ${where.join(' ')} GROUP BY e.category, e.currency`, params),
+      pool.query(`SELECT e.category AS code, e.currency, SUM(e.amount) AS amount, COUNT(*) AS n FROM expenses e WHERE e.tenant_id=? AND e.deleted_at IS NULL ${dated.join(' ')} GROUP BY e.category, e.currency`, datedParams),
+    ]);
+    const labelOf = code => expenseCategoryLabel(code, categories);
+    const byCategory = perCategory.map(row => ({ category: labelOf(row.code), currency: row.currency, amount: Number(row.amount) || 0 }));
+    // the filter is the label the screen shows; every stored code that reads as that label is meant (an unknown code reads «أخرى»)
+    const codes = wanted && wanted !== 'all' ? [...new Set(perCategory.map(row => row.code).filter(code => labelOf(code) === wanted))] : null;
+    const matching = codes ? perCategoryDated.filter(row => codes.includes(row.code)) : perCategoryDated;
+    const total = matching.reduce((sum, row) => sum + Number(row.n), 0);
+    const sums = new Map();
+    for (const row of matching) sums.set(row.currency, (sums.get(row.currency) || 0) + (Number(row.amount) || 0));
+    const filteredTotals = [...sums].map(([currency, amount]) => ({ currency, amount }));
+
+    let rows = [];
+    if (total > 0 && offset < total) {
+      const pageWhere = [...dated];
+      const pageParams = [...datedParams];
+      if (codes) { pageWhere.push(`AND e.category IN (${codes.map(() => '?').join(',')})`); pageParams.push(...codes); }
+      [rows] = await pool.query(
+        `SELECT ${EXPENSE_COLUMNS}
+           FROM expenses e LEFT JOIN staff st ON st.id=e.staff_id AND st.tenant_id=e.tenant_id
+          WHERE e.tenant_id=? AND e.deleted_at IS NULL ${pageWhere.join(' ')}
+          ORDER BY e.date DESC, e.created_at DESC, e.id DESC LIMIT ? OFFSET ?`,
+        [...pageParams, limit, offset]);
+    }
+    res.json({ rows: rows.map(row => shapeExpense(row, categories)), total, filteredTotals, byCategory });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
+    routeError(res, e);
+  }
+});
+
 router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
@@ -90,30 +177,13 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
     // for the whole.
     const limit = parseLimit(req.query.limit, 5000, 5000);
     const [[rows], categories] = await Promise.all([pool.query(
-      `SELECT e.id, e.description, e.amount, e.currency, e.fx_rate_to_egp, e.amount_egp, e.fx_source,
-       e.category, e.date, e.receipt_url, e.note, e.staff_id, e.branch_id, e.box_method,
-       e.vat_rate, e.vat_amount, e.amount_before_vat, e.created_at, e.expense_no,
-       COALESCE(e.created_by_name, st.name) AS staff_name
+      `SELECT ${EXPENSE_COLUMNS}
        FROM expenses e LEFT JOIN staff st ON st.id=e.staff_id AND st.tenant_id=e.tenant_id
        WHERE e.tenant_id=? AND e.deleted_at IS NULL${branchSql.replace('branch_id', 'e.branch_id')}
        ORDER BY e.date DESC, e.created_at DESC LIMIT ?`,
       [...params, limit]), loadExpenseCategories(scopedTenantId(req))]);
     if (rows.length >= limit) res.setHeader('X-Truncated', 'true');
-    res.json(rows.map(({ staff_name: staffName, ...row }) => ({
-      ...toNumbers(row, EXPENSE_MONEY),
-      category: expenseCategoryLabel(row.category, categories),
-      categoryCode: row.category,
-      date: safeDateOnly(row.date),
-      receiptUrl: row.receipt_url || '',
-      boxMethod: row.box_method || '',
-      branchType: branchForId(row.branch_id),
-      // «رقم العملية» of a branch's expense: 1, 2, 3 … per branch (null for an online one).
-      expenseNo: row.expense_no != null ? Number(row.expense_no) : null,
-      receiptBranch: expenseSeriesOf(row.branch_id),
-      // «القائم بالعملية»: the name as it was when the expense was entered.
-      staffName: staffName && !looksLikeAddress(staffName) ? staffName : null,
-      createdAt: row.created_at,
-    })));
+    res.json(rows.map(row => shapeExpense(row, categories)));
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
     routeError(res, e);
