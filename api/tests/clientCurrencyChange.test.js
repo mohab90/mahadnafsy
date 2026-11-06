@@ -45,9 +45,10 @@ test('a riyal client moved to pounds: market, branch, status and every figure fo
   assert.equal(result.branch, 'ONLINE_EGYPT');
   const update = find(db, /^UPDATE subscribers SET branch=/);
   assert.equal(update.params[0], 'ONLINE_EGYPT');
-  const crm = JSON.parse(update.params[4]);
-  assert.equal(crm.market, 'local');
-  // the status is the column (lib/crmColumns.js): written with its flag, and no longer a key of the blob
+  const crm = JSON.parse(update.params[6]);
+  // the market and the status are columns (lib/crmColumns.js): each written with its flag, and no longer a key of the blob
+  assert.deepEqual(update.params.slice(4, 6), [1, 'local'], 'the market column moves with the currency');
+  assert.equal(crm.market, undefined);
   assert.deepEqual(update.params.slice(2, 4), [1, 'old_local'], 'the old-data tabs tell local from foreign by the status');
   assert.equal(crm.clientStatus, undefined);
   assert.deepEqual(moneyAfter(db), { customPrices: { c1: 11455, 'bundle:b1': 23186 }, priorPaid: { c1: 5800 } });
@@ -60,7 +61,7 @@ test('without «convert» the market moves and the figures stay as they are', as
   const db = fakeDb(client());
   const result = await changeClientCurrency(db, args({ currency: 'EGP', convert: false }));
   assert.equal(result.converted, false);
-  const crm = JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[4]);
+  const crm = JSON.parse(find(db, /^UPDATE subscribers SET branch=/).params[6]);
   assert.deepEqual(moneyAfter(db), { customPrices: { c1: 790, 'bundle:b1': 1599 }, priorPaid: { c1: 400 } });
   assert.match(find(db, /^INSERT INTO activity_logs/).params[5], /من غير تحويل/);
 });
@@ -96,9 +97,10 @@ test('an old local client moved abroad becomes an old foreign one', async () => 
   const db = fakeDb(client({ branch: 'ONLINE_EGYPT' }, { clientStatus: 'old_local', market: 'local' }));
   await changeClientCurrency(db, args({ currency: 'SAR' }));
   const update = find(db, /^UPDATE subscribers SET branch=/);
-  const crm = JSON.parse(update.params[4]);
+  const crm = JSON.parse(update.params[6]);
   assert.deepEqual(update.params.slice(2, 4), [1, 'old_intl']);
-  assert.equal(crm.market, 'saudi');
+  assert.deepEqual(update.params.slice(4, 6), [1, 'saudi'], 'the market is the column');
+  assert.equal(crm.market, undefined);
 });
 
 test('converting needs a rate: no rate, no guess', async () => {

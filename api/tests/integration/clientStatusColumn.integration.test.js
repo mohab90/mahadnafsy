@@ -65,7 +65,8 @@ test('a new client saved with a status keeps it in the column and not in the blo
   const saved = await row('cs-new');
   assert.equal(saved.client_status, 'refunded');
   assert.deepEqual(JSON.parse(saved.crm_json).clientStatus, undefined, 'the key left the blob');
-  assert.equal(JSON.parse(saved.crm_json).market, 'local', 'the rest of the blob is untouched');
+  assert.equal(JSON.parse(saved.crm_json).market, undefined, 'the market left the blob too (367)');
+  assert.equal(JSON.parse(saved.crm_json).branch, 'ONLINE_EGYPT', 'the rest of the blob is untouched');
 });
 
 test('a partial save that changes the status writes the column; one that does not mention it leaves it alone', { skip }, async () => {

@@ -5433,6 +5433,7 @@ CREATE TABLE `subscribers` (
   `referred_by` varchar(20) DEFAULT NULL,
   `client_type` varchar(50) DEFAULT NULL,
   `client_status` varchar(40) DEFAULT NULL,
+  `market` varchar(10) DEFAULT NULL,
   `is_unsubscribed` tinyint(1) NOT NULL DEFAULT 0,
   `unsubscribed_at` timestamp NULL DEFAULT NULL,
   `source` varchar(120) DEFAULT NULL,

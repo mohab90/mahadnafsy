@@ -338,6 +338,13 @@ upload_dirs() {
     value=$(grep -m1 "^$var=" "$API_DIR/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r"'"'")
     case "$value" in ""|"$API_DIR/uploads"|"$API_DIR/uploads/"*) ;; *) echo "$value" ;; esac
   done
+  # The course PDFs' default folder when COURSE_DOCUMENT_DIR is not set (api/lib/courseDocuments.js): next to the videos' folder, else /var/lib/mahad/documents.
+  if ! grep -q "^COURSE_DOCUMENT_DIR=" "$API_DIR/.env" 2>/dev/null; then
+    local video docs
+    video=$(grep -m1 "^VIDEO_UPLOAD_DIR=" "$API_DIR/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r"'"'")
+    if [ -n "$video" ]; then docs="$(dirname "$video")/documents"; else docs=/var/lib/mahad/documents; fi
+    [ -d "$docs" ] && echo "$docs"
+  fi
 }
 
 # Incremental by size and modification time against a manifest of what went up,

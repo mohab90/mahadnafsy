@@ -68,7 +68,7 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   const to = String(currency || '').toUpperCase();
   if (!CURRENCIES.includes(to)) throw fail(400, 'اختار العملة: جنيه أو ريال أو دولار');
   const [[subscriber]] = await db.query(
-    `SELECT id, name, branch, client_status, crm_json FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+    `SELECT id, name, branch, client_status, market, crm_json FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
     [subscriberId, tenantId]);
   if (!subscriber) throw fail(404, 'العميل غير موجود');
   if (BRANCH_CLIENT.includes(String(subscriber.branch || '').toUpperCase())) {
@@ -125,10 +125,11 @@ async function changeClientCurrency(db, { tenantId, subscriberId, currency, conv
   };
   if (dryRun) return result;
 
-  // the status is a column (lib/crmColumns.js), so it is written there and not into the blob
+  // the status and the market are columns (lib/crmColumns.js), so they are written there and not into the blob
   const owned = takeOwned(withoutItemMoney(next));
-  await db.query('UPDATE subscribers SET branch=?, branch_id=?, client_status=IF(?,?,client_status), crm_json=? WHERE id=? AND tenant_id=?',
-    [BRANCH_OF[market], branchIdForBranch(BRANCH_OF[market]), 'client_status' in owned.set ? 1 : 0, owned.set.client_status ?? null, JSON.stringify(owned.crm), subscriberId, tenantId]);
+  await db.query('UPDATE subscribers SET branch=?, branch_id=?, client_status=IF(?,?,client_status), market=IF(?,?,market), crm_json=? WHERE id=? AND tenant_id=?',
+    [BRANCH_OF[market], branchIdForBranch(BRANCH_OF[market]), 'client_status' in owned.set ? 1 : 0, owned.set.client_status ?? null,
+      'market' in owned.set ? 1 : 0, owned.set.market ?? null, JSON.stringify(owned.crm), subscriberId, tenantId]);
   await replaceItemMoney(db, { tenantId, subscriberId, customPrices, priorPaid });
   await db.query('UPDATE enrollments SET branch_id=? WHERE subscriber_id=? AND tenant_id=?',
     [branchIdForBranch(BRANCH_OF[market]), subscriberId, tenantId]);

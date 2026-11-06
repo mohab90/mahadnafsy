@@ -981,7 +981,7 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdminOrStaf
     // what decides their market: the desk's choice, their latest payment's
     // currency, their branch.
     const [unassigned] = await conn.query(
-      `SELECT s.id, s.branch, JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.market')) AS market,
+      `SELECT s.id, s.branch, NULLIF(${ownedSql('market')}, '') AS market,
               (SELECT p.currency FROM payments p
                 WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id AND p.deleted_at IS NULL
                   AND (p.status IS NULL OR p.status='paid')

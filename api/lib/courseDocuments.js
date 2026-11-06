@@ -23,7 +23,15 @@ const { safeTenantSegment } = require('./uploadSafety');
 const { itemBalances, balanceFor } = require('./agreedPrice');
 const { resolveSubscriberRow } = require('./subscriberIdentity');
 
-const ROOT = path.resolve(process.env.COURSE_DOCUMENT_DIR || path.join(__dirname, '..', 'uploads', 'documents'));
+// Where the files live when COURSE_DOCUMENT_DIR is not set. On the server the API may write only /var/lib/mahad (deploy/systemd/mahad-api.service: ProtectSystem=strict) and a
+// release replaces its own folder, so the default there is the sibling of the videos' folder, or /var/lib/mahad/documents: written, and kept across releases, with no
+// setting to remember. Anywhere else (a laptop, a test) it is the api's own uploads folder.
+function defaultRoot() {
+  if (process.env.VIDEO_UPLOAD_DIR) return path.join(path.dirname(path.resolve(process.env.VIDEO_UPLOAD_DIR)), 'documents');
+  if (process.platform === 'linux' && fs.existsSync('/var/lib/mahad')) return '/var/lib/mahad/documents';
+  return path.join(__dirname, '..', 'uploads', 'documents');
+}
+const ROOT = path.resolve(process.env.COURSE_DOCUMENT_DIR || defaultRoot());
 const TEMP_DIR = path.join(ROOT, '.tmp');
 // A release replaces the API's folder, so documents kept inside it would go with the next deploy (as videos would: VIDEO_UPLOAD_DIR). The server says so at boot.
 const RELEASE_ROOT = path.resolve(__dirname, '..');

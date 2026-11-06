@@ -101,7 +101,7 @@ function buildOverview(clients, { today, weekStart, monthStart, catalogue, team 
  */
 async function readOverviewClients(db, tenantId, sc) {
   const readClients = () => db.query(
-    `SELECT s.id, s.name, s.branch, s.lead_id, s.client_code, s.client_status, s.crm_json
+    `SELECT s.id, s.name, s.branch, s.lead_id, s.client_code, s.client_status, s.market, s.crm_json
        FROM subscribers s
       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${sc.where})
       ORDER BY s.created_at DESC, s.id DESC`,

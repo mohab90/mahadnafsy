@@ -13,6 +13,8 @@
 
 const OWNED = [
   { key: 'clientStatus', column: 'client_status', max: 40 },
+  // 6 Nov 2026: the online client's market (local / saudi / intl), which decides their tab, their currency and the collection officer who takes them.
+  { key: 'market', column: 'market', max: 10 },
 ];
 
 const textOf = (value, max) => {
