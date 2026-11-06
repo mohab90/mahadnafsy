@@ -44,7 +44,8 @@ test('the leads screen reads no lead or client list: the pools are the server\'s
 
 test('the insights are asked for where they are drawn, not on every sub-tab', () => {
   const tab = stripComments(read('admin/pages/dashboard/tabs/LeadsTab.tsx'));
-  assert.match(tab, /useCrmInsights\(smartIdleDays, performanceOnly \|\| subTab === 'reminders', insightsKey\)/);
+  // 6 Nov 2026: and each view asks for its own half (parts), «الأداء» the counts and «المتابعات» the lead rows
+  assert.match(tab, /useCrmInsights\(smartIdleDays, performanceOnly \|\| subTab === 'reminders', insightsKey, performanceOnly \? 'ops' : 'reminders'\)/);
   assert.match(tab, /useRepRevenue\(targetMonth, performanceOnly\)/);
 });
 

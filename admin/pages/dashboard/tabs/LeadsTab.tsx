@@ -197,7 +197,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLo
   const [insightsKey, bumpInsights] = React.useReducer((count: number) => count + 1, 0);
   // Only where it is drawn: the follow-ups page and the performance page. It answered on every sub-tab (634 KB on the
   // lab — up to 500 reminders and 500 promised leads) for a table that reads none of it.
-  const crmInsights = useCrmInsights(smartIdleDays, performanceOnly || subTab === 'reminders', insightsKey);
+  // each view asks for its own half: «الأداء» the scorecard and the redistribution (30 KB), «المتابعات» the follow-ups and queues (580 KB)
+  const crmInsights = useCrmInsights(smartIdleDays, performanceOnly || subTab === 'reminders', insightsKey, performanceOnly ? 'ops' : 'reminders');
   // The header's «متأخر» and the performance page's overdue card: open leads due today or before, counted by the
   // server over the caller's scope (the same rule as the bell).
   const [dueFollowups, setDueFollowups] = useState<number | null>(null);

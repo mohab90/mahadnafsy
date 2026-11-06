@@ -23,6 +23,7 @@ const {
 const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueOn } = require('../../../lib/leadFollowUps');
 const { addDaysToDateOnly, cairoToday, monthRange } = require('../../../lib/dates');
 const { hasPermission, PERMISSIONS } = require('../../../constants/permissions');
+const { cached } = require('../../../lib/db');
 const { toEgp } = require('../../../lib/staffClientsView');
 const { resolveDataScope } = require('../../../constants/permissions');
 const { branchesFromScope } = require('../../../lib/leadAccess');
@@ -223,6 +224,15 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // absurd one would either return the whole table or nothing at all.
     const idleDays = Math.min(Math.max(parseInt(req.query.idleDays, 10) || 14, 1), 3650);
 
+    // ?parts=reminders|ops — the two screens that ask want different halves (6 Nov 2026). «المتابعات» wants the reminders, the two queues and the completion rate;
+    // «الأداء» wants the weekly scorecard, the redistribution suggestions and the open load per rep. Each asked for both and threw half away: 600 lead rows (about
+    // 580 KB) for a screen that draws none of them, or 0.45 s of counting every lead for a screen that draws no counts. Without ?parts the answer is whole, as before;
+    // a part that was not asked for comes back empty.
+    const parts = req.query.parts === 'reminders' || req.query.parts === 'ops' ? req.query.parts : 'all';
+    const wantReminders = parts !== 'ops';
+    const wantOps = parts !== 'reminders';
+    const ask = (wanted, sql, params) => (wanted ? pool.query(sql, params) : Promise.resolve([[]]));
+
     // Closed leads are excluded below in the same spellings the browser used, so
     // the two paths cannot disagree about what "open" means.
     const CLOSED = TERMINAL_LIST;
@@ -237,7 +247,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // by the same window the browser applied: anything overdue, plus the next
     // seven days. LIMIT is a backstop, not a filter — a database holding more
     // than 500 open follow-ups was never going to render them all anyway.
-    const [reminderRows] = await pool.query(
+    const [reminderRows] = await ask(wantReminders,
       `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
@@ -276,14 +286,14 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
          LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id`;
     const [[untouchedRows], [promisedRows]] = await Promise.all([
-      pool.query(
+      ask(wantReminders,
         `${queueColumns}
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.status = 'new' AND ${followUpSql} IS NULL
           AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id)
         ORDER BY l.created_at ASC, l.id ASC
         LIMIT 50`, [req.tenantId, ...scopeParams]),
-      pool.query(
+      ask(wantReminders,
         `${queueColumns}
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause} AND l.status = 'interested_booking'
         ORDER BY ${followUpSql} IS NULL, ${followUpSql}, l.created_at ASC, l.id ASC
@@ -309,7 +319,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
           AND l.status NOT IN (${redistSql})`;
     const idleParams = [...scopeParams, ...REDIST_EXCLUDED];
     const [[[dueRow]], [weekCommRows], [followupRows], [newLeadRows], [overdueRows], [neverContacted], [loadRows]] = await Promise.all([
-      pool.query(
+      ask(wantReminders,
       `SELECT COUNT(*) AS due,
               COALESCE(SUM(EXISTS (
                 SELECT 1 FROM communications c
@@ -322,7 +332,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
           AND l.next_follow_up_date <= ${sqlCairoToday()}`,
       [req.tenantId, ...scopeParams],
     ),
-      pool.query(
+      ask(wantOps,
       `SELECT l.assigned_sales_id AS staff_id, c.type AS type, COUNT(*) AS cnt
          FROM communications c
          JOIN leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id
@@ -332,7 +342,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         GROUP BY l.assigned_sales_id, c.type`,
       [req.tenantId, ...scopeParams],
     ),
-      pool.query(
+      ask(wantOps,
       `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
          FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
@@ -347,7 +357,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         GROUP BY l.assigned_sales_id`,
       [req.tenantId, ...scopeParams],
     ),
-      pool.query(
+      ask(wantOps,
       `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
          FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
@@ -356,7 +366,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         GROUP BY l.assigned_sales_id`,
       [req.tenantId, ...scopeParams],
     ),
-      pool.query(
+      ask(wantOps,
       `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
          FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
@@ -367,7 +377,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         GROUP BY l.assigned_sales_id`,
       [req.tenantId, ...scopeParams],
     ),
-      pool.query(
+      ask(wantOps,
       `SELECT l.id, l.created_at AS last_activity
          FROM leads l
         WHERE l.tenant_id = ? AND ${idleWhere}
@@ -377,15 +387,18 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         LIMIT 50`,
       [req.tenantId, ...idleParams, idleDays],
     ),
-      pool.query(
-      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.status NOT IN (${closedSql})
-        GROUP BY l.assigned_sales_id`,
-      [req.tenantId, ...scopeParams, ...CLOSED],
-    ),
+      // Every rep's open leads: a count over about half the table (0.45 s at 600,000 leads) that only moves when a lead is written, so it is held for 15 seconds and
+      // dropped by the next successful write (dropFiguresAfterWrites in lib/httpApp.js), like the books' and the lead stats'.
+      wantOps
+        ? cached(`figures:crm-open-load:${req.tenantId}:${scopeClause}:${JSON.stringify(scopeParams)}`, 15 * 1000, () => pool.query(
+          `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+             FROM leads l
+            WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+              AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+              AND l.status NOT IN (${closedSql})
+            GROUP BY l.assigned_sales_id`,
+          [req.tenantId, ...scopeParams, ...CLOSED]))
+        : Promise.resolve([[]]),
     ]);
     const totalDue = Number(dueRow?.due || 0);
     const completedDue = Number(dueRow?.completed || 0);
@@ -471,7 +484,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     // Communicated leads, quietest first, a page at a time: most of a page
     // passes the lead filter, so one page is the usual cost.
     const contacted = [];
-    for (let offset = 0, page = 2000; contacted.length < 50; offset += page) {
+    for (let offset = 0, page = 2000; wantOps && contacted.length < 50; offset += page) {
       const [lastRows] = await pool.query(
         `SELECT lead_id, MAX(date) AS last_activity
            FROM communications

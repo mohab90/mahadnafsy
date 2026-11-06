@@ -736,8 +736,9 @@ export const mysqlAdmin = {
   },
   getSubscriberStats:      (overview = false): Promise<SubscriberStats> =>
     apiFetch(`/admin/subscribers/stats${overview ? '?overview=1' : ''}`, {}, A),
-  getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
-    apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}`, {}, A),
+  // parts: 'reminders' (the follow-ups, the two queues, the completion rate) or 'ops' (the weekly scorecard, the redistribution suggestions, the open load per rep); each screen asks for its own half.
+  getCrmInsights:          (idleDays = 14, parts?: 'reminders' | 'ops'): Promise<CrmInsights> =>
+    apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}${parts ? `&parts=${parts}` : ''}`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
   listStaffSubscribers:    (pageSize = 2000): Promise<AR[]> =>
     fetchAllPages(offset => `/staff/subscribers?limit=${pageSize}&offset=${offset}`, pageSize, Number.POSITIVE_INFINITY),

@@ -359,7 +359,7 @@ test('the follow-ups page is one list by kind, and it refreshes after each actio
   assert.match(page, /سجّل التواصل/);
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
   // Asked for while the follow-ups page (or the performance page) is open, and again after each action.
-  assert.match(tab, /useCrmInsights\(smartIdleDays, performanceOnly \|\| subTab === 'reminders', insightsKey\)/);
+  assert.match(tab, /useCrmInsights\(smartIdleDays, performanceOnly \|\| subTab === 'reminders', insightsKey, performanceOnly \? 'ops' : 'reminders'\)/);
   assert.match(tab, /useLeadQuickCommunication\(\{ reloadLeads, onSaved: bumpInsights \}\)/);
   for (const gone of ['LeadRemindersPanel', 'LeadStaleLeadsPanel', 'CrmWorkQueuePanel', 'useLeadRemoteReminders']) {
     assert.ok(!fs.existsSync(path.join(ROOT, 'admin/pages/dashboard/tabs/leads', `${gone}.tsx`)), gone);

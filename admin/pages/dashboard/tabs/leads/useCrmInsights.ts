@@ -14,7 +14,7 @@ import type { CrmInsights } from '../../../../types';
  * changes. The in-flight guard stops a fast slider from stacking requests and
  * letting an older response overwrite a newer one.
  */
-export function useCrmInsights(idleDays: number, enabled = true, refreshKey: unknown = 0) {
+export function useCrmInsights(idleDays: number, enabled = true, refreshKey: unknown = 0, parts?: 'reminders' | 'ops') {
   const [insights, setInsights] = useState<CrmInsights | null>(null);
   const requestSeq = useRef(0);
 
@@ -25,7 +25,7 @@ export function useCrmInsights(idleDays: number, enabled = true, refreshKey: unk
 
     void (async () => {
       try {
-        const result = await mysqlAdmin.getCrmInsights(idleDays);
+        const result = await mysqlAdmin.getCrmInsights(idleDays, parts);
         // Ignore anything that is no longer the newest request: the slider can
         // outrun the network, and a stale reply would show the wrong threshold.
         if (cancelled || seq !== requestSeq.current) return;
@@ -43,7 +43,7 @@ export function useCrmInsights(idleDays: number, enabled = true, refreshKey: unk
     return () => { cancelled = true; };
   // refreshKey: asked again after a contact, a «بكرة» or a «تم», so the
   // follow-ups list does not keep a lead that was just dealt with.
-  }, [idleDays, enabled, refreshKey]);
+  }, [idleDays, enabled, refreshKey, parts]);
 
   return insights;
 }
