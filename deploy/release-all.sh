@@ -379,6 +379,7 @@ fi
 # a failure could only be reported, not prevented. One spec at a time, so a
 # failure names its spec and the other still runs.
 say "9/10 staging end-to-end — the gate for production (public smoke + payment flow)"
+echo "   This gate runs two specs: ${E2E_SPECS[*]}. It does NOT open the admin panel: the admin screens (dashboard-screens, changed-screens) run in GitHub CI on a seeded database for a pushed commit, or by hand (docs/OWNER_SERVER_STEPS_20261106_AR.md)." >&2
 if [[ -n "$SKIP_E2E" ]]; then
   skip_e2e_warning
   echo "!!! SKIPPED the staging E2E gate for $RELEASE (MAHAD_SKIP_E2E: $SKIP_E2E)" >&2
