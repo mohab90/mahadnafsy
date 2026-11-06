@@ -68,7 +68,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.
   // The orders, leads and clients are counted by the server (GET /api/admin/analytics-summary).
   daqqi_stats: ['discounts', 'contactMessages'],
-  ask_ai: ['leads', 'subscribers', 'settings'], // the order counts and the money are the server's (the books, the analytics summary)
+  ask_ai: ['settings'], // everything it is told about the leads, clients and money is counted by the database (leads/stats, subscribers/stats?branchFigures=1, the books)
   // The Dokki screens: the rounds and their attendees. The clients a round's
   // pickers offer, and the few it looks up, come from the server
   // (api/lib/dokkiClients.js), not from the context's list.

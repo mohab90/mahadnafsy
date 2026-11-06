@@ -59,3 +59,10 @@ test('the accounts, AI and activity screens no longer download the orders; the a
   const lists = admin('pages', 'dashboard', 'tabSiteLists.ts');
   assert.equal(/ask_ai: \[[^\]]*'orders'/.test(lists) || /activity: \[[^\]]*'orders'/.test(lists), false);
 });
+
+test('the AI screen is told counts the database made, and downloads no leads and no clients', () => {
+  const ai = admin('pages', 'dashboard', 'tabs', 'AskAITab.tsx');
+  assert.ok(ai.includes('getSubscriberFigures') && ai.includes('getLeadStats'));
+  assert.equal(ai.includes('subscribers.filter(') || ai.includes('leads.filter(') || ai.includes('subscribers.flatMap('), false, 'nothing is counted out of a downloaded list');
+  assert.ok(admin('pages', 'dashboard', 'tabSiteLists.ts').includes("ask_ai: ['settings'],"), 'the screen declares no lead or client list');
+});

@@ -220,7 +220,51 @@ router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, req
       };
     }
 
-    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}), ...(overview || {}) });
+    // branchFigures=1: «اسأل الذكاء» — per branch (a client with no branch is «other», as the screen always called it): the clients who joined today, the paid
+    // payments recorded today and what they, this Cairo month and all time came to in EGP (payments.amount_egp). It counted them out of every client and every payment
+    // history it had downloaded (up to 50,000 clients); here the database does, over the same clients as the total and inside the caller's scope.
+    let branchFigures;
+    if (req.query.branchFigures === '1') {
+      const today = cairoToday();
+      const dayStart = cairoDayStartUtc(today);
+      const dayEnd = cairoDayStartUtc(addDaysToDateOnly(today, 1));
+      const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
+      const [[joinedRows], [moneyRows]] = await Promise.all([
+        pool.query(
+          `SELECT COALESCE(NULLIF(s.branch, ''), 'other') AS branch, COUNT(*) AS cnt FROM subscribers s
+            WHERE s.tenant_id = ? AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+              AND s.created_at >= ? AND s.created_at < ?
+            GROUP BY COALESCE(NULLIF(s.branch, ''), 'other')`,
+          [...params, dayStart, dayEnd],
+        ),
+        pool.query(
+          `SELECT COALESCE(NULLIF(s.branch, ''), 'other') AS branch,
+                  COALESCE(SUM(p.amount_egp), 0) AS total,
+                  COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END), 0) AS this_month,
+                  COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? THEN p.amount_egp END), 0) AS today,
+                  COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? THEN 1 END), 0) AS today_payments
+             FROM payments p
+             JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+            WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL
+              AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+            GROUP BY COALESCE(NULLIF(s.branch, ''), 'other')`,
+          [monthStart, dayStart, dayEnd, dayStart, dayEnd, ...params],
+        ),
+      ]);
+      branchFigures = {};
+      const entry = code => (branchFigures[code] ||= { todayNew: 0, todayPayments: 0, todayRevenueEgp: 0, monthRevenueEgp: 0, revenueEgp: 0 });
+      for (const row of joinedRows) entry(row.branch).todayNew = Number(row.cnt) || 0;
+      for (const row of moneyRows) {
+        Object.assign(entry(row.branch), {
+          todayPayments: Number(row.today_payments) || 0,
+          todayRevenueEgp: Math.round(Number(row.today) || 0),
+          monthRevenueEgp: Math.round(Number(row.this_month) || 0),
+          revenueEgp: Math.round(Number(row.total) || 0),
+        });
+      }
+    }
+
+    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}), ...(overview || {}), ...(branchFigures ? { branchFigures } : {}) });
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 

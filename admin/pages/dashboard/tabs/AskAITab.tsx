@@ -4,8 +4,7 @@ import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, Che
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useAnalyticsSummary } from '../hooks/useAnalyticsSummary';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { toEgp } from '../../../lib/money';
-import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDay, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../shared/cairoDate';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 // Module scope: a constant map and a pure function of its arguments. In the
@@ -15,14 +14,10 @@ const _aiBranchLabels: Record<string, string> = {
   daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
   'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
 };
-// Through the shared table, not a second set of fallbacks: the hardcoded 13 and
-// 50 here disagreed with lib/money and with the API's own ledger, so the same
-// order read one figure on this screen and another everywhere else.
-const _aiToEGP = (amt: number, cur: string) => toEgp(amt, cur);
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
-    leads, leadStats, subscribers, courses, bundles, therapists, consultations,
+    courses, bundles, therapists, consultations,
     adminAiConfig,
   } = useSiteData();
 
@@ -37,38 +32,27 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const { summary: orderSummary } = useAnalyticsSummary('all');
   const paidOrdersCount = orderSummary?.orders ? orderSummary.orders.inRange.reduce((sum, row) => sum + row.count, 0) : null;
   const pendingOrdersCount = orderSummary?.orders?.pending ?? null;
+  // The leads, the clients and their money the AI is told are counted by the database, over what this account may see, not out of every lead and client downloaded
+  // to the browser (it asked for up to 50,000 of each): GET /api/admin/leads/stats and /api/admin/subscribers/stats?branchFigures=1.
+  const [leadFigures, setLeadFigures] = useState<Awaited<ReturnType<typeof mysqlAdmin.getLeadStats>> | null>(null);
+  const [people, setPeople] = useState<Awaited<ReturnType<typeof mysqlAdmin.getSubscriberFigures>> | null>(null);
+  useEffect(() => {
+    mysqlAdmin.getLeadStats().then(setLeadFigures).catch(() => setLeadFigures(null));
+    mysqlAdmin.getSubscriberFigures().then(setPeople).catch(() => setPeople(null));
+  }, []);
   const aiChatEndRef = useRef<HTMLDivElement>(null);
 
-  const _aiAllManual = useMemo(() =>
-    subscribers.flatMap(s =>
-      (s.paymentHistory || []).map(p => ({
-        ...p,
-        branchCode: s.branch || 'other',
-        branchLabel: _aiBranchLabels[s.branch || 'other'] || s.branch || '—',
-      }))
-    ),
-  [subscribers]);
-
-  const _aiAllManualForBranch = _aiAllManual;
   const _aiBranchStats = useMemo(() => {
-    // Cairo's today and month, whatever zone the browser is in.
-    const today = cairoDateOnly(); const thisMonth = cairoMonthOnly();
-    const isToday = (d: string) => !!d && cairoDay(d) === today;
-    const isThisMonth = (d: string) => !!d && cairoDay(d).slice(0, 7) === thisMonth;
-    const toEGP = _aiToEGP;
-    const branchCodes = [...new Set(subscribers.map(s => s.branch || 'other'))] as string[];
-    return branchCodes.map(code => {
-      const bSubs = subscribers.filter(s => (s.branch || 'other') === code);
-      const bPayments = _aiAllManualForBranch.filter(p => p.branchCode === code);
+    const figures = people?.stats.branchFigures ?? {};
+    return Object.entries(figures).map(([code, branch]) => {
+      const key = code.toLowerCase().replace(/_/g, '-');
       return {
-        code, label: _aiBranchLabels[code] || code, subs: bSubs.length,
-        todayNew: bSubs.filter(s => isToday(s.createdAt || '')).length,
-        todayRev: Math.round(bPayments.filter(p => isToday(p.at || '')).reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
-        monthRev: Math.round(bPayments.filter(p => isThisMonth(p.at || '')).reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
-        allRev: Math.round(bPayments.reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
+        code, label: _aiBranchLabels[key] || code,
+        subs: people?.stats.byBranch?.[code] ?? people?.stats.byBranch?.[code === 'other' ? '' : code] ?? 0,
+        todayNew: branch.todayNew, todayRev: branch.todayRevenueEgp, monthRev: branch.monthRevenueEgp, allRev: branch.revenueEgp, todayPayments: branch.todayPayments,
       };
     }).sort((a, b) => b.subs - a.subs);
-  }, [subscribers, _aiAllManualForBranch]);
+  }, [people]);
 
   // Use saved AI config (adminAiConfig from MySQL, alias as adminAiDraft for body code compatibility)
   const adminAiDraft = adminAiConfig || { provider: 'gemini', apiKey: '', model: 'gemini-2.0-flash-lite', temperature: 0.7, maxTokens: 1500, systemPrompt: '' };
@@ -77,41 +61,26 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const _now = new Date();
   const _todayISO = cairoDateOnly(_now);
   // Date filters
-  const _isToday    = (d: string) => !!d && cairoDay(d) === _todayISO;
-  const _toEGP = (amt: number, cur: string) => cur==='EGP'?amt:cur==='SAR'?amt*13:amt*50;
 
-  // ── All manual payments (pre-memoized above for performance) ──────────────────
-  const _allManual = _aiAllManual;
-
-  // ── Daily stats ────────────────────────────────────────────────
-  const _todayLeads   = leads.filter(l => _isToday(l.createdAt||''));
-  const _todaySubs    = subscribers.filter(s => _isToday(s.createdAt||''));
-  const _todayManual  = _allManual.filter(p => _isToday(p.at||''));
-  // today's money: the books' (every paid payment recorded today); until it answers, the desk payments on the clients that are loaded
-  const _todayRev = books ? books.todayEgp : _todayManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
-
-  // ── Branch stats (pre-memoized above) ─────────────────────────
+  // ── Daily stats (the database's) ───────────────────────────────
+  const _todayLeads = leadFigures?.createdToday ?? 0;
+  const _todaySubs = people?.stats.createdToday ?? 0;
   const _branchStats = _aiBranchStats;
-
-  // Total revenue
-  const _totalRevEGP = books ? books.totalEgp : _allManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
+  const _todayPayments = _branchStats.reduce((sum, branch) => sum + branch.todayPayments, 0);
+  // today's money and the total: the books' (every paid payment); until they answer, the branches' sum
+  const _todayRev = books ? books.todayEgp : _branchStats.reduce((sum, branch) => sum + branch.todayRev, 0);
+  const _totalRevEGP = books ? books.totalEgp : _branchStats.reduce((sum, branch) => sum + branch.allRev, 0);
 
   // Only aggregate, non-identifying data crosses the third-party AI boundary.
   // Customer names, phones, messages, health details and payment notes stay local.
   const buildSystemContext = () => {
     const totalRevEGP = _totalRevEGP;
-    // Whole-table figures, from the database rather than from however much of the
-    // leads array happens to be loaded. Falls back to the array while the
-    // aggregate is still in flight, so the number is never blank and never wrong.
-    const leadTotal = leadStats?.total ?? leads.length;
-    const leadBy = (status: string) => leadStats?.byStatus?.[status] ?? leads.filter(l => l.status === status).length;
-    const convRate = leadTotal > 0 ? ((leadBy('converted') / leadTotal) * 100).toFixed(1) : '0';
+    // Whole-table figures, from the database. While an aggregate is still in flight (or this account may not read it) the line says «—», never a count of whatever happens to be loaded.
+    const leadTotal = leadFigures?.total ?? null;
+    const leadBy = (status: string) => leadFigures?.byStatus?.[status] ?? 0;
+    const convRate = leadTotal ? ((leadBy('converted') / leadTotal) * 100).toFixed(1) : '0';
     const todayStr = _now.toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: CAIRO_TIME_ZONE });
-    const leadSources = Object.entries(leads.reduce((result: Record<string, number>, lead) => {
-      const source = lead.source || 'غير محدد';
-      result[source] = (result[source] || 0) + 1;
-      return result;
-    }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const leadSources = Object.entries(leadFigures?.bySource ?? {}).map(([source, count]) => [source || 'غير محدد', count] as [string, number]).sort((a, b) => b[1] - a[1]).slice(0, 8);
     return `## دورك
 أنت مساعد إداري لمعهد الدراسات النفسية. أجب بالعربية المصرية المهنية وبالأرقام المرفقة فقط.
 لا تستنتج هوية أي شخص، ولا تطلب أو تعرض أسماء أو هواتف أو بريدًا أو رسائل أو بيانات صحية أو ملاحظات دفع.
@@ -121,14 +90,14 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
 اليوم: ${todayStr} (${_todayISO})
 
 ## اليوم
-Leads جدد: ${_todayLeads.length}
-مشتركون جدد: ${_todaySubs.length}
-دفعات يدوية: ${_todayManual.length}
+Leads جدد: ${_todayLeads}
+مشتركون جدد: ${_todaySubs}
+دفعات: ${_todayPayments}
 إيراد اليوم: ${Math.round(_todayRev).toLocaleString('ar-EG-u-nu-latn')} ج.م
 
 ## الإجماليات
-المشتركون: ${subscribers.length} (نشط ${subscribers.filter(s => s.status === 'active').length}، موقوف ${subscribers.filter(s => s.status === 'paused').length})
-Leads: ${leadTotal} (جديد ${leadBy('new')}، تواصل ${leadBy('contacted')}، تحوّل ${leadBy('converted')}، ضائع ${leadBy('lost')})
+المشتركون: ${people?.stats.total ?? '—'} (نشط ${people?.byStatus.active ?? '—'}، موقوف ${people?.byStatus.paused ?? '—'})
+Leads: ${leadTotal ?? '—'} (جديد ${leadBy('new')}، تواصل ${leadBy('contacted')}، تحوّل ${leadBy('converted')}، ضائع ${leadBy('lost')})
 معدل التحويل: ${convRate}%
 الاستشارات: ${consultations.length} (انتظار ${consultations.filter(c => c.status === 'pending').length}، مؤكد ${consultations.filter(c => c.status === 'confirmed').length}، مكتمل ${consultations.filter(c => c.status === 'completed').length})
 الكورسات: ${courses.length} | المعالجون: ${therapists.length} | المسارات: ${bundles.length}
@@ -308,10 +277,10 @@ ${customPrompt}
         {/* Live stats strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
-            { label: 'عملاء اليوم', value: _todayLeads.length, accent: 'bg-red-400/30', icon: '📥' },
-            { label: 'مشتركون اليوم', value: _todaySubs.length, accent: 'bg-green-400/30', icon: '✅' },
+            { label: 'عملاء اليوم', value: _todayLeads, accent: 'bg-red-400/30', icon: '📥' },
+            { label: 'مشتركون اليوم', value: _todaySubs, accent: 'bg-green-400/30', icon: '✅' },
             { label: 'إيراد اليوم', value: `${Math.round(_todayRev).toLocaleString('ar-EG-u-nu-latn')} ج`, accent: 'bg-yellow-400/30', icon: '💰' },
-            { label: 'دفعات يدوية', value: _todayManual.length, accent: 'bg-blue-400/30', icon: '💳' },
+            { label: 'دفعات اليوم', value: _todayPayments, accent: 'bg-blue-400/30', icon: '💳' },
           ].map(s => (
             <div key={s.label} className={`${s.accent} rounded-xl px-3 py-2 text-center backdrop-blur-sm`}>
               <div className="text-base font-extrabold leading-tight">{s.icon} {s.value}</div>

@@ -1475,6 +1475,8 @@ export interface SubscriberStats {
   createdToday?: number;
   /** …and each course's clients, keyed by course id (active enrolments). */
   byCourse?: Record<string, number>;
+  /** With ?branchFigures=1: per branch ('other' = no branch) — who joined today, today's paid payments, and the EGP today, this month and all time. */
+  branchFigures?: Record<string, { todayNew: number; todayPayments: number; todayRevenueEgp: number; monthRevenueEgp: number; revenueEgp: number }>;
 }
 
 /** One rep's week, as counted by the database rather than by filtering the

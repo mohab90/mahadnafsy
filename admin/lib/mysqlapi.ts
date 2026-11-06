@@ -726,6 +726,14 @@ export const mysqlAdmin = {
   getSalesTeamPerformance: (): Promise<SalesTeamPerformance> => apiFetch('/admin/reports/sales-performance', {}, A),
   // The subscriber count, so an audience picker does not have to hold the table.
   // overview: also today's new clients and each course's clients, for الرئيسية.
+  // «اسأل الذكاء»: the clients by branch with each branch's joiners, payments and EGP today, this month and all time, and how many clients are in each status.
+  getSubscriberFigures:    async (): Promise<{ stats: SubscriberStats; byStatus: Record<string, number> }> => {
+    const [stats, count] = await Promise.all([
+      apiFetch<SubscriberStats>('/admin/subscribers/stats?overview=1&branchFigures=1', {}, A),
+      apiFetch<{ byStatus?: Record<string, number> }>('/admin/subscribers/count', {}, A).catch(() => ({ byStatus: {} })),
+    ]);
+    return { stats, byStatus: count.byStatus || {} };
+  },
   getSubscriberStats:      (overview = false): Promise<SubscriberStats> =>
     apiFetch(`/admin/subscribers/stats${overview ? '?overview=1' : ''}`, {}, A),
   getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
