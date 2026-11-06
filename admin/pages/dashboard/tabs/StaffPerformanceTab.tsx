@@ -28,7 +28,7 @@ const RANK_ICONS = [Trophy, Award, Star];
 const RANK_COLORS = ['text-yellow-500', 'text-slate-400', 'text-amber-600'];
 
 export default function StaffPerformanceTab() {
-  const { staffMembers, leads, orders, authUser, isAdmin, currentStaff } = useSiteData();
+  const { staffMembers, leads, authUser, isAdmin, currentStaff } = useSiteData();
   const [range, setRange] = useState<TimeRange>('month');
   const [roleFilter, setRoleFilter] = useState('all');
 
@@ -97,14 +97,13 @@ export default function StaffPerformanceTab() {
         ? agg.contacted
         : leads.filter(l => l.assignedSalesId === s.id && ['contacted', 'interested', 'interested_booking', 'converted'].includes(l.status) && inRange(l.updatedAt || l.createdAt, range)).length;
 
-      // Revenue stays on the orders array: it is a few hundred rows the screen
-      // already holds, and it is scoped by staff_id rather than by lead owner.
-      const myOrders = orders.filter(o => o.staffId === s.id && inRange(o.createdAt, range));
-      const revenue = myOrders.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+      // What this rep collected in the range: the database's figure (paid payments recorded by this rep, in EGP), the one «أداء فريق المبيعات» names. It was added
+      // up here from the newest 500 orders, of every status and currency, so a busy month came out short. 0 for an account that may not see money.
+      const revenue = agg?.revenueEgp ?? 0;
       const convRate = myLeadCount > 0 ? Math.round((myConvertedCount / myLeadCount) * 100) : 0;
       return { ...s, myLeads: myLeadCount, myConverted: myConvertedCount, revenue, convRate, contacted };
     }).sort((a, b) => b.revenue - a.revenue);
-  }, [staff, leads, orders, range, perf]);
+  }, [staff, leads, range, perf]);
 
   const totals = useMemo(() => ({
     leads: stats.reduce((a, s) => a + s.myLeads, 0),

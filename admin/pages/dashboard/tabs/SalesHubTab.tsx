@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { fxRates, toEgp } from '../../../lib/money';
 import type { SalesTarget, StaffLeadPerformance } from '../../../types';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
@@ -70,10 +69,7 @@ interface MotivPost {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile }) => {
-  const { staffMembers, leads, orders, content } = useSiteData();
-  // Orders carry their own currency; the leaderboard prints ج. Without this a
-  // 1,200 SAR order counted as 1,200 EGP.
-  const rates = useMemo(() => fxRates(content), [content]);
+  const { staffMembers, leads } = useSiteData();
 
   // Only sales-role staff
   const salesTeam = useMemo(() =>
@@ -134,13 +130,8 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
         : myLeads.filter(l => isOpenLeadStatus(l.status)).length;
       const convRate = percent(convertedCount, totalLeads);
 
-      // Revenue from orders attributed to this staff
-      const myOrders = orders.filter(o =>
-        o.status === 'paid' &&
-        o.staffId === s.id &&
-        inRange(o.paidAt || o.createdAt, timeRange)
-      );
-      const revenue = myOrders.reduce((sum, o) => sum + toEgp(o.amount, o.currency, rates), 0);
+      // What this rep collected in the range: the database's figure (paid payments, in EGP), the one «أداء فريق المبيعات» names; 0 for an account that may not see money.
+      const revenue = agg?.revenueEgp ?? 0;
 
       // Monthly target
       const target = salesTargets.find(t => t.staffId === s.id && t.month === MONTH);
@@ -167,13 +158,12 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
         targetAmt,
         targetPct,
         followUpsToday,
-        myOrders: myOrders.length,
       };
     }).sort((a, b) => b.converted - a.converted);
   // perf belongs here: without it this memo runs once while the request is
   // still in flight, keeps the array fallback, and never recomputes when the
   // real counts arrive. Neither typecheck nor the test suite can see that.
-  }, [salesTeam, leads, orders, salesTargets, timeRange, perf, rates]);
+  }, [salesTeam, leads, salesTargets, timeRange, perf]);
 
   // ── Overall stats ──────────────────────────────────────────────────────
   const totals = useMemo(() => {

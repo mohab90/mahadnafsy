@@ -116,7 +116,8 @@ test('a sales figure printed in EGP was converted to EGP', () => {
   // orders.currency is enum('EGP','SAR','USD') and the leaderboard prints ج.
   assert.match(schema, /`currency` enum\('EGP','SAR','USD'\)/);
   const hub = codeOnly(read('admin/pages/dashboard/tabs/SalesHubTab.tsx'));
-  assert.ok(hub.includes('toEgp(o.amount, o.currency, rates)'),
+  // 6 Nov 2026: the figure is the database's, in EGP (payments.amount_egp, GET /api/admin/leads/staff-performance), not a sum of amounts in mixed currencies.
+  assert.ok(hub.includes('agg?.revenueEgp'),
     'a 1,200 SAR order counted as 1,200 EGP on the leaderboard');
   assert.ok(!hub.includes('sum + (o.amount || 0)'), 'no raw-amount sum may remain');
 });

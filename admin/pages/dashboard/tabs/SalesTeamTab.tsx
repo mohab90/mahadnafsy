@@ -27,7 +27,7 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
   salesTargets?: SalesTarget[];
   onOpenStaffProfile?: (staffId: string) => void;
 }) {
-  const { staffMembers, leads, orders } = useSiteData();
+  const { staffMembers, leads } = useSiteData();
   const [roleFilter, setRoleFilter] = useState('all');
   const [searchQ, setSearchQ] = useState('');
   // This month's figures per rep, computed in SQL. Counting them here out of
@@ -63,14 +63,11 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
     const monthConverted = counted
       ? counted.converted_leads
       : leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart && l.status === 'converted').length;
-    const monthRevenue = counted
-      ? Number(counted.revenue_egp) || 0
-      : orders.filter(o => o.staffId === s.id && (o.createdAt || '') >= monthStart)
-              .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+    const monthRevenue = Number(counted?.revenue_egp) || 0; // the database's figure; nothing is added up from a list of orders any more
     const target = salesTargets.find(t => t.staffId === s.id);
     const targetPct = target?.monthlyTarget ?? target?.targetEGP ? Math.min(100, Math.round((monthRevenue / (target.monthlyTarget ?? target.targetEGP)) * 100)) : null;
     return { ...s, monthLeads, monthConverted, monthRevenue, targetPct, target };
-  }), [filtered, leads, orders, salesTargets, monthStart, perf]);
+  }), [filtered, leads, salesTargets, monthStart, perf]);
 
   const roles = [...new Set(staffMembers.map(s => s.role))];
 

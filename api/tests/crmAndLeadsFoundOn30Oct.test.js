@@ -70,7 +70,7 @@ test('CRM insights starts its independent reads together and ranges the reminder
   assert.match(handler, /AND l\.next_follow_up_date < \?\s+ORDER BY \$\{FOLLOW_UP_DATE\} ASC/);
   assert.match(handler, /addDaysToDateOnly\(cairoToday\(\), 8\)/);
   const perf = route.slice(route.indexOf("'/api/admin/leads/staff-performance'"), route.indexOf("'/api/admin/leads/rep-revenue'"));
-  assert.match(perf, /\[\[createdRows\], \[contactedRows\], \[dueRows\]\] = await Promise\.all\(/);
+  assert.match(perf, /\[\[createdRows\], \[contactedRows\], \[dueRows\], \[revenueRows\]\] = await Promise\.all\(/, 'the reads, and the rep\'s revenue (6 Nov 2026), start together');
 });
 
 test('the counts the board, the table, the stale list and the duplicate finder answer are held for a few seconds and dropped by a write', () => {

@@ -33,3 +33,14 @@ test('the orders table no longer stops at 300: it offers the rest', () => {
   assert.ok(source.includes('setShownOrders(tabRows.length)'));
   assert.ok(source.includes('exportFilteredOrdersCsv(tabRows)'), 'the export is of every row');
 });
+
+test('the reps\' revenue on the sales hub and the staff performance screens is the database\'s, and neither downloads the orders to add it up', () => {
+  for (const file of ['SalesHubTab.tsx', 'StaffPerformanceTab.tsx']) {
+    const source = admin('pages', 'dashboard', 'tabs', file);
+    assert.ok(source.includes('agg?.revenueEgp'), `${file} reads revenueEgp`);
+    assert.equal(source.includes('orders.filter('), false, `${file} adds nothing up from orders`);
+  }
+  assert.equal(admin('pages', 'dashboard', 'tabs', 'SalesTeamTab.tsx').includes('orders.filter('), false);
+  const lists = admin('pages', 'dashboard', 'tabSiteLists.ts');
+  for (const line of ["sales_hub: ['leads', 'subscribers'],", "sales_team: ['leads'],", "staff_performance: ['leads'],"]) assert.ok(lists.includes(line), line);
+});

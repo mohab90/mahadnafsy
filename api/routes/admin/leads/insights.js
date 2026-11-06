@@ -22,6 +22,7 @@ const {
 
 const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueOn } = require('../../../lib/leadFollowUps');
 const { addDaysToDateOnly, cairoToday, monthRange } = require('../../../lib/dates');
+const { hasPermission, PERMISSIONS } = require('../../../constants/permissions');
 const { toEgp } = require('../../../lib/staffClientsView');
 const { resolveDataScope } = require('../../../constants/permissions');
 const { branchesFromScope } = require('../../../lib/leadAccess');
@@ -81,7 +82,14 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
     // this way too. The follow-ups due today are not bounded by the range: today is today. The sales hub counted them in the
     // browser out of the page of leads it had.
     const due = dueOn(cairoToday());
-    const [[createdRows], [contactedRows], [dueRows]] = await Promise.all([
+    // The money each rep collected in the range, in EGP: the payments that are paid or confirmed, by the rep who recorded them, as «أداء فريق المبيعات» gets it
+    // from /api/admin/reports/sales-performance (the same rows and the same amount_egp). «مركز المبيعات» and «أداء الموظفين» added it up in the browser out of the
+    // newest 500 orders and payments, so a busy month came out short and three screens named three different figures. Only to an account that may see money:
+    // the sales team's, the orders' or the books'.
+    const seesRevenue = Boolean(req.isSuperAdmin) || [PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_SALES, PERMISSIONS.VIEW_ORDERS, PERMISSIONS.VIEW_FINANCIAL]
+      .some(permission => hasPermission(req.staffRecord, permission));
+    const dateBound = from ? ' AND p.`date` >= ?' : '';
+    const [[createdRows], [contactedRows], [dueRows], [revenueRows]] = await Promise.all([
       pool.query(
         `SELECT l.assigned_sales_id AS staff_id, l.status AS status, COUNT(*) AS cnt
            FROM leads l
@@ -107,6 +115,14 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
           GROUP BY l.assigned_sales_id`,
         [...base, ...due.params],
       ),
+      seesRevenue
+        ? pool.query(
+          `SELECT p.staff_id AS staff_id, SUM(p.amount_egp) AS revenue
+             FROM payments p
+            WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.staff_id IS NOT NULL AND p.deleted_at IS NULL${dateBound}
+            GROUP BY p.staff_id`,
+          [req.tenantId, ...fromParam])
+        : Promise.resolve([[]]),
     ]);
     for (const r of createdRows) {
       const entry = entryFor(r.staff_id);
@@ -124,6 +140,11 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
     for (const r of dueRows) {
       const entry = entryFor(r.staff_id);
       if (entry) entry.followUpsToday = Number(r.cnt);
+    }
+
+    for (const r of revenueRows) {
+      const entry = entryFor(r.staff_id);
+      if (entry) entry.revenueEgp = Math.round((Number(r.revenue) || 0) * 100) / 100;
     }
 
     res.json({ from, byStaff });

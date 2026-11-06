@@ -1377,6 +1377,8 @@ export interface StaffLeadPerformance {
     contacted: number;
     /** Open leads of this rep due today, as every screen counts them (api/lib/leadFollowUps.js). */
     followUpsToday?: number;
+    /** What this rep collected in the range, in EGP (paid payments, api/routes/admin/leads/insights.js) — absent for an account that may not see money. */
+    revenueEgp?: number;
     /** Lead count per lowercased status, so a caller can derive lost, active or
      *  anything else without the response growing a field for each. */
     byStatus: Record<string, number>;

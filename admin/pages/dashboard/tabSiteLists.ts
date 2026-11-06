@@ -56,9 +56,11 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // counts and the performance figures as aggregates (LeadsTab.tsx). The 500 newest leads and clients it asked for
   // were 1 MB on the lab, and only ever a fallback that counted the page as the table.
   leads: [],
-  sales_hub: ['leads', 'orders', 'subscribers'],
-  sales_team: ['leads', 'orders'],
-  staff_performance: ['leads', 'orders'],
+  // The reps' revenue is the database's (revenueEgp of GET /api/admin/leads/staff-performance; «أداء فريق المبيعات» gets the same figure from /reports/sales-performance), so
+  // these three no longer download the newest 500 orders and payments to add it up.
+  sales_hub: ['leads', 'subscribers'],
+  sales_team: ['leads'],
+  staff_performance: ['leads'],
   sales_daqqi_schedule: [],
   marketing_hub: ['leads', 'subscribers', 'discounts', 'automationWorkflows'],
   campaigns: [], // the messaging hub reads its own server routes
