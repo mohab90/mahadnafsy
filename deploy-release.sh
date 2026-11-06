@@ -420,8 +420,13 @@ if [ -s /staging/mahad-db-backup ] && [ -d /etc/cron.d ]; then
   install -m 0644 /staging/mahad-db-backup /etc/cron.d/mahad-db-backup
   echo "  installed /etc/cron.d/mahad-db-backup (hourly verified backup, shipped off-site)"
   # A schedule made by hand before this one would now run the dump twice.
-  if crontab -l 2>/dev/null | grep -q 'mahad-db-backup'; then
-    echo "  NOTE: root's own crontab also runs mahad-db-backup — remove that line (crontab -e); /etc/cron.d/mahad-db-backup replaces it"
+  # The line is printed as found, so the owner sees exactly what to remove (deploy/OFFSITE_BACKUPS.md, «سطر crontab القديم»); the script's own lock makes an overlap a
+  # skipped run rather than two dumps, but the old line is still a second schedule nobody meant to keep.
+  OLD_CRON=$(crontab -l 2>/dev/null | grep 'mahad-db-backup' || true)
+  if [ -n "$OLD_CRON" ]; then
+    echo "  NOTE: root's own crontab also runs mahad-db-backup — /etc/cron.d/mahad-db-backup replaces it. The line found:"
+    printf '%s\n' "$OLD_CRON" | sed 's/^/        > /'
+    echo "        remove it: crontab -l > /root/crontab.bak.\$(date +%F) && crontab -l | grep -v 'mahad-db-backup' | crontab - && crontab -l"
   fi
 fi
 if [ -s /staging/mahad-restore-rehearsal ] && [ -d /etc/cron.d ]; then

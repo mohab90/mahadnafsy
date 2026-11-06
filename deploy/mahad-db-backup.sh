@@ -44,6 +44,20 @@ mkdir -p "$DIR"
 log()  { echo "$(date -Iseconds) $*" >> "$LOG"; }
 fail() { log "BACKUP FAILED: $*"; rm -f "$OUT"; exit 1; }
 
+# One run at a time. The hourly cron (:17), a run started by hand, and root's old crontab line (20 3 * * *, until it is removed — deploy/OFFSITE_BACKUPS.md) can
+# overlap, and two dumps of the same database at once slow each other down and both write to the same off-site folder. A run that finds the lock held does nothing
+# and says so; the exit status stays 0 because the run holding the lock is the one that answers for the backup (its own exit 1 / 3 still alerts). If the lock
+# cannot be taken at all (no flock, or the lock file is not writable) the run goes ahead and logs a warning: a backup is never skipped for want of a lock file.
+LOCK="${MAHAD_BACKUP_LOCK:-/var/lock/mahad-db-backup.lock}"
+if command -v flock >/dev/null 2>&1 && { exec 9>"$LOCK"; } 2>/dev/null; then
+  if ! flock -n 9; then
+    log "SKIPPED: another backup run holds $LOCK; this one did nothing"
+    exit 0
+  fi
+else
+  log "WARNING no lock: flock is missing or $LOCK is not writable; overlapping runs are not prevented"
+fi
+
 # With binary logging on (deploy/mariadb/60-mahad-binlog.cnf) the dump records
 # the binlog position it was taken at, as a comment — the point a
 # point-in-time restore replays from (mahad-offsite fetch-pitr). MariaDB takes

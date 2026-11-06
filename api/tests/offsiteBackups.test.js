@@ -234,6 +234,7 @@ function backupRun(s, { offsiteEnv = true, logBin = '0', rcloneFail = false } = 
     MAHAD_BACKUP_ENV_FILE: path.join(s.dir, 'none.env'),
     MAHAD_BACKUP_DIR: path.join(s.dir, 'backups'),
     MAHAD_BACKUP_LOG: path.join(s.dir, 'backup.log'),
+    MAHAD_BACKUP_LOCK: path.join(s.dir, 'backup.lock'),
     MAHAD_BACKUP_MIN_BYTES: '1',
     MAHAD_OFFSITE_BIN: OFFSITE,
     ...(rcloneFail ? { RCLONE_FAIL: '1' } : {}),

@@ -97,17 +97,62 @@ tail -n 30 /var/log/mahad-offsite.log
 
 من غير binlog أقصى حاجة نرجع لها هي آخر dump (لحد ساعة ضايعة). مع الـbinlog نرجع لأي دقيقة (لحد 15 دقيقة ضايعة لو السيرفر نفسه راح).
 
+**الترتيب (متغيّرش):** (1) إعدادات النسخة الخارجية وتجربتها (القسمين 2 و3) ← (2) الـbinlog (الخطوات تحت) ← (3) مسح سطر crontab القديم (القسم 4-ب). السبب: الـbinlog من غير نسخة خارجية شغّالة بيملا الهارد من غير ما حد يستفيد منه، ومسح السطر القديم قبل ما النسخة الخارجية تتجرّب بيشيل الجدول الوحيد اللي كان شغّال.
+
 **التشغيل محتاج restart لـMariaDB (ثواني) — اعمله في وقت هادي. النشر مش بيشغّله لوحده؛ بيطبع `NOTE: MariaDB binary logs are OFF` لحد ما يتشغّل.**
+
+### قبل ما تبدأ (فحوصات — لو واحد منهم مش تمام، وقّف)
+
+```bash
+df -h /var/log                      # لازم يكون فاضل على الأقل 5 جيجا (الـlogs المحلية بتتحفظ 10 أيام؛ الحجم الفعلي بيتعرف بعد أول يوم — شوف تحت)
+mysql -V                            # لازم يقول MariaDB (10.2 أو أحدث). لو MySQL مش MariaDB، وقّف: الملف مكتوب لـMariaDB
+systemctl is-active mariadb         # لازم active
+grep -rnE "log_bin|server_id" /etc/mysql/ 2>/dev/null  # لازم ما يطلعش حاجة غير تعليقات: لو فيه log_bin متضبط في ملف تاني، دي إعدادات موجودة ومحتاجة قرار
+mysql -u root -N -e 'SELECT @@log_bin'   # لازم 0 دلوقتي
+ls /var/backups/mahad-db | tail -3  # آخر dump موجود وحجمه معقول: ده شبكة الأمان لو MariaDB ما رجعتش تقوم
+```
+
+### التشغيل
 
 ```bash
 install -m 0644 /usr/local/share/mahad/60-mahad-binlog.cnf /etc/mysql/mariadb.conf.d/60-mahad-binlog.cnf
 mkdir -p /var/log/mysql && chown mysql:mysql /var/log/mysql
 systemctl restart mariadb
+systemctl is-active mariadb               # لازم active
 mysql -u root -N -e 'SELECT @@log_bin'    # لازم 1
 mahad-offsite ship-binlogs && mahad-offsite status
 ```
 
-الـdump بالساعة بعد كده بيسجّل مكانه في الـbinlog (`--master-data=2`)، و`ship-binlogs` بيبعت كل binlog مقفول كل 15 دقيقة (وبيقفل الحالي لو اتكتب فيه حاجة). MariaDB بيمسح نسخه المحلية بعد 10 أيام (`expire_logs_days`).
+الـdump بالساعة بعد كده بيسجّل مكانه في الـbinlog (`--master-data=2`) تلقائيًا، و`ship-binlogs` بيبعت كل binlog مقفول كل 15 دقيقة (وبيقفل الحالي لو اتكتب فيه حاجة). MariaDB بيمسح نسخه المحلية بعد 10 أيام (`expire_logs_days`).
+
+**بعد أول يوم:** `du -sh /var/log/mysql` و`df -h /var/log`. لو الحجم كبير على الهارد: قلّل `expire_logs_days` في الملف (مثلًا 3 لأن النسخة الخارجية محتفظة 35 يوم) واعمل `systemctl restart mariadb`.
+
+### الرجوع (لو حاجة غلط — الـbinlog، مش البيانات، هو اللي بيتشال)
+
+```bash
+rm /etc/mysql/mariadb.conf.d/60-mahad-binlog.cnf
+systemctl restart mariadb
+mysql -u root -N -e 'SELECT @@log_bin'    # لازم 0
+mahad-offsite ship-binlogs                # بيقول إنه idle (الـbinlog مقفول)
+```
+
+الـdump بالساعة بيرجع من غير `--master-data` لوحده (بيسأل MariaDB). ملفات `/var/log/mysql/mariadb-bin.*` اللي اتكتبت بتفضل على الهارد لحد ما تمسحها بإيدك (`rm /var/log/mysql/mariadb-bin.*`) — مسحها آمن بعد الرجوع، بس **مش** قبل ما تتأكد إن آخر `ship-binlogs` نجح لو كنت محتاجها لاسترجاع.
+
+## 4-ب. سطر crontab القديم — The old crontab line
+
+قبل النسخة الخارجية كان فيه سطر في crontab بتاع root بيشغّل السكريبت ده `20 3 * * *` (الساعة 3:20). دلوقتي الجدول الصح هو `/etc/cron.d/mahad-db-backup` (كل ساعة، الدقيقة 17). السطر القديم بيعمل نسخة تانية بنفس السكريبت. القفل جوه السكريبت (`flock -n`) بيخلّي التداخل **تشغيلة بتتخطّى وبتسجّل سطر `SKIPPED` في `/var/log/mahad-db-backup.log`**، بس السطر القديم لسه جدول تاني ما حدش عايزه. `deploy-release.sh` بيطبع السطر بالظبط اللي لقاه تحت `NOTE: root's own crontab also runs mahad-db-backup`.
+
+**الترتيب:** بعد ما النسخة الخارجية اشتغلت (القسم 3: `bash /usr/local/bin/mahad-db-backup.sh; echo "exit=$?"` طلع 0) وبعد الـbinlog لو هتشغّله.
+
+```bash
+crontab -l | grep mahad-db-backup                        # السطر اللي هيتمسح (لازم يطلع سطر واحد على الأقل)
+crontab -l > /root/crontab.bak.$(date +%F)               # نسخة من الـcrontab كله قبل أي تغيير
+crontab -l | grep -v 'mahad-db-backup' | crontab -       # امسح السطور اللي فيها mahad-db-backup بس
+crontab -l                                               # تأكيد: السطور التانية (لو فيه) لسه موجودة والقديم راح
+cat /etc/cron.d/mahad-db-backup | grep -v '^#'           # والجدول الجديد لسه موجود
+```
+
+لو مسحت حاجة غلط: `crontab /root/crontab.bak.<التاريخ>` بيرجّع الـcrontab زي ما كان.
 
 ## 5. الاسترجاع — Restore
 
