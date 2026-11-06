@@ -238,7 +238,6 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   const auth = authRouteSource();
   const onlineClients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
   const financialTab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
-  const financialRows = read('admin/pages/dashboard/tabs/financial/useFinancialOrdersData.ts');
   const subscriberRoute = read('api/routes/admin/subscribers.js');
   const subscriberPayments = read('api/routes/subscriber-payments.js');
   const accessPanel = read('admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx');
@@ -265,7 +264,7 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   assert.match(subscriberPayments, /await conn\.commit\(\)/);
   assert.match(financialTab, /mysqlAdmin\.getFinancialPnl/);
   assert.match(financialTab, /ledgerAllPnl\?\.totalRevenue/);
-  assert.match(financialRows, /onlinePaymentRefs/);
+  assert.ok(read('api/routes/finance-payments-register.js').includes('revenue-breakdown'), 'the revenue split is the server\'s, from the ledger\'s paid payments');
   assert.match(subscriberRoute, /delete crmData\.paymentHistory/);
   // The panel that edits a client's price shows what the system recorded as
   // paid with no input for it: that moves only through a payment. What was

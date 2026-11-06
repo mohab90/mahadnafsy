@@ -1,7 +1,8 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { copyText } from '../../../../shared/copyText';
 import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useAnalyticsSummary } from '../hooks/useAnalyticsSummary';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDay, cairoMonthOnly } from '../../../../shared/cairoDate';
@@ -21,7 +22,7 @@ const _aiToEGP = (amt: number, cur: string) => toEgp(amt, cur);
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
-    leads, leadStats, subscribers, orders, courses, bundles, therapists, consultations,
+    leads, leadStats, subscribers, courses, bundles, therapists, consultations,
     adminAiConfig,
   } = useSiteData();
 
@@ -30,6 +31,12 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  // The money and the order counts the AI is told are the database's (the books, and the analytics summary), not a sum over the newest 500 orders.
+  const [books, setBooks] = useState<{ totalEgp: number; todayEgp: number; payments: number } | null>(null);
+  useEffect(() => { mysqlAdmin.getOverviewRevenue().then(setBooks).catch(() => setBooks(null)); }, []);
+  const { summary: orderSummary } = useAnalyticsSummary('all');
+  const paidOrdersCount = orderSummary?.orders ? orderSummary.orders.inRange.reduce((sum, row) => sum + row.count, 0) : null;
+  const pendingOrdersCount = orderSummary?.orders?.pending ?? null;
   const aiChatEndRef = useRef<HTMLDivElement>(null);
 
   const _aiAllManual = useMemo(() =>
@@ -79,17 +86,15 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   // ── Daily stats ────────────────────────────────────────────────
   const _todayLeads   = leads.filter(l => _isToday(l.createdAt||''));
   const _todaySubs    = subscribers.filter(s => _isToday(s.createdAt||''));
-  const _todayOrders  = orders.filter(o => o.status==='paid' && _isToday(o.paidAt||o.createdAt||''));
   const _todayManual  = _allManual.filter(p => _isToday(p.at||''));
-  const _todayOnlineRev = _todayOrders.reduce((s,o)=>s+_toEGP(o.amount,o.currency),0);
-  const _todayManualRev = _todayManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
+  // today's money: the books' (every paid payment recorded today); until it answers, the desk payments on the clients that are loaded
+  const _todayRev = books ? books.todayEgp : _todayManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
 
   // ── Branch stats (pre-memoized above) ─────────────────────────
   const _branchStats = _aiBranchStats;
 
   // Total revenue
-  const _totalRevEGP = orders.filter(o=>o.status==='paid').reduce((s,o)=>s+_toEGP(o.amount,o.currency),0)
-    + _allManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
+  const _totalRevEGP = books ? books.totalEgp : _allManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
 
   // Only aggregate, non-identifying data crosses the third-party AI boundary.
   // Customer names, phones, messages, health details and payment notes stay local.
@@ -118,10 +123,8 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
 ## اليوم
 Leads جدد: ${_todayLeads.length}
 مشتركون جدد: ${_todaySubs.length}
-طلبات أونلاين مدفوعة: ${_todayOrders.length}
 دفعات يدوية: ${_todayManual.length}
-إيراد أونلاين: ${Math.round(_todayOnlineRev).toLocaleString('ar-EG-u-nu-latn')} ج.م
-إيراد يدوي: ${Math.round(_todayManualRev).toLocaleString('ar-EG-u-nu-latn')} ج.م
+إيراد اليوم: ${Math.round(_todayRev).toLocaleString('ar-EG-u-nu-latn')} ج.م
 
 ## الإجماليات
 المشتركون: ${subscribers.length} (نشط ${subscribers.filter(s => s.status === 'active').length}، موقوف ${subscribers.filter(s => s.status === 'paused').length})
@@ -129,7 +132,7 @@ Leads: ${leadTotal} (جديد ${leadBy('new')}، تواصل ${leadBy('contacted'
 معدل التحويل: ${convRate}%
 الاستشارات: ${consultations.length} (انتظار ${consultations.filter(c => c.status === 'pending').length}، مؤكد ${consultations.filter(c => c.status === 'confirmed').length}، مكتمل ${consultations.filter(c => c.status === 'completed').length})
 الكورسات: ${courses.length} | المعالجون: ${therapists.length} | المسارات: ${bundles.length}
-الطلبات المدفوعة: ${orders.filter(o => o.status === 'paid').length} | المعلقة: ${orders.filter(o => o.status === 'pending').length}
+الطلبات المدفوعة: ${paidOrdersCount ?? '—'} | المعلقة: ${pendingOrdersCount ?? '—'}
 إجمالي الإيراد التقريبي: ${Math.round(totalRevEGP).toLocaleString('ar-EG-u-nu-latn')} ج.م
 
 ## الفروع (بيانات مجمعة)
@@ -307,7 +310,7 @@ ${customPrompt}
           {[
             { label: 'عملاء اليوم', value: _todayLeads.length, accent: 'bg-red-400/30', icon: '📥' },
             { label: 'مشتركون اليوم', value: _todaySubs.length, accent: 'bg-green-400/30', icon: '✅' },
-            { label: 'إيراد اليوم', value: `${Math.round(_todayOnlineRev+_todayManualRev).toLocaleString('ar-EG-u-nu-latn')} ج`, accent: 'bg-yellow-400/30', icon: '💰' },
+            { label: 'إيراد اليوم', value: `${Math.round(_todayRev).toLocaleString('ar-EG-u-nu-latn')} ج`, accent: 'bg-yellow-400/30', icon: '💰' },
             { label: 'دفعات يدوية', value: _todayManual.length, accent: 'bg-blue-400/30', icon: '💳' },
           ].map(s => (
             <div key={s.label} className={`${s.accent} rounded-xl px-3 py-2 text-center backdrop-blur-sm`}>

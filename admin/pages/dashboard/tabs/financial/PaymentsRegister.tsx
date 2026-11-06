@@ -62,12 +62,12 @@ function printReceipt(row: RegisterRow) {
  * spellings merged, who recorded it and the client — filtered and paged by the
  * server, so it does not depend on which client histories the browser loaded.
  */
-export function PaymentsRegister({ branch, initialMethod }: { branch?: string; initialMethod?: string }) {
+export function PaymentsRegister({ branch, initialMethod, initialFrom, initialTo }: { branch?: string; initialMethod?: string; initialFrom?: string; initialTo?: string }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [search, setSearch] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [from, setFrom] = useState(initialFrom || '');
+  const [to, setTo] = useState(initialTo || '');
   const [channel, setChannel] = useState('');
   const [method, setMethod] = useState(initialMethod || '');
   const [type, setType] = useState('');
@@ -81,6 +81,8 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
   const [byNumber, setByNumber] = useState(false);
 
   useEffect(() => { setMethod(initialMethod || ''); if (initialMethod) setChannel(''); }, [initialMethod]);
+  // a box opened from «الخزائن» arrives with its month
+  useEffect(() => { if (initialFrom !== undefined) setFrom(initialFrom); if (initialTo !== undefined) setTo(initialTo); }, [initialFrom, initialTo]);
   useEffect(() => { const t = setTimeout(() => setSearch(q.trim()), 350); return () => clearTimeout(t); }, [q]);
 
   const query = useMemo(() => {

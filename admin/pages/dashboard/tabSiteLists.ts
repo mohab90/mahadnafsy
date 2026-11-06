@@ -39,7 +39,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // The accounts: the orders, and the clients the ?branch= filter and the
   // refund popup match them against. The expenses are not here: the screen asks the server for them a page at a time (useExpensesPage).
   orders: ['orders', 'subscribers'],
-  financial: ['orders', 'subscribers'],
+  financial: ['subscribers'], // the revenue breakdown and the expenses come from the server; the reports ask for the orders when they are asked for
   // The branch's books: its expenses come from the server a page at a time (useExpensesPage); its clients' plans, the payments waiting for review and the person a payment is for
   // come from the server (FinancialBranchTab).
   daqqi_accounting: [],
@@ -68,7 +68,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.
   // The orders, leads and clients are counted by the server (GET /api/admin/analytics-summary).
   daqqi_stats: ['discounts', 'contactMessages'],
-  ask_ai: ['leads', 'subscribers', 'orders', 'settings'],
+  ask_ai: ['leads', 'subscribers', 'settings'], // the order counts and the money are the server's (the books, the analytics summary)
   // The Dokki screens: the rounds and their attendees. The clients a round's
   // pickers offer, and the few it looks up, come from the server
   // (api/lib/dokkiClients.js), not from the context's list.
@@ -104,7 +104,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   lecturer_applications: [],
   // سجل النظام searches the log on the server; the full backup it offers
   // writes out the loaded lists.
-  activity: ['testimonials', 'subscribers', 'leads', 'orders', 'discounts'],
+  activity: ['testimonials', 'subscribers', 'leads', 'discounts'], // the backup asks for the orders when it is clicked
   // The academy (CoursesTab): each view asks for what it reads as well.
   courses: ['subscribers'],
   lectures: ['subscribers'],

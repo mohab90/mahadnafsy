@@ -78,9 +78,11 @@ test('both loads of the orders go through the one mapper', () => {
 });
 
 test('the vault and the export ask the same question', () => {
-  for (const file of ['admin/pages/dashboard/tabs/FinancialTab.tsx', 'admin/pages/dashboard/tabs/financial/financialExports.ts']) {
-    const src = read(file);
-    assert.ok(src.includes('isOnlinePaidOrder'), `${file} decides "online" for itself`);
-    assert.ok(!src.includes("!== 'crm'"), `${file} still tests the mark inline`);
-  }
+  // 6 Nov 2026: the vault's online/desk split is the server's (GET /api/admin/finance/revenue-breakdown: Paymob by source or method); the screen decides nothing
+  const tab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
+  assert.ok(tab.includes('breakdown?.online'), 'the vault takes the online money from the server');
+  assert.ok(!tab.includes("!== 'crm'"), 'FinancialTab still tests the mark inline');
+  const exported = read('admin/pages/dashboard/tabs/financial/financialExports.ts');
+  assert.ok(exported.includes('isOnlinePaidOrder'), 'the export decides "online" with the shared rule');
+  assert.ok(!exported.includes("!== 'crm'"), 'the export still tests the mark inline');
 });

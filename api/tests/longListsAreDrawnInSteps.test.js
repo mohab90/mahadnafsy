@@ -22,7 +22,7 @@ test('the expenses screen asks the server for a page and for the figures, and ad
   assert.ok(screen.includes('expensePage.byCategory.reduce'), 'the category split is the database sums, converted at the screen rates');
   assert.equal(screen.includes('_allExpenses') || screen.includes('expenses.filter('), false, 'the screen no longer takes the whole list');
   const lists = admin('pages', 'dashboard', 'tabSiteLists.ts');
-  assert.ok(lists.includes("financial: ['orders', 'subscribers'],"), 'the financial tab no longer downloads the expenses');
+  assert.ok(lists.includes("financial: ['subscribers'],"), 'the financial tab downloads neither the expenses nor the orders');
   assert.ok(lists.includes('daqqi_accounting: [],'), 'nor does the branch\'s books');
 });
 
@@ -43,4 +43,19 @@ test('the reps\' revenue on the sales hub and the staff performance screens is t
   assert.equal(admin('pages', 'dashboard', 'tabs', 'SalesTeamTab.tsx').includes('orders.filter('), false);
   const lists = admin('pages', 'dashboard', 'tabSiteLists.ts');
   for (const line of ["sales_hub: ['leads', 'subscribers'],", "sales_team: ['leads'],", "staff_performance: ['leads'],"]) assert.ok(lists.includes(line), line);
+});
+
+test('the accounts, AI and activity screens no longer download the orders; the accounts overview is the server\'s breakdown', () => {
+  const tab = admin('pages', 'dashboard', 'tabs', 'FinancialTab.tsx');
+  assert.ok(tab.includes('useRevenueBreakdown('));
+  assert.equal(tab.includes('getPayments('), false, 'the screen no longer downloads up to 50,000 payments');
+  assert.equal(tab.includes('allManualPayments'), false, 'nothing is added up from the clients\' loaded payment histories');
+  assert.ok(tab.includes('ordersForExport'), 'the two reports ask for the orders when they are asked for');
+  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'financial', 'useFinancialOrdersData.ts')), false, 'the browser-side revenue rows are gone');
+  const ai = admin('pages', 'dashboard', 'tabs', 'AskAITab.tsx');
+  assert.equal(ai.includes('orders.filter('), false, 'the AI screen counts no orders itself');
+  assert.ok(ai.includes('getOverviewRevenue'), 'its money is the books\'');
+  assert.equal(admin('pages', 'dashboard', 'tabs', 'ActivityTab.tsx').includes('listAllOrders(2000)'), true, 'the backup asks for the orders when it is clicked');
+  const lists = admin('pages', 'dashboard', 'tabSiteLists.ts');
+  assert.equal(/ask_ai: \[[^\]]*'orders'/.test(lists) || /activity: \[[^\]]*'orders'/.test(lists), false);
 });

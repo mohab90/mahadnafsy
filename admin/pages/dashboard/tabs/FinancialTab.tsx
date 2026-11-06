@@ -9,7 +9,7 @@ import { ReceiptGapsAlert } from './daqqi/ReceiptGapsAlert';
 import { PaymobPaymentsPanel } from './financial/PaymobPaymentsPanel';
 import { PaymentsRegister } from './financial/PaymentsRegister';
 import { useFinancialCommissionsData } from './financial/useFinancialCommissionsData';
-import { useFinancialOrdersData } from './financial/useFinancialOrdersData';
+import { useRevenueBreakdown } from './financial/useRevenueBreakdown';
 import { usePaymentProofsReview } from './financial/usePaymentProofsReview';
 import { exportCSV, exportExpensesPdfReport, exportFullFinancialReport, exportPaymentsExcelReport } from './financial/financialExports';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -25,7 +25,7 @@ import { useExpensesPage } from './financial/useExpensesPage';
 import { useAggregateFinance } from '../../../hooks/useAggregateFinance';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
-import { isOnlinePaidOrder } from '../../../context/site-data-hooks/normalizeOrders';
+import { normalizeOrders } from '../../../context/site-data-hooks/normalizeOrders';
 import { bookingTierFields } from '../../../lib/bookingIdentity';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -52,12 +52,12 @@ const FinanceOperationsPanel = React.lazy(() => import('./financial/FinanceOpera
 const FinancialStatementPanel = React.lazy(() => import('./financial/FinancialStatementPanel'));
 
 /**
- * The books. The lists it reads — the orders, the clients, the expenses — are handed in: «الحسابات» (FinancialMainTab)
+ * The books. The lists it reads — the clients — are handed in (the orders and the expenses come from the server, a page or a sum at a time): «الحسابات» (FinancialMainTab)
  * reads the context's, «حسابات الدقي» (FinancialBranchTab) holds no list of clients at all and asks the server for
  * what it shows of them (useBranchAccounting, the payment search).
  */
-export default function FinancialTab({ notify, branchFilter, orders: _allOrders, subscribers: _allSubscribers }: {
-  notify: NotifyFn; branchFilter?: string; orders: OrderItem[]; subscribers: SubscriberItem[];
+export default function FinancialTab({ notify, branchFilter, subscribers: _allSubscribers }: {
+  notify: NotifyFn; branchFilter?: string; subscribers: SubscriberItem[];
 }) {
   const {
     recordSubscriberPayment, reloadSubscribers, staffMembers,
@@ -86,9 +86,6 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
 
   // Apply branch filter: daqqi_accounting passes branchFilter='daqqi' to restrict data to that branch only
   const subscribers = branchFilter ? _allSubscribers.filter(s => branchMatches(s.branch, branchFilter)) : _allSubscribers;
-  // Online (Paymob) orders don't carry branch — exclude when filtering a specific branch (they belong to online branch)
-  const orders = branchFilter ? [] : _allOrders;
-
   // Expense management state
   const [expenseCategories, setExpenseCategories] = useState<string[]>(['أخرى']);
   useEffect(() => {
@@ -175,6 +172,8 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   // ── خزنة date filter ──
   const currentMonth = cairoMonthOnly();
   const [vaultMonth, setVaultMonth] = useState(currentMonth);
+  const [registerRange, setRegisterRange] = useState<{ from?: string; to?: string }>({});
+  const breakdown = useRevenueBreakdown(vaultMonth, branchFilter, financialSubTab === 'overview' || financialSubTab === 'pl' || financialSubTab === 'monthly');
 
   // ── Global date range filter (for overview / P&L) ──
   const [globalDateFrom, setGlobalDateFrom] = useState('');
@@ -207,24 +206,18 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
     return () => { active = false; };
   }, [branchFilter, globalDateFrom, globalDateTo, aggregate]);
 
-  // ── Orders tab extra filters ──
-  const [orderSearch, setOrderSearch] = useState('');
-  const [orderDateFrom, setOrderDateFrom] = useState('');
-  const [orderDateTo, setOrderDateTo] = useState('');
-  const [orderTypeFilter, setOrderTypeFilter] = useState('');
-  const [ordersPage, setOrdersPage] = useState(1);
-  const ORDERS_PAGE_SIZE = 50;
-
+  // The online orders the two reports list are asked for when a report is asked for, not downloaded with the screen. A branch's books hold none.
+  const ordersForExport = async () => (branchFilter ? [] : normalizeOrders(await mysqlAdmin.listAllOrders(2000)));
   const exportFullReport = async () => {
     if (!ledgerAllPnl) return notify('error', 'تعذر التصدير: دفتر الأستاذ غير متاح.');
     try {
-      exportFullFinancialReport({ content, orders, subscribers, expenses: await expensePage.all(true), officialTotals: ledgerAllPnl });
+      exportFullFinancialReport({ content, orders: await ordersForExport(), subscribers, expenses: await expensePage.all(true), officialTotals: ledgerAllPnl });
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تصدير التقرير المالي.');
     }
   };
-  const exportPaymentsExcel = () => {
-    try { exportPaymentsExcelReport({ content, orders, subscribers }); }
+  const exportPaymentsExcel = async () => {
+    try { exportPaymentsExcelReport({ content, orders: await ordersForExport(), subscribers }); }
     catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر تصدير المدفوعات.'); }
   };
   const exportExpensesPDF = async () => {
@@ -241,35 +234,6 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   const [commissionFrom, setCommissionFrom] = useState(() => cairoMonthStart(2).slice(0, 7));
   const [commissionTo, setCommissionTo] = useState(cairoMonthOnly());
   const [commissionViewMode, setCommissionViewMode] = useState<'single' | 'range'>('single');
-  const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean; status?: string; staffName?: string | null }> | null>(null);
-  const [loadingDbPayments, setLoadingDbPayments] = useState(false);
-
-  const loadDbPayments = async () => {
-    setLoadingDbPayments(true);
-    try {
-      // The branch's own, from the server. Unfiltered, «محاسبة الدقي» listed
-      // every payment in the company — the riyal and online ones with them —
-      // under Dokki's revenue and boxes.
-      const rows = await mysqlAdmin.getPayments(undefined, undefined, undefined, branchFilter) as unknown as typeof dbPayments;
-      setDbPayments(rows ?? null);
-    } catch { /* ignore */ }
-    finally { setLoadingDbPayments(false); }
-  };
-  // Asking for one box's transactions is a promise to show them, so the rows
-  // are fetched rather than assumed. The manual payments are loaded on demand —
-  // the subscriber bootstrap carries only the history it happened to include —
-  // so clicking a box in «الخزائن» used to filter whatever was already in the
-  // browser, which for most boxes was nothing at all.
-  // The rows are the branch's: another branch asks again. This said loadDbPayments «only reads setState setters», and it
-  // reads branchFilter — the screen kept the rows it had loaded for the branch it was opened with.
-  useEffect(() => { setDbPayments(null); }, [branchFilter]);
-  useEffect(() => {
-    if ((orderMethodFilter || financialSubTab === 'overview') && dbPayments === null && !loadingDbPayments) void loadDbPayments();
-    // loadDbPayments is rebuilt every render and reads only branchFilter (reset above) and setters; listing it would
-    // re-run this on every render, which the null check already makes harmless but pointless.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderMethodFilter, financialSubTab, dbPayments, loadingDbPayments]);
-
   const [incomeSubjectId, setIncomeSubjectId] = useState('');
   const [incomeDraft, setIncomeDraft] = useState<PaymentDraft>(blankPaymentDraft);
 
@@ -343,23 +307,6 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   const sarRate = fxFresh ? Number(content['exchange.sar_to_egp']) || 0 : 0;
   const usdRate = fxFresh ? Number(content['exchange.usd_to_egp']) || 0 : 0;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
-  const paidOrders = orders.filter(isOnlinePaidOrder);
-  const paidOrderRefs = new Set<string>();
-  paidOrders.forEach(order => {
-    paidOrderRefs.add(String(order.id));
-    if (order.transactionId) paidOrderRefs.add(String(order.transactionId));
-  });
-  // All paymentHistory entries across subscribers — only confirmed/paid entries count toward revenue
-  const allPaymentHistory = subscribers.flatMap(s => s.paymentHistory ?? []);
-  // Truly manual payments: only paid status, exclude Paymob online entries (already in paidOrders above)
-  const allManualPayments = allPaymentHistory.filter(p =>
-    (!p.status || p.status === 'paid') &&
-    !String(p.paymentMethod || '').toLowerCase().includes('paymob') &&
-    !paidOrderRefs.has(String(p.id)) &&
-    !(p.transactionId && paidOrderRefs.has(String(p.transactionId)))
-  );
-  const onlineRevenueEGP = paidOrders.reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-  const manualRevenueEGP = allManualPayments.reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
   // Official financial statements are ledger-only. Never replace an unavailable
   // ledger with browser-derived order/payment totals that can diverge by role.
   const totalRevenueEGP = ledgerAllPnl?.totalRevenue ?? 0;
@@ -374,84 +321,24 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   const gProfit = ledgerFilteredPnl?.netProfit ?? 0;
   const gMargin = ledgerFilteredPnl?.margin ?? 0;
 
-  // ── إيرادات لكل كورس ──
-  const revenueByCourse = courses.map(c => {
-    const manual = allManualPayments
-      .filter(p => p.courseId === c.id && p.paymentType === 'course')
-      .reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
-    const online = paidOrders
-      .filter(o => o.type === 'course' && o.courseId === c.id)
-      .reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-    return { id: c.id, title: c.titleAr || c.title, manual, online, total: manual + online };
-  }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
-
-  // Helper: get payment method from entry (new field first, then scan note for compat)
-  // What الإعدادات lists, plus every box with money against it.
+  // ── Revenue by type, course, month and box: the database's sums of the paid payments (GET /api/admin/finance/revenue-breakdown) ──
   const PAYMENT_METHODS: string[] = usePaymentBoxesWithHistory(content['finance.payment_methods']);
-  const getMethod = (p: { paymentMethod?: string; note?: string }) =>
-    p.paymentMethod || PAYMENT_METHODS.find(m => (p.note || '').includes(m)) || '';
-  const {
-    allRows,
-    onlineRows,
-    manualRows,
-    filteredRows,
-    pageRows,
-    byType,
-    totalFiltered,
-    pageCount,
-    hasFilters,
-  } = useFinancialOrdersData({
-    paidOrders,
-    subscribers,
-    dbPayments,
-    orderMethodFilter,
-    orderSearch,
-    orderDateFrom,
-    orderDateTo,
-    orderTypeFilter,
-    ordersPage,
-    pageSize: ORDERS_PAGE_SIZE,
-    toEGP,
-    getMethod,
-  });
-
-
-  // A box on «الخزائن» shows one month's total, so opening it has to show
-  // that month's transactions. It used to set the method and nothing else, so
-  // the list beneath carried every month the box had ever taken money in and
-  // added up to several times the figure that was clicked.
+  const revenueByCourse = breakdown?.byCourse ?? [];
+  // A box on «الخزائن» shows one month's total, so opening it opens the register on that month's transactions of that box.
   const openBox = (method: string) => {
     const [year, month] = vaultMonth.split('-').map(Number);
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     setFinancialSubTab('orders');
     setOrderMethodFilter(method);
-    setOrderDateFrom(`${vaultMonth}-01`);
-    setOrderDateTo(`${vaultMonth}-${String(lastDay).padStart(2, '0')}`);
-    setOrdersPage(1);
+    setRegisterRange({ from: `${vaultMonth}-01`, to: `${vaultMonth}-${String(lastDay).padStart(2, '0')}` });
   };
 
-  // «الخزائن» is built from the same rows a box opens onto, so the figure on
-  // a box and the transactions behind it are one list counted twice, not two
-  // lists that may disagree. It used to be counted out of the subscriber
-  // bootstrap, which carries only the history it happened to include: on
-  // staging, September showed Paymob alone while the payments table held cash
-  // and instapay for the same month — the box you meant to click was not there.
-  const revenueByMethodFiltered: Record<string, number> = {};
-  for (const row of manualRows) {
-    if (!cairoDay(row.date).startsWith(vaultMonth)) continue;
-    revenueByMethodFiltered[row.channel] = (revenueByMethodFiltered[row.channel] || 0) + row.amountEGP;
-  }
-  const onlineRevenueFiltered = paidOrders.filter(o => cairoDay(o.paidAt || o.createdAt).startsWith(vaultMonth)).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
+  const revenueByMethodFiltered: Record<string, number> = breakdown?.channels ?? {};
+  const onlineRevenueFiltered = breakdown?.online ?? 0;
 
-  const manualByType = (type: string) => allManualPayments.filter(p => p.paymentType === type).reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
   const revenueByType = {
-    course: paidOrders.filter(o => o.type === 'course').reduce((s, o) => s + toEGP(o.amount, o.currency), 0) + manualByType('course'),
-    bundle: paidOrders.filter(o => o.type === 'bundle').reduce((s, o) => s + toEGP(o.amount, o.currency), 0),
-    consultation: paidOrders.filter(o => o.type === 'consultation').reduce((s, o) => s + toEGP(o.amount, o.currency), 0) + manualByType('consultation'),
-    certificate: manualByType('certificate'),
-    book: manualByType('book'),
-    carneh: manualByType('carneh'),
-    other: allManualPayments.filter(p => !p.paymentType || p.paymentType === 'other').reduce((s, p) => s + toEGP(p.amount, p.currency), 0),
+    course: breakdown?.byType.course ?? 0, bundle: breakdown?.byType.bundle ?? 0, consultation: breakdown?.byType.consultation ?? 0,
+    certificate: breakdown?.byType.certificate ?? 0, book: breakdown?.byType.book ?? 0, carneh: breakdown?.byType.carneh ?? 0, other: breakdown?.byType.other ?? 0,
   };
   // The category split and the filtered total are the database's sums over every expense, converted here at the screen's rates as before
   // (api/routes/admin-operations.js GET /api/admin/expenses/page); the rows are the page on screen.
@@ -466,26 +353,8 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
   const EXPENSE_CATS = expenseCategories;
   const expenseBranch = branchFilter === 'tagamoa' ? 'TAGAMOA' : branchFilter ? 'DAQQI' : null;
 
-  const monthlyRevenue = useMemo(() => {
-    const data: Record<string, { online: number; manual: number }> = {};
-    for (let i = 0; i < 12; i++) {
-      data[cairoMonthStart(i).slice(0, 7)] = { online: 0, manual: 0 };
-    }
-    paidOrders.forEach(o => {
-      const m = cairoDay(o.createdAt).slice(0, 7);
-      if (m in data) data[m].online += toEGP(o.amount, o.currency);
-    });
-    allManualPayments.forEach(p => {
-      const m = cairoDay(p.at).slice(0, 7);
-      if (m in data) data[m].manual += toEGP(p.amount, p.currency);
-    });
-    return Object.entries(data).sort(([a], [b]) => b.localeCompare(a));
-    // paidOrders, allManualPayments and toEGP are all derived in the component
-    // body from exactly the four values listed here, and are rebuilt on every
-    // render. Listing them instead would recompute this on every render; listing
-    // the roots keeps the memo honest about what can actually change it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, subscribers, sarRate, usdRate]);
+  // the last twelve months, newest first, online and desk (the database's)
+  const monthlyRevenue: Array<[string, { online: number; manual: number }]> = (breakdown?.monthly ?? []).map(row => [row.month, { online: row.online, manual: row.manual }] as [string, { online: number; manual: number }]).reverse();
 
   const { commissionsData, rangeMonths, rangeCommissionsData } = useFinancialCommissionsData(
     staffMembers,
@@ -650,7 +519,7 @@ export default function FinancialTab({ notify, branchFilter, orders: _allOrders,
       {/* The payments register, from the server: numbered, the service by name,
           channels merged, who recorded each, the client one click away. */}
       {financialSubTab === 'orders' && (
-        <PaymentsRegister branch={branchFilter || undefined} initialMethod={orderMethodFilter || undefined} />
+        <PaymentsRegister branch={branchFilter || undefined} initialMethod={orderMethodFilter || undefined} initialFrom={registerRange.from} initialTo={registerRange.to} />
       )}
 
       {/* Expenses sub-tab */}

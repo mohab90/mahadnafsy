@@ -197,7 +197,8 @@ test('a branch\'s money is its own clients\' money, box by box', () => {
 test('«حسابات الدقي»: its boxes first, its own payments, no riyal, no company screens', () => {
   const tab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
   assert.match(tab, /const defaultScreen: FinancialSubTab = !aggregate \? 'overview' : branchFilter \? 'boxes' : 'cockpit';/);
-  assert.match(tab, /getPayments\(undefined, undefined, undefined, branchFilter\)/);
+  // 6 Nov 2026: the branch's revenue and boxes are the server's, asked for the branch (its payments are no longer downloaded)
+  assert.ok(tab.includes('useRevenueBreakdown(vaultMonth, branchFilter,'));
   assert.match(tab, /\{!branchFilter && <div className="flex items-center gap-2 bg-gray-50/, 'the exchange-rate widget is the main books\' only');
   // A branch sees the branch sub-screens only; an account that reads no books (aggregate false: the collection desk) loses the cockpit and the boxes as well.
   assert.match(tab, /allowed=\{aggregate \? \(branchFilter \? BRANCH_SUB_TABS : undefined\) : \(branchFilter \? BRANCH_SUB_TABS : FINANCIAL_SCREENS\)\.filter\(screen => screen !== 'cockpit' && screen !== 'boxes'\)\}/);

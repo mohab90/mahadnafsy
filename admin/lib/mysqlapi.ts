@@ -301,6 +301,16 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
 
 type AR = Record<string, unknown>;
 
+/** GET /admin/finance/revenue-breakdown — the paid payments' own EGP by type, by course (top 30), by month (twelve) and, for the asked month, by box. */
+export interface RevenueBreakdown {
+  month: string;
+  byType: Record<'course' | 'bundle' | 'consultation' | 'certificate' | 'book' | 'carneh' | 'other', number>;
+  byCourse: Array<{ id: string; title: string; online: number; manual: number; total: number }>;
+  monthly: Array<{ month: string; online: number; manual: number }>;
+  online: number;
+  channels: Record<string, number>;
+}
+
 /** One page of expenses and the figures over all of them: how many match, what they add up to per currency, and the whole scope's amounts by category label. */
 export interface ExpensesPage {
   rows: AR[];
@@ -680,6 +690,9 @@ export const mysqlAdmin = {
   // used to add up the 500 newest orders in the browser.
   getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
     apiFetch(`/admin/overview/revenue`, {}, A),
+  // What the accounts overview draws (api/routes/finance-payments-register.js): revenue by type, course, month and box, summed by the database.
+  getRevenueBreakdown:     (month: string, branch?: string): Promise<RevenueBreakdown> =>
+    apiFetch(`/admin/finance/revenue-breakdown?month=${encodeURIComponent(month)}${branch ? `&branch=${encodeURIComponent(branch.toUpperCase())}` : ''}`, {}, A),
   getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }>; scoreBands?: { high: number; mid: number; low: number } }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
   // Each rep's clients' collected payments in a month, in EGP — what «أداء المبيعات» used to sum out of the clients

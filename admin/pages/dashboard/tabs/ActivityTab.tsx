@@ -76,7 +76,7 @@ function downloadCsv(filename: string, rows: LogRow[]) {
 const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
   const {
     isAdmin, clearAllData, courses, bundles, lectures, chapters, therapists, testimonials,
-    subscribers, leads, staffMembers, consultations, orders, communityPosts, communityLibraryItems,
+    subscribers, leads, staffMembers, consultations, communityPosts, communityLibraryItems,
     communityVideos, communityEvents, discounts, content,
   } = useSiteData();
 
@@ -195,12 +195,16 @@ const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
           {isAdmin && (
             <button
               type="button"
-              onClick={() => downloadJson(`backup_full_site_${stamp}.json`, {
+              onClick={async () => {
+                // the orders are asked for now, for the file, instead of being downloaded every time this page opens
+                const orders = await mysqlAdmin.listAllOrders(2000).catch(() => []);
+                downloadJson(`backup_full_site_${stamp}.json`, {
                 _meta: { createdAt: new Date().toISOString(), version: '1.0' },
                 courses, bundles, lectures, chapters, therapists, testimonials, subscribers, leads,
                 staffMembers, consultations, orders, communityPosts, communityLibraryItems,
                 communityVideos, communityEvents, discounts, content,
-              })}
+                });
+              }}
               className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
             >
               <Database size={14} /> نسخة احتياطية

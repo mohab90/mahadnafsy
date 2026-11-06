@@ -20,7 +20,7 @@ const logger = require('../lib/logger');
 const { requireAuth, requireAdminOrStaff, requireAnyPermission } = require('../middleware/auth');
 const { financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { canonicalChannel } = require('../lib/paymentChannels');
-const { addDaysToDateOnly, cairoDayStartUtc, isValidDateOnly } = require('../lib/dates');
+const { addDaysToDateOnly, cairoDayStartUtc, cairoToday, isValidDateOnly } = require('../lib/dates');
 const { identitySpellings } = require('../lib/phoneNumber');
 
 const router = express.Router();
@@ -177,6 +177,96 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
     } catch (e) {
       logger.error('[payments-register]', e.message);
       res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
+    }
+  });
+
+// GET /api/admin/finance/revenue-breakdown?month=YYYY-MM[&branch=] — what the accounts overview draws, summed by the database (6 Nov 2026).
+//
+// «الحسابات › نظرة عامة» added up the revenue by type, by course, by month and by box in the browser out of the 500 newest orders plus every client's loaded payment
+// history — and, to split a box by channel, downloaded up to 50,000 payments — converting at the settings' rates, which read 0 for any foreign currency once the
+// rates were more than two days old. This sums the paid payments' own amount_egp (the books: the same rows and the same figure as /api/admin/overview/revenue),
+// for whatever the caller may see, in Cairo's days:
+//   byType     EGP per payment type, all time
+//   byCourse   the 30 courses that took the most, with how much of it came online (Paymob) and how much at the desk
+//   monthly    the last twelve months, online and desk
+//   month      the asked month: what came online, and the desk's money by channel (boxes merged as the register merges them)
+const BREAKDOWN_TYPES = ['COURSE', 'BUNDLE', 'CERTIFICATE', 'CONSULTATION', 'BOOK', 'CARNEH'];
+const ONLINE_SQL = "(COALESCE(p.source, '') = 'paymob' OR LOWER(COALESCE(p.payment_method, '')) LIKE '%paymob%')";
+const round2 = value => Math.round((Number(value) || 0) * 100) / 100;
+const monthAfter = month => { const [year, number] = month.split('-').map(Number); return number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, '0')}`; };
+
+router.get('/api/admin/finance/revenue-breakdown', requireAuth, requireAdminOrStaff,
+  requireAnyPermission('view_financial', 'view_orders'), async (req, res) => {
+    try {
+      const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
+      const scopeClause = financialScopeClause(scope, { branchColumn: 'p.branch_id', subscriberAlias: 's' });
+      const today = cairoToday();
+      const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || '')) ? String(req.query.month) : today.slice(0, 7);
+      if (scopeClause.sql === ' AND 1=0') {
+        return res.json({ month, byType: {}, byCourse: [], monthly: [], online: 0, channels: {} });
+      }
+      const from = `FROM payments p
+        LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id`;
+      const where = ` WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL${scopeClause.sql}`;
+      const base = [req.tenantId, ...scopeClause.params];
+
+      // twelve Cairo months ending with this one: [start, next start) as instants
+      const months = [];
+      for (let back = 11; back >= 0; back--) {
+        const [year, number] = today.slice(0, 7).split('-').map(Number);
+        const date = new Date(Date.UTC(year, number - 1 - back, 1));
+        months.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`);
+      }
+      const monthSelects = months.flatMap(() => [
+        `COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? AND ${ONLINE_SQL} THEN p.amount_egp END), 0)`,
+        `COALESCE(SUM(CASE WHEN p.date >= ? AND p.date < ? AND NOT ${ONLINE_SQL} THEN p.amount_egp END), 0)`,
+      ]);
+      const monthParams = months.flatMap(m => {
+        const start = cairoDayStartUtc(`${m}-01`); const end = cairoDayStartUtc(`${monthAfter(m)}-01`);
+        return [start, end, start, end];
+      });
+      const askedStart = cairoDayStartUtc(`${month}-01`);
+      const askedEnd = cairoDayStartUtc(`${monthAfter(month)}-01`);
+
+      const [[typeRows], [courseRows], [[monthlyRow]], [methodRows]] = await Promise.all([
+        pool.query(`SELECT COALESCE(p.payment_type, 'OTHER') AS type, COALESCE(SUM(p.amount_egp), 0) AS egp ${from}${where} GROUP BY COALESCE(p.payment_type, 'OTHER')`, base),
+        pool.query(
+          `SELECT p.course_id AS id, COALESCE(NULLIF(MAX(c.title_ar), ''), MAX(c.title), '') AS title, COALESCE(SUM(p.amount_egp), 0) AS total,
+                  COALESCE(SUM(CASE WHEN ${ONLINE_SQL} THEN p.amount_egp END), 0) AS online
+             ${from}${where} AND p.payment_type = 'COURSE' AND p.course_id IS NOT NULL
+            GROUP BY p.course_id HAVING total > 0 ORDER BY total DESC LIMIT 30`, base),
+        pool.query(`SELECT ${monthSelects.join(', ')} ${from}${where} AND p.date >= ? AND p.date < ?`, [...monthParams, ...base, cairoDayStartUtc(`${months[0]}-01`), cairoDayStartUtc(`${monthAfter(months[11])}-01`)]),
+        pool.query(
+          `SELECT p.payment_method AS method, ${ONLINE_SQL} AS online, COALESCE(SUM(p.amount_egp), 0) AS egp
+             ${from}${where} AND p.date >= ? AND p.date < ? GROUP BY p.payment_method, ${ONLINE_SQL}`, [...base, askedStart, askedEnd]),
+      ]);
+
+      const byType = Object.fromEntries([...BREAKDOWN_TYPES, 'OTHER'].map(type => [type.toLowerCase(), 0]));
+      for (const row of typeRows) {
+        const key = BREAKDOWN_TYPES.includes(row.type) ? row.type.toLowerCase() : 'other';
+        byType[key] = round2(byType[key] + Number(row.egp));
+      }
+      const values = Object.values(monthlyRow);
+      let online = 0;
+      const channels = {};
+      for (const row of methodRows) {
+        if (Number(row.online)) { online += Number(row.egp); continue; }
+        const channel = canonicalChannel(row.method);
+        channels[channel] = round2((channels[channel] || 0) + Number(row.egp));
+      }
+      res.json({
+        month,
+        byType,
+        byCourse: courseRows.map(row => ({ id: row.id, title: row.title, total: round2(row.total), online: round2(row.online), manual: round2(Number(row.total) - Number(row.online)) })),
+        monthly: months.map((m, i) => ({ month: m, online: round2(values[i * 2]), manual: round2(values[i * 2 + 1]) })),
+        online: round2(online),
+        channels,
+      });
+    } catch (e) {
+      if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code });
+      logger.error('[revenue-breakdown]', e.message);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
