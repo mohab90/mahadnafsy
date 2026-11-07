@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Layers, MessageSquare, Send, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { mysqlAdmin, type LeadSegment } from '../../../../lib/mysqlapi';
 import { cairoDay } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -19,16 +20,11 @@ const PRESET_SEGMENTS = [
   { id: 'facebook', label: '📘 فيسبوك', desc: 'جميع ليدات فيسبوك', filters: { source: 'facebook' } },
 ];
 
-function calcSegScore(lead: any): number {
-  const STATUS_W: Record<string, number> = { converted: 100, interested_booking: 85, interested: 70, follow_up: 55, contacted: 40, new: 25, no_answer: 10, not_interested: 0 };
-  const SOURCE_W: Record<string, number> = { facebook: 20, google: 22, referral: 25, whatsapp: 18, instagram: 17, organic: 12, tiktok: 15 };
-  const createdAt = lead.createdAt || lead.created_at || '';
-  const daysSince = createdAt ? Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000) : 999;
-  const recency = daysSince <= 3 ? 15 : daysSince <= 7 ? 10 : daysSince <= 14 ? 5 : 0;
-  return Math.min(100, (STATUS_W[lead.status] ?? 20) + (SOURCE_W[(lead.source || '').toLowerCase()] ?? 10) + (lead.followUpDate ? 10 : 0) + (lead.notes ? 5 : 0) + recency);
-}
-
-export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: any[]; notify: NotifyFn }) {
+/**
+ * «الشرائح»: the audience is the database's (GET /api/admin/leads/segments): the filters run over the same leads the leads screen lists, on the system's own score
+ * (leads.score), and the screen holds only the first rows of the answer — it used to download the whole leads table and score each lead with a formula of its own.
+ */
+export function SegmentationTab({ notify }: { notify: NotifyFn }) {
   const [srcFilter, setSrcFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [minScore, setMinScore] = useState(0);
@@ -40,8 +36,26 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
   const [blasting, setBlasting] = useState(false);
   const [blastResult, setBlastResult] = useState<{ sent: number; failed: number } | null>(null);
 
-  const sources = useMemo(() => [...new Set(leads.map(l => (l.source || '').toLowerCase()))].filter(Boolean), [leads]);
-  const statuses = useMemo(() => [...new Set(leads.map(l => l.status))].filter(Boolean), [leads]);
+  const [segment, setSegment] = useState<LeadSegment | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState('');
+  const tell = useRef(notify);
+  tell.current = notify;
+  useEffect(() => { const timer = setTimeout(() => setQuery(searchQ.trim()), 350); return () => clearTimeout(timer); }, [searchQ]);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    mysqlAdmin.getLeadSegment({ status: statusFilter, source: srcFilter, minScore, daysNew: maxDaysOld, q: query, pageSize: 100 })
+      .then(answer => { if (alive) setSegment(answer); })
+      .catch(() => { if (alive) tell.current('error', 'تعذر تحميل الشريحة'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [statusFilter, srcFilter, minScore, maxDaysOld, query]);
+  const leads = { length: segment?.base ?? 0 };
+  const sources = (segment?.facets.sources ?? []).map(item => item.value);
+  const statuses = (segment?.facets.statuses ?? []).map(item => item.value);
+  const rows = segment?.rows ?? [];
+  const total = segment?.total ?? 0;
 
   const applyPreset = (preset: typeof PRESET_SEGMENTS[0]) => {
     setActivePreset(preset.id);
@@ -52,32 +66,17 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
     setSearchQ('');
   };
 
-  const filtered = useMemo(() => {
-    return leads
-      .map(l => ({ ...l, _score: calcSegScore(l) }))
-      .filter(l => {
-        if (l._score < minScore) return false;
-        if (statusFilter !== 'all' && l.status !== statusFilter) return false;
-        if (srcFilter !== 'all' && (l.source || '').toLowerCase() !== srcFilter) return false;
-        if (searchQ && !l.name?.toLowerCase().includes(searchQ.toLowerCase()) && !l.phone?.includes(searchQ)) return false;
-        if (maxDaysOld > 0) {
-          const ca = l.createdAt || l.created_at || '';
-          const days = ca ? Math.floor((Date.now() - new Date(ca).getTime()) / 86400000) : 999;
-          if (days > maxDaysOld) return false;
-        }
-        return true;
-      });
-  }, [leads, minScore, statusFilter, srcFilter, searchQ, maxDaysOld]);
-
   async function sendBlast() {
     if (!blastMsg.trim()) { notify('error', 'اكتب رسالة أولاً'); return; }
     setBlasting(true);
     setBlastResult(null);
     try {
+      // the first 200 of the audience, asked for now (the screen holds only the first 100 rows)
+      const audience = await mysqlAdmin.getLeadSegment({ status: statusFilter, source: srcFilter, minScore, daysNew: maxDaysOld, q: query, pageSize: 200 });
       const r = await fetch('/api/admin/leads/bulk-whatsapp', {
         method: 'POST', credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify({ lead_ids: filtered.slice(0, 200).map((l: any) => l.id), message: blastMsg }),
+        body: JSON.stringify({ lead_ids: audience.rows.map(l => l.id), message: blastMsg }),
       });
       const data = await r.json();
       if (data.ok) { setBlastResult({ sent: data.sent, failed: data.failed }); notify('success', `تم الإرسال: ${data.sent}`); }
@@ -94,7 +93,7 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
         <p className="text-teal-100 text-sm mt-1">قسّم ليداتك بمعايير متعددة وأرسل حملات مخصصة</p>
         <div className="flex gap-4 mt-3 text-sm">
           <span className="bg-white/20 rounded-xl px-3 py-1">📋 {leads.length} ليد إجمالي</span>
-          <span className="bg-white/20 rounded-xl px-3 py-1">🎯 {filtered.length} في الشريحة الحالية</span>
+          <span className="bg-white/20 rounded-xl px-3 py-1">🎯 {total} في الشريحة الحالية</span>
         </div>
       </div>
 
@@ -161,10 +160,10 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
         <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h4 className="font-bold text-gray-800">نتيجة الشريحة</h4>
-            <p className="text-xs text-gray-500">{filtered.length} ليد يطابق المعايير</p>
+            <p className="text-xs text-gray-500">{loading ? 'جاري الحساب…' : `${total.toLocaleString('ar-EG-u-nu-latn')}${segment?.capped ? '+' : ''} ليد يطابق المعايير`}</p>
           </div>
           <div className="flex gap-2">
-            {filtered.length > 0 && (
+            {total > 0 && (
               <button onClick={() => { setShowBlast(true); setBlastResult(null); }}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-xl">
                 <MessageSquare size={15} />إرسال واتساب للشريحة
@@ -185,25 +184,25 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.slice(0, 100).map((l: any) => (
+              {rows.map(l => (
                 <tr key={l.id} className="hover:bg-gray-50 transition">
                   <td className="px-4 py-3 font-semibold text-gray-800">{l.name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600 font-mono text-xs">{l.phone || '—'}</td>
                   <td className="px-4 py-3"><span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-lg text-xs">{STATUS_LABEL_SEG[l.status] || l.status}</span></td>
                   <td className="px-4 py-3 text-gray-500 text-xs capitalize">{l.source || '—'}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`font-bold text-sm ${l._score >= 70 ? 'text-red-600' : l._score >= 50 ? 'text-orange-600' : 'text-blue-600'}`}>{l._score}</span>
+                    <span className={`font-bold text-sm ${l.score >= 70 ? 'text-red-600' : l.score >= 50 ? 'text-orange-600' : 'text-blue-600'}`}>{l.score}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{cairoDay(l.createdAt || l.created_at) || '—'}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{cairoDay(l.createdAt) || '—'}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {total === 0 && (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">لا توجد ليدات بهذه المعايير</td></tr>
               )}
             </tbody>
           </table>
-          {filtered.length > 100 && (
-            <div className="p-3 text-center text-xs text-gray-400">عرض أول 100 ليد من {filtered.length}</div>
+          {total > 100 && (
+            <div className="p-3 text-center text-xs text-gray-400">عرض أحدث 100 ليد من {total.toLocaleString('ar-EG-u-nu-latn')}</div>
           )}
         </div>
       </div>
@@ -212,7 +211,7 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
       {showBlast && (
         <div className="bg-white border border-green-300 rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="font-bold text-gray-800 flex items-center gap-2"><MessageSquare size={16} className="text-green-600" />إرسال واتساب للشريحة ({Math.min(filtered.length, 200)} ليد)</h4>
+            <h4 className="font-bold text-gray-800 flex items-center gap-2"><MessageSquare size={16} className="text-green-600" />إرسال واتساب للشريحة ({Math.min(total, 200)} ليد)</h4>
             <button onClick={() => setShowBlast(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
           </div>
           <textarea rows={4} value={blastMsg} onChange={e => setBlastMsg(e.target.value)}

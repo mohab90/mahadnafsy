@@ -31,6 +31,7 @@ const SCREENS: Screen[] = [
   { name: 'sales team', url: '/dashboard/sales_team', budget: 20, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'ask the AI', url: '/dashboard/ask_ai', budget: 12, calls: [/\/api\/admin\/subscribers\/stats$/], notCalls: [/\/api\/admin\/orders$/, /\/api\/admin\/subscribers$/] },
   { name: 'activity', url: '/dashboard/activity', budget: 14, notCalls: [/\/api\/admin\/orders$/] },
+  { name: 'marketing segments', url: '/dashboard/marketing_hub/segmentation', budget: 14, calls: [/\/api\/admin\/leads\/segments$/], notCalls: [/\/api\/admin\/leads$/, /\/api\/admin\/subscribers$/] },
   { name: 'orders and payments', url: '/dashboard/orders', budget: 10, calls: [/\/api\/admin\/orders\/page$/], notCalls: [/\/api\/admin\/orders$/, /\/api\/admin\/subscribers$/] },
 ];
 

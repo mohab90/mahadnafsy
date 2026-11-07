@@ -196,7 +196,7 @@ export const fullCrmDataTabs = new Set<string>([
   // "500 ليدات جديدة" against 27,000. 'analytics' and 'crm_settings' name
   // nothing at all: AnalyticsTab renders under 'daqqi_stats', and no screen
   // answers to crm_settings.
-  'marketing_hub',      // segmentation builds audiences from both tables
+  // marketing_hub is not here: the audiences («الشرائح») are filtered and counted by the database (GET /api/admin/leads/segments), so opening it downloads no table.
   // ask_ai is not here: what it tells the assistant is counted by the database (leads/stats, subscribers/stats?branchFigures=1, the books), so it no longer pulls every lead and client.
   // online_team is not here: who carries which leads and clients comes from GET /admin/online-performance, and the
   // first pages of both tables are only the fallback while that answers.

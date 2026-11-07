@@ -86,6 +86,8 @@ test('each rep\'s month revenue is their clients\' collected money, in pounds', 
 });
 
 test('the open leads are counted by score band over the whole table', { skip }, async () => {
+  // The bands are added up when the scores are (the hourly refresh, lib/leadScoreRefresh.js → leads_score_agg); the leads here were written straight into the table.
+  await require('../../lib/leadsStatsAgg').rebuildLeadsScoreAgg(pool);
   const res = await call(statsRouter, '/api/admin/leads/stats', null);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.scoreBands, { high: 1, mid: 1, low: 1 }, 'converted and archived leads are left out');

@@ -70,3 +70,12 @@ test('the AI screen is told counts the database made, and downloads no leads and
   assert.equal(ai.includes('subscribers.filter(') || ai.includes('leads.filter(') || ai.includes('subscribers.flatMap('), false, 'nothing is counted out of a downloaded list');
   assert.ok(admin('pages', 'dashboard', 'tabSiteLists.ts').includes("ask_ai: ['settings'],"), 'the screen declares no lead or client list');
 });
+
+test('the marketing hub\'s audiences are the server\'s: opening it downloads no table', () => {
+  assert.equal(admin('pages', 'dashboard', 'dashboardTabGroups.ts').includes("'marketing_hub',      // segmentation builds audiences from both tables"), false, 'marketing_hub is out of the full-load tab group');
+  assert.ok(admin('pages', 'dashboard', 'tabSiteLists.ts').includes("marketing_hub: ['discounts', 'automationWorkflows']"), 'and loads neither the leads nor the clients');
+  const tab = admin('pages', 'dashboard', 'tabs', 'marketing-hub-sections', 'SegmentationTab.tsx');
+  assert.ok(tab.includes('mysqlAdmin.getLeadSegment('), 'the audience is asked of GET /api/admin/leads/segments');
+  assert.equal(tab.includes('calcSegScore'), false, 'no score of the screen\'s own: the system\'s (leads.score)');
+  assert.equal(tab.includes('leads.filter') || tab.includes('leads.map'), false, 'nothing is filtered out of a downloaded list');
+});

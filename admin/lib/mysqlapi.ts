@@ -331,6 +331,16 @@ export interface OrdersPage {
   facets: { staff: string[]; methods: string[] };
 }
 
+/** GET /admin/leads/segments — the audience a set of filters picks out: its size, its first rows, the two drop-downs' lists, and the leads in scope. */
+export interface LeadSegment {
+  total: number;
+  /** The count stopped at 10,000: the audience is at least that big. */
+  capped?: boolean;
+  base: number;
+  rows: Array<{ id: string; name: string; phone: string; status: string; source: string; score: number; createdAt: string }>;
+  facets: { statuses: Array<{ value: string; count: number }>; sources: Array<{ value: string; count: number }> };
+}
+
 /** One page of expenses and the figures over all of them: how many match, what they add up to per currency, and the whole scope's amounts by category label. */
 export interface ExpensesPage {
   rows: AR[];
@@ -713,6 +723,8 @@ export const mysqlAdmin = {
   // What the accounts overview draws (api/routes/finance-payments-register.js): revenue by type, course, month and box, summed by the database.
   // The orders desk, a page of it and its counts from the database (api/routes/orders-page.js).
   getOrdersPage:           (query: URLSearchParams): Promise<OrdersPage> => apiFetch(`/admin/orders/page?${query.toString()}`, {}, A),
+  getLeadSegment:          (filters: { status: string; source: string; minScore: number; daysNew: number; q: string; pageSize: number }): Promise<LeadSegment> =>
+    apiFetch(`/admin/leads/segments?${new URLSearchParams({ status: filters.status, source: filters.source, minScore: String(filters.minScore), daysNew: String(filters.daysNew), q: filters.q, pageSize: String(filters.pageSize) })}`, {}, A),
   getRevenueBreakdown:     (month: string, branch?: string): Promise<RevenueBreakdown> =>
     apiFetch(`/admin/finance/revenue-breakdown?month=${encodeURIComponent(month)}${branch ? `&branch=${encodeURIComponent(branch.toUpperCase())}` : ''}`, {}, A),
   getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }>; scoreBands?: { high: number; mid: number; low: number } }> =>

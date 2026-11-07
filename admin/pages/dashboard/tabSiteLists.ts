@@ -62,7 +62,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   sales_team: ['leads'],
   staff_performance: ['leads'],
   sales_daqqi_schedule: [],
-  marketing_hub: ['leads', 'subscribers', 'discounts', 'automationWorkflows'],
+  marketing_hub: ['discounts', 'automationWorkflows'], // the audiences («الشرائح») are the server's (GET /api/admin/leads/segments); the overview its own aggregate
   campaigns: [], // the messaging hub reads its own server routes
   online_hub: [],
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.

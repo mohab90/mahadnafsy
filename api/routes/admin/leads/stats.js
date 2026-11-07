@@ -18,6 +18,7 @@ const {
 const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueBy } = require('../../../lib/leadFollowUps');
 const { TERMINAL_SQL } = require('../../../lib/leadStatuses');
 const { trendFromDaily } = require('../../../lib/leadsStatsAgg');
+const { indexedLeadSearch } = require('./lists');
 const { cached } = require('../../../lib/db');
 const { sqlCairoWall, sqlCairoDayEndUtc, addDaysToDateOnly } = require('../../../lib/dates');
 
@@ -307,6 +308,88 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
     });
     res.json(payload);
   } catch (e) { logger.error('[leads-stats]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/segments — «الشرائح» (marketing hub): the audience a set of filters picks out, counted and paged by the database (6 Nov 2026).
+//
+// The screen built its audiences in the browser from the leads it had downloaded (the whole table: 58 MB on the lab) with a score of its own (a status/source/recency
+// formula written on the screen) — so «ليدات ساخنة» was the leads the screen scored 70 or more, not the ones the system does. Here the filters run in the database over the
+// same scope as the leads list (leadScope), on the system's own score (leads.score, kept by the hourly refresh):
+//   status, source        exact (the source in lower case, as the screen compared it)
+//   minScore              leads.score >= n
+//   daysNew               created in the last n days
+//   q                     in the name, or the phone
+// and the answer is the audience's size, its first rows (pageSize <= 200: the WhatsApp send takes the first 200) and the lists the two drop-downs offer.
+const SEGMENT_ROWS = 200;
+const COUNT_CAP = 10000;
+router.get('/api/admin/leads/segments', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.json({ total: 0, base: 0, rows: [], facets: { statuses: [], sources: [] } });
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 100, 1), SEGMENT_ROWS);
+    const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
+    let where = `l.tenant_id = ? AND l.hidden = 0${accessScope.sql}`;
+    const params = [req.tenantId, ...accessScope.params];
+    const status = String(req.query.status || '');
+    if (status && status !== 'all') { where += ' AND l.status = ?'; params.push(status); }
+    const source = String(req.query.source || '').toLowerCase();
+    if (source && source !== 'all') { where += " AND LOWER(COALESCE(l.source, '')) = ?"; params.push(source); }
+    const minScore = Math.min(Math.max(parseInt(req.query.minScore, 10) || 0, 0), 100);
+    if (minScore > 0) { where += ' AND l.score >= ?'; params.push(minScore); }
+    const daysNew = Math.min(Math.max(parseInt(req.query.daysNew, 10) || 0, 0), 3650);
+    if (daysNew > 0) { where += ' AND l.created_at >= ?'; params.push(new Date(Date.now() - daysNew * 86400000)); }
+    const q = String(req.query.q || '').trim().slice(0, 80);
+    if (q) {
+      // the leads list's own indexed search (a phone by its spellings, name words by the full-text index); a word too short for the index scans, as it always did
+      const indexed = indexedLeadSearch(q);
+      if (indexed) { where += ` AND ${indexed.sql}`; params.push(...indexed.params); } else {
+        const like = `%${q.replace(/[\\%_]/g, match => `\\${match}`)}%`;
+        where += ' AND (l.name LIKE ? OR l.phone LIKE ?)';
+        params.push(like, like);
+      }
+    }
+    // An audience of a status and a source only is counted from the counters, not by counting the leads.
+    const countersAnswer = !q && minScore === 0 && daysNew === 0;
+    // The facets and the base count do not depend on the filters, and come from the counters when the scope is one they answer (leads/stats' own).
+    const aggregate = aggregateScope(accessScope);
+    const facets = cached(`figures:segment-facets:${req.tenantId}:${accessScope.sql}:${JSON.stringify(accessScope.params)}`, 15 * 1000, async () => {
+      const [statusRows, sourceRows] = aggregate
+        ? await Promise.all([
+          pool.query(`SELECT a.status AS value, SUM(a.n) AS cnt FROM leads_stats_agg a WHERE a.tenant_id = ? AND a.n > 0${aggregate.sql} GROUP BY a.status`, [req.tenantId, ...aggregate.params]),
+          pool.query(`SELECT a.source AS value, SUM(a.n) AS cnt FROM leads_stats_agg a WHERE a.tenant_id = ? AND a.n > 0${aggregate.sql} GROUP BY a.source`, [req.tenantId, ...aggregate.params]),
+        ])
+        : await Promise.all([
+          pool.query(`SELECT l.status AS value, COUNT(*) AS cnt FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql} GROUP BY l.status`, [req.tenantId, ...accessScope.params]),
+          pool.query(`SELECT COALESCE(l.source, '') AS value, COUNT(*) AS cnt FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql} GROUP BY COALESCE(l.source, '')`, [req.tenantId, ...accessScope.params]),
+        ]);
+      const lower = new Map();
+      for (const row of sourceRows[0]) { const key = String(row.value || '').toLowerCase(); lower.set(key, (lower.get(key) || 0) + Number(row.cnt)); }
+      return {
+        statuses: statusRows[0].map(row => ({ value: row.value, count: Number(row.cnt) })).filter(row => row.value).sort((a, b) => b.count - a.count),
+        sources: [...lower].filter(([value]) => value).map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
+        base: statusRows[0].reduce((sum, row) => sum + Number(row.cnt), 0),
+      };
+    });
+    const countFromCounters = countersAnswer && aggregate;
+    const [[[countRow]], [rows], facetAnswer] = await Promise.all([
+      (countFromCounters
+        ? pool.query(
+          `SELECT COALESCE(SUM(a.n), 0) AS total FROM leads_stats_agg a WHERE a.tenant_id = ? AND a.n > 0${aggregate.sql}${status && status !== 'all' ? ' AND a.status = ?' : ''}${source && source !== 'all' ? " AND LOWER(a.source) = ?" : ''}`,
+          [req.tenantId, ...aggregate.params, ...(status && status !== 'all' ? [status] : []), ...(source && source !== 'all' ? [source] : [])])
+        // counted up to 10,001 leads: a search that matches a tenth of the book does not need its exact size (the answer says when it stopped counting)
+        : pool.query(`SELECT COUNT(*) AS total FROM (SELECT 1 FROM leads l WHERE ${where} LIMIT ${COUNT_CAP + 1}) c`, params)).then(result => [result[0]]),
+      pool.query(
+        `SELECT l.id, l.name, l.phone, l.status, l.source, l.score, l.created_at FROM leads l WHERE ${where} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
+        [...params, pageSize, page * pageSize]),
+      facets,
+    ]);
+    res.set('Cache-Control', 'private, no-store');
+    res.json({
+      total: Math.min(Number(countRow?.total || 0), COUNT_CAP), capped: Number(countRow?.total || 0) > COUNT_CAP, base: facetAnswer.base, page, pageSize,
+      rows: rows.map(row => ({ id: row.id, name: row.name || '', phone: row.phone || '', status: row.status, source: row.source || '', score: Number(row.score) || 0, createdAt: row.created_at })),
+      facets: { statuses: facetAnswer.statuses, sources: facetAnswer.sources },
+    });
+  } catch (e) { logger.error('[leads-segments]', e.message); sendRouteError(res, e); }
 });
 
 // GET /api/admin/leads/followups-due — the header bell's number: open leads

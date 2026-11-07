@@ -70,7 +70,7 @@ const SUB_TABS: { key: SubTab; label: string; icon: React.ElementType; permissio
 ];
 
 const MarketingHubTab: React.FC<Props> = ({ notify }) => {
-  const { leads, subscribers, discounts } = useSiteData();
+  const { discounts } = useSiteData();
   const navigate = useNavigate();
   const { can } = useAccess();
   const sections = useMemo(() => SUB_TABS.filter(tab => can(tab.permission)), [can]);
@@ -226,7 +226,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
       )}
 
       {activeSubTab === 'segmentation' && (
-        <SegmentationTab leads={leads} subscribers={subscribers} notify={notify} />
+        <SegmentationTab notify={notify} />
       )}
     </div>
   );
