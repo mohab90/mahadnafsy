@@ -328,8 +328,8 @@ router.get('/api/admin/leads/segments', requireAuth, requireAdminOrStaff, requir
     if (accessScope.none) return res.json({ total: 0, base: 0, rows: [], facets: { statuses: [], sources: [] } });
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 100, 1), SEGMENT_ROWS);
     const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
-    let where = `l.tenant_id = ? AND l.hidden = 0${accessScope.sql}`;
-    const params = [req.tenantId, ...accessScope.params];
+    let where = `l.hidden = 0${accessScope.sql}`;
+    const params = [...accessScope.params];
     const status = String(req.query.status || '');
     if (status && status !== 'all') { where += ' AND l.status = ?'; params.push(status); }
     const source = String(req.query.source || '').toLowerCase();
@@ -377,10 +377,10 @@ router.get('/api/admin/leads/segments', requireAuth, requireAdminOrStaff, requir
           `SELECT COALESCE(SUM(a.n), 0) AS total FROM leads_stats_agg a WHERE a.tenant_id = ? AND a.n > 0${aggregate.sql}${status && status !== 'all' ? ' AND a.status = ?' : ''}${source && source !== 'all' ? " AND LOWER(a.source) = ?" : ''}`,
           [req.tenantId, ...aggregate.params, ...(status && status !== 'all' ? [status] : []), ...(source && source !== 'all' ? [source] : [])])
         // counted up to 10,001 leads: a search that matches a tenth of the book does not need its exact size (the answer says when it stopped counting)
-        : pool.query(`SELECT COUNT(*) AS total FROM (SELECT 1 FROM leads l WHERE ${where} LIMIT ${COUNT_CAP + 1}) c`, params)).then(result => [result[0]]),
+        : pool.query(`SELECT COUNT(*) AS total FROM (SELECT 1 FROM leads l WHERE l.tenant_id = ? AND ${where} LIMIT ${COUNT_CAP + 1}) c`, [req.tenantId, ...params])).then(result => [result[0]]),
       pool.query(
-        `SELECT l.id, l.name, l.phone, l.status, l.source, l.score, l.created_at FROM leads l WHERE ${where} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
-        [...params, pageSize, page * pageSize]),
+        `SELECT l.id, l.name, l.phone, l.status, l.source, l.score, l.created_at FROM leads l WHERE l.tenant_id = ? AND ${where} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
+        [req.tenantId, ...params, pageSize, page * pageSize]),
       facets,
     ]);
     res.set('Cache-Control', 'private, no-store');
