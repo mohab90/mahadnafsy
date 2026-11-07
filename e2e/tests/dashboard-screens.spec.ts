@@ -53,7 +53,7 @@ const contentLength = async (page: Page) =>
 // second axis this list does not walk — opening the tab draws its first
 // section, and the rest are one click away rather than one URL away.
 const SCREENS = [
-  'overview', 'management_reports', 'kpi_dashboard', 'activity', 'tasks_board', 'ask_ai',
+  'overview', 'management_reports', 'kpi_dashboard', 'presence_now', 'activity', 'tasks_board', 'ask_ai',
   'leads', 'sales_hub', 'sales_daqqi_schedule', 'sales_team',
   'online_clients', 'client', 'online_hub', 'subscriptions',
   'daqqi_schedule', 'daqqi_clients', 'daqqi_team', 'daqqi_accounting', 'daqqi_stats', 'waitlist',

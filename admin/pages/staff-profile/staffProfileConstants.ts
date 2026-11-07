@@ -71,6 +71,7 @@ export const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_contacts: 'عرض رسائل التواصل',
   manage_contacts: 'إدارة رسائل التواصل',
   view_activity: 'عرض سجل النشاط',
+  view_presence: 'عرض مين فاتح السيستم دلوقتي',
   manage_daqqi: 'إدارة جدول كورسات الدقي',
   manage_automation: 'إدارة الأتوميشن والوركفلو',
   view_security: 'عرض الأمن والمراقبة',
@@ -133,7 +134,7 @@ export const ROLE_PRESETS = [
 ];
 
 export const PERM_CATEGORIES = [
-  { key:'dashboard',   label:'اللوحة الرئيسية والتقارير',             icon:'📊', bg:'bg-slate-50',   border:'border-slate-200',   text:'text-slate-700',   perms:['view_dashboard','view_reports','view_activity'] as StaffPermission[] },
+  { key:'dashboard',   label:'اللوحة الرئيسية والتقارير',             icon:'📊', bg:'bg-slate-50',   border:'border-slate-200',   text:'text-slate-700',   perms:['view_dashboard','view_reports','view_activity','view_presence'] as StaffPermission[] },
   // Each of these opens one department's team screen and nothing else in that
   // department — the performance of a team without its clients, its money or
   // its day-to-day.

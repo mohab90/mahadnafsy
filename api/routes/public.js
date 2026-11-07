@@ -1247,6 +1247,8 @@ router.post('/api/me/heartbeat', requireAuth, async (req, res) => {
     await setOnlineUser(req.tenantId, String(req.user.uid), {
       name: req.user.name || req.user.email?.split('@')[0] || '',
       email: req.user.email || '',
+      page: /^[a-z0-9_:-]{1,64}$/i.test(String(req.body?.page || '')) ? req.body.page : '',
+      courseId: /^[\w-]{1,64}$/.test(String(req.body?.courseId || '')) ? req.body.courseId : '',
     });
     // Keep the session's recorded address current. The session is no longer
     // pinned to it (see hasCurrentSession), but the sessions view and the

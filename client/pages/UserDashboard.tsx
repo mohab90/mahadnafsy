@@ -289,7 +289,7 @@ const UserDashboard: React.FC = () => {
   // anyone seen in the last two minutes, so a beat a minute still leaves a
   // spare if one request is dropped.
   useVisibleInterval(
-    () => { void mysqlClient.heartbeat(authUser?.displayName || authUser?.email || '').catch(() => {}); },
+    () => { void mysqlClient.heartbeat(authUser?.displayName || authUser?.email || '', activeTab, playerCourseId).catch(() => {}); },
     60_000,
     !!authUser,
   );

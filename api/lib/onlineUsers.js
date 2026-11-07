@@ -17,13 +17,16 @@ async function setOnlineUser(tenantId, uid, data) {
   const record = {
     name: String(data.name || '').slice(0, 100),
     email: String(data.email || '').slice(0, 320),
+    // Where the client is (the tab of their account page) and, in the lecture player, which course.
+    page: String(data.page || '').slice(0, 64),
+    courseId: String(data.courseId || '').slice(0, 64),
     lastSeen: Date.now(),
   };
   if (inDatabase()) {
     await db().query(
-      `INSERT INTO online_presence (tenant_id, uid, name, email, last_seen) VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email), last_seen=VALUES(last_seen)`,
-      [tenantId, String(uid).slice(0, 100), record.name, record.email, new Date(record.lastSeen)]);
+      `INSERT INTO online_presence (tenant_id, uid, name, email, page, course_id, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email), page=VALUES(page), course_id=VALUES(course_id), last_seen=VALUES(last_seen)`,
+      [tenantId, String(uid).slice(0, 100), record.name, record.email, record.page || null, record.courseId || null, new Date(record.lastSeen)]);
     return;
   }
   if (!isDistributedEnabled()) {
@@ -43,8 +46,10 @@ async function listOnlineUsers(tenantId, maxAgeMs = 2 * 60 * 1000) {
   const cutoff = Date.now() - maxAgeMs;
   if (inDatabase()) {
     const [rows] = await db().query(
-      'SELECT uid, name, email, last_seen FROM online_presence WHERE tenant_id=? AND last_seen >= ?', [tenantId, new Date(cutoff)]);
-    return rows.map(row => ({ uid: row.uid, name: row.name || '', email: row.email || '', lastSeen: new Date(row.last_seen).getTime() }));
+      'SELECT uid, name, email, page, course_id, last_seen FROM online_presence WHERE tenant_id=? AND last_seen >= ?', [tenantId, new Date(cutoff)]);
+    return rows.map(row => ({
+      uid: row.uid, name: row.name || '', email: row.email || '', page: row.page || '', courseId: row.course_id || '', lastSeen: new Date(row.last_seen).getTime(),
+    }));
   }
   if (!isDistributedEnabled()) {
     const users = [];

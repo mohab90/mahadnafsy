@@ -78,6 +78,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_contacts: 'إدارة رسائل التواصل',
   // Operations
   view_activity: 'عرض سجل النشاط',
+  view_presence: 'عرض مين فاتح السيستم دلوقتي',
   manage_daqqi: 'إدارة جدول كورسات الدقي',
   manage_automation: 'إدارة الأتوميشن والوركفلو',
   view_security: 'عرض الأمن والمراقبة',
@@ -682,6 +683,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   notifications:      'manage_notifications',
   offboarding:         'manage_hr',
   activity:           'view_activity',
+  presence_now:       'view_presence',
   // view_leads alone, matching GET /api/admin/leads/staff-performance. Adding
   // view_reports here to let the collection bar in would have put this tab in
   // the HR sidebar as well — HR holds view_reports and not view_leads — where

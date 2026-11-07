@@ -223,7 +223,7 @@ function timeRequests(req, res, next) {
 // progress, a staff session renews its token every half hour: with thirty people online that was a write every two seconds, each one
 // emptying the counters of everybody's screen, so the held figures were never held and every dashboard recounted its tables on every read
 // (1 Nov 2026: «السيستم بيفضل يعمل ريفريش كتير لكل الموظفين»). These writes touch no lead, client, payment, ticket or inbox count.
-const QUIET_WRITES = /^\/api\/(me\/(heartbeat|progress)|lectures\/[^/]+\/view|push\/(subscribe|test-send)|auth\/(refresh|logout)|staff\/me\/preferences|admin\/hr\/staff-messages\/mark-read|staff\/announcements\/[^/]+\/seen)\/?$/;
+const QUIET_WRITES = /^\/api\/(me\/(heartbeat|progress)|lectures\/[^/]+\/view|push\/(subscribe|test-send)|auth\/(refresh|logout)|staff\/(me\/preferences|presence)|admin\/hr\/staff-messages\/mark-read|staff\/announcements\/[^/]+\/seen)\/?$/;
 const isQuietWrite = path => QUIET_WRITES.test(String(path || '').split('?')[0]);
 
 function dropFiguresAfterWrites(req, res, next) {

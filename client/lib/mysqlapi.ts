@@ -230,7 +230,8 @@ export interface MyNextStep {
 
 // ── Non-admin (client) ────────────────────────────────────────────────────────
 export const mysqlClient = {
-  heartbeat: (name?: string) => apiFetch<{ ok: boolean }>('/me/heartbeat', { method: 'POST', body: JSON.stringify({ name: name || '' }) }, true),
+  // `page` is the tab of the account page on screen and `courseId` the course in the player, so the staff's «مين فاتح السيستم دلوقتي» can say where each client is.
+  heartbeat: (name?: string, page?: string, courseId?: string | null) => apiFetch<{ ok: boolean }>('/me/heartbeat', { method: 'POST', body: JSON.stringify({ name: name || '', page: page || '', courseId: courseId || '' }) }, true),
   getMySubscriber: () => apiFetch<AR | null>('/me/subscriber', {}, true),
   getMyPrivacyRequests: () => apiFetch<Array<{
     id: string; request_type: 'erasure'; status: string; reason?: string | null;

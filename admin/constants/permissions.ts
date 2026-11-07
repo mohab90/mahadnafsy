@@ -93,6 +93,7 @@ export const PERMISSIONS = {
   MANAGE_FINANCIAL:         'manage_financial',
   VIEW_REPORTS:             'view_reports',
   VIEW_ACTIVITY:            'view_activity',
+  VIEW_PRESENCE:            'view_presence',
   MANAGE_SALES_TEAM:        'manage_sales_team',
   MANAGE_CERTIFICATES:      'manage_certificates',
   MANAGE_INBOX:             'manage_inbox',
@@ -168,6 +169,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_financial:        'إدارة المالية',
   view_reports:            'عرض التقارير',
   view_activity:           'عرض سجل النشاط',
+  view_presence:           'عرض مين فاتح السيستم دلوقتي (الموظفين والعملاء)',
   manage_sales_team:       'إدارة فريق المبيعات (التارجت والعروض)',
   manage_certificates:     'الشهادات (الأسعار والطلبات)',
   manage_inbox:            'إدارة الرسائل الواردة',
@@ -215,7 +217,7 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
   },
   {
     label: 'التقارير والتحليلات',
-    perms: ['view_reports', 'view_activity', 'view_client_db'],
+    perms: ['view_reports', 'view_activity', 'view_presence', 'view_client_db'],
   },
   {
     label: 'إدارة المبيعات',

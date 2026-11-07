@@ -24,6 +24,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // Server reports end to end (/admin/reports/*, /admin/kpi/*).
   management_reports: [],
   kpi_dashboard: [],
+  presence_now: [],
   // Reads /admin/consultations itself; the consultations list it shares comes
   // with the panel.
   consultations: [],
