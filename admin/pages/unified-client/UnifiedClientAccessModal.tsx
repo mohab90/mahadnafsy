@@ -74,7 +74,7 @@ export function UnifiedClientAccessModal({
             const saving = accessSaving[courseId] ?? false;
             const message = accessMsg[courseId];
             const preset = getPreset(courseId);
-            const payment = coursePaymentState(subscriber.paymentHistory, courseId);
+            const payment = coursePaymentState(subscriber, courseId);
             const courseTitle = course?.title || courseId;
             const currentManual = manualLimitDraft[courseId] ?? String(access.lectureLimit || preset.p1);
             const accessBadge = access.mode === 'full'

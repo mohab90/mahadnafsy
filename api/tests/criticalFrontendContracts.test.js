@@ -724,7 +724,7 @@ test('unified client finance computes balances and certificates in the branch se
   assert.match(payments, /payment\.currency === settlementCurrency/);
   // The page's paid and remaining are its items' (clientItems), in the branch's
   // currency — the same lines the course list shows (8 Oct 2026).
-  assert.match(payments, /clientItems\(subscriber, courses, bundles, settlementCurrency\)/);
+  assert.match(payments, /moneyItemsOf\(subscriber\)/);
   assert.match(payments, /items\.filter\(item => item\.currency === settlementCurrency\)/);
   assert.match(payments, /subPaidTotals\[settlementCurrency\]/);
   // The «مدفوع قديم» dialog used to write `currency: settlementCurrency`
@@ -738,8 +738,8 @@ test('unified client finance computes balances and certificates in the branch se
   assert.doesNotMatch(lifecycle, /createCertificateRequest/);
   // Each item in the currency it is paid in, the settlement currency otherwise
   // (admin/lib/agreedPrice.ts clientItems) — price and payments both.
-  assert.match(clientsTable, /clientItems\(row, courses, bundles, branchCurrency\)/);
-  const agreed = read('admin/lib/agreedPrice.ts');
+  assert.match(clientsTable, /moneyItemsOf\(row\)/);
+  const agreed = read('api/lib/clientItems.js');
   assert.match(agreed, /\|\| fallbackCurrency;/);
   assert.match(agreed, /&& \(!currency \|\| payment\.currency === currency\)\)/);
   assert.match(agreed, /catalogueIn\(entry\?\.price, currency\)/);

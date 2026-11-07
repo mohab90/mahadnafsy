@@ -13,7 +13,6 @@ import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { useCrmData, useStaticData } from '../../../context/siteDataSlices';
-import { clientItems } from '../../../lib/agreedPrice';
 import type { TabKey } from '../navigation';
 import { isCollected, toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';

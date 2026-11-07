@@ -107,7 +107,7 @@ test('the follow-up, market, balance, search and branch rules answer as the scre
     for (const slug of ['', 'all', 'online', 'ONLINE_EGYPT', 'online egypt', 'online-saudi', 'saudi', 'abroad', 'dokki', 'daqqi', 'tagamoa']) {
       assert.equal(view.branchMatchesFilter(client.branch, slug), screen.branchMatchesFilter(client.branch, slug), `branch ${slug} ${label}`);
     }
-    const expected = screen.subscriberBalance(client, COURSES, BUNDLES);
+    const expected = screen.subscriberBalance({ ...client, moneyItems: require('../lib/clientItems').clientItems(client, CATALOGUE, view.clientCurrency(client)) }, COURSES, BUNDLES);
     const got = view.balanceOf(client, CATALOGUE);
     assert.equal(got.items, expected.items, `items ${label}`);
     assert.equal(got.paidAnything, expected.paidAnything, `paid anything ${label}`);

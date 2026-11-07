@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useStaticData } from '../../../context/siteDataSlices';
-import { clientItems } from '../../../lib/agreedPrice';
+import { moneyItemsOf } from '../../../lib/agreedPrice';
 import { clientCurrency } from './onlineClientsUtils';
 import { itemBranch, PLACEMENT_BRANCHES } from '../../../lib/coursePlacement';
 import type { SubscriberItem } from '../../../types';
@@ -19,7 +19,7 @@ export function CoursePlacementForm({ row, onBack, onDone }: {
   onDone: (type: 'success' | 'error', text: string, changed: boolean) => void;
 }) {
   const { courses, bundles } = useStaticData();
-  const items = useMemo(() => clientItems(row, courses, bundles, clientCurrency(row)), [row, courses, bundles]);
+  const items = useMemo(() => moneyItemsOf(row), [row]);
   const [chosen, setChosen] = useState<Record<string, string>>(() => Object.fromEntries(items.map(item => [item.item, (row.coursePlacements || {})[item.item] || OWN])));
   const [saving, setSaving] = useState(false);
 

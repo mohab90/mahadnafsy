@@ -32,7 +32,7 @@ export function useUnifiedClientCourseAccess({ subscriber, content, reloadSubscr
     // Two clients who had paid in full were put back on a video limit within a
     // minute of paying, from these buttons. Downgrading a settled course is a
     // decision an admin is allowed to make — but not one to make by accident.
-    if (mode === 'limited' && coursePaymentState(subscriber.paymentHistory, courseId).settled) {
+    if (mode === 'limited' && coursePaymentState(subscriber, courseId).settled) {
       const confirmed = await confirmDialog(
         `الكورس ده مدفوع بالكامل.
 

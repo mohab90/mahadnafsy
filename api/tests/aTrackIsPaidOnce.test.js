@@ -39,7 +39,7 @@ test('a track paid in full is one line with nothing left, and no course of it is
     paymentHistory: [pay({ amount: 3000, bundleId: 'X' })],
   };
   if (holdings) {
-    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP');
+    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP', require('./_clientRule').moneyOf({ id: 's', ...client }, courses, [track]));
     assert.equal(result.enrolledOptions.length, 1, 'one line: the track');
     assert.equal(result.enrolledOptions[0].cid, 'bundle:X');
     assert.equal(result.enrolledOptions[0].isBnd, true);
@@ -59,7 +59,7 @@ test('money recorded against the courses of a track counts toward the track, and
   };
   const holdings = load('admin/components/payment-modal/clientHoldings.ts');
   if (holdings) {
-    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP');
+    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP', require('./_clientRule').moneyOf({ id: 's', ...client }, courses, [track]));
     assert.equal(result.enrolledOptions.length, 1);
     assert.equal(result.enrolledOptions[0].cid, 'bundle:X');
     assert.equal(result.enrolledOptions[0].px, 3000);
@@ -80,7 +80,7 @@ test('a certificate or a carnet that names the course is not the course\'s money
   };
   const holdings = load('admin/components/payment-modal/clientHoldings.ts');
   if (holdings) {
-    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP');
+    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP', require('./_clientRule').moneyOf({ id: 's', ...client }, courses, [track]));
     const line = result.enrolledOptions.find(option => option.cid === 'Z');
     assert.equal(line.paid, 1500, 'the carnet and the certificate are not paid towards the course');
     assert.equal(line.px, 2000, 'and the price they recorded is not the course\'s agreed price');
@@ -92,8 +92,8 @@ test('a certificate or a carnet that names the course is not the course\'s money
 
 test('the dialog takes its money from that one function and the Dokki desk\'s round counts course money only', () => {
   const source = read('admin/components/payment-modal/clientHoldings.ts');
-  assert.match(source, /import \{ agreedPriceFor, clientItems, isCoursePayment, paidFor \} from '\.\.\/\.\.\/lib\/agreedPrice';/);
-  assert.match(source, /const items = clientItems\(\{/);
+  assert.match(source, /\(money\?\.items \|\| \[\]\)\.map\(line => \(\{/); // the server lines (api/lib/clientItems.js), nothing worked out here
+  assert.doesNotMatch(source, /clientItems|agreedPriceFor|paidFor/, 'the dialog has no rule of its own');
   assert.doesNotMatch(source, /autoDetectedBundles/, 'no second rule about what a track is');
   assert.match(read('admin/components/PaymentModal.tsx'), /const alreadyPaid = moneyFor\(d\.courseId\)\?\.paid \?\? 0;/);
   assert.match(read('admin/components/payment-modal/usePaymentModalModel.tsx'), /const prevPaid = itemService \? 0 : \(moneyFor\(d\.courseId\)\?\.paid \?\? 0\);/);
@@ -108,7 +108,7 @@ test('a track paid by a payment proof or an instalment (typed «bundle») is pai
     paymentHistory: [pay({ amount: 2000, bundleId: 'X', paymentType: 'bundle', courseExpected: 3000 })],
   };
   if (holdings) {
-    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP');
+    const result = holdings.clientHoldings({ id: 's', name: 'ع', ...client }, courses, [track], 'EGP', require('./_clientRule').moneyOf({ id: 's', ...client }, courses, [track]));
     assert.equal(result.enrolledOptions[0].paid, 2000, 'the browser counts it');
     assert.equal(result.enrolledOptions[0].remaining, 1000);
   }

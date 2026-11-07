@@ -141,8 +141,7 @@ test('the payment dialog sees a course held by money, a price, a prior payment o
   const modal = paymentModalSource();
   assert.match(modal, /heldItemIds\?: string\[\];/);
   // What it holds is clientItems' reading (enrolments, a held track, money, an agreed price, «مدفوع قبل السيستم»), plus the round's course.
-  assert.match(modal, /enrolledCourseIds: subject\.enrolledCourseIds \|\| \[\],/);
-  assert.match(modal, /priorPaid: subject\.priorPaid,/);
+  assert.match(modal, /\(money\?\.items \|\| \[\]\)\.map\(line => \(\{/); // the server's reading (api/lib/clientItems.js)
   assert.match(modal, /for \(const id of subject\.heldItemIds \|\| \[\]\) \{/);
   assert.match(modal, /const alreadyPaid = moneyFor\(d\.courseId\)\?\.paid \?\? 0;/);
   const dokki = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');

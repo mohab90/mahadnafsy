@@ -512,6 +512,8 @@ export interface SubscriberItem {
   courseAccess?: Record<string, 'preview' | 'full' | CourseAccessSetting>;
   lectureProgress?: Record<string, number>;
   paymentHistory?: PaymentHistoryEntry[];
+  /** What this client holds and owes, item by item, as the server worked it out (api/lib/clientItems.js) — lib/agreedPrice.ts. */
+  moneyItems?: import('./lib/agreedPrice').MoneyLine[];
   expectedTotals?: { EGP?: number; SAR?: number; USD?: number };  // Expected total payments
   totalPaid?: number;        // Computed total EGP paid (may be included by server)
   branch?: BranchType;

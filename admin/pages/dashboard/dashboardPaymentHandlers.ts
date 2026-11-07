@@ -169,6 +169,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
       staffId: currentStaff?.id || undefined,
       staffName: currentStaff?.name || undefined,
       status: 'paid',
+      ...(subPayDraft.customPriceOn && Number(subPayDraft.customExpected) > 0 ? { customPrice: true } : {}),
       ...(subPayDraft.daqqiRoundId ? { daqqiRoundId: subPayDraft.daqqiRoundId } : {}),
     } as PaymentHistoryEntry;
     updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), entry] };

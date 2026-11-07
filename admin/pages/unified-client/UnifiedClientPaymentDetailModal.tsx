@@ -4,7 +4,7 @@ import { Modal } from '../../../shared/ui/Modal';
 
 import type { Bundle, Course, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
-import { clientItems } from '../../lib/agreedPrice';
+import { moneyItemsOf } from '../../lib/agreedPrice';
 
 type PaidTotals = { EGP: number; SAR: number; USD: number };
 
@@ -83,7 +83,7 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
           <div className="space-y-2">
             <p className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">تفاصيل كل كورس</p>
             {/* A track is one item with its own price and money, as everywhere but the videos. */}
-            {clientItems(subscriber, courses, bundles, settlementCurrency).map(held => {
+            {moneyItemsOf(subscriber).map(held => {
               const remaining = held.expected > 0 ? held.remaining : null;
               return (
                 <div key={held.item} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">

@@ -9,6 +9,7 @@ import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../../shared/cairoDate'
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../../constants/permissions';
 import type { SubscriberItem } from '../../../../types';
+import { announceCrmChanged } from '../../../../lib/crmChanged';
 import { clientCurrency, isOnlineClient } from '../onlineClientsUtils';
 import { AddRefundModal } from '../financial/AddRefundModal';
 import { ClientCertificatesPanel } from './ClientCertificatesPanel';
@@ -125,7 +126,7 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
       await action();
       notify('success', okMessage);
       await load();
-      onChanged?.();
+      announceCrmChanged(); onChanged?.();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر الحفظ');
     } finally { setBusyId(''); }
@@ -200,7 +201,7 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
       notify('success', `اتغيرت عملة العميل إلى ${CURRENCY_NAMES[currencyTo]}`);
       setCurrencyTo('');
       await load();
-      onChanged?.();
+      announceCrmChanged(); onChanged?.();
       refreshClient();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تغيير العملة');

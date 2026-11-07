@@ -25,7 +25,7 @@ function fakeDb(payment) {
     // The balance (lib/agreedPrice.js itemBalances): the client, their
     // payments on the item, their enrolments, the catalogue.
     if (/SELECT crm_json FROM subscribers/.test(sql)) return [[{ crm_json: '{}' }]];
-    if (/SELECT course_id, bundle_id, amount, currency, status, course_expected FROM payments/.test(sql)) {
+    if (/SELECT course_id, bundle_id, amount, currency, status, course_expected(, date)? FROM payments/.test(sql)) {
       return [[{ course_id: null, bundle_id: 'b-1', amount: 3000, currency: 'EGP', status: 'paid', course_expected: 9000 }]];
     }
     if (/AS price FROM `bundles`/.test(sql)) return [[{ price: 9500 }]];

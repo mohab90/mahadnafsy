@@ -38,7 +38,7 @@ test('a stated expectation still wins', () => {
   // nothing was supplied.
   // A tier the desk chose is the catalogue's price for that branch (lib/priceTiers.js),
   // unless a manager set the client's own price (set_client_price, 7 Oct 2026).
-  assert.match(code, /let resolvedExpected = clientPrice \? courseExpected : tierPrice \? tierPrice\.price : courseExpected;/);
+  assert.match(code, /let resolvedExpected = clientPrice \? courseExpected : heldPrice != null \? heldPrice : tierPrice \? tierPrice\.price : courseExpected;/);
   // The course's price only for the course's money: a carnet keeps its own (8 Oct 2026).
   assert.match(code, /if \(resolvedExpected == null && paysForItem && \(courseId \|\| bundleId\)\)/);
 });

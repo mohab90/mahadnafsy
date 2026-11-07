@@ -11,7 +11,8 @@
  */
 
 const { pool } = require('./db');
-const { certificateDue } = require('./certificatePricing');
+const { certificateDue, certificateSource } = require('./certificatePricing');
+const { certificatePrices } = require('./itemMoney');
 const { certificatePricing } = require('./certificatePayments');
 const { safeIsoString, safeDateOnly } = require('./dates');
 const { resolvePaymentExecutors } = require('./paymentExecutor');
@@ -48,7 +49,8 @@ async function loadHoldings(tenantId, subscriberIds, db = pool) {
 
 /**
  * For each subscriber id: their certificate requests, newest first, as the staff screens show them (the shape of `extraCertificateRequests`).
- * The price is the price list's for the request's type and currency (certificateDue), not the stored column. A subscriber with none has no entry.
+ * The price is the one agreed for this client's certificate, else the price list's for the request's type and currency (certificateDue), not the stored column.
+ * A subscriber with none has no entry.
  */
 async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
   if (!subscriberIds.length) return {};
@@ -62,6 +64,7 @@ async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
     [tenantId, ...subscriberIds]
   );
   const pricing = await certificatePricing(db, tenantId);
+  const agreed = await certificatePrices(db, { tenantId, subscriberIds });
   return rows.reduce((bySubscriber, request) => {
     (bySubscriber[request.subscriber_id] ||= []).push({
       id: request.id,
@@ -73,7 +76,8 @@ async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
       nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
       idNumber: request.id_number || undefined,
       status: String(request.status || 'PENDING').toLowerCase(),
-      price: certificateDue(pricing, request) || undefined,
+      price: certificateDue(pricing, request, agreed.get(String(request.id))) || undefined,
+      priceSource: certificateSource(pricing, request, agreed.get(String(request.id))),
       paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
       currency: request.currency || undefined,
       requestedAt: safeIsoString(request.requested_at) || null,
@@ -88,13 +92,13 @@ async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
 const PAYMENT_COLUMNS = {
   full: 'id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method, transaction_id, is_installment, course_expected, `date`, note, '
     + 'status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type, certificate_request_id, branch',
-  slim: 'id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method, transaction_id, is_installment, `date`, note, '
+  slim: 'id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method, transaction_id, is_installment, course_expected, `date`, note, '
     + 'status, staff_id, staff_name, from_account, sender_name, source, item_title',
 };
 
 /**
  * For each subscriber id: their payments (not deleted), oldest first, as the staff screens show them (the shape of `paymentHistory`).
- *   shape      'full' — what the profile and the main lists send; 'slim' — the two lighter lists, without courseExpected, certType, certId and branch
+ *   shape      'full' — what the profile and the main lists send; 'slim' — the two lighter lists, without certType, certId and branch
  *   staffName  'executor' — who really took the money, resolved by lib/paymentExecutor.js so one person reads as one name; the same on the lists and on the profile
  *              (the profile used the name stored on the row until 5 Nov 2026, which spelled one person two ways); 'none' — null (the lite list does not resolve it)
  * A subscriber with no payment has no entry.
@@ -134,7 +138,8 @@ async function loadPayments(tenantId, subscriberIds, { shape = 'full', staffName
       certId: p.certificate_request_id || null,
       branch: p.branch || null,
     };
-    if (shape === 'slim') { delete payment.courseExpected; delete payment.certType; delete payment.certId; delete payment.branch; }
+    // courseExpected stays on the slim rows: the price a booking recorded is one of the three figures the agreed price is read from (lib/clientItems.js).
+    if (shape === 'slim') { delete payment.certType; delete payment.certId; delete payment.branch; }
     (bySubscriber[p.subscriber_id] ||= []).push(payment);
     return bySubscriber;
   }, {});

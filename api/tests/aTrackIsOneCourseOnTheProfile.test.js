@@ -33,6 +33,8 @@ function render() {
   return module.exports.card;
 }
 const card = render();
+// The card draws the server's `moneyItems` (api/lib/clientItems.js): the rule runs here on the props' own client, as the list endpoints do.
+const withMoneyProps = props => ({ ...props, subscriber: require('./_clientRule').withMoney(props.subscriber, props.courses, props.bundles, props.settlementCurrency) });
 
 const courses = [
   { id: 'c-1', title: 'العلاج المعرفي', price: { EGP: 3000 } },
@@ -42,7 +44,7 @@ const courses = [
 const bundles = [{ id: 'b-1', title: 'مسار الأخصائي النفسي', price: { EGP: 5000 }, courses: [{ id: 'c-1' }, { id: 'c-2' }] }];
 
 test('a track is one line with the money paid for it, beside a course of its own', { skip: !card }, () => {
-  const html = card({
+  const html = card(withMoneyProps({
     subscriber: {
       id: 's-1', name: 'عميلة', enrolledCourseIds: ['c-1', 'c-2', 'c-3'], enrolledBundleIds: ['b-1'],
       paymentHistory: [
@@ -52,7 +54,7 @@ test('a track is one line with the money paid for it, beside a course of its own
     },
     courses, bundles, settlementCurrency: 'EGP',
     subPaidTotals: { EGP: 4000, SAR: 0, USD: 0 }, subRemainingEGP: 3000, settlementLabel: 'ج.م', onOpenDetails() {},
-  });
+  }));
   assert.match(html, /مسار الأخصائي النفسي/);
   assert.doesNotMatch(html, /العلاج المعرفي|الإرشاد الأسري/, 'the courses inside the track are not lines of their own');
   assert.match(html, /تعديل السلوك/);

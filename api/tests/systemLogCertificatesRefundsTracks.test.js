@@ -94,6 +94,7 @@ test('a client holding every course of a track holds the track, money and all', 
       { id: 'b1', title: 'دبلومة علم النفس المتكامل', course_id: 'c2' },
       { id: 'b1', title: 'دبلومة علم النفس المتكامل', course_id: 'c3' },
     ]]],
+    [/FROM subscribers/, [[]]],
     moneyStub({ c1: 1000, c2: 1500, c3: 2500 }, { c1: 500 }),
     [/UPDATE payments SET bundle_id/, [{ affectedRows: 2 }]],
   ]);
@@ -113,6 +114,7 @@ test('nobody\'s balance moves: a track priced in part keeps what was owed', asyn
     [/SELECT course_id, bundle_id FROM enrollments/, [[{ course_id: 'c1', bundle_id: null }, { course_id: 'c2', bundle_id: null }]]],
     [/FROM payments WHERE tenant_id=\? AND subscriber_id=\?/, [[]]],
     [/FROM bundles b JOIN bundle_courses/, [[{ id: 'b2', title: 'م', course_id: 'c1' }, { id: 'b2', title: 'م', course_id: 'c2' }]]],
+    [/FROM subscribers/, [[]]],
     moneyStub(customPrices),
   ];
   const priced = fakeDb(answers({ c1: 900 }));
@@ -156,6 +158,7 @@ test('«تكملة»: the course joins the track, its money with it, access unto
       [/FROM courses/, [[{ title: 'الصحة النفسية' }]]],
       [/FROM bundles WHERE id=\?/, [[{ title: 'دبلومة علم النفس المتكامل' }]]],
       [/SELECT COALESCE\(SUM\(amount\),0\) AS total/, [[{ total: 1200, currency: 'EGP' }]]],
+      [/FROM subscribers/, [[]]],
       moneyStub({}, { c1: 300 }),
     ]);
     const result = await upgradeClientCourse(db, {

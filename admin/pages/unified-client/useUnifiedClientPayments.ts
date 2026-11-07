@@ -12,7 +12,7 @@ import type {
 } from '../../types';
 import { mapServerInstallmentPlan } from './installmentPlanMapper';
 import { bookingTierFields } from '../../lib/bookingIdentity';
-import { clientItems, isCoursePayment } from '../../lib/agreedPrice';
+import { moneyItemsOf, isCoursePayment } from '../../lib/agreedPrice';
 
 interface Params {
   lead?: LeadItem;
@@ -124,11 +124,11 @@ export function useUnifiedClientPayments(params: Params) {
   // One figure for the client's money everywhere on this page (8 Oct 2026:
   // «شوية ظاهر ان المدفوع 700 وشوية 1400 … مينفعش نغلط ابدا في الفلوس»): what
   // each course or track was paid — its payments and «مدفوع قبل السيستم» — and
-  // what it still owes, exactly as the online table reads it (clientItems). The
+  // what it still owes, exactly as the online table reads it (the server's moneyItems). The
   // top line used to add up the payment rows alone, certificates and books
   // among them, against the courses' prices; the course lines below counted
   // «مدفوع قبل السيستم» too. Money for anything else is its own line.
-  const items = subscriber ? clientItems(subscriber, courses, bundles, settlementCurrency) : [];
+  const items = moneyItemsOf(subscriber);
   const subPaidTotals = { EGP: 0, SAR: 0, USD: 0 };
   items.forEach(item => {
     if (item.currency in subPaidTotals) subPaidTotals[item.currency as keyof typeof subPaidTotals] += item.paid;

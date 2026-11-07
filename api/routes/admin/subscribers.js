@@ -16,6 +16,7 @@ const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
 const { pool, cacheInvalidate } = require('../../lib/db');
 const { moneyOf, withItemMoney } = require('../../lib/itemMoney');
+const { withMoneyItems } = require('../../lib/clientMoneyItems');
 const { autoLinkAccounts } = require('../../lib/autoLinkAccounts');
 const { pickCollectionOfficer, subscriberMarket } = require('../../lib/collectionDistribution');
 const { mailer } = require('../../lib/email');
@@ -270,7 +271,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       const rawBranch = r.branch || crm.branch || null;
       const normB = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
       const branch = (normB && VALID_BRANCHES.has(normB)) ? normB : rawBranch;
-      return res.json({ type: 'subscriber', data: {
+      const subscriberRow = {
         id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active, notes: r.notes, createdAt: r.created_at,
         ...crm, enrolledCourseIds, enrolledBundleIds, courseAccess,
@@ -284,7 +285,8 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         assignedCsId: r.assigned_cs_id || null,
         assignedCsName: r.assigned_cs_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
-      }});
+      };
+      return res.json({ type: 'subscriber', data: (await withMoneyItems(pool, req.tenantId, [subscriberRow]))[0] });
     }
 
     // ── 2. Try lead (by id or client_code) ──────────────────────────────────

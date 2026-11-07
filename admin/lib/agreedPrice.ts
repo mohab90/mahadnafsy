@@ -1,175 +1,44 @@
 import type { PaymentHistoryEntry, SubscriberItem } from '../types';
-import { isCollected } from './money';
 
 /**
- * The price one client agreed for one item — a course id, or 'bundle:<id>'
- * for a track — the same rule as api/lib/agreedPrice.js: their own price,
- * else what their booking recorded (never below what they have paid for it),
- * else the catalogue.
- *
- * Each screen used to answer this its own way — the online table from the
- * client's saved price then the catalogue, the instalment list and «كل
- * المتبقي» from the catalogue alone, the totals bar from the bookings alone —
- * so one client could read three prices on one screen.
+ * What a client holds and owes is worked out ONCE, on the server (api/lib/clientItems.js), and every list row arrives with it as `moneyItems`; the client's page and the
+ * payment dialog ask GET /api/admin/clients/:id/money, which is the same function on fresh data (8 Nov 2026: «نتأكد إن كلها متطابقة»). The browser used to carry a third
+ * copy of the rule — the client's own price, else what their booking recorded, else the catalogue — and each screen read it from whatever copy of the client it
+ * happened to hold. It is gone: this file only names an item and sorts a payment row; a screen that draws a price draws the server's. A test
+ * (api/tests/oneMoneySourceBrowser.test.js) fails if a price rule comes back.
  */
+
+/** One course or track a client holds: the price agreed for it, where that came from, what was paid (here and before the system) and what is left. */
+export type MoneyLine = {
+  item: string; title: string; isTrack: boolean; currency: string;
+  /** The courses a track holds (empty for a course). */
+  courseIds: string[];
+  catalogue: number;
+  /** The agreed price; 0 when there is none. */
+  expected: number;
+  source: 'client' | 'booking' | 'catalogue' | 'none';
+  /** Recorded here plus «مدفوع قبل السيستم». */
+  paid: number; priorPaid: number;
+  /** Recorded but not yet approved — not counted in `paid`. */
+  pending: number;
+  remaining: number;
+};
+
+/** The id of what a payment names: a course id, or 'bundle:<id>' for a track. */
 export const itemKeyOf = (payment: Pick<PaymentHistoryEntry, 'courseId' | 'bundleId'>): string =>
   payment.bundleId ? `bundle:${payment.bundleId}` : (payment.courseId || '');
 
-// A row that names a course or track and is typed «other» is that course's money:
-// 'other' is what the API says for a row whose payment_type was never set, and
-// leaving it out turned an old booking into «المدفوع 0».
-// A row typed «bundle» is a track's money too: a payment proof or an instalment for a track is stored that way (as the SQL balance, api/lib/agreedPrice.js, counts it);
-// without it a confirmed track payment read «المدفوع 0» on the staff screens while the client's page and the receipt showed it paid (5 Nov 2026). The API sends
-// 'bundle' although the union does not list it.
+// A row that names a course or track and is typed «other» is that course's money (the API says 'other' for a row whose payment_type was never set); one typed
+// «bundle» is a track's. A certificate, a carnet, a book is its own service. The API sends 'bundle' although the union does not list it.
 export const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymentType || payment.paymentType === 'course'
   || (payment.paymentType as string) === 'bundle'
   || (payment.paymentType === 'other' && Boolean(payment.courseId || payment.bundleId));
 
-/** What has come in for an item, optionally in one currency. */
-export function paidFor(subscriber: Pick<SubscriberItem, 'paymentHistory'>, item: string, currency?: string): number {
-  return (subscriber.paymentHistory || [])
-    .filter(payment => isCollected(payment) && isCoursePayment(payment) && itemKeyOf(payment) === item
-      && (!currency || payment.currency === currency))
-    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-}
+/** What the server worked out for this client's row; nothing until the row has it. */
+export const moneyItemsOf = (subscriber: Pick<SubscriberItem, 'moneyItems'> | null | undefined): MoneyLine[] => subscriber?.moneyItems || [];
 
-/**
- * Money recorded for an item that no one with approval rights has confirmed yet.
- *
- * A payment taken at the Dokki front desk (or by a sales rep) is stored as
- * 'pending' until accounts approve it — the person recording money may not be
- * the one approving it. The table counted collected money only, so a client who
- * had handed over cash read «المدفوع 0» for as long as the approval waited, which
- * is what the whole of the Dokki list looked like. It is still not "paid", so it
- * stays out of the balance, but it is shown beside the zero instead of vanishing.
- */
-export function pendingFor(subscriber: Pick<SubscriberItem, 'paymentHistory'>, item: string, currency?: string): number {
-  return (subscriber.paymentHistory || [])
-    .filter(payment => payment.status === 'pending' && isCoursePayment(payment) && itemKeyOf(payment) === item
-      && (!currency || payment.currency === currency))
-    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-}
-
-type PricedCatalogueItem = { id: string; title: string; price?: unknown; courses?: { id: string }[] };
-
-type ClientItem = {
-  item: string; title: string; isTrack: boolean; currency: string;
-  expected: number; paid: number; remaining: number;
-  /** Recorded but not yet approved — not counted in `paid`. */
-  pending: number;
-};
-
-const catalogueIn = (price: unknown, currency: string): number => {
-  const prices = (price || {}) as Record<string, number>;
-  return Number(prices[currency]) || Number(prices.EGP) || 0;
-};
-
-/**
- * What one client holds — each course or track they bought or were enrolled
- * in, once — with its price agreed, what they paid for it (here and before the
- * system), and what is left. A course that came inside a track is the track's.
- */
-export function clientItems(
-  subscriber: Pick<SubscriberItem, 'paymentHistory' | 'customPrices' | 'priorPaid' | 'enrolledCourseIds' | 'enrolledBundleIds'>,
-  courses: PricedCatalogueItem[], bundles: PricedCatalogueItem[], fallbackCurrency = 'EGP',
-): ClientItem[] {
-  const keys = new Set<string>();
-  (subscriber.paymentHistory || []).forEach(payment => {
-    const item = itemKeyOf(payment);
-    if (item && isCoursePayment(payment)) keys.add(item);
-  });
-  Object.keys(subscriber.customPrices || {}).forEach(item => { if (!item.startsWith('multi:')) keys.add(item); });
-  // A track the client was enrolled in is the track, even when no payment or
-  // saved price names it: 11 clients showed the courses inside one instead.
-  (subscriber.enrolledBundleIds || []).forEach(id => { if (id) keys.add(`bundle:${id}`); });
-  // A client who holds every course of a track holds the track: the rule the payment dialog always had, now in the one place both the table and
-  // the dialog read, so they cannot say two things.
-  const enrolledSet = new Set(subscriber.enrolledCourseIds || []);
-  for (const bundle of bundles) {
-    const key = `bundle:${bundle.id}`;
-    const ids = (bundle.courses || []).map(course => course.id);
-    if (!keys.has(key) && ids.length > 1 && ids.every(id => enrolledSet.has(id))) keys.add(key);
-  }
-  const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
-    .flatMap(item => bundles.find(bundle => `bundle:${bundle.id}` === item)?.courses?.map(course => course.id) || []));
-  (subscriber.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });
-  // «مدفوع قبل السيستم» names its course. A client whose only trace of a course is
-  // that money — no payment row, no saved price, no enrolment — had no item, so
-  // the table said «لا يوجد» and «—» under المدفوع for money that is in the
-  // database: 1,609 of the 1,919 Dokki clients. The money is the evidence.
-  // A course inside a track the client holds is kept here too, though it is no line of its own: its row is folded into the track below, which is how the money paid
-  // before the system for that course counts toward the track (it was dropped, so the table owed what the client had already paid; 5 Nov 2026).
-  Object.entries(subscriber.priorPaid || {}).forEach(([item, amount]) => {
-    if (item && Number(amount) > 0 && !item.startsWith('multi:')) keys.add(item);
-  });
-
-  const built = [...keys].map(item => {
-    const isTrack = item.startsWith('bundle:');
-    const entry = isTrack ? bundles.find(bundle => `bundle:${bundle.id}` === item) : courses.find(course => course.id === item);
-    const currency = (subscriber.paymentHistory || []).find(payment => itemKeyOf(payment) === item)?.currency || fallbackCurrency;
-    const expected = agreedPriceFor(subscriber, item, catalogueIn(entry?.price, currency), currency);
-    const paid = paidFor(subscriber, item, currency) + (Number(subscriber.priorPaid?.[item]) || 0);
-    const pending = pendingFor(subscriber, item, currency);
-    return { item, title: entry?.title || item, isTrack, currency, expected, paid, pending, remaining: Math.max(0, expected - paid) };
-  });
-
-  // «مدام اتحول للمسار مينفعش تعرض الكورس الصغير»: a course that is inside a track the client holds is not listed beside it — its price is the
-  // track's. What was paid for it (a payment, a saved price, money from before the system, left from a booking made as a single course) is
-  // the client's money all the same, so it is counted toward the track instead of vanishing with the row, in the same currency only.
-  const trackOf = new Map<string, string>();
-  for (const row of built) {
-    if (!row.isTrack) continue;
-    const bundle = bundles.find(entry => `bundle:${entry.id}` === row.item);
-    for (const course of bundle?.courses || []) if (!trackOf.has(course.id)) trackOf.set(course.id, row.item);
-  }
-  const folded = new Map<string, { paid: number; pending: number }>();
-  const shown = built.filter(row => {
-    const track = row.isTrack ? undefined : trackOf.get(row.item);
-    if (!track) return true;
-    const owner = built.find(candidate => candidate.item === track);
-    if (owner && owner.currency === row.currency) {
-      const carried = folded.get(track) || { paid: 0, pending: 0 };
-      folded.set(track, { paid: carried.paid + row.paid, pending: carried.pending + row.pending });
-    }
-    return false;
-  });
-  return shown.map(row => {
-    const carried = folded.get(row.item);
-    if (!carried) return row;
-    const paid = row.paid + carried.paid;
-    return { ...row, paid, pending: row.pending + carried.pending, remaining: Math.max(0, row.expected - paid) };
-  });
-}
-
-export function agreedPriceFor(
-  subscriber: Pick<SubscriberItem, 'paymentHistory' | 'customPrices'>, item: string, catalogue = 0, currency?: string,
-): number {
-  const custom = Number(subscriber.customPrices?.[item]) || 0;
-  if (custom > 0) return custom;
-  const booked = (subscriber.paymentHistory || [])
-    // Only the item's own money: a certificate or a carnet names the course too (the «الكورس المرتبط»), and the price it recorded is not the
-    // course's — it was read as the course's agreed price, so one client's «متبقي» differed between the table and the booking button.
-    .filter(payment => (isCollected(payment) || payment.status === 'pending') && isCoursePayment(payment) && itemKeyOf(payment) === item
-      && (!currency || payment.currency === currency))
-    .reduce((max, payment) => Math.max(max, Number(payment.courseExpected) || 0), 0);
-  if (booked > 0) return Math.max(booked, paidFor(subscriber, item, currency));
-  return catalogue;
-}
-
-/**
- * What one client paid for one course and still owes on it: the course's own
- * line, or the line of the track that holds it — as the table and the client's
- * page read it. The Dokki pickers summed every EGP payment the client ever made,
- * of any course or kind, ignored «مدفوع قبل السيستم» and set it against the
- * catalogue price (8 Oct 2026).
- */
-export function courseMoneyFor(
-  subscriber: Parameters<typeof clientItems>[0],
-  courseId: string,
-  courses: Parameters<typeof clientItems>[1], bundles: Parameters<typeof clientItems>[2], currency = 'EGP',
-): ClientItem | null {
-  const items = clientItems(subscriber, courses, bundles, currency);
-  return items.find(item => item.item === courseId)
-    || items.find(item => item.isTrack && (bundles.find(bundle => `bundle:${bundle.id}` === item.item)?.courses || []).some(course => course.id === courseId))
-    || null;
+/** What one client paid for one course and still owes on it: the course's own line, or the line of the track that holds it. */
+export function courseMoneyFor(subscriber: Pick<SubscriberItem, 'moneyItems'>, courseId: string): MoneyLine | null {
+  const items = moneyItemsOf(subscriber);
+  return items.find(item => item.item === courseId) || items.find(item => item.isTrack && item.courseIds.includes(courseId)) || null;
 }

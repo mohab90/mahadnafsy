@@ -6,7 +6,7 @@ import { cairoDateOnly, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { mapServerInstallmentPlan } from '../../../unified-client/installmentPlanMapper';
 import type { Bundle, Course, Currency, InstallmentPlan, SubscriberItem } from '../../../../types';
-import { clientItems } from '../../../../lib/agreedPrice';
+import { moneyItemsOf } from '../../../../lib/agreedPrice';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type DraftEntry = { amount: string; dueDate: string };
@@ -49,8 +49,7 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
   const [saving, setSaving] = useState(false);
   // What this client holds, with its price, paid and remaining — the plan is
   // for one of these, not for anything in the catalogue.
-  const items = useMemo(() => clientItems(subscriber, courses, bundles, defaultCurrency),
-    [subscriber, courses, bundles, defaultCurrency]);
+  const items = useMemo(() => moneyItemsOf(subscriber), [subscriber]);
   const firstOwing = items.find(item => item.remaining > 0) || items[0];
   const [courseId, setCourseId] = useState(firstOwing?.item || '');
   const [total, setTotal] = useState(firstOwing?.remaining ? String(firstOwing.remaining) : '');

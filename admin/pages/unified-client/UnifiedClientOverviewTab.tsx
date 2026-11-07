@@ -7,7 +7,7 @@ import type { Bundle, CommunicationRecord, Course, CustomerTimelineEvent, Instal
 import { commTypeMeta } from './constants';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
-import { clientItems } from '../../lib/agreedPrice';
+import { moneyItemsOf } from '../../lib/agreedPrice';
 import { ClientJourneyTimeline } from './ClientJourneyTimeline';
 import { ClientSatisfactionCard } from './ClientSatisfactionCard';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
@@ -535,7 +535,7 @@ export function UnifiedClientOverviewTab({
                                 together — «المسار كانه كورس», split only where the videos
                                 are. Its courses each showed «لا توجد مدفوعات» beside a
                                 track that was paid: the money is under the track. */}
-                            {clientItems(subscriber!, courses, bundles, settlementCurrency).map(held => {
+                            {moneyItemsOf(subscriber).map(held => {
                               const courseId = held.item;
                               const courseIds = held.isTrack
                                 ? (bundles.find(b => `bundle:${b.id}` === held.item)?.courses || []).map(c => c.id)

@@ -2,6 +2,7 @@
 // change the course, the group, the price and the names on one, or delete it (a paid one only with the owner's confirmation; the payment stays in the books).
 import React, { useCallback, useEffect, useState } from 'react';
 import { Award, Loader2, Pencil, Save, Trash2 } from 'lucide-react';
+import { announceCrmChanged } from '../../../../lib/crmChanged';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { Modal } from '../../../../../shared/ui/Modal';
@@ -62,7 +63,7 @@ export const ClientCertificatesPanel: React.FC<{ subscriberId: string; notify: N
       });
       notify('success', 'اتعدلت الشهادة');
       setEditing(null);
-      await load(); onChanged?.();
+      await load(); announceCrmChanged(); onChanged?.();
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر التعديل'); }
     finally { setBusy(''); }
   };
@@ -78,7 +79,7 @@ export const ClientCertificatesPanel: React.FC<{ subscriberId: string; notify: N
         await call(`/api/admin/certificate-requests/${encodeURIComponent(cert.id)}?force=1`, 'DELETE');
       }
       notify('success', 'اتمسحت الشهادة');
-      await load(); onChanged?.();
+      await load(); announceCrmChanged(); onChanged?.();
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر المسح'); }
     finally { setBusy(''); }
   };

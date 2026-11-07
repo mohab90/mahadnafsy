@@ -342,6 +342,46 @@ const CHECKS = [
             )`,
     hint: 'Paid for one course and enrolled in another — almost always a transfer nobody re-pointed the payment for.',
   },
+  // One price per item per client (7 Nov 2026: «سعر الكورس رقم في صفحة العميل ورقم تاني عند زر دفع وحجز»): the price a client agreed (client_item_money) is also on
+  // every live course/track payment for the item (lib/agreedPrice.js setAgreedPrice keeps them together) and a certificate's agreed price is on its request
+  // (lib/certificatePayments.js setCertificatePrice). A count here is two copies of one price that disagree — tools/client-money-diagnose.cjs lists them,
+  // tools/client-money-repair.cjs puts them back together.
+  {
+    key: 'agreed_price_two_copies',
+    name: 'the price a client agreed is the price on every payment for the item',
+    severity: 'warning',
+    sql: `SELECT COUNT(*) AS n FROM client_item_money m
+           WHERE m.agreed_price > 0 AND m.item_key NOT LIKE 'cert:%'
+             AND EXISTS (SELECT 1 FROM payments p
+                          WHERE p.tenant_id = m.tenant_id COLLATE utf8mb4_unicode_ci AND p.subscriber_id = m.subscriber_id COLLATE utf8mb4_unicode_ci
+                            AND p.deleted_at IS NULL AND p.payment_type IN ('COURSE','BUNDLE') AND p.status IN ('paid','pending')
+                            AND m.item_key = IF(p.bundle_id IS NULL, p.course_id, CONCAT('bundle:', p.bundle_id)) COLLATE utf8mb4_unicode_ci
+                            AND ABS(COALESCE(p.course_expected, 0) - m.agreed_price) > 0.009)`,
+    hint: 'The client page and the payment list can show two prices for one course; run tools/client-money-diagnose.cjs.',
+  },
+  // Two readings of one balance (lib/moneyParity.js): the rule every screen draws (lib/clientItems.js) against the SQL one the receipts and collections read
+  // (lib/agreedPrice.js itemBalances), on the 300 clients with the newest payments. A count here is a client two screens would show different debts.
+  {
+    key: 'client_money_readings_differ',
+    name: 'what a client owes reads the same on every screen (newest 300 clients)',
+    severity: 'critical',
+    run: async pool => {
+      const { compareClientMoney, recentClientIds } = require('./moneyParity');
+      let differing = 0;
+      for (const { tenantId, subscriberId } of await recentClientIds(pool)) differing += (await compareClientMoney(pool, { tenantId, subscriberIds: [subscriberId] })).length ? 1 : 0;
+      return differing;
+    },
+    hint: 'Run tools/client-money-parity.cjs: it lists the clients and items where the screens and the receipts disagree.',
+  },
+  {
+    key: 'certificate_price_two_copies',
+    name: 'the price agreed for a certificate is the price on its request',
+    severity: 'warning',
+    sql: `SELECT COUNT(*) AS n FROM client_item_money m
+           JOIN certificate_requests r ON r.tenant_id = m.tenant_id COLLATE utf8mb4_unicode_ci AND r.id = SUBSTRING(m.item_key, 6) COLLATE utf8mb4_unicode_ci
+          WHERE m.item_key LIKE 'cert:%' AND m.agreed_price > 0 AND ABS(COALESCE(r.price, 0) - m.agreed_price) > 0.009`,
+    hint: 'A certificate shows one price on the client page and another on the payment screen.',
+  },
 ];
 
 // Runs every check against the pool; returns [{ key, name, severity, n, error }].
@@ -349,8 +389,8 @@ async function runReconcile(pool) {
   const out = [];
   for (const chk of CHECKS) {
     try {
-      const [[row]] = await pool.query(chk.sql);
-      out.push({ ...chk, n: Number(row.n) });
+      const n = chk.run ? await chk.run(pool) : Number((await pool.query(chk.sql))[0][0].n);
+      out.push({ ...chk, n });
     } catch (e) {
       out.push({ ...chk, n: null, error: e.message });
     }

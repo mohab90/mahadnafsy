@@ -69,16 +69,24 @@ function certificateTypeCodes(pricingConfig) {
 }
 
 /**
- * What a certificate costs for the books and for the screens: the price list's figure for its type
- * and currency when there is one — «مينفعش تقول السعر اكتمل غير لما يطابق السعر عندك في السيستم»
- * (8 Oct 2026) — else the price on the request itself.
+ * What a certificate costs for the books and for the screens: the price agreed for THIS client's certificate when there is one (`own`, lib/itemMoney.js
+ * certificatePrices —«عدّلت سعر شهادة العميل وشباك الدفع ما أخدهاش», 7 Nov 2026), else the price list's figure for its type and currency —
+ * «مينفعش تقول السعر اكتمل غير لما يطابق السعر عندك في السيستم» (8 Oct 2026) — else the price on the request itself.
  */
-function certificateDue(pricingConfig, request) {
+function certificateDue(pricingConfig, request, own = 0) {
+  if (Number(own) > 0) return Number(own);
   const listed = basePriceForCurrency(pricingConfig, request.type, request.currency || 'EGP', request.nationality);
   return listed > 0 ? listed : (Number(request.price) || 0);
 }
 
+/** Where certificateDue's figure came from: 'client' (agreed for this client), 'list' (the price list), 'request' (the request's own column), 'none'. */
+function certificateSource(pricingConfig, request, own = 0) {
+  if (Number(own) > 0) return 'client';
+  if (basePriceForCurrency(pricingConfig, request.type, request.currency || 'EGP', request.nationality) > 0) return 'list';
+  return Number(request.price) > 0 ? 'request' : 'none';
+}
+
 module.exports = {
-  certificateTypeCodes, basePriceForCurrency, certificateDue,
+  certificateTypeCodes, basePriceForCurrency, certificateDue, certificateSource,
   resolveCertificatePrice, priceKeyForNationality, priceKeyForCountry, currencyForPriceKey,
 };
