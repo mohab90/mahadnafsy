@@ -20,7 +20,7 @@ test('a certificate shows the price list\'s figure for its type and currency, el
 
 test('the clients lists read that figure, voiding a certificate payment takes its money off, and the review exists', () => {
   // the lists and the profile read their certificate requests from one place (lib/clientView.js), which prices them by the price list
-  assert.match(read('api/lib/clientView.js'), /price: certificateDue\(pricing, request\) \|\| undefined/);
+  assert.match(read('api/lib/clientView.js'), /price: certificateDue\(pricing, request, agreed\.get\(String\(request\.id\)\)\) \|\| undefined/);
   for (const file of ['api/routes/admin/stafflists.js', 'api/routes/admin/subscribers.js']) {
     assert.match(read(file), /loadCertificateRequests\(/, file);
   }

@@ -11,7 +11,8 @@
  */
 
 const { pool } = require('./db');
-const { certificateDue } = require('./certificatePricing');
+const { certificateDue, certificateSource } = require('./certificatePricing');
+const { certificatePrices } = require('./itemMoney');
 const { certificatePricing } = require('./certificatePayments');
 const { safeIsoString, safeDateOnly } = require('./dates');
 const { resolvePaymentExecutors } = require('./paymentExecutor');
@@ -48,7 +49,8 @@ async function loadHoldings(tenantId, subscriberIds, db = pool) {
 
 /**
  * For each subscriber id: their certificate requests, newest first, as the staff screens show them (the shape of `extraCertificateRequests`).
- * The price is the price list's for the request's type and currency (certificateDue), not the stored column. A subscriber with none has no entry.
+ * The price is the one agreed for this client's certificate, else the price list's for the request's type and currency (certificateDue), not the stored column.
+ * A subscriber with none has no entry.
  */
 async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
   if (!subscriberIds.length) return {};
@@ -62,6 +64,7 @@ async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
     [tenantId, ...subscriberIds]
   );
   const pricing = await certificatePricing(db, tenantId);
+  const agreed = await certificatePrices(db, { tenantId, subscriberIds });
   return rows.reduce((bySubscriber, request) => {
     (bySubscriber[request.subscriber_id] ||= []).push({
       id: request.id,
@@ -73,7 +76,8 @@ async function loadCertificateRequests(tenantId, subscriberIds, db = pool) {
       nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
       idNumber: request.id_number || undefined,
       status: String(request.status || 'PENDING').toLowerCase(),
-      price: certificateDue(pricing, request) || undefined,
+      price: certificateDue(pricing, request, agreed.get(String(request.id))) || undefined,
+      priceSource: certificateSource(pricing, request, agreed.get(String(request.id))),
       paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
       currency: request.currency || undefined,
       requestedAt: safeIsoString(request.requested_at) || null,

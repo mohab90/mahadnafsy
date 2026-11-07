@@ -2,7 +2,9 @@
 
 const { getTenantSetting } = require('./tenantSettings');
 const { cairoDayOf, cairoToday } = require('./dates');
-const { basePriceForCurrency, certificateTypeCodes } = require('./certificatePricing');
+const { basePriceForCurrency, certificateDue, certificateTypeCodes } = require('./certificatePricing');
+const { certificateKey, certificatePrices, setItemMoney } = require('./itemMoney');
+const { logClientEvent } = require('./clientHistory');
 const { withFreshCode } = require('./certificateCodes');
 
 // What a certificate costs: the figure the desk typed (the dialog fills in the
@@ -48,10 +50,11 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
     }
     if (!settle) return requestId;
     const previousPaid = Number(request.paid_amount) || 0;
-    // A request still without a price takes the certificate's, not "whatever
-    // was paid is the price".
-    const price = Number(request.price) > 0 ? Number(request.price)
-      : await certificatePrice(db, tenantId, { stated: payment.price, type: request.type, currency, nationality: request.nationality });
+    // The price agreed for this client's certificate, else the price list's, else the request's own; a request still without one takes the
+    // certificate's, not "whatever was paid is the price".
+    const agreed = await certificatePrices(db, { tenantId, subscriberIds: [request.subscriber_id] });
+    const price = certificateDue(await certificatePricing(db, tenantId), { ...request, currency }, agreed.get(requestId))
+      || await certificatePrice(db, tenantId, { stated: payment.price, type: request.type, currency, nationality: request.nationality });
     if (price > 0 && previousPaid >= price) throw conflict('Certificate request is already fully paid');
     const paidAmount = previousPaid + amount;
     await db.query(
@@ -97,6 +100,59 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
   return requestId;
 }
 
+/**
+ * The ONE writer of a certificate's price (7 Nov 2026: «عدّلت سعر شهادة العميل وشباك الدفع ما أخدهاش»). `own` — the default — is a price agreed for this client's
+ * certificate: it wins over the price list everywhere the certificate is priced (certificateDue) and is kept in client_item_money like a course's. `own: false` is the
+ * price list's figure stored on the request, with any agreed price dropped. The request's own column and the expected price on its payments follow, and the change
+ * — who, old price, new price — goes into the client's history. Run inside the caller's transaction.
+ */
+async function setCertificatePrice(db, { tenantId, requestId, price, own = true, actor = null }) {
+  const value = Number(price);
+  if (!Number.isFinite(value) || value <= 0) throw Object.assign(new Error('السعر لازم يكون رقم أكبر من صفر'), { statusCode: 400 });
+  const [[request]] = await db.query(
+    'SELECT id, subscriber_id, type, price, currency, nationality FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [requestId, tenantId]);
+  if (!request) throw Object.assign(new Error('طلب الشهادة مش موجود'), { statusCode: 404 });
+  const agreed = request.subscriber_id ? await certificatePrices(db, { tenantId, subscriberIds: [request.subscriber_id] }) : new Map();
+  const was = certificateDue(await certificatePricing(db, tenantId), request, agreed.get(String(request.id)));
+  await db.query('UPDATE certificate_requests SET price=? WHERE id=? AND tenant_id=?', [value, request.id, tenantId]);
+  await db.query('UPDATE payments SET course_expected=? WHERE certificate_request_id=? AND tenant_id=? AND deleted_at IS NULL', [value, request.id, tenantId]);
+  if (request.subscriber_id) {
+    await setItemMoney(db, { tenantId, subscriberId: request.subscriber_id, itemKey: certificateKey(request.id), price: own ? value : 0 });
+    if (was !== value) {
+      await logClientEvent(db, {
+        tenantId, subscriberId: request.subscriber_id, action: 'price_changed', actor,
+        label: `سعر الشهادة ${request.type}: ${was.toLocaleString('en-US')} ← ${value.toLocaleString('en-US')} ${request.currency || 'EGP'}${own ? '' : ' (سعر القائمة)'}`,
+      });
+    }
+  }
+  return { was, now: value };
+}
+
+/**
+ * The price a certificate payment is recorded against. The server's: the one agreed for this client's certificate, else the price list's, else the request's own.
+ * A figure the screen sent that differs from it is a price change: recorded only by an account that may set a client's price (`canSetPrice`), refused with 409 for
+ * anyone else — never taken silently. Returns { price, own, existing } — `own` when the sent figure is a change the caller must write with setCertificatePrice.
+ */
+async function decideCertificatePrice(db, tenantId, { requestId = null, type, currency, nationality = null, stated = null, canSetPrice = false }) {
+  const pricing = await certificatePricing(db, tenantId);
+  let request = null;
+  if (requestId) {
+    [[request]] = await db.query(
+      'SELECT id, subscriber_id, type, price, currency, nationality FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1', [requestId, tenantId]);
+  }
+  const agreed = request ? await certificatePrices(db, { tenantId, subscriberIds: [request.subscriber_id] }) : new Map();
+  const shape = request ? { ...request, currency } : { type, currency, nationality, price: null };
+  const server = certificateDue(pricing, shape, request ? agreed.get(String(request.id)) : 0);
+  const sent = Number(stated) > 0 ? Number(stated) : 0;
+  const existing = Boolean(request);
+  if (!sent || Math.abs(sent - server) < 0.005) return { price: server || null, own: false, existing };
+  if (!server) return { price: sent, own: false, existing };
+  if (!canSetPrice) {
+    throw Object.assign(new Error('سعر الشهادة اتغير، افتح من جديد'), { statusCode: 409, code: 'PRICE_CHANGED', price: server });
+  }
+  return { price: sent, own: true, existing };
+}
+
 /** «خلي اسم العميل مدام ثلاثي او اكثر يكون هو الاسم علي الشهاده» (8 Oct 2026). */
 function certificateNameOf(clientName) {
   const name = String(clientName || '').trim().replace(/\s+/g, ' ');
@@ -137,4 +193,4 @@ async function syncCertificateRequest(db, tenantId, requestId) {
   return { id, changed, paid, status };
 }
 
-module.exports = { applyCertificatePayment, certificateNameOf, certificatePrice, certificatePricing, syncCertificateRequest };
+module.exports = { applyCertificatePayment, certificateNameOf, certificatePrice, certificatePricing, decideCertificatePrice, setCertificatePrice, syncCertificateRequest };

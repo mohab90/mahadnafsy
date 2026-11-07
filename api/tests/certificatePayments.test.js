@@ -11,6 +11,7 @@ function fakeDb(initialRequest = null) {
     async query(sql, params) {
       if (sql.includes('FROM tenant_settings')) return [[state.content ? { config_json: JSON.stringify(state.content) } : undefined]];
       if (sql.includes('FROM site_config')) return [[undefined]];
+      if (sql.includes('FROM client_item_money')) return [[]];
       if (sql.includes('FROM certificate_requests') && sql.includes('FOR UPDATE')) {
         return [[state.request ? structuredClone(state.request) : undefined]];
       }

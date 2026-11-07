@@ -13,6 +13,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermissio
 const { requireDeleteRight } = require('../../lib/deleteRights');
 const { itemBalances, balanceFor, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
 const { moneyOf } = require('../../lib/itemMoney');
+const { clientMoney } = require('../../lib/clientMoney');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
 const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClientCourse } = require('../../lib/clientCourseActions');
 const { actorName } = require('../../lib/clientHistory');
@@ -191,6 +192,21 @@ router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth
   } catch (e) { logger.error("[course-access-update]", e.message); res.status(500).json({ error: "Internal server error" }); }
 });
 
+// GET /api/admin/clients/:id/money — what the client owes and has paid, for every item (lib/clientMoney.js): the courses and tracks they hold, each certificate and
+// the extras, with the catalogue price, the agreed price and where it came from, paid, paid before the system and what is left. The client's page, the payment
+// dialog and the lists all read this one answer. Never cached: a screen that opened an hour ago must not be told an hour-old price.
+router.get('/api/admin/clients/:id/money', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+  try {
+    const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+    const scoped = await scopedSubscriber(req, req.params.id, tenantId);
+    if (!scoped.subscriber) return res.status(scoped.status).json({ error: scoped.error });
+    const money = await clientMoney(pool, { tenantId, subscriberId: req.params.id });
+    if (!money) return res.status(404).json({ error: 'العميل غير موجود' });
+    res.set('Cache-Control', 'no-store');
+    res.json(money);
+  } catch (e) { logger.error('[client-money]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // PUT /api/admin/subscribers/:id/item-money — the total price of one item they
 // bought (a course, or 'bundle:<id>'), and «مدفوع قبل السيستم». The price is
 // written on every payment for it and on the client (lib/agreedPrice.js), so
@@ -234,7 +250,11 @@ router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrS
     }
     await conn.beginTransaction();
     if (req.body?.expected !== undefined) {
-      await setAgreedPrice(conn, { tenantId, subscriberId: req.params.id, courseId, bundleId, price: req.body.expected });
+      // The price is in the item's own currency; the change goes to the client's history (who, old price, new price).
+      const line = balanceFor(await itemBalances(conn, { tenantId, subscriberId: req.params.id }), item);
+      await setAgreedPrice(conn, {
+        tenantId, subscriberId: req.params.id, courseId, bundleId, price: req.body.expected, actor: actorName(req), explicit: true, currency: line?.currency || 'EGP',
+      });
     }
     if (req.body?.priorPaid !== undefined) {
       await setPriorPaid(conn, { tenantId, subscriberId: req.params.id, courseId, bundleId, amount: req.body.priorPaid });

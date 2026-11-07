@@ -15,7 +15,7 @@ test('the payment route prices a retake from the catalogue, adds it to the agree
   assert.match(route, /const isRetake = payment\.retake === true && safeType === 'COURSE';/);
   assert.match(route, /planRetake\(pool, \{/);
   assert.match(route, /resolvedExpected = plan\.expected;/);
-  assert.match(route, /\|\| payment\.isInstallment \|\| isRetake\)/, 'the course keeps one agreed price on every row');
+  assert.match(route, /priceChange \|\| isRetake \|\| payment\.isInstallment/, 'the course keeps one agreed price on every row');
   assert.match(route, /if \(isPaid && paysForItem && \(courseId \|\| bundleId\) && !isRetake\)/, 'a retake never re-grants (or narrows) the access the client holds');
 });
 

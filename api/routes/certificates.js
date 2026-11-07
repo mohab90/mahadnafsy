@@ -11,8 +11,9 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { basePriceForCurrency, certificateDue, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
-const { certificateNameOf, certificatePrice, syncCertificateRequest } = require('../lib/certificatePayments');
+const { basePriceForCurrency, certificateDue, certificateSource, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
+const { certificatePrices } = require('../lib/itemMoney');
+const { certificateNameOf, certificatePrice, setCertificatePrice, syncCertificateRequest } = require('../lib/certificatePayments');
 const { withFreshCode } = require('../lib/certificateCodes');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
@@ -77,9 +78,9 @@ function collectionPartyOf(row) {
 // And paid means the whole price the system asks for this certificate — «مينفعش
 // تقول السعر اكتمل غير لما يطابق السعر عندك في السيستم» (8 Oct 2026). Any linked
 // payment, a part of it included, used to count as paid in full.
-const priceDue = (request, systemPrice) => (Number(systemPrice) > 0 ? Number(systemPrice) : Number(request.price) || 0);
-const fullyPaid = (request, systemPrice) => {
-  const due = priceDue(request, systemPrice);
+const priceDue = (request, systemPrice, own = 0) => (Number(own) > 0 ? Number(own) : Number(systemPrice) > 0 ? Number(systemPrice) : Number(request.price) || 0);
+const fullyPaid = (request, systemPrice, own = 0) => {
+  const due = priceDue(request, systemPrice, own);
   return due > 0 && Number(request.paid_amount) >= due;
 };
 
@@ -99,6 +100,7 @@ const AUDIT_PROBLEMS = Object.freeze({
 });
 async function auditRequests(tenantId) {
   const pricing = await loadPricing(tenantId);
+  const agreedPrices = await certificatePrices(pool, { tenantId });
   const [rows] = await pool.query(
     `SELECT cr.id, cr.type, cr.custom_name, cr.status, cr.price, cr.paid_amount, cr.currency, cr.nationality, cr.course_id, cr.requested_at,
             s.name AS subscriber_name, s.client_code,
@@ -115,14 +117,16 @@ async function auditRequests(tenantId) {
     const currency = String(row.currency || 'EGP').toUpperCase();
     const listed = basePriceForCurrency(pricing, row.type, currency, row.nationality) || 0;
     const stored = Number(row.price) || 0;
-    const due = certificateDue(pricing, { type: row.type, currency, price: stored, nationality: row.nationality });
+    const agreed = agreedPrices.get(String(row.id)) || 0;
+    const due = certificateDue(pricing, { type: row.type, currency, price: stored, nationality: row.nationality }, agreed);
     const paid = Number(row.paid_amount) || 0;
     const linkedPaid = Number(row.linked_paid) || 0;
     const problems = [];
     const fix = {};
     if (Number(row.payment_rows) > 0 && Math.abs(paid - linkedPaid) > 0.001) { problems.push('paid_mismatch'); fix.paid = linkedPaid; }
     if (due > 0 && paid > due + 0.001) problems.push('overpaid');
-    if (listed > 0 && stored > 0 && Math.abs(stored - listed) > 0.001) { problems.push('price_differs'); fix.price = listed; }
+    // A price agreed for this client's certificate is not a copy gone stale: it is the price.
+    if (!agreed && listed > 0 && stored > 0 && Math.abs(stored - listed) > 0.001) { problems.push('price_differs'); fix.price = listed; }
     if (paid > 0 && due <= 0) problems.push('paid_without_price');
     if (Number(row.other_currency) > 0) problems.push('currency_mismatch');
     const status = String(row.status || '');
@@ -214,11 +218,13 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         WHERE cr.tenant_id=?${req.query.subscriber_id ? ' AND cr.subscriber_id=?' : ''}
         ORDER BY cr.requested_at DESC LIMIT ?`, [req.tenantId, ...(req.query.subscriber_id ? [String(req.query.subscriber_id)] : []), limit]);
     const pricing = await loadPricing(req.tenantId);
+    const agreedPrices = await certificatePrices(pool, { tenantId: req.tenantId, subscriberIds: req.query.subscriber_id ? [String(req.query.subscriber_id)] : null });
     res.json(rows.map(row => {
       const price = row.price != null ? Number(row.price) : null;
       const paid = Number(row.paid_amount) || 0;
       const systemPrice = systemPriceOfRow(pricing, row);
-      const due = priceDue(row, systemPrice);
+      const agreed = agreedPrices.get(String(row.id)) || 0;
+      const due = priceDue(row, systemPrice, agreed);
       return {
         id: row.id,
         subscriberId: row.subscriber_id,
@@ -245,6 +251,7 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         status: String(row.status || 'PENDING').toLowerCase(),
         price,
         systemPrice: systemPrice || null,
+        priceSource: certificateSource(pricing, { type: row.type, currency: row.currency, nationality: row.nationality, price }, agreed),
         paid,
         remaining: due > 0 ? Math.max(0, due - paid) : null,
         complete: due > 0 && paid >= due,
@@ -376,6 +383,10 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
     const changed = [];
     let repriceFor;
     let priceTyped;
+    let priceFromList = false;
+    const pricingNow = await loadPricing(req.tenantId);
+    const agreedNow = (await certificatePrices(conn, { tenantId: req.tenantId, subscriberIds: [request.subscriber_id] })).get(String(request.id)) || 0;
+    const dueNow = certificateDue(pricingNow, request, agreedNow);
     const text = (key, column, label, max = 255) => {
       if (b[key] === undefined) return;
       const value = sanitize(String(b[key] ?? ''), max).trim() || null;
@@ -412,12 +423,13 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
       if (b[key] === undefined || b[key] === '') continue;
       const value = Number(b[key]);
       if (!Number.isFinite(value) || value < 0) { await conn.rollback(); return res.status(400).json({ error: `${label} لازم يكون رقم` }); }
-      if (value === Number(request[column] || 0)) continue;
+      if (value === (column === 'price' ? dueNow : Number(request[column] || 0))) continue;
       // What was paid stays with the payment that carries it; the PRICE is the certificate's and is the managers' to correct even after it was paid
       // (its payments' expected price follows below).
       if (linkedPayment && column === 'paid_amount') { await conn.rollback(); return res.status(409).json({ error: `${label} مربوط بدفعة متسجلة — بيتعدل من الدفعة نفسها` }); }
-      sets.push(`${column}=?`); params.push(value); changed.push(label);
-      if (column === 'price') priceTyped = value;
+      changed.push(label);
+      if (column === 'price') priceTyped = value; // written below by the one price writer, which keeps the payments and the agreed price with it
+      else { sets.push(`${column}=?`); params.push(value); }
     }
     if (repriceFor !== undefined && priceTyped === undefined) {
       const pricing = await loadPricing(req.tenantId);
@@ -425,20 +437,20 @@ router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAd
       if (!linkedPayment) {
         const resolved = resolveCertificatePrice({ type, nationality: repriceFor, pricingConfig: pricing });
         if (resolved.price) {
-          sets.push('price=?'); params.push(resolved.price); changed.push('السعر');
+          priceFromList = true; changed.push('السعر');
           if (resolved.currency && resolved.currency !== (request.currency || 'EGP')) { sets.push('currency=?'); params.push(resolved.currency); changed.push('العملة'); }
           priceTyped = resolved.price;
         }
       } else {
         const listed = basePriceForCurrency(pricing, type, request.currency || 'EGP', repriceFor) || 0;
-        if (listed > 0 && listed !== Number(request.price || 0)) { sets.push('price=?'); params.push(listed); changed.push('السعر'); priceTyped = listed; }
+        if (listed > 0 && listed !== dueNow) { priceFromList = true; changed.push('السعر'); priceTyped = listed; }
       }
     }
-    if (!sets.length) { await conn.rollback(); return res.json({ ok: true, changed: [] }); }
-    await conn.query(`UPDATE certificate_requests SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, request.id, req.tenantId]);
-    if (priceTyped !== undefined && linkedPayment) {
-      await conn.query(
-        'UPDATE payments SET course_expected=? WHERE certificate_request_id=? AND tenant_id=? AND deleted_at IS NULL', [priceTyped, request.id, req.tenantId]);
+    if (!sets.length && priceTyped === undefined) { await conn.rollback(); return res.json({ ok: true, changed: [] }); }
+    if (sets.length) await conn.query(`UPDATE certificate_requests SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, request.id, req.tenantId]);
+    if (priceTyped !== undefined) {
+      if (priceTyped <= 0) { await conn.rollback(); return res.status(400).json({ error: 'السعر لازم يكون رقم أكبر من صفر' }); }
+      await setCertificatePrice(conn, { tenantId: req.tenantId, requestId: request.id, price: priceTyped, own: !priceFromList, actor: actorName(req) });
     }
     // «الاسم بالإنجليزي أنا مدخله قبل كده من صفحة الشهادات»: an English name typed on a request is the client's name, so it fills the blank on
     // their file too — the institute's certificate and every other one read it from there.
@@ -609,16 +621,17 @@ router.patch('/api/admin/certificate-requests/:id',
       [request.id, request.subscriber_id, req.tenantId]
     );
     const systemPrice = await certificatePrice(conn, req.tenantId, { nationality: request.nationality, type: String(request.type || '').toUpperCase(), currency: String(request.currency || 'EGP').toUpperCase() });
+    const agreedPrice = (await certificatePrices(conn, { tenantId: req.tenantId, subscriberIds: [request.subscriber_id] })).get(String(request.id)) || 0;
     // A certificate already past payment that holds the whole of its own price
     // was paid in full when it got there: a later rise in the price list must
     // not lock its delivery steps — or a note saved on it.
     const paidAtItsPrice = POST_PAYMENT_STATUSES.has(currentStatus)
       && Number(request.price) > 0 && Number(request.paid_amount) >= Number(request.price);
-    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !paidAtItsPrice && !fullyPaid(request, systemPrice)) {
+    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !paidAtItsPrice && !fullyPaid(request, systemPrice, agreedPrice)) {
         await conn.rollback();
         conn.release();
         conn = null;
-        const due = priceDue(request, systemPrice);
+        const due = priceDue(request, systemPrice, agreedPrice);
         return res.status(409).json({
           error: due > 0
             ? `الشهادة لسه مش مدفوعة كاملة — اتدفع ${Number(request.paid_amount || 0).toLocaleString('en-US')} من ${due.toLocaleString('en-US')}. سجّل الباقي الأول («دفع»).`
@@ -638,7 +651,6 @@ router.patch('/api/admin/certificate-requests/:id',
     const sets = ['status=?'];
     const params = [normalizedStatus];
     if (notes !== undefined) { sets.push('admin_note=?'); params.push(notes); }
-    if (normalizedPrice !== undefined) { sets.push('price=?'); params.push(normalizedPrice); }
     if (normalizedCurrency) { sets.push('currency=?'); params.push(normalizedCurrency); }
     if (issued_at) { sets.push('issued_at=?'); params.push(issued_at); }
     params.push(req.params.id, req.tenantId);
@@ -666,6 +678,10 @@ router.patch('/api/admin/certificate-requests/:id',
       }
     }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, params);
+    // The price is the client's own to agree: the one writer keeps the request, its payments and the agreed price together (lib/certificatePayments.js).
+    if (normalizedPrice > 0 && normalizedPrice !== (Number(request.price) || 0)) {
+      await setCertificatePrice(conn, { tenantId: req.tenantId, requestId: request.id, price: normalizedPrice, actor: actorName(req) });
+    }
     // An institute certificate that is issued by hand has a completion under its own code, so the design opens,
     // the QR resolves and it is in the history (lib/instituteCertificates.js recordIssuedInstituteCertificate).
     if (['ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED'].includes(normalizedStatus)) {

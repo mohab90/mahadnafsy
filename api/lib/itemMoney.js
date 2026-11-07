@@ -11,11 +11,19 @@
 const IN_CHUNK = 1000;
 const num = value => Number(value) || 0;
 
+// A price the client agreed for something that is not a course or a track keeps its place in the same table, under a key of its own: `cert:<request id>` for one
+// certificate (7 Nov 2026: «عدّلت سعر شهادة العميل وشباك الدفع ما أخدهاش»). Those rows are never in the maps the screens read (customPrices / priorPaid), so no course
+// list grows a line for a certificate; lib/certificatePayments.js reads them through certificatePrices.
+const CERTIFICATE_PREFIX = 'cert:';
+const certificateKey = requestId => `${CERTIFICATE_PREFIX}${requestId}`;
+const isSideKey = key => String(key).startsWith(CERTIFICATE_PREFIX);
+
 /** The maps of one client, or of many: Map<subscriberId, { customPrices, priorPaid }> (a client with nothing is absent; use moneyOf to always get maps). */
 async function loadItemMoney(db, { tenantId, subscriberIds = null }) {
   const out = new Map();
   const add = rows => {
     for (const row of rows) {
+      if (isSideKey(row.item_key)) continue;
       const entry = out.get(row.subscriber_id) || { customPrices: {}, priorPaid: {} };
       if (num(row.agreed_price) > 0) entry.customPrices[row.item_key] = num(row.agreed_price);
       if (num(row.prior_paid) > 0) entry.priorPaid[row.item_key] = num(row.prior_paid);
@@ -66,7 +74,22 @@ async function priorPaidTotals(db, { tenantId, subscriberIds }) {
   return out;
 }
 
-const keepOrDrop = (db, tenantId, subscriberId, itemKey) => db.query(
+/** The prices agreed for certificates: Map<request id, price>, of the given clients (null: of the whole institute). */
+async function certificatePrices(db, { tenantId, subscriberIds = null }) {
+  const out = new Map();
+  const read = async (clause, params) => {
+    const [rows] = await db.query(
+      `SELECT item_key, agreed_price FROM client_item_money WHERE tenant_id=? AND item_key LIKE ? AND agreed_price > 0${clause}`,
+      [tenantId, `${CERTIFICATE_PREFIX}%`, ...params]);
+    for (const row of rows) out.set(String(row.item_key).slice(CERTIFICATE_PREFIX.length), num(row.agreed_price));
+  };
+  if (subscriberIds === null) { await read('', []); return out; }
+  const ids = [...new Set(subscriberIds.filter(Boolean))];
+  for (let i = 0; i < ids.length; i += IN_CHUNK) await read(' AND subscriber_id IN (?)', [ids.slice(i, i + IN_CHUNK)]);
+  return out;
+}
+
+const keepOrDrop =(db, tenantId, subscriberId, itemKey) => db.query(
   'DELETE FROM client_item_money WHERE tenant_id=? AND subscriber_id=? AND item_key=? AND COALESCE(agreed_price, 0) <= 0 AND COALESCE(prior_paid, 0) <= 0',
   [tenantId, subscriberId, itemKey]);
 
@@ -86,7 +109,7 @@ async function setItemMoney(db, { tenantId, subscriberId, itemKey, price, priorP
 
 /** Replace both whole maps of a client (a track renamed, a currency converted): what is not in them is gone. Run inside the caller's transaction. */
 async function replaceItemMoney(db, { tenantId, subscriberId, customPrices = {}, priorPaid = {} }) {
-  await db.query('DELETE FROM client_item_money WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]);
+  await db.query('DELETE FROM client_item_money WHERE tenant_id=? AND subscriber_id=? AND item_key NOT LIKE ?', [tenantId, subscriberId, `${CERTIFICATE_PREFIX}%`]);
   const items = new Set([...Object.keys(customPrices), ...Object.keys(priorPaid)]);
   const rows = [...items]
     .map(item => [tenantId, subscriberId, item, num(customPrices[item]) > 0 ? num(customPrices[item]) : null, num(priorPaid[item]) > 0 ? num(priorPaid[item]) : null])
@@ -108,4 +131,4 @@ function priorPaidTotalSql(clientAlias) {
   return `COALESCE((SELECT SUM(m.prior_paid) FROM client_item_money m WHERE m.tenant_id = ${clientAlias}.tenant_id ${UNICODE} AND m.subscriber_id = ${clientAlias}.id ${UNICODE}), 0)`;
 }
 
-module.exports = { loadItemMoney, moneyOf, withItemMoney, withoutItemMoney, priorPaidTotals, setItemMoney, replaceItemMoney, priorPaidSql, priorPaidTotalSql };
+module.exports = { certificateKey, certificatePrices, loadItemMoney, moneyOf, withItemMoney, withoutItemMoney, priorPaidTotals, setItemMoney, replaceItemMoney, priorPaidSql, priorPaidTotalSql };

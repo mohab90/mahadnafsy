@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { loadHoldings, loadCertificateRequests, loadPayments, loadCompletions } = require('../lib/clientView');
-const { certificateDue } = require('../lib/certificatePricing');
+const { certificateDue, certificateSource } = require('../lib/certificatePricing');
 const { safeIsoString } = require('../lib/dates');
 
 // The two mappings this module replaced, kept here as the oracle: the staff lists' batch projection and the single-client profile's inline block.
@@ -61,7 +61,7 @@ test('it answers exactly what the lists and the profile answered before, over ra
 function oldCertificate(request, pricing) {
   return { id: request.id, courseId: request.course_id || undefined, type: String(request.type || 'OTHER').toLowerCase(), customName: request.custom_name || undefined,
     nameAr: request.name_ar || undefined, nameEn: request.name_en || undefined, nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
-    idNumber: request.id_number || undefined, status: String(request.status || 'PENDING').toLowerCase(), price: certificateDue(pricing, request) || undefined,
+    idNumber: request.id_number || undefined, status: String(request.status || 'PENDING').toLowerCase(), price: certificateDue(pricing, request) || undefined, priceSource: certificateSource(pricing, request),
     paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0, currency: request.currency || undefined, requestedAt: safeIsoString(request.requested_at) || null,
     issuedAt: safeIsoString(request.issued_at) || undefined, note: request.note || undefined, adminNote: request.admin_note || undefined };
 }

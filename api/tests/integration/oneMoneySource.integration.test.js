@@ -78,24 +78,38 @@ before(async () => {
 });
 after(async () => { if (!ENABLED) return; await clean(); await pool.end(); });
 
-test('(a) a booking opened from the client\'s page keeps the price edited there, not the branch price', { skip, todo: 'owner complaint 7 Nov — fixed by the server deciding the price' }, async () => {
+test('(a) a booking opened from the client page keeps the price edited there, not the branch price', { skip }, async () => {
   const { agreedPrice } = require('../../lib/agreedPrice');
+  const priceNow = () => agreedPrice(pool, { tenantId: TENANT, subscriberId: 'sub-om-1', courseId: 'co-om-1' });
   const first = await book({ subscriber_id: 'sub-om-1', client: IDENTITY, payment: dialogBooking() });
   assert.equal(first.statusCode, 200, JSON.stringify(first.body));
-  assert.equal(await agreedPrice(pool, { tenantId: TENANT, subscriberId: 'sub-om-1', courseId: 'co-om-1' }), 2500, 'the branch price is where a new booking starts');
+  assert.equal(await priceNow(), 2500, 'the branch price is where a NEW booking starts');
 
   const edited = await clientPage('sub-om-1', 'co-om-1', 2000);
   assert.equal(edited.statusCode, 200, JSON.stringify(edited.body));
-  assert.equal(await agreedPrice(pool, { tenantId: TENANT, subscriberId: 'sub-om-1', courseId: 'co-om-1' }), 2000, 'the client\'s page now says 2000');
+  assert.equal(await priceNow(), 2000, 'the client page now says 2000');
 
-  // «دفع وحجز» on the same client: the dialog opens as a new booking and sends the branch figure it computed from the catalogue.
-  await book({ subscriber_id: 'sub-om-1', client: IDENTITY, payment: dialogBooking({ amount: 300 }) });
+  // «دفع وحجز» from a dialog that still holds the branch figure it computed from the catalogue: refused, with the price on file, and nothing is written.
+  const stale = await book({ subscriber_id: 'sub-om-1', client: IDENTITY, payment: dialogBooking({ amount: 300 }) });
+  assert.equal(stale.statusCode, 409, JSON.stringify(stale.body));
+  assert.deepEqual([stale.body.code, stale.body.price], ['PRICE_CHANGED', 2000]);
+  assert.equal(stale.body.error, 'السعر اتغير، افتح من جديد');
+  assert.equal(await priceNow(), 2000, 'the refused booking changed nothing');
+
+  // The dialog opened afresh proposes the price on file (and still names the tier): it is recorded, and the client's price stays.
+  const fresh = await book({ subscriber_id: 'sub-om-1', client: IDENTITY, payment: dialogBooking({ amount: 300, courseExpected: 2000 }) });
+  assert.equal(fresh.statusCode, 200, JSON.stringify(fresh.body));
   const [rows] = await pool.query("SELECT course_expected FROM payments WHERE tenant_id=? AND subscriber_id='sub-om-1' ORDER BY created_at, id", [TENANT]);
-  assert.deepEqual(rows.map(row => Number(row.course_expected)), [2000, 2000], 'every booking of the course carries the client\'s own price');
-  assert.equal(await agreedPrice(pool, { tenantId: TENANT, subscriberId: 'sub-om-1', courseId: 'co-om-1' }), 2000, 'and the client\'s own price was not overwritten by the branch price');
+  assert.deepEqual(rows.map(row => Number(row.course_expected)), [2000, 2000], 'every booking of the course carries the client own price');
+  assert.equal(await priceNow(), 2000);
+
+  // Nobody sending nothing gets the same price.
+  const silent = await book({ subscriber_id: 'sub-om-1', payment: { amount: 100, currency: 'EGP', paymentType: 'COURSE', courseId: 'co-om-1', paymentMethod: 'كاش', isInstallment: true, status: 'paid' } });
+  assert.equal(silent.statusCode, 200, JSON.stringify(silent.body));
+  assert.equal(await priceNow(), 2000);
 });
 
-test('(b) a certificate price edited for one client is the price the dialog is handed', { skip, todo: 'owner complaint 7 Nov — fixed by the client\'s own certificate price' }, async () => {
+test('(b) a certificate price edited for one client is the price the dialog is handed', { skip }, async () => {
   const { loadCertificateRequests } = require('../../lib/clientView');
   await pool.query(
     `INSERT INTO certificate_requests (id, tenant_id, subscriber_id, type, nationality, status, price, currency, paid_amount)

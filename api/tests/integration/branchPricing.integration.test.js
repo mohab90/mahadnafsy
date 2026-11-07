@@ -57,7 +57,8 @@ before(async () => {
   await pool.query(
     `INSERT INTO subscribers (id, tenant_id, name, phone, branch, branch_id, assigned_sales_id, assigned_cs_id)
      VALUES ('sub-bp-1', ?, 'Ahmed fb', '1015000004', 'DAQQI', 'branch-daqqi', 'st-bp-rep', 'st-bp-cs'),
-            ('sub-bp-2', ?, 'عميل تاني', '1015000005', 'DAQQI', 'branch-daqqi', NULL, NULL)`, [TENANT, TENANT]);
+            ('sub-bp-2', ?, 'عميل تاني', '1015000005', 'DAQQI', 'branch-daqqi', NULL, NULL),
+            ('sub-bp-3', ?, 'عميل تالت', '1015000006', 'DAQQI', 'branch-daqqi', NULL, NULL)`, [TENANT, TENANT, TENANT]);
   const conn = await pool.getConnection();
   try {
     await tiers.saveItemPricing(conn, {
@@ -116,7 +117,7 @@ test('a booking writes no automatic bonus: the rep, the desk and the lecturer ar
 test('a typed price that is not the catalogue price is refused', { skip }, async () => {
   const res = await book({ subscriber_id: 'sub-bp-2', client: { ...CLIENT, nationalId: '' }, payment: payment({ priceTier: 'DAQQI', courseExpected: 1500 }) });
   assert.equal(res.statusCode, 409);
-  assert.equal(res.body.code, 'PRICE_MISMATCH');
+  assert.equal(res.body.code, 'PRICE_CHANGED');
 });
 
 test('no discount where the course has none, and no booking without the Arabic triple name', { skip }, async () => {
@@ -135,7 +136,7 @@ test('a percentage button takes that much off the branch list price; any other f
   const both = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 10, useDiscount: true }) });
   assert.equal(both.body?.code, 'TIER_NOT_PRICED', 'the course discount and a percentage do not stack');
   const wrong = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 20, courseExpected: 2500 }) });
-  assert.equal(wrong.body?.code, 'PRICE_MISMATCH');
+  assert.equal(wrong.body?.code, 'PRICE_CHANGED');
   const ok = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 20, courseExpected: 2000 }) });
   assert.equal(ok.statusCode, 200, JSON.stringify(ok.body));
   const [[row]] = await pool.query("SELECT course_expected FROM payments WHERE tenant_id=? AND subscriber_id='sub-bp-2' ORDER BY created_at DESC LIMIT 1", [TENANT]);
@@ -158,9 +159,9 @@ test('«عميل الدقي غير المصري» reads the online foreign price
     [3600, 3300, 'ONLINE_EGYPT_FOREIGN', 'DAQQI']);
 
   const client = { ...CLIENT, nameAr: 'جون مايكل سميث', nameEn: 'John Michael Smith', nationalId: 'P1234567' };
-  const res = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI_FOREIGN', useDiscount: true, courseExpected: 3300, amount: 1300 }) });
+  const res = await book({ subscriber_id: 'sub-bp-3', client, payment: payment({ priceTier: 'DAQQI_FOREIGN', useDiscount: true, courseExpected: 3300, amount: 1300 }) });
   assert.equal(res.statusCode, 200, JSON.stringify([res.statusCode, res.body]));
-  const [[row]] = await pool.query("SELECT course_expected, branch FROM payments WHERE tenant_id=? AND subscriber_id='sub-bp-2' ORDER BY created_at DESC LIMIT 1", [TENANT]);
+  const [[row]] = await pool.query("SELECT course_expected, branch FROM payments WHERE tenant_id=? AND subscriber_id='sub-bp-3' ORDER BY created_at DESC LIMIT 1", [TENANT]);
   assert.deepEqual([Number(row.course_expected), row.branch], [3300, 'DAQQI']);
 
   const conn2 = await pool.getConnection();

@@ -28,10 +28,10 @@ test('the managers may set a client\'s price; sales, collection and support may 
 
 test('the server takes a booking\'s own price only from someone allowed to set it', () => {
   const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /const clientPrice = payment\.customPrice === true && courseExpected != null\s*\n\s*&& \(req\.isSuperAdmin \|\| hasPermission\(req\.staffRecord, 'set_client_price'\)\);/);
-  assert.match(route, /if \(courseExpected != null && !clientPrice && !priceMatches\(courseExpected, tierPrice\.price\)\)/,
-    'anyone else still meets «السعر اتغير»');
-  assert.match(route, /let resolvedExpected = clientPrice \? courseExpected : tierPrice \? tierPrice\.price : courseExpected;/);
+  assert.match(route, /const canSetClientPrice = Boolean\(req\.isSuperAdmin \|\| hasPermission\(req\.staffRecord, 'set_client_price'\)\);\s*\n\s*const clientPrice = payment\.customPrice === true && courseExpected != null && canSetClientPrice;/);
+  assert.match(route, /if \(courseExpected != null && !clientPrice && !priceMatches\(courseExpected, heldPrice \?\? tierPrice\.price\)\) return priceChangedResponse\(/,
+    'anyone else meets «السعر اتغير، افتح من جديد»');
+  assert.match(route, /let resolvedExpected = clientPrice \? courseExpected : heldPrice != null \? heldPrice : tierPrice \? tierPrice\.price : courseExpected;/);
 });
 
 test('the booking says it carries its own price only when one was typed', () => {

@@ -23,11 +23,11 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
-const { agreedPrice, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
+const { agreedPrice, agreedPriceDetail, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
 const { planRetake } = require('../lib/courseRetake');
 const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
-const { applyCertificatePayment } = require('../lib/certificatePayments');
+const { applyCertificatePayment, decideCertificatePrice, setCertificatePrice } = require('../lib/certificatePayments');
 const { FinancialScopeError, financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
@@ -503,8 +503,18 @@ async function recordSubscriberPayment(req, res) {
     // «رجع يظهر للمديرين ولحساب هنا فقط انه يدخل سعر مختلف للعميل»: a price set
     // for this client at booking, by someone allowed to (set_client_price),
     // stands instead of the branch price.
-    const clientPrice = payment.customPrice === true && courseExpected != null
-      && (req.isSuperAdmin || hasPermission(req.staffRecord, 'set_client_price'));
+    const canSetClientPrice = Boolean(req.isSuperAdmin || hasPermission(req.staffRecord, 'set_client_price'));
+    const clientPrice = payment.customPrice === true && courseExpected != null && canSetClientPrice;
+    // What the client already holds for this item — their own price, else what their booking recorded (lib/agreedPrice.js). That is the server's
+    // answer to «السعر كام؟»: a branch price, or a figure the screen sends, is only where a NEW item starts (7 Nov 2026: «سعر الكورس أحيانًا رقم في
+    // صفحة العميل ورقم تاني عند زر دفع وحجز» — a booking opened as «حجز» was priced by the branch alone and overwrote the client's own price).
+    const isRetake = payment.retake === true && safeType === 'COURSE';
+    const itemNamed = Boolean(paysForItem && (courseId || bundleId));
+    const held = itemNamed && subscriber_id && !isRetake
+      ? await agreedPriceDetail(pool, { tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, currency: paymentCurrency }).catch(() => null)
+      : null;
+    const heldPrice = held && (held.source === 'client' || held.source === 'booking') ? held.price : null;
+    const priceChangedResponse = price => res.status(409).json({ error: 'السعر اتغير، افتح من جديد', code: 'PRICE_CHANGED', price });
     let tierPrice = null;
     if (priceTier && paysForItem && (courseId || bundleId)) {
       if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'فئة السعر المختارة غير معروفة — حدّث الصفحة.', code: 'PRICE_TIER_UNKNOWN' });
@@ -529,9 +539,7 @@ async function recordSubscriberPayment(req, res) {
       if (tierPrice.currency !== paymentCurrency) {
         return res.status(400).json({ error: `السعر في الفرع ده بالـ${tierPrice.currency} — الدفعة لازم تكون بنفس العملة`, code: 'TIER_CURRENCY_MISMATCH' });
       }
-      if (courseExpected != null && !clientPrice && !priceMatches(courseExpected, tierPrice.price)) {
-        return res.status(409).json({ error: 'السعر اتغير — حدّث الصفحة', code: 'PRICE_MISMATCH', price: tierPrice.price });
-      }
+      if (courseExpected != null && !clientPrice && !priceMatches(courseExpected, heldPrice ?? tierPrice.price)) return priceChangedResponse(heldPrice ?? tierPrice.price);
     }
     // «اسم العميل الحقيقي عربي ثلاثي … بالانجليزي … الرقم القومي»: taken with
     // every booking that names a tier, and the Arabic triple name is required.
@@ -542,7 +550,16 @@ async function recordSubscriberPayment(req, res) {
       if (!checked.ok) return res.status(400).json({ error: checked.error, code: checked.code });
       bookingIdentity = checked.identity;
     }
-    let resolvedExpected = clientPrice ? courseExpected : tierPrice ? tierPrice.price : courseExpected;
+    let resolvedExpected = clientPrice ? courseExpected : heldPrice != null ? heldPrice : tierPrice ? tierPrice.price : courseExpected;
+    // Without a branch tier, a figure that is not the server's (the client's price on file, else the catalogue's) is a change of price: recorded for an account
+    // that may set one, refused for any other — the browser's number is never taken silently.
+    let priceChange = clientPrice;
+    const serverPrice = heldPrice ?? held?.price ?? null;
+    if (!priceTier && !clientPrice && itemNamed && !isRetake && courseExpected != null && serverPrice != null && !priceMatches(courseExpected, serverPrice)) {
+      if (!canSetClientPrice) return priceChangedResponse(serverPrice);
+      resolvedExpected = courseExpected;
+      priceChange = true;
+    }
     if (resolvedExpected == null && paysForItem && (courseId || bundleId)) {
       // Read through the pool: this runs before the transaction opens, and the
       // price is not part of what this write must see consistently.
@@ -553,7 +570,6 @@ async function recordSubscriberPayment(req, res) {
     if (resolvedExpected == null && !payment.isInstallment) resolvedExpected = paymentAmount;
     // «إعادة»: a course taken before, again, at 50% off (lib/courseRetake.js). Its price comes from the
     // catalogue and is added to what the client agreed for the course; the access they hold is left as it is.
-    const isRetake = payment.retake === true && safeType === 'COURSE';
     if (isRetake) {
       const plan = await planRetake(pool, {
         tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, currency: paymentCurrency, amount: paymentAmount,
@@ -852,6 +868,15 @@ async function recordSubscriberPayment(req, res) {
       await conn.query('UPDATE subscribers SET nationality=? WHERE id=? AND tenant_id=?', [certNationality, subscriber_id, paymentTenantId]);
     }
     if (safeType === 'CERTIFICATE') {
+      // The certificate's full price is the server's — the one agreed for this client's certificate, else the price list's. The figure the dialog
+      // states is a price change, recorded only for an account that may set a client's price and refused (409) for anyone else (lib/certificatePayments.js).
+      const [[holder]] = await conn.query('SELECT nationality FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriber_id, paymentTenantId]);
+      const decided = await decideCertificatePrice(conn, paymentTenantId, {
+        requestId: suppliedCertificateRequestId, type: String(certType || '').toUpperCase(), currency: paymentCurrency,
+        nationality: holder?.nationality || null, stated: courseExpected, canSetPrice: canSetClientPrice,
+      });
+      const certActor = req.staffRecord?.name || req.user?.name || req.user?.email || null;
+      if (decided.own && decided.existing) await setCertificatePrice(conn, { tenantId: paymentTenantId, requestId: certificateRequestId, price: decided.price, actor: certActor });
       await applyCertificatePayment({
         id,
         subscriber_id,
@@ -862,9 +887,10 @@ async function recordSubscriberPayment(req, res) {
         note: sanitize(payment.note || payment.notes || '', 2000) || null,
         cert_type: certType,
         certificate_request_id: certificateRequestId,
-        // The certificate's full price as the dialog states it, not this payment.
-        price: payment.courseExpected ?? payment.course_expected ?? null,
+        price: decided.price,
       }, conn, paymentTenantId, { settle: isPaid });
+      if (decided.own && !decided.existing) await setCertificatePrice(conn, { tenantId: paymentTenantId, requestId: certificateRequestId, price: decided.price, actor: certActor });
+      if (decided.price) resolvedExpected = decided.price;
     }
 
     // The branch's own receipt number, taken in this transaction (lib/receiptNumbers.js): Dokki and
@@ -921,10 +947,11 @@ async function recordSubscriberPayment(req, res) {
     // an instalment at the new price does not disagree with the booking's. An
     // instalment with no price brings the item's rows to the agreed one too,
     // so the access check below never finds two prices for one course.
-    if (resolvedExpected != null && (courseExpected != null || tierPrice || payment.isInstallment || isRetake)
+    if (resolvedExpected != null && (priceChange || isRetake || payment.isInstallment || (heldPrice == null && (courseExpected != null || tierPrice)))
       && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType)) {
       await setAgreedPrice(conn, {
         tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, price: resolvedExpected,
+        actor: req.staffRecord?.name || req.user?.name || req.user?.email || null, explicit: priceChange, currency: paymentCurrency,
       });
     }
 
@@ -1192,7 +1219,7 @@ async function recordSubscriberPayment(req, res) {
     // answered as a 500 «Internal server error».
     const status = e?.statusCode || (e instanceof FinancialScopeError ? e.status : null);
     res.status(status || 500).json(status
-      ? { error: e.message, ...(e instanceof FinancialScopeError ? { code: e.code } : {}) }
+      ? { error: e.message, ...(e instanceof FinancialScopeError || e?.code === 'PRICE_CHANGED' ? { code: e.code } : {}), ...(e?.code === 'PRICE_CHANGED' ? { price: e.price } : {}) }
       : { error: 'Internal server error' });
   }
 }

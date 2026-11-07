@@ -22,22 +22,25 @@
 
 const { resolveCatalogPrice } = require('./catalogPrice');
 const { moneyOf, setItemMoney, priorPaidTotals } = require('./itemMoney');
+const { logClientEvent } = require('./clientHistory');
 
 const itemKey = ({ courseId, bundleId }) => (bundleId ? `bundle:${bundleId}` : String(courseId || ''));
 
-/** The rule itself. `booked` is the highest price a booking recorded. */
-function resolveAgreed({ custom = 0, booked = 0, paid = 0, catalogue = 0 }) {
-  if (Number(custom) > 0) return Number(custom);
+/** The rule itself, with where the figure came from: 'client' (their own price), 'booking' (what their booking recorded), 'catalogue', or 'none'. `booked` is the highest price a booking recorded. */
+function resolveAgreedDetail({ custom = 0, booked = 0, paid = 0, catalogue = 0 }) {
+  if (Number(custom) > 0) return { price: Number(custom), source: 'client' };
   // Never below what was paid: 21 track bookings on production carry one
   // course's price («900» on a track paid 5,500), left by an old fault.
-  if (Number(booked) > 0) return Math.max(Number(booked), Number(paid) || 0);
-  return Number(catalogue) > 0 ? Number(catalogue) : null;
+  if (Number(booked) > 0) return { price: Math.max(Number(booked), Number(paid) || 0), source: 'booking' };
+  return Number(catalogue) > 0 ? { price: Number(catalogue), source: 'catalogue' } : { price: null, source: 'none' };
 }
+const resolveAgreed = figures => resolveAgreedDetail(figures).price;
 
-async function agreedPrice(db, { tenantId, subscriberId, courseId = null, bundleId = null, currency = 'EGP' }) {
-  if (!courseId && !bundleId) return null;
+/** The agreed price of one item and where it came from: { price, source, catalogue? } — what a booking, a payment and a screen all start from. */
+async function agreedPriceDetail(db, { tenantId, subscriberId, courseId = null, bundleId = null, currency = 'EGP' }) {
+  if (!courseId && !bundleId) return { price: null, source: 'none' };
   const custom = Number((await moneyOf(db, { tenantId, subscriberId })).customPrices[itemKey({ courseId, bundleId })]) || 0;
-  if (custom > 0) return custom;
+  if (custom > 0) return { price: custom, source: 'client' };
   const [[booked]] = await db.query(
     `SELECT MAX(course_expected) AS price,
             SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) AS paid FROM payments
@@ -48,8 +51,10 @@ async function agreedPrice(db, { tenantId, subscriberId, courseId = null, bundle
   const catalogue = Number(booked?.price) > 0 ? 0 : await resolveCatalogPrice(db, {
     type: bundleId ? 'bundle' : 'course', itemId: bundleId || courseId, currency, tenantId,
   }).catch(() => null);
-  return resolveAgreed({ booked: booked?.price, paid: booked?.paid, catalogue });
+  return resolveAgreedDetail({ booked: booked?.price, paid: booked?.paid, catalogue });
 }
+
+const agreedPrice = async (db, options) => (await agreedPriceDetail(db, options)).price;
 
 /**
  * Every item one client holds or has paid for, with its currency, the price
@@ -60,7 +65,7 @@ async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
   const held = await moneyOf(db, { tenantId, subscriberId });
   const [payments] = await db.query(
     `SELECT course_id, bundle_id, amount, currency, status, course_expected FROM payments
-      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND payment_type IN ('COURSE','BUNDLE')
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND payment_type IN ('COURSE','BUNDLE','OTHER')
         AND (course_id IS NOT NULL OR bundle_id IS NOT NULL)
       ORDER BY date, created_at`,
     [tenantId, subscriberId]);
@@ -125,7 +130,9 @@ async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
       type: entry.bundleId ? 'bundle' : 'course', itemId: entry.bundleId || entry.courseId, currency: entry.currency, tenantId,
     }).catch(() => null);
     entry.catalogue = catalogue || 0;
-    entry.expected = resolveAgreed({ custom: held.customPrices[entry.item], booked: entry.booked, paid: entry.paid, catalogue }) || 0;
+    const agreed = resolveAgreedDetail({ custom: held.customPrices[entry.item], booked: entry.booked, paid: entry.paid, catalogue });
+    entry.expected = agreed.price || 0;
+    entry.source = agreed.source;
     entry.priorPaid = Number(held.priorPaid[entry.item]) || 0;
     // what was paid for the courses of a track counts after the price is found: it never raises it (as the list's expected, which is read before they are added)
     const carry = carried.get(entry.item);
@@ -147,17 +154,26 @@ function balanceFor(balances, item) {
  * list see it) and on the client (so the online table does). Run inside the
  * caller's transaction.
  */
-async function setAgreedPrice(db, { tenantId, subscriberId, courseId = null, bundleId = null, price }) {
+async function setAgreedPrice(db, { tenantId, subscriberId, courseId = null, bundleId = null, price, actor = null, explicit = false, currency = 'EGP' }) {
   const value = Number(price);
   if (!Number.isFinite(value) || value <= 0) {
     const error = new Error('السعر لازم يكون رقم أكبر من صفر'); error.statusCode = 400; throw error;
   }
+  // A change of price is in the client's history — who, the old price, the new one. It is logged when the client already had a price for the item
+  // (their own or their booking's), or when someone set it on purpose (`explicit`); a first booking at the catalogue's figure is not a change.
+  const was = actor ? await agreedPriceDetail(db, { tenantId, subscriberId, courseId, bundleId, currency }) : null;
   await db.query(
     `UPDATE payments SET course_expected=?
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL
         AND course_id <=> ? AND bundle_id <=> ? AND payment_type IN ('COURSE','BUNDLE')`,
     [value, tenantId, subscriberId, courseId || null, bundleId || null]);
   await setItemMoney(db, { tenantId, subscriberId, itemKey: itemKey({ courseId, bundleId }), price: value });
+  if (was && was.price !== value && (explicit || was.source === 'client' || was.source === 'booking')) {
+    await logClientEvent(db, {
+      tenantId, subscriberId, action: 'price_changed', actor,
+      label: `سعر ${bundleId ? 'المسار' : 'الكورس'} (${itemKey({ courseId, bundleId })}): ${was.price == null ? 'بدون سعر' : Number(was.price).toLocaleString('en-US')} ← ${value.toLocaleString('en-US')} ${currency}`,
+    });
+  }
 }
 
 /** «مدفوع قبل السيستم» for one item. Zero clears it. */
@@ -198,4 +214,4 @@ const isItemPaymentType = type => !type || ITEM_PAYMENT_TYPES.includes(String(ty
 // The same rule for SQL, written for the alias `p`: the payments that are the course's (or track's) own money.
 const ITEM_PAYMENT_SQL = "COALESCE(p.payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER')";
 
-module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, itemBalances, balanceFor, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };
+module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, agreedPriceDetail, itemBalances, balanceFor, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, resolveAgreedDetail, setAgreedPrice, setPriorPaid };

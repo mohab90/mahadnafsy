@@ -91,8 +91,8 @@ test('the access panel edits the price, what was paid before, the lectures and t
   assert.match(route, /router\.put\('\/api\/admin\/subscribers\/:id\/item-money'/);
   assert.match(route, /UPDATE enrollments SET access_type=\?, lecture_limit=\?, updated_at=NOW\(\)/);
   assert.match(route, /UPDATE enrollments SET enrolled_at=\?, updated_at=NOW\(\)/);
-  // Both writes check the client is theirs, as the money screens do.
-  assert.equal((route.match(/const scoped = await scopedSubscriber\(req, req\.params\.id, tenantId\);/g) || []).length, 2);
+  // Both writes — and the money read, GET /api/admin/clients/:id/money — check the client is theirs, as the money screens do.
+  assert.equal((route.match(/const scoped = await scopedSubscriber\(req, req\.params\.id, tenantId\);/g) || []).length, 3);
   const panel = read('admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx');
   for (const label of ['السعر الإجمالي', 'مدفوع قبل السيستم', 'المحاضرات المفتوحة', 'كل المحاضرات', 'تاريخ الاشتراك', 'حدد النهاية']) {
     assert.ok(panel.includes(label), label);
