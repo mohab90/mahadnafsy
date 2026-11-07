@@ -16,6 +16,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { runRoute } = require('../lib/internalRoute');
+const { cairoToday } = require('../lib/dates');
 const logger = require('../lib/logger').child({ route: 'admin-bootstrap' });
 
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -51,19 +52,61 @@ const OVERVIEW = () => [
   ['/admin/overview/revenue', '../routes/analytics/dashboard', '/api/admin/overview/revenue', {}],
 ];
 
-const piecesOf = (set, period) => (set === 'overview' ? OVERVIEW() : CORE(period));
+// The accounts screens (7 Nov 2026): what «الحسابات» (no branch) or a branch's accounts («حسابات الدقي» / «حسابات التجمع», ?branch=daqqi|tagamoa) ask for when they
+// open — the keys are the exact paths and queries they send (today's date is the one the panel computes, in Cairo).
+const BRANCHES = new Set(['daqqi', 'tagamoa']);
+const ACCOUNTING = (today, month, branch) => (branch ? [
+  ['/admin/receipts/gaps', '../routes/misc/receiptGaps', '/api/admin/receipts/gaps', {}],
+  [`/admin/finance/boxes?branch=${branch}`, '../routes/finance/budgets', '/api/admin/finance/boxes', { branch }],
+  [`/admin/payments/review?status=pending&limit=1&branch=${branch}`, '../routes/payments', '/api/admin/payments/review', { status: 'pending', limit: '1', branch }],
+  [`/admin/dokki/installment-clients?branch=${branch}`, '../routes/admin/dokkiclients', '/api/admin/dokki/installment-clients', { branch }],
+  ['/admin/subscribers/stats', '../routes/admin/stafflists', '/api/admin/subscribers/stats', {}],
+  ['/admin/expense-categories', '../routes/admin-operations', '/api/admin/expense-categories', {}],
+  [`/admin/payment-proofs?branch=${branch}`, '../routes/payment-proofs', '/api/admin/payment-proofs', { branch }],
+  [`/admin/financial/pnl?from=2000-01-01&to=${today}&branch=${branch}`, '../routes/analytics/financial', '/api/admin/financial/pnl', { from: '2000-01-01', to: today, branch }],
+] : [
+  ['/admin/receipts/gaps', '../routes/misc/receiptGaps', '/api/admin/receipts/gaps', {}],
+  ['/admin/subscribers/stats', '../routes/admin/stafflists', '/api/admin/subscribers/stats', {}],
+  ['/admin/expense-categories', '../routes/admin-operations', '/api/admin/expense-categories', {}],
+  ['/admin/expenses/page?limit=1&offset=0', '../routes/admin-operations', '/api/admin/expenses/page', { limit: '1', offset: '0' }],
+  ['/admin/payment-proofs', '../routes/payment-proofs', '/api/admin/payment-proofs', {}],
+  [`/admin/finance/revenue-breakdown?month=${month}`, '../routes/finance-payments-register', '/api/admin/finance/revenue-breakdown', { month }],
+  [`/admin/financial/pnl?from=2000-01-01&to=${today}`, '../routes/analytics/financial', '/api/admin/financial/pnl', { from: '2000-01-01', to: today }],
+]);
+
+// «إحصائيات الدقي»: the reads the screen opens with through the panel's own call (the attendance report and the payment boxes are plain fetch() calls and not part of it).
+const DOKKI_STATS = today => [
+  ['/admin/daqqi/weekly-report?branch=DAQQI', '../routes/dokkiReports', '/api/admin/daqqi/weekly-report', { branch: 'DAQQI' }],
+  ['/admin/daqqi/automation', '../routes/dokkiReports', '/api/admin/daqqi/automation', {}],
+  ['/admin/daqqi/daily-brief?branch=DAQQI', '../routes/dokkiReports', '/api/admin/daqqi/daily-brief', { branch: 'DAQQI' }],
+  [`/admin/reports/teams/daqqi?from=${today}&to=${today}`, '../routes/management-reports', '/api/admin/reports/teams/:team', { from: today, to: today }, { team: 'daqqi' }],
+  ['/admin/discounts', '../routes/config', '/api/admin/discounts', {}],
+  ['/admin/contact-messages', '../routes/admin-operations', '/api/admin/contact-messages', {}],
+  ['/admin/analytics-summary?range=all', '../routes/admin/analyticssummary', '/api/admin/analytics-summary', { range: 'all' }],
+  ['/admin/join-us/counts', '../routes/admin-operations', '/api/admin/join-us/counts', {}],
+];
+
+const SETS = ['core', 'overview', 'accounting', 'dokki'];
+const piecesOf = (set, period, branch = null) => {
+  if (set === 'overview') return OVERVIEW();
+  const today = cairoToday();
+  if (set === 'accounting') return ACCOUNTING(today, today.slice(0, 7), branch);
+  if (set === 'dokki') return DOKKI_STATS(today);
+  return CORE(period);
+};
 
 /** The paths this route answers for a set and a month; the panel's own list of what to look for must be this one (a test holds them together). */
-const PIECE_PATHS = (set, period) => piecesOf(set, period).map(([key]) => key);
+const PIECE_PATHS = (set, period, branch = null) => piecesOf(set, period, branch).map(([key]) => key);
 
 // Signed in is all this route asks: it holds no data of its own, and every piece runs behind its own route's guards (requireAdminOrStaff and its permission), so an
 // account that is not staff receives a set of nulls — the same refusal each route would give it.
 router.get('/api/admin/bootstrap', requireAuth, async (req, res) => {
   try {
-    const set = req.query.set === 'overview' ? 'overview' : 'core';
+    const set = SETS.includes(req.query.set) ? req.query.set : 'core';
+    const branch = BRANCHES.has(req.query.branch) ? req.query.branch : null;
     const period = PERIOD.test(String(req.query.period || '')) ? String(req.query.period) : null;
-    const entries = await Promise.all(piecesOf(set, period).map(async ([key, modulePath, routePath, query]) => {
-      try { return [key, await runRoute(require(modulePath), routePath, req, query)]; }
+    const entries = await Promise.all(piecesOf(set, period, branch).map(async ([key, modulePath, routePath, query, params]) => {
+      try { return [key, await runRoute(require(modulePath), routePath, req, query, { params })]; }
       catch (error) { logger.warn('[admin-bootstrap] piece failed', key, error.message); return [key, null]; }
     }));
     res.set('Cache-Control', 'no-store');

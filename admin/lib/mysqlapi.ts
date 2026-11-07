@@ -4,6 +4,7 @@
 
 import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
 import { cairoMonthOnly } from '../../shared/cairoDate';
+import { screenSetOf } from './bootstrapPaths';
 import { takePaymentAttribution } from './paymentAttribution';
 import { takePendingPhotos } from './paymentPhotos';
 import { noteReceipt } from './lastReceipt';
@@ -76,16 +77,20 @@ const BOOTSTRAP_CORE = [
 const BOOTSTRAP_OVERVIEW = ['/admin/leads/stats', '/admin/leads/followups-due', '/admin/subscribers/stats?overview=1', '/admin/overview/revenue'];
 const BOOTSTRAP_MAX_AGE_MS = 10_000;
 const BOOTSTRAP_RETRY_MS = 30_000;
-type BootstrapSet = 'core' | 'overview';
+// 'core' and 'overview' at the start; the accounts screens and «إحصائيات الدقي» have a set each when they are the screen on show (lib/bootstrapPaths.ts)
+type BootstrapSet = string;
 type BootstrapAnswer = { at: number; pieces: Record<string, unknown> };
-const bootstraps: Record<BootstrapSet, { request: Promise<BootstrapAnswer | null> | null; answer: BootstrapAnswer | null; failedAt: number }> = {
+type BootstrapState = { request: Promise<BootstrapAnswer | null> | null; answer: BootstrapAnswer | null; failedAt: number };
+const bootstraps: Record<BootstrapSet, BootstrapState> = {
   core: { request: null, answer: null, failedAt: 0 },
   overview: { request: null, answer: null, failedAt: 0 },
 };
+const stateOf = (set: BootstrapSet): BootstrapState => (bootstraps[set] ||= { request: null, answer: null, failedAt: 0 });
 
 function bootstrapSetOf(path: string): BootstrapSet | null {
   if (BOOTSTRAP_OVERVIEW.includes(path)) return 'overview';
-  return BOOTSTRAP_CORE.includes(path) || path.startsWith('/admin/sales-targets?period=') ? 'core' : null;
+  if (BOOTSTRAP_CORE.includes(path) || path.startsWith('/admin/sales-targets?period=')) return 'core';
+  return typeof location === 'undefined' ? null : screenSetOf(path, location.pathname);
 }
 
 async function loadBootstrap(set: BootstrapSet): Promise<BootstrapAnswer | null> {
@@ -95,11 +100,12 @@ async function loadBootstrap(set: BootstrapSet): Promise<BootstrapAnswer | null>
     const headers: Record<string, string> = {};
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE}/admin/bootstrap?set=${set}&period=${encodeURIComponent(cairoMonthOnly())}`, { headers, credentials: 'include', cache: 'no-store', signal: controller.signal });
+    const [name, branch] = set.split(':');
+    const res = await fetch(`${API_BASE}/admin/bootstrap?set=${name}${branch ? `&branch=${branch}` : ''}&period=${encodeURIComponent(cairoMonthOnly())}`, { headers, credentials: 'include', cache: 'no-store', signal: controller.signal });
     if (!res.ok) return null; // the calls that follow go to the network and meet their own answer, a 401 included
     const body = await res.json() as { pieces?: Record<string, unknown> };
-    bootstraps[set].answer = body?.pieces && typeof body.pieces === 'object' ? { at: Date.now(), pieces: { ...body.pieces } } : null;
-    return bootstraps[set].answer;
+    stateOf(set).answer = body?.pieces && typeof body.pieces === 'object' ? { at: Date.now(), pieces: { ...body.pieces } } : null;
+    return stateOf(set).answer;
   } catch { return null; } finally { clearTimeout(timeoutId); }
 }
 
@@ -107,7 +113,7 @@ async function loadBootstrap(set: BootstrapSet): Promise<BootstrapAnswer | null>
 async function takeBootstrapPiece(path: string): Promise<unknown> {
   const set = bootstrapSetOf(path);
   if (!set) return undefined;
-  const state = bootstraps[set];
+  const state = stateOf(set);
   // asked once; asked again only if the attempt failed (signed out at the time, a server restart) and half a minute has passed
   if (!state.request || (state.failedAt && Date.now() - state.failedAt > BOOTSTRAP_RETRY_MS)) { state.failedAt = 0; state.request = loadBootstrap(set); }
   const answer = await state.request;

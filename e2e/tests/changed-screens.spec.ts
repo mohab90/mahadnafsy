@@ -24,13 +24,17 @@ type Screen = { name: string; url: string; budget: number; calls?: RegExp[]; not
 
 const SCREENS: Screen[] = [
   { name: 'panel start-up', url: '/dashboard', budget: 8, calls: [/\/api\/admin\/bootstrap$/] },
-  { name: 'expenses page', url: '/dashboard/financial/expenses', budget: 16, calls: [/\/api\/admin\/expenses\/page$/] },
-  { name: 'accounts overview', url: '/dashboard/financial/overview', budget: 16, calls: [/\/api\/admin\/finance\/revenue-breakdown$/], notCalls: [/\/api\/admin\/orders$/] },
+  { name: 'expenses page', url: '/dashboard/financial/expenses', budget: 8, calls: [/\/api\/admin\/expenses\/page$/] },
+  { name: 'accounts overview', url: '/dashboard/financial/overview', budget: 8, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'sales hub', url: '/dashboard/sales_hub', budget: 10, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'staff performance', url: '/dashboard/staff_performance', budget: 10, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'sales team', url: '/dashboard/sales_team', budget: 20, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'ask the AI', url: '/dashboard/ask_ai', budget: 12, calls: [/\/api\/admin\/subscribers\/stats$/], notCalls: [/\/api\/admin\/orders$/, /\/api\/admin\/subscribers$/] },
   { name: 'activity', url: '/dashboard/activity', budget: 14, notCalls: [/\/api\/admin\/orders$/] },
+  // the accounts screens and «إحصائيات الدقي» open with one bootstrap request of their own (GET /api/admin/bootstrap?set=accounting|dokki), eight requests at most
+  { name: 'Dokki accounts', url: '/dashboard/daqqi_accounting', budget: 8 },
+  { name: 'Tagamoa accounts', url: '/dashboard/tagamoa_accounting', budget: 8 },
+  { name: 'Dokki statistics', url: '/dashboard/daqqi_stats', budget: 8 },
   { name: 'marketing segments', url: '/dashboard/marketing_hub/segmentation', budget: 14, calls: [/\/api\/admin\/leads\/segments$/], notCalls: [/\/api\/admin\/leads$/, /\/api\/admin\/subscribers$/] },
   { name: 'orders and payments', url: '/dashboard/orders', budget: 10, calls: [/\/api\/admin\/orders\/page$/], notCalls: [/\/api\/admin\/orders$/, /\/api\/admin\/subscribers$/] },
 ];

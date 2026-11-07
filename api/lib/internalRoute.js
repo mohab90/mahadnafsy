@@ -33,12 +33,14 @@ async function answerOfRoute(router, routePath, req, query = {}) {
  * A guard or handler that answers 400+, fails, calls next() without answering, or takes longer than `timeoutMs` leaves the piece `null`; the caller asks that route for
  * itself and gets the real refusal. Never throws.
  */
-function runRoute(router, routePath, req, query = {}, { timeoutMs = 10_000 } = {}) {
+function runRoute(router, routePath, req, query = {}, { timeoutMs = 10_000, params = null } = {}) {
   const layer = router.stack.find(entry => entry.route && entry.route.path === routePath && entry.route.methods.get);
   if (!layer) return Promise.resolve(null);
   const handlers = layer.route.stack.map(entry => entry.handle);
   const request = Object.create(req);
   Object.defineProperty(request, 'query', { value: query, configurable: true, writable: true });
+  // a route with a path parameter (/api/admin/reports/teams/:team) is given its value
+  if (params) Object.defineProperty(request, 'params', { value: params, configurable: true, writable: true });
   return new Promise(resolve => {
     let settled = false;
     let status = 200;
