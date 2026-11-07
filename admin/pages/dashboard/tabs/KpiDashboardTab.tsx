@@ -7,6 +7,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Too
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { numericTooltip } from '../../../lib/chartFormat';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import PerformanceSection from './kpi/PerformanceSection';
 
 // «لوحة KPI للمدير»: the numbers a manager opens the panel for, from ONE server answer (GET /api/admin/kpi/summary, api/routes/analytics/dashboard.js):
 // the money against the SAME days of last month, the leads and what became of them, the clients, who is at work today, what waits for a decision (each a link
@@ -146,6 +147,8 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
           <Card label="اشتراكات بتخلص خلال 30 يوم" value={n(data.clients.expiringIn30Days)} icon={CalendarClock} tone="bg-amber-50 text-amber-600" sub={<span className="text-[11px] text-gray-400">فرصة تجديد</span>} />
         </div>
       </section>
+
+      <PerformanceSection />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
