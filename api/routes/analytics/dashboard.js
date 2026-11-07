@@ -16,6 +16,7 @@ const { dateOnlyInTimeZone, addDaysToDateOnly, cairoDayBoundsUtc, cairoDayStartU
 const { resolveFinancialScope, financialScopeClause } = require('../../lib/financialScope');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { hasPermission } = require('../../constants/permissions');
+const { cachedBoard } = require('../../lib/overviewBoard');
 
 // Certificate money is not course money (every course-money query says so).
 const COURSE_MONEY = "(p.payment_type IS NULL OR UPPER(p.payment_type) <> 'CERTIFICATE')";
@@ -175,6 +176,20 @@ router.get('/api/admin/overview/revenue', requireAuth, requireAdminOrStaff, requ
   } catch (e) {
     if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code });
     logger.error('[overview-revenue]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/overview/board — «نظرة عامة»'s top board (lib/overviewBoard.js): today against yesterday and last week, the alerts, who is in now. Money, so it is
+// view_financial and the whole institute's: an account whose financial reach is a branch or its own clients is refused rather than shown the institute's total.
+router.get('/api/admin/overview/board', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    if (resolveFinancialScope(req).kind !== 'all') return res.status(403).json({ error: 'The overview board needs the whole institute\'s financial reach' });
+    const can = permission => Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, permission);
+    res.json(await cachedBoard(req.tenantId, { canSeeMonitor: can('view_security'), canSeePresence: can('view_presence') }));
+  } catch (e) {
+    if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code });
+    logger.error('[overview-board]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

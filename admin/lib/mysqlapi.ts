@@ -74,7 +74,7 @@ const BOOTSTRAP_CORE = [
   '/admin/notification-settings', '/admin/community/posts', '/community/library', '/community/videos', '/community/events', '/admin/inbox', '/branches',
   '/staff/announcements/pending', '/admin/hr/staff-messages/inbox', '/admin/notifications', '/admin/payment-proofs?status=PENDING', '/admin/online-users',
 ];
-const BOOTSTRAP_OVERVIEW = ['/admin/leads/stats', '/admin/leads/followups-due', '/admin/subscribers/stats?overview=1', '/admin/overview/revenue'];
+const BOOTSTRAP_OVERVIEW = ['/admin/leads/stats', '/admin/leads/followups-due', '/admin/subscribers/stats?overview=1', '/admin/overview/revenue', '/admin/overview/board'];
 const BOOTSTRAP_MAX_AGE_MS = 10_000;
 const BOOTSTRAP_RETRY_MS = 30_000;
 // 'core' and 'overview' at the start; the accounts screens and «إحصائيات الدقي» have a set each when they are the screen on show (lib/bootstrapPaths.ts)
@@ -726,6 +726,8 @@ export const mysqlAdmin = {
   // used to add up the 500 newest orders in the browser.
   getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
     apiFetch(`/admin/overview/revenue`, {}, A),
+  // «نظرة عامة»'s top board: today against yesterday and last week, the alerts, who is in now (api/lib/overviewBoard.js).
+  getOverviewBoard:        () => apiFetch<import('../pages/dashboard/tabs/overview/boardFigures').OverviewBoardData>(`/admin/overview/board`, {}, A),
   // What the accounts overview draws (api/routes/finance-payments-register.js): revenue by type, course, month and box, summed by the database.
   // The orders desk, a page of it and its counts from the database (api/routes/orders-page.js).
   getOrdersPage:           (query: URLSearchParams): Promise<OrdersPage> => apiFetch(`/admin/orders/page?${query.toString()}`, {}, A),
