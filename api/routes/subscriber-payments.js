@@ -510,8 +510,9 @@ async function recordSubscriberPayment(req, res) {
     // صفحة العميل ورقم تاني عند زر دفع وحجز» — a booking opened as «حجز» was priced by the branch alone and overwrote the client's own price).
     const isRetake = payment.retake === true && safeType === 'COURSE';
     const itemNamed = Boolean(paysForItem && (courseId || bundleId));
+    // No fallback when this read fails: the branch price would be taken and written over the client's own price (the fault above).
     const held = itemNamed && subscriber_id && !isRetake
-      ? await agreedPriceDetail(pool, { tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, currency: paymentCurrency }).catch(() => null)
+      ? await agreedPriceDetail(pool, { tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, currency: paymentCurrency })
       : null;
     const heldPrice = held && (held.source === 'client' || held.source === 'booking') ? held.price : null;
     const priceChangedResponse = price => res.status(409).json({ error: 'السعر اتغير، افتح من جديد', code: 'PRICE_CHANGED', price });

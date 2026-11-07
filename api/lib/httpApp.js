@@ -24,6 +24,7 @@ const { adminFeatureGate, isPublicAdminPath } = require('./adminFeatureGate');
 const { requireAuth, hasSignedToken } = require('../middleware/auth');
 const { deleteRightsGuard } = require('./deleteRights');
 const { cleanupMemoryPresence } = require('./onlineUsers');
+const { flushPresence } = require('./staffPresence');
 const { isDraining } = require('./processLifecycle');
 const { instanceGuard: whatsappWebInstanceGuard } = require('./whatsappWeb');
 
@@ -340,7 +341,7 @@ function createHttpApp({ pool, brandAssetRoot }) {
   app.use('/api/staff', deleteRightsGuard);
   // Unref'd like every timer here: the listening server keeps the process up,
   // and an app built without one (a test) must be able to exit.
-  setInterval(() => cleanupMemoryPresence(), 60 * 1000).unref?.();
+  setInterval(() => { cleanupMemoryPresence(); flushPresence(); }, 60 * 1000).unref?.();
   app.use(enforceAdminIpWhitelist);
   app.use('/uploads/branding', express.static(brandAssetRoot, {
     dotfiles: 'deny', etag: true, immutable: true, maxAge: '365d', fallthrough: true,

@@ -13,6 +13,7 @@ const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
 const skip = !ENABLED && 'no DB_* configured';
 const T = 'tenant-sales-breakdown-it';
+const { cairoToday } = require('../../lib/dates');
 let pool, router;
 
 async function clean() {
@@ -37,7 +38,7 @@ before(async () => {
     `INSERT INTO courses (id, tenant_id, title, description, short_description, instructor, thumbnail, category, type, price_egp)
      VALUES ('sb-c1', ?, 'كورس أ', '', '', '', '', 'GENERAL', 'RECORDED', 1000)`, [T]);
   await pool.query("INSERT INTO subscribers (id, tenant_id, client_code, name, phone, branch) VALUES ('sb-s1', ?, 'SB1', 'عميل', '1019100001', 'ONLINE_EGYPT')", [T]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoToday(); // the database's NOW() is Cairo time; a UTC date is yesterday's between midnight and 2/3 a.m.
   await pool.query(
     `INSERT INTO payments (id, tenant_id, subscriber_id, course_id, staff_id, amount, currency, fx_rate_to_egp, amount_egp, payment_type, status, date) VALUES
        ('sb-p1', ?, 'sb-s1', 'sb-c1', 'sb-a', 1000, 'EGP', 1, 1000, 'COURSE', 'paid', ?),
@@ -54,7 +55,7 @@ before(async () => {
 after(async () => { if (ENABLED) { await clean(); await pool.end(); } });
 
 test('the range cuts the leads and the money; the money is EGP and paid only; hidden leads are not counted', { skip }, async () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoToday(); // the database's NOW() is Cairo time; a UTC date is yesterday's between midnight and 2/3 a.m.
   const month = (await get({ from: `${today.slice(0, 8)}01`, to: today })).body;
   assert.deepEqual(month.leads.map(row => [row.status, row.source, row.n]).sort(), [['converted', 'facebook', 1], ['new', 'facebook', 1]]);
   assert.equal(month.revenue, 2400, '1,000 EGP + 100 SAR as 1,400 EGP; the pending 500 and the 2020 payment are outside');

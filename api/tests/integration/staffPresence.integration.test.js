@@ -143,6 +143,16 @@ test('never more than one database write a minute per person, however many beats
   assert.equal(row.last_action_kind, 'write');
 });
 
+test('an action inside the minute with nothing after it still reaches the table at the timed flush', { skip }, async () => {
+  const who = { tenantId: T, staffKey: 'st-pr-lastword', name: 'آخر كلمة', role: 'SALES' };
+  const base = Date.now();
+  await presence.notePresence(who, { now: base, action: { kind: 'write', label: 'أول حاجة' } });
+  assert.equal(await presence.notePresence(who, { now: base + 20_000, action: { kind: 'write', label: 'آخر حاجة' } }), false, 'held in memory, inside the minute');
+  assert.equal((await rowOf('st-pr-lastword')).last_action_label, 'أول حاجة');
+  await presence.flushPresence();
+  assert.equal((await rowOf('st-pr-lastword')).last_action_label, 'آخر حاجة');
+});
+
 test('two instances merge: an older action never overwrites a newer one', { skip }, async () => {
   const who = { tenantId: T, staffKey: 'st-pr-merge', name: 'دمج', role: 'SALES' };
   const base = Date.now();

@@ -80,6 +80,15 @@ async function notePresence(who, { screen = null, action = null, now = Date.now(
   try { await flush(entry); return true; } catch { entry.flushedAt = 0; return false; }
 }
 
+/** Writes what is still only in memory (an action inside the last minute with nothing after it), so the screen never shows an older last action. */
+async function flushPresence() {
+  for (const entry of state.values()) {
+    if (entry.at > entry.flushedAt) {
+      try { await flush(entry); } catch { entry.flushedAt = 0; }
+    }
+  }
+}
+
 /** The people of the tenant with how long ago each was last seen and last acted, newest first. */
 async function listPresence(tenantId, { now = Date.now() } = {}) {
   const [rows] = await pool.query(
@@ -99,4 +108,4 @@ async function listPresence(tenantId, { now = Date.now() } = {}) {
 
 const resetPresenceForTests = () => state.clear();
 
-module.exports = { ONLINE_MS, IDLE_MS, WRITE_EVERY_MS, statusOf, whoIs, notePresence, listPresence, resetPresenceForTests };
+module.exports = { ONLINE_MS, IDLE_MS, WRITE_EVERY_MS, statusOf, whoIs, notePresence, flushPresence, listPresence, resetPresenceForTests };
