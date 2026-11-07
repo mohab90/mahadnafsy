@@ -12,6 +12,7 @@
 import { agreedPriceFor, clientItems, isCoursePayment, paidFor } from '../../lib/agreedPrice';
 import { isCollected } from '../../lib/money';
 import type { Bundle, Course, PaymentHistoryEntry } from '../../types';
+import type { ClientMoney } from '../../lib/clientMoney';
 import type { SubjectInfo } from './paymentModalTypes';
 
 interface HeldOption { cid: string; label: string; px: number; paid: number; remaining: number | null; isBnd: boolean }
@@ -22,7 +23,7 @@ const priceIn = (price: unknown, currency: string): number => {
   return Number(prices?.[currency]) || Number(prices?.EGP) || 0;
 };
 
-export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles: Bundle[], currency: string): {
+export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles: Bundle[], currency: string, money: ClientMoney | null = null): {
   payHistory: PaymentHistoryEntry[];
   coursePayMap: Record<string, { paid: number }>;
   enrolledOptions: HeldOption[];
@@ -45,7 +46,12 @@ export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles:
 
   // What the client holds: the enrolments, a track they are enrolled in, every course of a track (one track), and any item that has
   // money, an agreed price or «مدفوع قبل السيستم» against it.
-  const items = clientItems({
+  // The server's answer when the dialog has it (lib/clientMoney.ts): the same figures as the client's page. The browser's own reading is only what a
+  // screen falls back to before that answer arrives, and for a client who does not exist yet.
+  const items = money ? money.items.map(line => ({
+    item: line.item, title: line.title, isTrack: line.kind === 'track', currency: line.currency, expected: line.agreed,
+    paid: line.paid + line.priorPaid, pending: 0, remaining: line.remaining,
+  })) : clientItems({
     paymentHistory: subject.paymentHistory || [],
     customPrices: subject.customPrices,
     priorPaid: subject.priorPaid,
@@ -60,7 +66,7 @@ export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles:
   };
   const enrolledOptions: HeldOption[] = items.map(row => ({
     cid: row.item, label: labelOf(row.item), px: row.expected, paid: row.paid,
-    remaining: row.expected > 0 ? Math.max(0, row.expected - row.paid) : null, isBnd: row.isTrack,
+    remaining: row.expected > 0 ? row.remaining : null, isBnd: row.isTrack,
   }));
 
   const tracksHeld = enrolledOptions.filter(option => option.isBnd).map(option => bundles.find(b => `bundle:${b.id}` === option.cid));
@@ -72,8 +78,9 @@ export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles:
     if (!id || id.startsWith('multi:') || enrolledOptions.some(option => option.cid === id) || insideTracks.has(id)) continue;
     const isTrack = id.startsWith('bundle:');
     const entry = isTrack ? bundles.find(b => `bundle:${b.id}` === id) : courses.find(c => c.id === id);
-    const px = agreedPriceFor(subject, id, priceIn(entry?.price, currency), currency);
-    const paid = paidFor(subject, id, currency) + (Number(subject.priorPaid?.[id]) || 0);
+    // With the server's answer, an item it does not list has nothing agreed or paid: the catalogue is its price.
+    const px = money ? priceIn(entry?.price, currency) : agreedPriceFor(subject, id, priceIn(entry?.price, currency), currency);
+    const paid = money ? 0 : paidFor(subject, id, currency) + (Number(subject.priorPaid?.[id]) || 0);
     enrolledOptions.push({ cid: id, label: labelOf(id), px, paid, remaining: px > 0 ? Math.max(0, px - paid) : null, isBnd: isTrack });
   }
 

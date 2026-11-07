@@ -127,3 +127,39 @@ test('(b) a certificate price edited for one client is the price the dialog is h
   const listed = await call(certificatesRouter, 'get', '/api/admin/certificate-requests', { query: { subscriber_id: 'sub-om-2' } });
   assert.equal(listed.body[0].remaining, 800, 'and so is the certificates page: remaining = 800 − 0');
 });
+
+test('two copies of one price that disagree are counted by the nightly check, listed read-only, and put together by the repair tool (dry run first)', { skip }, async () => {
+  const { execFileSync } = require('node:child_process');
+  const os = require('node:os');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { CHECKS } = require('../../lib/reconcileChecks');
+  const count = async key => Number((await pool.query(CHECKS.find(check => check.key === key).sql))[0][0].n);
+  const { findDisagreements } = require('../../tools/client-money-diagnose.cjs');
+  const ours = () => findDisagreements(pool, { tenant: TENANT });
+
+  // Agreed 2000 on the client page (sub-om-1, from the test above); one payment still says 2500 (an old fault).
+  await pool.query("UPDATE payments SET course_expected=2500 WHERE tenant_id=? AND subscriber_id='sub-om-1' ORDER BY created_at, id LIMIT 1", [TENANT]);
+  // And the certificate: agreed 800 on the client, 1000 on the request.
+  await pool.query("UPDATE certificate_requests SET price=1000 WHERE id='cr-om-1' AND tenant_id=?", [TENANT]);
+  assert.ok(await count('agreed_price_two_copies') >= 1);
+  assert.ok(await count('certificate_price_two_copies') >= 1);
+  const found = await ours();
+  assert.equal(found.courses.length, 1);
+  assert.equal(found.certificates.length, 1);
+
+  const env = { ...process.env, DB_NAME: process.env.DB_NAME };
+  const run = (...args) => execFileSync(process.execPath, [path.join(__dirname, '../../tools/client-money-repair.cjs'), `--tenant=${TENANT}`, ...args], { env, cwd: os.tmpdir(), encoding: 'utf8' });
+  const dry = run();
+  assert.match(dry, /DRY RUN/);
+  assert.equal((await ours()).courses.length, 1, 'a dry run writes nothing');
+  const applied = run('--apply');
+  assert.match(applied, /backup of the old values/);
+  const file = applied.match(/backup of the old values: (.+)/)[1].trim();
+  assert.ok(JSON.parse(fs.readFileSync(file, 'utf8')).some(row => row.table === 'payments' && Number(row.course_expected) === 2500), 'the old value is in the backup');
+  fs.unlinkSync(file);
+  const after = await ours();
+  assert.deepEqual([after.courses.length, after.certificates.length], [0, 0]);
+  const [[payment]] = await pool.query("SELECT course_expected FROM payments WHERE tenant_id=? AND subscriber_id='sub-om-1' ORDER BY created_at, id LIMIT 1", [TENANT]);
+  assert.equal(Number(payment.course_expected), 2000);
+});

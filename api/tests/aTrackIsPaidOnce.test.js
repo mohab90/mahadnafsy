@@ -93,7 +93,7 @@ test('a certificate or a carnet that names the course is not the course\'s money
 test('the dialog takes its money from that one function and the Dokki desk\'s round counts course money only', () => {
   const source = read('admin/components/payment-modal/clientHoldings.ts');
   assert.match(source, /import \{ agreedPriceFor, clientItems, isCoursePayment, paidFor \} from '\.\.\/\.\.\/lib\/agreedPrice';/);
-  assert.match(source, /const items = clientItems\(\{/);
+  assert.match(source, /: clientItems\(\{/); // the browser reading is only the fallback before the server's answer (lib/clientMoney.ts)
   assert.doesNotMatch(source, /autoDetectedBundles/, 'no second rule about what a track is');
   assert.match(read('admin/components/PaymentModal.tsx'), /const alreadyPaid = moneyFor\(d\.courseId\)\?\.paid \?\? 0;/);
   assert.match(read('admin/components/payment-modal/usePaymentModalModel.tsx'), /const prevPaid = itemService \? 0 : \(moneyFor\(d\.courseId\)\?\.paid \?\? 0\);/);

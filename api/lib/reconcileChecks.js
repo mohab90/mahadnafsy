@@ -342,6 +342,32 @@ const CHECKS = [
             )`,
     hint: 'Paid for one course and enrolled in another — almost always a transfer nobody re-pointed the payment for.',
   },
+  // One price per item per client (7 Nov 2026: «سعر الكورس رقم في صفحة العميل ورقم تاني عند زر دفع وحجز»): the price a client agreed (client_item_money) is also on
+  // every live course/track payment for the item (lib/agreedPrice.js setAgreedPrice keeps them together) and a certificate's agreed price is on its request
+  // (lib/certificatePayments.js setCertificatePrice). A count here is two copies of one price that disagree — tools/client-money-diagnose.cjs lists them,
+  // tools/client-money-repair.cjs puts them back together.
+  {
+    key: 'agreed_price_two_copies',
+    name: 'the price a client agreed is the price on every payment for the item',
+    severity: 'warning',
+    sql: `SELECT COUNT(*) AS n FROM client_item_money m
+           WHERE m.agreed_price > 0 AND m.item_key NOT LIKE 'cert:%'
+             AND EXISTS (SELECT 1 FROM payments p
+                          WHERE p.tenant_id = m.tenant_id COLLATE utf8mb4_unicode_ci AND p.subscriber_id = m.subscriber_id COLLATE utf8mb4_unicode_ci
+                            AND p.deleted_at IS NULL AND p.payment_type IN ('COURSE','BUNDLE') AND p.status IN ('paid','pending')
+                            AND m.item_key = IF(p.bundle_id IS NULL, p.course_id, CONCAT('bundle:', p.bundle_id)) COLLATE utf8mb4_unicode_ci
+                            AND ABS(COALESCE(p.course_expected, 0) - m.agreed_price) > 0.009)`,
+    hint: 'The client page and the payment list can show two prices for one course; run tools/client-money-diagnose.cjs.',
+  },
+  {
+    key: 'certificate_price_two_copies',
+    name: 'the price agreed for a certificate is the price on its request',
+    severity: 'warning',
+    sql: `SELECT COUNT(*) AS n FROM client_item_money m
+           JOIN certificate_requests r ON r.tenant_id = m.tenant_id COLLATE utf8mb4_unicode_ci AND r.id = SUBSTRING(m.item_key, 6) COLLATE utf8mb4_unicode_ci
+          WHERE m.item_key LIKE 'cert:%' AND m.agreed_price > 0 AND ABS(COALESCE(r.price, 0) - m.agreed_price) > 0.009`,
+    hint: 'A certificate shows one price on the client page and another on the payment screen.',
+  },
 ];
 
 // Runs every check against the pool; returns [{ key, name, severity, n, error }].
