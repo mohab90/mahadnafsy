@@ -335,8 +335,21 @@ function createScheduledJobHandlers({ pool, logger }) {
       const { refreshLeadScores } = require('./leadScoreRefresh');
       const { scanned, updated } = await refreshLeadScores(pool);
       if (updated) logger.info(`[jobs] lead scores refreshed scanned=${scanned} updated=${updated}`);
+      // The score summary behind GET /api/admin/leads/stats is added up from the scores just written (migration 368, lib/leadsStatsAgg.js).
+      await require('./leadsStatsAgg').rebuildLeadsScoreAgg(pool);
     } catch (error) {
       logger.warn('[jobs] lead score refresh failed:', error.message);
+    }
+  }
+
+  // Nightly: the lead counters behind GET /api/admin/leads/stats are kept by triggers; this recounts them from the leads table and fixes any difference (a lead
+  // written while the migration took its first count, a script that ran with triggers off), and says how many it found.
+  async function leadsStatsReconcile() {
+    try {
+      const drift = await require('./leadsStatsAgg').reconcileLeadsStats(pool, logger);
+      logger.info('[jobs] lead counters recounted', drift);
+    } catch (error) {
+      logger.warn('[jobs] lead counters recount failed:', error.message);
     }
   }
 
@@ -361,6 +374,7 @@ function createScheduledJobHandlers({ pool, logger }) {
 
   return {
     leadScoreRefresh,
+    leadsStatsReconcile,
     leadAutoArchive,
     installmentReminder,
     pendingPaymentReminder,

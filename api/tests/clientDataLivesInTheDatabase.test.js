@@ -21,7 +21,7 @@ test('the admin\'s seed holds no clients, leads or staff', () => {
 test('no migration inserts a client or a lead', () => {
   const dir = path.join(ROOT, 'api', 'migrations');
   const offenders = fs.readdirSync(dir).filter(file => file.endsWith('.sql'))
-    .filter(file => /INSERT\s+(IGNORE\s+)?INTO\s+`?(subscribers|leads|daqqi_attendees|daqqi_rounds)`?/i.test(fs.readFileSync(path.join(dir, file), 'utf8')));
+    .filter(file => /INSERT\s+(IGNORE\s+)?INTO\s+`?(subscribers|leads|daqqi_attendees|daqqi_rounds)`?(?![\w])/i.test(fs.readFileSync(path.join(dir, file), 'utf8')));
   assert.deepEqual(offenders, []);
 });
 

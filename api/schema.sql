@@ -4821,6 +4821,62 @@ CREATE TABLE `route_usage` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `leads_created_daily`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `leads_created_daily` (
+  `tenant_id` varchar(64) NOT NULL,
+  `day` date NOT NULL,
+  `branch` varchar(20) NOT NULL DEFAULT '',
+  `owner_id` varchar(36) NOT NULL DEFAULT '',
+  `converted` tinyint(4) NOT NULL DEFAULT 0,
+  `n` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`day`,`branch`,`owner_id`,`converted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `leads_score_agg`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `leads_score_agg` (
+  `tenant_id` varchar(64) NOT NULL,
+  `status` varchar(50) NOT NULL,
+  `owner_id` varchar(36) NOT NULL DEFAULT '',
+  `branch` varchar(20) NOT NULL DEFAULT '',
+  `scored_n` int(11) NOT NULL DEFAULT 0,
+  `score_sum` bigint(20) NOT NULL DEFAULT 0,
+  `band_high` int(11) NOT NULL DEFAULT 0,
+  `band_mid` int(11) NOT NULL DEFAULT 0,
+  `band_low` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`status`,`owner_id`,`branch`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `leads_stats_agg`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `leads_stats_agg` (
+  `tenant_id` varchar(64) NOT NULL,
+  `status` varchar(50) NOT NULL,
+  `owner_id` varchar(36) NOT NULL DEFAULT '',
+  `cs_id` varchar(36) NOT NULL DEFAULT '',
+  `source` varchar(255) NOT NULL DEFAULT '',
+  `branch` varchar(20) NOT NULL DEFAULT '',
+  `n` int(11) NOT NULL DEFAULT 0,
+  `deal_sum` decimal(18,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (`tenant_id`,`status`,`owner_id`,`cs_id`,`source`,`branch`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `saas_plans`
 --
 

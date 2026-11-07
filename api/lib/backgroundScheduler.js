@@ -109,6 +109,8 @@ function startBackgroundScheduler({ pool, logger, port }) {
   // Daily, and offset well past the score refresh so the two are not
   // rewriting the same rows at once.
   schedule('lead_auto_archive', 24 * 60 * 60 * 1000, 20 * 60 * 1000);
+  // Daily, past the score refresh: recounts the lead counters behind GET /api/admin/leads/stats (lib/leadsStatsAgg.js).
+  schedule('leads_stats_reconcile', 24 * 60 * 60 * 1000, 35 * 60 * 1000);
   schedule('subscription_billing', 24 * 60 * 60 * 1000, 5 * 60 * 1000, { tenantId: 'system' });
 
   const automation = lockedJob('automation', () => require('./automationEngine')
@@ -235,6 +237,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
     pending_payment_reminder: scheduledJobs.pendingPaymentReminder,
     lead_score_refresh: scheduledJobs.leadScoreRefresh,
     lead_auto_archive: scheduledJobs.leadAutoArchive,
+    leads_stats_reconcile: scheduledJobs.leadsStatsReconcile,
     subscription_billing: () => subscriptionBilling.runSubscriptionBilling(),
     // «خلي السيستم يفيد نفسه»: SEO, community posts, study articles, quizzes.
     ai_autopilot: ({ tenantId, date, only }) => require('./aiAutopilot').runAutopilot({ tenantId, date, only }),
