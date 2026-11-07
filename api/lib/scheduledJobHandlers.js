@@ -335,8 +335,6 @@ function createScheduledJobHandlers({ pool, logger }) {
       const { refreshLeadScores } = require('./leadScoreRefresh');
       const { scanned, updated } = await refreshLeadScores(pool);
       if (updated) logger.info(`[jobs] lead scores refreshed scanned=${scanned} updated=${updated}`);
-      // The score summary behind GET /api/admin/leads/stats is added up from the scores just written (migration 368, lib/leadsStatsAgg.js).
-      await require('./leadsStatsAgg').rebuildLeadsScoreAgg(pool);
     } catch (error) {
       logger.warn('[jobs] lead score refresh failed:', error.message);
     }

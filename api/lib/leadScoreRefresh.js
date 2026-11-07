@@ -67,6 +67,8 @@ async function refreshLeadScores(pool, { tenantId = null, batch = DEFAULT_BATCH 
     updated += Number(result?.affectedRows || 0);
     if (ids.length < size) break;
   }
+  // The score summary behind GET /api/admin/leads/stats (migration 368) is added up from the scores just written, so it is never older than they are.
+  if (updated) await require('./leadsStatsAgg').rebuildLeadsScoreAgg(pool, tenantId);
   return { scanned, updated };
 }
 
