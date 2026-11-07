@@ -15,6 +15,7 @@ const { FOLLOW_UP_OPEN } = require('./leadFollowUps');
 const perfMonitor = require('./performanceMonitor');
 const { listOnlineUsers } = require('./onlineUsers');
 const { listPresence, statusOf } = require('./staffPresence');
+const { detectAnomalies } = require('./anomalies');
 
 const COURSE_MONEY = "(p.payment_type IS NULL OR UPPER(p.payment_type) <> 'CERTIFICATE')";
 const num = value => Number(value) || 0;
@@ -107,10 +108,11 @@ async function liveOf(tenantId, now) {
 
 /** The whole board. `canSeeMonitor` and `canSeePresence` follow the caller's permissions (the answer leaves out what they may not read). */
 async function buildOverviewBoard(tenantId, { today = cairoToday(), now = Date.now(), canSeeMonitor = false, canSeePresence = false } = {}) {
-  const [periodFigures, alerts, live] = await Promise.all([
+  const [periodFigures, alerts, live, anomalies] = await Promise.all([
     periods(tenantId, today), alertsOf(tenantId, today, { canSeeMonitor }), canSeePresence ? liveOf(tenantId, now) : null,
+    detectAnomalies(tenantId, { today, now, canSeeMonitor, canSeePresence }),
   ]);
-  return { asOf: new Date(now).toISOString(), today, periods: periodFigures, alerts, live };
+  return { asOf: new Date(now).toISOString(), today, periods: periodFigures, alerts, live, anomalies };
 }
 
 /** Held 20 s per tenant and flavour, dropped by the next write like every figure (lib/httpApp.js dropFiguresAfterWrites). */

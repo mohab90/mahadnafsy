@@ -7,7 +7,7 @@ const { renderAdmin } = require('./_renderAdmin');
 const lib = renderAdmin('admin/pages/dashboard/tabs/overview/boardFigures.ts');
 const skip = !lib && 'admin dependencies are not installed';
 const board = (alerts = {}) => ({
-  asOf: '', today: '2026-11-07', periods: {}, live: null,
+  asOf: '', today: '2026-11-07', periods: {}, live: null, anomalies: [],
   alerts: {
     overdueInstallments: { count: 0, clients: 0 }, leadsWithoutFollowUp: { count: 0 },
     collection: { collected: 0, target: 1, expectedByToday: 0, belowTarget: false, pctOfPace: 100 }, slowEndpoints: null, ...alerts,

@@ -123,9 +123,13 @@ async function takeBootstrapPiece(path: string): Promise<unknown> {
   return value === null || value === undefined ? undefined : structuredClone(value);
 }
 
+// The panel's presence beat is a write that changes no figure (the server keeps it out of the held figures too, lib/httpApp.js QUIET_WRITES): it must not empty the start-up
+// answer the panel is about to read, which it did — fired on mount, it sent every piece of the start-up to the network (17 requests, budget 8).
+const QUIET_WRITES = ['/staff/presence'];
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD') for (const state of Object.values(bootstraps)) if (state.answer) state.answer.pieces = {};
+  if (method !== 'GET' && method !== 'HEAD' && !QUIET_WRITES.includes(path)) for (const state of Object.values(bootstraps)) if (state.answer) state.answer.pieces = {};
   if (method === 'GET' && _retry === 0) {
     const served = await takeBootstrapPiece(path);
     if (served !== undefined) return served as T;

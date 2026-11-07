@@ -12,6 +12,8 @@ export type OverviewBoardData = {
     slowEndpoints: { route: string; p95: number; count: number }[] | null;
   };
   live: { staffOnline: number; clientsOnline: number } | null;
+  /** Out of the ordinary against each figure's own four-week baseline, worded by the server (api/lib/anomalies.js). */
+  anomalies: { key: string; text: string; to: string; tone: 'rose' | 'amber' | 'sky' }[];
 };
 
 export type BoardRow = { key: keyof Omit<PeriodFigures, 'day'>; label: string; lowerIsBetter?: boolean };
@@ -37,6 +39,7 @@ export function alertsOf(board: OverviewBoardData): BoardAlert[] {
   if (overdueInstallments.count > 0) alerts.push({ key: 'installments', text: `${overdueInstallments.count} قسط متأخر عند ${overdueInstallments.clients} عميل`, to: '/dashboard/online_clients', tone: 'rose' });
   if (leadsWithoutFollowUp.count > 0) alerts.push({ key: 'followup', text: `${leadsWithoutFollowUp.count} ليد مفتوح من غير موعد متابعة`, to: '/dashboard/leads', tone: 'amber' });
   if (collection.belowTarget) alerts.push({ key: 'collection', text: `التحصيل ${collection.pctOfPace}٪ من اللي المفروض يكون اتحصّل لحد النهارده`, to: '/dashboard/financial', tone: 'rose' });
+  alerts.push(...board.anomalies);
   for (const slow of slowEndpoints || []) alerts.push({ key: `slow:${slow.route}`, text: `${slow.route} بطيء (p95 ${slow.p95} مللي ثانية)`, to: '/dashboard/security_center', tone: 'sky' });
   return alerts;
 }

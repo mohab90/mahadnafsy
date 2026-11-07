@@ -141,6 +141,22 @@ function snapshot({ limit = 25 } = {}) {
   };
 }
 
+/**
+ * Endpoints that got slower: the 95th percentile of the newer half of the recent requests against the older half, the endpoint's own earlier self (latency is
+ * not stored beyond this ring, so the baseline is since the server started, not four weeks). Slower means at least `ratio` times and at least `minMs`.
+ */
+function regressions({ minSamples = 40, ratio = 2, minMs = 500 } = {}) {
+  const found = [];
+  for (const entry of routes.values()) {
+    if (entry.ring.length < minSamples) continue;
+    const half = Math.floor(entry.ring.length / 2);
+    const before = percentile([...entry.ring.slice(0, half)].sort((a, b) => a - b), 0.95);
+    const now = percentile([...entry.ring.slice(half)].sort((a, b) => a - b), 0.95);
+    if (now >= minMs && now >= before * ratio) found.push({ route: entry.key, before: Math.round(before), now: Math.round(now) });
+  }
+  return found.sort((a, b) => b.now - a.now);
+}
+
 function reset() { routes.clear(); shapes.clear(); }
 
-module.exports = { runInRequest, recordQuery, recordRequest, snapshot, shapeOf, reset, SLOW_REQUEST_MS, SLOW_QUERY_MS };
+module.exports = { runInRequest, recordQuery, recordRequest, snapshot, regressions, shapeOf, reset, SLOW_REQUEST_MS, SLOW_QUERY_MS };

@@ -31,7 +31,7 @@ const leadersRows = rows => rows.map((row, i) => ({ rank: i + 1, name: row.name,
 const LEADER_COLS = valueLabel => [col('rank', '#', 'number'), col('name', 'الاسم'), col('value', valueLabel, 'number')];
 
 async function dailyDigest(tenantId, range) {
-  const board = await buildOverviewBoard(tenantId, { today: range.to });
+  const board = await buildOverviewBoard(tenantId, { today: range.to, canSeeMonitor: true, canSeePresence: true });
   const { today, yesterday, lastWeek } = board.periods;
   const rows = [['leads', 'ليدات جديدة'], ['bookings', 'حجوزات'], ['courseMoney', 'تحصيل الكورسات (ج)'], ['certificateMoney', 'تحصيل الشهادات (ج)'], ['expenses', 'مصروفات (ج)'], ['net', 'الصافي (ج)']]
     .map(([key, label]) => ({ label, today: today[key], yesterday: yesterday[key], lastWeek: lastWeek[key], change: pct(today[key], yesterday[key]) }));
@@ -39,6 +39,7 @@ async function dailyDigest(tenantId, range) {
   const notes = [];
   if (alerts.overdueInstallments.count) notes.push(`${alerts.overdueInstallments.count} قسط متأخر عند ${alerts.overdueInstallments.clients} عميل`);
   if (alerts.leadsWithoutFollowUp.count) notes.push(`${alerts.leadsWithoutFollowUp.count} ليد مفتوح من غير موعد متابعة`);
+  for (const flag of board.anomalies) notes.push(`⚠ ${flag.text}`);
   if (alerts.collection.belowTarget) notes.push(`التحصيل ${alerts.collection.pctOfPace}٪ من المفروض لحد النهارده (${alerts.collection.collected} من ${alerts.collection.target})`);
   return {
     columns: [col('label', 'المؤشر'), col('today', range.to === cairoToday() ? 'النهارده' : range.to, 'number'), col('yesterday', 'اليوم اللي قبله', 'number'), col('lastWeek', 'نفس اليوم الأسبوع اللي فات', 'number'), col('change', 'التغيير ٪', 'number')],
