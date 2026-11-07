@@ -26,12 +26,16 @@ test('the expenses screen asks the server for a page and for the figures, and ad
   assert.ok(lists.includes('daqqi_accounting: [],'), 'nor does the branch\'s books');
 });
 
-test('the orders table no longer stops at 300: it offers the rest', () => {
+test('the orders table is a page of the server\'s list: counts, totals and the export come from the database', () => {
   const source = admin('pages', 'dashboard', 'tabs', 'orders', 'OrdersAdminView.tsx');
   assert.equal(source.includes('slice(0, 300)'), false);
-  assert.ok(source.includes('tabRows.slice(0, shownOrders)'));
-  assert.ok(source.includes('setShownOrders(tabRows.length)'));
-  assert.ok(source.includes('exportFilteredOrdersCsv(tabRows)'), 'the export is of every row');
+  assert.ok(source.includes('desk.pageCount') && source.includes('desk.setPage('), 'the table pages through the server\'s rows');
+  assert.ok(source.includes('desk.fetchAll()'), 'the export fetches every row when it is clicked');
+  assert.equal(source.includes('effectiveOrders'), false, 'the screen no longer holds the merged 500 + 500');
+  const hook = admin('pages', 'dashboard', 'tabs', 'orders', 'useOrdersDesk.ts');
+  assert.ok(hook.includes('mysqlAdmin.getOrdersPage('), 'the desk asks GET /api/admin/orders/page');
+  assert.ok(hook.includes('ORDERS_PAGE_SIZE = 100'), 'pages of at most 100');
+  assert.equal(admin('pages', 'dashboard', 'tabSiteLists.ts').includes("orders: ['orders'"), false, 'the orders tab no longer downloads the orders list');
 });
 
 test('the reps\' revenue on the sales hub and the staff performance screens is the database\'s, and neither downloads the orders to add it up', () => {

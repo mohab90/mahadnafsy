@@ -169,9 +169,11 @@ test('what production actually stores resolves to the rail the filter offers', (
 
   // The comparison itself: both sides normalized, and a raw lowercase fallback
   // so an unrecognised value still filters to itself rather than to everything.
-  const derived = read('admin/pages/dashboard/hooks/useOrdersDerived.ts');
-  assert.ok(!/row\.paymentMethod === orderMethodFilter/.test(derived),
+  const derived = read('admin/pages/dashboard/tabs/orders/ordersDeskMath.ts');
+  assert.ok(!derived.includes('row.paymentMethod === method'),
     'a plain === here is what made «تحويل بنكي» return nothing');
-  assert.match(derived, /sameMethod\(row\.paymentMethod, orderMethodFilter\)/);
-  assert.match(derived, /normalizePaymentMethod\(a\) \|\| String\(a \|\| ''\)\.trim\(\)\.toLowerCase\(\)/);
+  assert.ok(derived.includes('sameMethod(row.paymentMethod, method)'));
+  assert.ok(derived.includes("normalizePaymentMethod(a) || String(a || '').trim().toLowerCase()"));
+  // The administration's desk matches on the server by the stored spellings that normalise to the chosen rail (useOrdersDesk) — the same function.
+  assert.ok(read('admin/pages/dashboard/tabs/orders/useOrdersDesk.ts').includes('sameMethod(raw, filters.method)'));
 });

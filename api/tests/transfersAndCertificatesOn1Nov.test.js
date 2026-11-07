@@ -82,7 +82,9 @@ test('customer service confirms transfers even when its saved grid never had the
 test('whoever confirms transfers reads the real payments list with its statuses, not their own 500 paid rows', () => {
   const model = read('admin/pages/dashboard/shell/useDashboardModel.tsx');
   assert.match(model, /const confirmsTransfers = access\.can\('confirm_transfers'\) \|\| access\.can\('manage_financial'\);/);
-  assert.match(model, /const effectiveOrders = readsOwnPayments \? staffOrders : orders;/);
+  // only the employee who keeps their own accounts holds rows in the browser; the administration's desk and the confirmers' are the server's page of the real list, statuses included
+  assert.ok(model.includes('const effectiveOrders = useMemo(() => (readsOwnPayments ? staffOrders : [])'));
+  assert.ok(read('admin/pages/dashboard/tabs/orders/useOrdersDesk.ts').includes('mysqlAdmin.getOrdersPage('));
   // the hook that fed the screen marks every row paid, which is why «قيد المراجعة» read 0 and «مؤكدة» read 500
   assert.match(read('admin/pages/dashboard/useStaffOrders.ts'), /status: 'paid' as const/);
 });

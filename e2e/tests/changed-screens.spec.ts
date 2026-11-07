@@ -31,6 +31,7 @@ const SCREENS: Screen[] = [
   { name: 'sales team', url: '/dashboard/sales_team', budget: 20, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'ask the AI', url: '/dashboard/ask_ai', budget: 12, calls: [/\/api\/admin\/subscribers\/stats$/], notCalls: [/\/api\/admin\/orders$/, /\/api\/admin\/subscribers$/] },
   { name: 'activity', url: '/dashboard/activity', budget: 14, notCalls: [/\/api\/admin\/orders$/] },
+  { name: 'orders and payments', url: '/dashboard/orders', budget: 10, calls: [/\/api\/admin\/orders\/page$/], notCalls: [/\/api\/admin\/orders$/, /\/api\/admin\/subscribers$/] },
 ];
 
 test.describe('the screens the Nov 2026 work rebuilt', () => {
@@ -94,6 +95,19 @@ test.describe('the screens the Nov 2026 work rebuilt', () => {
     const { context, page } = await open(browser, '/dashboard/financial/expenses');
     const rows = await page.locator('tbody tr').count();
     expect(rows, 'the expenses table is longer than a page').toBeLessThanOrEqual(101);
+    await context.close();
+  });
+
+  test('the orders desk draws one page of at most 100 rows, and a tab asks the server again', async ({ browser }) => {
+    const { context, page, calls } = await open(browser, '/dashboard/orders');
+    // 100 rows of the page, and the new-client requests a collection officer sent (their own rows above them)
+    expect(await page.locator('tbody tr').count(), 'the orders table is longer than a page').toBeLessThanOrEqual(120);
+    const before = calls.filter(c => c.path.endsWith('/orders/page')).length;
+    await page.getByRole('button', { name: /مدفوعات مؤكدة/ }).first().click();
+    await page.waitForTimeout(1_500);
+    expect(calls.filter(c => c.path.endsWith('/orders/page')).length, 'a tab did not ask the server for its rows').toBeGreaterThan(before);
+    expect(await page.locator('tbody tr').count()).toBeLessThanOrEqual(120);
+    expect(calls.filter(c => c.status >= 400)).toEqual([]);
     await context.close();
   });
 

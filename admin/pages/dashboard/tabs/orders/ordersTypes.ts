@@ -14,16 +14,6 @@ export const ORDER_METHOD_FILTERS: string[] = [
 
 export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
-type OrdersStats = {
-  total: number;
-  paid: number;
-  failed: number;
-  refunded: number;
-  revenueEGP: number;
-  revenueSAR: number;
-  revenueUSD: number;
-};
-
 export interface OrdersTabProps {
   isOnlineManager: boolean;
   isDaqqiManager: boolean;
@@ -46,9 +36,10 @@ export interface OrdersTabProps {
   setOmOrdReviewTab: (v: 'review' | 'accepted' | 'failed') => void;
 
   // Admin view
-  effectiveOrders: OrderItem[];
-  filteredOrders: OrderItem[];
-  ordersStats: OrdersStats;
+  /** An employee who keeps the accounts holds their clients' newest payments here and the desk is drawn from them; the administration's desk is the server's (orders/useOrdersDesk.ts). */
+  localOrders?: OrderItem[];
+  /** The branch workspace the screen was opened in (?branch=), asked of the server. */
+  branchFilter?: string;
   orderSearch: string;
   setOrderSearch: (v: string) => void;
   orderStatusFilter: 'all' | 'paid' | 'failed' | 'refunded';

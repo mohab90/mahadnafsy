@@ -25,6 +25,7 @@ const routeModules = [
   ['/', '../routes/notifications'],
   ['/', '../routes/loyalty'],
   ['/', '../routes/orders'],
+  ['/', '../routes/orders-page'],
   ['/', '../routes/push'],
   ['/', '../routes/upload'],
   ['/', '../routes/course-documents'],

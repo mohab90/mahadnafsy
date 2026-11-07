@@ -414,12 +414,15 @@ const NOT_READ = {
   // «عملاء الدقي» pages from the server (GET /api/admin/dokki/clients); the shared clients screen is handed the
   // context's clients for its online half and holds none on this one.
   daqqi_clients: new Set(['subscribers']),
+  // «الطلبات والمدفوعات»: the administration's desk is the server's page of the list (GET /api/admin/orders/page); what it is handed (`localOrders`) is the staff path's
+  // own payments, which the model reads from GET /staff/payments. This walk takes the model's «'orders'» tab name for the context's list.
+  orders: new Set(['orders']),
 };
 
 test('every list Dashboard.tsx hands a screen is one the screen loads', () => {
   const { body, taint, refersTo } = dashboardTaint();
   // The premise: the names it computes from the lists are followed.
-  for (const [name, list] of [['effectiveOrders', 'orders'], ['filteredOrders', 'subscribers'], ['handleClientDbBook', 'leads'], ['overviewStats', 'orders']]) {
+  for (const [name, list] of [['handleClientDbBook', 'leads'], ['overviewStats', 'orders']]) {
     assert.ok(taint.get(name)?.has(list), `${name} should carry ${list}`);
   }
   const ret = body.slice(body.lastIndexOf('\n  return ('));

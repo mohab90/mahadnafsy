@@ -38,7 +38,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   daqqi_clients: ['daqqiRounds'],
   // The accounts: the orders, and the clients the ?branch= filter and the
   // refund popup match them against. The expenses are not here: the screen asks the server for them a page at a time (useExpensesPage).
-  orders: ['orders', 'subscribers'],
+  orders: [], // the administration's desk is a page of the server's list (GET /api/admin/orders/page); an employee who keeps the accounts reads their own payments (GET /staff/payments)
   financial: ['subscribers'], // the revenue breakdown and the expenses come from the server; the reports ask for the orders when they are asked for
   // The branch's books: its expenses come from the server a page at a time (useExpensesPage); its clients' plans, the payments waiting for review and the person a payment is for
   // come from the server (FinancialBranchTab).

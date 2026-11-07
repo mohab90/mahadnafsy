@@ -2,7 +2,7 @@
 // the lists each tab loads, the badges, the overlays and the payment handlers. Dashboard.tsx draws the shell from it.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DASHBOARD_MENU_GROUPS, isTabKey, type TabKey } from '../navigation';
-import { branchMatchesFilter, branchSlugToFilter } from '../branchWorkspaceFilters';
+import { branchSlugToFilter } from '../branchWorkspaceFilters';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { StaffPermission, OrderItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -18,7 +18,6 @@ import type { SiteList } from '../../../context/site-data-hooks/siteLists';
 import { useStaffRoleRedirects } from '../hooks/useStaffRoleRedirects';
 import { CRM_CHANGED_EVENT, setStaffListsWanted } from '../../../lib/crmChanged';
 import { useCurrentStaff } from '../hooks/useCurrentStaff';
-import { useOrdersDerived } from '../hooks/useOrdersDerived';
 import { useOverviewDerived } from '../hooks/useOverviewDerived';
 import { useContentEditorDrafts } from '../hooks/useContentEditorDrafts';
 import { useLeadFilters } from '../useLeadFilters';
@@ -519,28 +518,12 @@ export function useDashboardModel() {
     };
   }, [fetchSalesData, fetchSalesDataIfStale]);
 
-  // Effective arrays: for non-admin roles use own-data; for admin use context
-  const effectiveSubs = subscribers;
   // An employee who keeps the accounts (customer service) reads the 500 newest payments of their clients from the server;
   // the online manager has his own desk (usePaymentsDesk).
   const staffOrders = useStaffOrders(readsOwnPayments && activeTab === 'orders' && !isOnlineManager, courses, bundles);
-  const effectiveOrders = readsOwnPayments ? staffOrders : orders;
-  const branchFilteredEffectiveOrders = useMemo(() => branchQueryFilter
-    ? effectiveOrders.filter((row) => {
-      const orderPhone = String((row as { customerPhone?: string }).customerPhone || '');
-      const matchedSub = effectiveSubs.find((sub) =>
-        (row.customerEmail && sub.email && row.customerEmail.toLowerCase() === sub.email.toLowerCase())
-        || (orderPhone && sub.phone && orderPhone.replace(/\D/g, '').slice(-9) === sub.phone.replace(/\D/g, '').slice(-9))
-      );
-      return matchedSub ? branchMatchesFilter(matchedSub.branch, branchQueryFilter) : branchQueryFilter === 'ONLINE_EGYPT';
-    })
-    : effectiveOrders,
-    [branchQueryFilter, effectiveOrders, effectiveSubs]
-  );
-
-  const { filteredOrders, ordersStats } = useOrdersDerived(
-    branchFilteredEffectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo,
-  );
+  // The administration's «الطلبات والمدفوعات» is a page of the server's list, counted by the database (tabs/orders/useOrdersDesk.ts); only the employee who keeps the accounts
+  // holds rows here — their own clients' newest payments — and the screen is drawn from those.
+  const effectiveOrders = useMemo(() => (readsOwnPayments ? staffOrders : []), [readsOwnPayments, staffOrders]);
 
   // -- Permission helpers -------------------------------------------------
   // One rule for the gate, the menu and the role bars (lib/access.ts), over the permissions the server resolved for
@@ -721,7 +704,7 @@ export function useDashboardModel() {
     navigate, activeTabState, setActiveTabState, pendingProofsCount, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, onlineUsers, kpiModal, setKpiModal,
     physicalBranch, setActiveTab, navigateToTab, activeTab, communityAdminTab, setCommunityAdminTab, filteredContent,
-    isNonAdminStaff, onlineManagerSummary, handleClientDbBook, effectiveOrders, filteredOrders, ordersStats,
+    isNonAdminStaff, onlineManagerSummary, handleClientDbBook, effectiveOrders, readsOwnPayments,
     hasPermission, canOpenTab, staffNavTab, ownBranch, visibleMenuGroups, overviewStats,
     exportFilteredOrdersCsv, contentHubSubTab, setContentHubSubTab, handleSubPayment, handleLeadPayment,
   };

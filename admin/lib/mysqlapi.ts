@@ -311,6 +311,26 @@ export interface RevenueBreakdown {
   channels: Record<string, number>;
 }
 
+/** GET /admin/orders/page — one page of «الطلبات والمدفوعات» (rows shaped like GET /admin/orders), what the tab and the filters count, and the whole book's head figures. */
+export interface OrdersPage {
+  tab: 'review' | 'accepted' | 'failed';
+  page: number;
+  pageSize: number;
+  rows: AR[];
+  total: number;
+  /** Amounts of the tab's rows under the filters, per currency (the screen converts at its rates). */
+  totals: Record<'EGP' | 'SAR' | 'USD', number>;
+  counts: Record<'review' | 'accepted' | 'failed', number>;
+  stats: {
+    total: number; paid: number; pending: number; failed: number; refunded: number;
+    revenue: Record<'EGP' | 'SAR' | 'USD', number>;
+    daily: Array<{ day: string } & Record<'EGP' | 'SAR' | 'USD', number>>;
+    today: { day: string } & Record<'EGP' | 'SAR' | 'USD', number>;
+    month: Record<'EGP' | 'SAR' | 'USD', number>;
+  };
+  facets: { staff: string[]; methods: string[] };
+}
+
 /** One page of expenses and the figures over all of them: how many match, what they add up to per currency, and the whole scope's amounts by category label. */
 export interface ExpensesPage {
   rows: AR[];
@@ -691,6 +711,8 @@ export const mysqlAdmin = {
   getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
     apiFetch(`/admin/overview/revenue`, {}, A),
   // What the accounts overview draws (api/routes/finance-payments-register.js): revenue by type, course, month and box, summed by the database.
+  // The orders desk, a page of it and its counts from the database (api/routes/orders-page.js).
+  getOrdersPage:           (query: URLSearchParams): Promise<OrdersPage> => apiFetch(`/admin/orders/page?${query.toString()}`, {}, A),
   getRevenueBreakdown:     (month: string, branch?: string): Promise<RevenueBreakdown> =>
     apiFetch(`/admin/finance/revenue-breakdown?month=${encodeURIComponent(month)}${branch ? `&branch=${encodeURIComponent(branch.toUpperCase())}` : ''}`, {}, A),
   getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }>; scoreBands?: { high: number; mid: number; low: number } }> =>

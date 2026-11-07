@@ -48,7 +48,7 @@ const Dashboard: React.FC<{ page?: React.ReactNode }> = ({ page }) => {
     navigate, activeTabState, setActiveTabState, pendingProofsCount, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, onlineUsers, kpiModal, setKpiModal,
     physicalBranch, setActiveTab, navigateToTab, activeTab, communityAdminTab, setCommunityAdminTab, filteredContent,
-    isNonAdminStaff, onlineManagerSummary, handleClientDbBook, effectiveOrders, filteredOrders, ordersStats,
+    isNonAdminStaff, onlineManagerSummary, handleClientDbBook, effectiveOrders, readsOwnPayments,
     hasPermission, canOpenTab, staffNavTab, ownBranch, visibleMenuGroups, overviewStats,
     exportFilteredOrdersCsv, contentHubSubTab, setContentHubSubTab, handleSubPayment, handleLeadPayment,
   } = useDashboardModel();
@@ -300,9 +300,9 @@ const Dashboard: React.FC<{ page?: React.ReactNode }> = ({ page }) => {
                     setDaqqiAccDateTo,
                     omOrdReviewTab,
                     setOmOrdReviewTab,
-                    effectiveOrders,
-                    filteredOrders,
-                    ordersStats,
+                    // The employee who keeps the accounts holds their own rows; everyone else's desk is the server's (useOrdersDesk).
+                    localOrders: readsOwnPayments ? effectiveOrders : undefined,
+                    branchFilter: branchQueryFilter || undefined,
                     orderSearch,
                     setOrderSearch,
                     orderStatusFilter,

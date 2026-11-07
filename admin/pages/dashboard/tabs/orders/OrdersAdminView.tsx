@@ -1,11 +1,9 @@
 // The full orders and payments desk: review, accepted, failed, transfers.
-import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo, cairoStamp, cairoWeekStart } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoStamp, cairoWeekStart } from '../../../../../shared/cairoDate';
 import { CheckCircle, Clock, CreditCard, Download, Pencil, Plus, Search, TrendingUp, Trash2, Wallet, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PaymentCorrectionModal } from '../../../../components/PaymentCorrectionModal';
-import { toEgp } from '../../../../lib/money';
 import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../shared/paymentMethods';
-import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
 import { useAccess } from '../../../../hooks/useAccess';
@@ -19,16 +17,30 @@ import { ORDER_METHOD_FILTERS } from './ordersTypes';
 import type { OrdersTabProps } from './ordersTypes';
 import type { OrderItem } from '../../../../types';
 import type { OrderActions } from './useOrderActions';
+import { ORDERS_PAGE_SIZE, type OrdersDesk } from './useOrdersDesk';
+import { weekdayLabel } from './ordersDeskMath';
 
-export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; actions: OrderActions }) {
-  const { isAdmin, canManageFinancial, notify, courses, bundles, effectiveOrders, filteredOrders, ordersStats, orderSearch, setOrderSearch, setOrderStatusFilter, orderTypeFilter, setOrderTypeFilter, orderMethodFilter, setOrderMethodFilter, orderDateFrom, setOrderDateFrom, orderDateTo, setOrderDateTo, orderStaffFilter, setOrderStaffFilter, orderReviewTab, setOrderReviewTab, showAddTransfer, setShowAddTransfer, linkTransferModal, setLinkTransferModal, linkOrderModal, setLinkOrderModal, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv } = props;
+export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProps; actions: OrderActions; desk: OrdersDesk }) {
+  const { isAdmin, canManageFinancial, notify, courses, bundles, orderSearch, setOrderSearch, setOrderStatusFilter, orderTypeFilter, setOrderTypeFilter, orderMethodFilter, setOrderMethodFilter, orderDateFrom, setOrderDateFrom, orderDateTo, setOrderDateTo, orderStaffFilter, setOrderStaffFilter, orderReviewTab, setOrderReviewTab, showAddTransfer, setShowAddTransfer, linkTransferModal, setLinkTransferModal, linkOrderModal, setLinkOrderModal, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv } = props;
   const { paymentBoxes, navigate, ledger, linkQuery, setLinkQuery, matchesQuery, approveMethod, setApproveMethod, canAcceptDirectly, isDeskPayment, storedMethodOf, handleConfirmOrder, handleRejectOrder, confirmWithTransfer } = actions;
   // A recorded payment is voided or corrected by a manager through the payments
   // route, which reverses its books; the orders route only archives an unpaid order.
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
-  // The table drew its first 300 rows and said «use the filters»; it now draws 100 and offers 100 more (back to 100 when the filters change the list).
-  const [shownOrders, setShownOrders] = useState(100);
-  useEffect(() => { setShownOrders(100); }, [filteredOrders.length, orderReviewTab]);
+  // The pending rows a transfer may be linked to, asked of the server when the dialog opens: the rows of the transfer's amount first, then the newest ones, then what a search finds.
+  const [linkRows, setLinkRows] = useState<OrderItem[]>([]);
+  const transferToLink = linkTransferModal?.row;
+  useEffect(() => {
+    if (!transferToLink) { setLinkRows([]); return undefined; }
+    let alive = true;
+    const timer = setTimeout(() => {
+      void Promise.all([desk.linkCandidates({ amount: Number(transferToLink.amount) }), desk.linkCandidates({ query: linkQuery.trim() || undefined })]).then(([sameAmount, newest]) => {
+        if (!alive) return;
+        const seen = new Set<string>();
+        setLinkRows([...sameAmount, ...newest].filter(row => !seen.has(row.id) && !!seen.add(row.id)));
+      }).catch(() => { /* the dialog keeps what it lists */ });
+    }, linkQuery ? 300 : 0);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [transferToLink, linkQuery, desk.linkCandidates]); // eslint-disable-line react-hooks/exhaustive-deps
   // Wiping a payment or an order is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDelete = useCanDelete();
   const access = useAccess();
@@ -50,40 +62,16 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
   };
               const todayStr     = cairoDateOnly();
               const thisMonthStr = cairoMonthOnly();
-              const toEGP = (r: { amount: number; currency?: string }) =>
-                toEgp(r.amount, r.currency);
-
-              const paidAll    = effectiveOrders.filter(r => r.status === 'paid');
-              const pendingAll = effectiveOrders.filter(r => r.status === 'pending');
-              const failedAll  = effectiveOrders.filter(r => r.status === 'failed' || r.status === 'refunded');
-
-              const todayRevEGP  = paidAll.filter(r => cairoDay(r.createdAt) === todayStr).reduce((s, r) => s + toEGP(r), 0);
-              const monthRevEGP  = paidAll.filter(r => cairoDay(r.createdAt).startsWith(thisMonthStr)).reduce((s, r) => s + toEGP(r), 0);
-
-              // last 7 days daily revenue for mini-chart
-              const last7 = Array.from({ length: 7 }, (_, i) => {
-                const ds = cairoDaysAgo(6 - i);
-                const rev = paidAll.filter(r => cairoDay(r.createdAt) === ds).reduce((s, r) => s + toEGP(r), 0);
-                const label = new Date(ds).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE });
-                return { ds, rev, label };
-              });
+              // Every figure here is the server's (or, for an employee who keeps the accounts, counted from the rows they hold): useOrdersDesk.
+              const { kpi } = desk;
+              const todayRevEGP = kpi.todayEgp;
+              const monthRevEGP = kpi.monthEgp;
+              const last7 = kpi.last7.map(day => ({ ds: day.ds, rev: day.rev, label: weekdayLabel(day.ds) }));
               const maxRev = Math.max(...last7.map(d => d.rev), 1);
-
-              // unique staff names for filter
-              const staffNames = Array.from(new Set(effectiveOrders.map(r => r.staffName).filter(Boolean))) as string[];
-
-              // Waiting for review: the payments the desk recorded come first (they are what the accounts desk confirms by
-              // the transfer), then the website's unpaid orders — so a long tail of abandoned checkouts never buries them.
-              const tabRows = orderReviewTab === 'review'
-                ? filteredOrders.filter(r => r.status === 'pending' && r.type !== 'transfer')
-                    .sort((a, b) => Number(b.source === 'crm') - Number(a.source === 'crm'))
-                : orderReviewTab === 'accepted'
-                  ? filteredOrders.filter(r => (r.status === 'paid' || !r.status) && r.type !== 'transfer')
-                  : orderReviewTab === 'transfers'
-                    ? []
-                    : filteredOrders.filter(r => (r.status === 'failed' || r.status === 'refunded') && r.type !== 'transfer');
-
-              const tabTotal = tabRows.reduce((s, r) => s + toEGP(r), 0);
+              const staffNames = desk.staffNames;
+              // The tab's rows on this page: waiting for review (the desk's own payments first, so a long tail of abandoned checkouts never buries them), confirmed, or failed.
+              const tabRows = orderReviewTab === 'transfers' ? [] : desk.rows;
+              const tabTotal = desk.totalEgp;
 
               const clearFilters = () => {
                 setOrderSearch(''); setOrderTypeFilter('all'); setOrderMethodFilter('all');
@@ -137,7 +125,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         <h2 className="text-lg font-extrabold flex items-center gap-2">
                           <CreditCard size={20} /> الطلبات والمدفوعات
                         </h2>
-                        <p className="text-emerald-100 text-xs mt-0.5">إجمالي {effectiveOrders.length} طلب مسجّل في النظام</p>
+                        <p className="text-emerald-100 text-xs mt-0.5">إجمالي {kpi.total.toLocaleString('ar-EG-u-nu-latn')} طلب مسجّل في النظام</p>
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="text-center bg-white/10 rounded-xl px-4 py-2">
@@ -155,12 +143,12 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   {/* ── KPI Cards ── */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     {[
-                      { label: 'إجمالي الطلبات', value: effectiveOrders.length, icon: CreditCard, bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', itext: 'text-slate-400' },
-                      { label: 'مدفوعات مؤكدة',  value: paidAll.length,         icon: CheckCircle, bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', itext: 'text-emerald-400' },
-                      { label: 'قيد المراجعة',   value: pendingAll.length,      icon: Clock,       bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   itext: 'text-amber-400' },
-                      { label: 'فاشلة / مرتجع',  value: failedAll.length,       icon: XCircle,     bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     itext: 'text-red-400' },
-                      { label: 'إيراد EGP',       value: `${ordersStats.revenueEGP.toLocaleString('ar-EG-u-nu-latn')} ج`, icon: Wallet, bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', itext: 'text-blue-400' },
-                      { label: 'إيراد SAR',       value: `${ordersStats.revenueSAR.toLocaleString('ar-EG-u-nu-latn')} ر.س`, icon: TrendingUp, bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', itext: 'text-violet-400' },
+                      { label: 'إجمالي الطلبات', value: kpi.total, icon: CreditCard, bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', itext: 'text-slate-400' },
+                      { label: 'مدفوعات مؤكدة',  value: kpi.paid,         icon: CheckCircle, bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', itext: 'text-emerald-400' },
+                      { label: 'قيد المراجعة',   value: kpi.pending,      icon: Clock,       bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   itext: 'text-amber-400' },
+                      { label: 'فاشلة / مرتجع',  value: kpi.failedOrRefunded,       icon: XCircle,     bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     itext: 'text-red-400' },
+                      { label: 'إيراد EGP',       value: `${kpi.revenueEGP.toLocaleString('ar-EG-u-nu-latn')} ج`, icon: Wallet, bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', itext: 'text-blue-400' },
+                      { label: 'إيراد SAR',       value: `${kpi.revenueSAR.toLocaleString('ar-EG-u-nu-latn')} ر.س`, icon: TrendingUp, bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', itext: 'text-violet-400' },
                     ].map(k => {
                       const Icon = k.icon;
                       return (
@@ -208,9 +196,9 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   {/* ── Status Tabs + Add Transfer Button ── */}
                   <div className="flex flex-wrap items-center gap-2">
                     {([
-                      { key: 'review'    as const, label: 'قيد المراجعة',   count: filteredOrders.filter(r => r.status === 'pending' && r.type !== 'transfer').length + clientRequests.count,   color: 'amber' },
-                      { key: 'accepted'  as const, label: 'مدفوعات مؤكدة', count: filteredOrders.filter(r => (r.status === 'paid' || !r.status) && r.type !== 'transfer').length, color: 'green' },
-                      { key: 'failed'    as const, label: 'فاشلة / مرتجع', count: filteredOrders.filter(r => (r.status === 'failed' || r.status === 'refunded') && r.type !== 'transfer').length, color: 'red' },
+                      { key: 'review'    as const, label: 'قيد المراجعة',   count: desk.counts.review + clientRequests.count,   color: 'amber' },
+                      { key: 'accepted'  as const, label: 'مدفوعات مؤكدة', count: desk.counts.accepted, color: 'green' },
+                      { key: 'failed'    as const, label: 'فاشلة / مرتجع', count: desk.counts.failed, color: 'red' },
                       { key: 'transfers' as const, label: 'التحويلات',      count: ledger.transfers.length, color: 'blue' },
                     ]).map(({ key, label, count, color }) => {
                       const active = orderReviewTab === key;
@@ -298,11 +286,11 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                       <div className="flex-1" />
                       {/* Summary */}
                       <span className="text-xs text-gray-500 font-medium bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                        {tabRows.length} طلب · {tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج
+                        {desk.total.toLocaleString('ar-EG-u-nu-latn')} طلب · {tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج
                       </span>
-                      {/* Export — the active review tab's rows, matching the count shown above (PAY-12) */}
-                      <button onClick={() => exportFilteredOrdersCsv(tabRows)} disabled={tabRows.length === 0}
-                        className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition ${tabRows.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
+                      {/* Export — every row of the active review tab under the filters, fetched when it is clicked, matching the count shown above (PAY-12) */}
+                      <button onClick={() => { void desk.fetchAll().then(exportFilteredOrdersCsv).catch(() => notify('error', 'تعذر تجهيز ملف التصدير')); }} disabled={desk.total === 0}
+                        className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition ${desk.total === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
                         <Download size={12} /> تصدير CSV
                       </button>
                     </div>
@@ -336,7 +324,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         </thead>
                         <tbody>
                           {orderReviewTab === 'review' && clientRequests.rows}
-                          {tabRows.slice(0, shownOrders).map((row, i) => {
+                          {tabRows.map((row, i) => {
                             const isPending  = row.status === 'pending';
                             const isFailed   = row.status === 'failed' || row.status === 'refunded';
                             const rowBg = isPending ? 'bg-amber-50/40 hover:bg-amber-50/70' : isFailed ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-emerald-50/20';
@@ -358,7 +346,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                               <tr key={row.id} className={`border-b border-gray-100 ${rowBg} transition-colors`}>
                                 <td className="px-3 py-2.5 font-mono text-gray-400 border-l border-gray-100 whitespace-nowrap">
                                   <span className="text-[9px]">#{row.id.slice(-6)}</span>
-                                  <div className="text-[8px] text-gray-300">{i + 1}</div>
+                                  <div className="text-[8px] text-gray-300">{desk.page * ORDERS_PAGE_SIZE + i + 1}</div>
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100">
                                   {row.subscriberId
@@ -470,7 +458,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                               <td colSpan={12} className="py-12 text-center text-gray-400">
                                 <div className="flex flex-col items-center gap-2">
                                   <CreditCard size={28} className="text-gray-200" />
-                                  <span className="text-sm">لا توجد طلبات في هذا التصنيف</span>
+                                  <span className="text-sm">{desk.loading ? 'جاري التحميل…' : 'لا توجد طلبات في هذا التصنيف'}</span>
                                 </div>
                               </td>
                             </tr>
@@ -479,7 +467,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         {tabRows.length > 0 && (
                           <tfoot>
                             <tr className="bg-gradient-to-l from-emerald-50 to-white border-t-2 border-emerald-100">
-                              <td colSpan={6} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({tabRows.length} طلب)</td>
+                              <td colSpan={6} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({desk.total.toLocaleString('ar-EG-u-nu-latn')} طلب)</td>
                               <td className="px-3 py-2.5 text-center font-extrabold text-emerald-700 text-[12px]">{tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                               <td colSpan={5} />
                             </tr>
@@ -487,11 +475,11 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         )}
                       </table>
                     </div>
-                    {tabRows.length > shownOrders && (
+                    {desk.pageCount > 1 && (
                       <div className="flex items-center justify-center gap-3 py-3 text-xs text-gray-500 border-t border-gray-100">
-                        <span>معروض {shownOrders.toLocaleString('ar-EG-u-nu-latn')} من {tabRows.length.toLocaleString('ar-EG-u-nu-latn')} — الإجمالي والتصدير على الكل</span>
-                        <button type="button" onClick={() => setShownOrders(count => count + 100)} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200">عرض ١٠٠ كمان</button>
-                        <button type="button" onClick={() => setShownOrders(tabRows.length)} className="rounded-lg px-3 py-1.5 font-bold text-primary-600 hover:bg-primary-50">عرض الكل</button>
+                        <button type="button" disabled={desk.page === 0} onClick={() => desk.setPage(desk.page - 1)} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">السابق</button>
+                        <span>صفحة {(desk.page + 1).toLocaleString('ar-EG-u-nu-latn')} من {desk.pageCount.toLocaleString('ar-EG-u-nu-latn')} — الإجمالي والتصدير على كل الصفحات</span>
+                        <button type="button" disabled={desk.page + 1 >= desk.pageCount} onClick={() => desk.setPage(desk.page + 1)} className="rounded-lg bg-gray-100 px-3 py-1.5 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">التالي</button>
                       </div>
                     )}
                   </div>
@@ -503,7 +491,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   ══════════════════════════════════════════ */}
                   {linkTransferModal && (() => {
                     const transfer = linkTransferModal.row;
-                    const pendingOrders = effectiveOrders.filter(r => r.status === 'pending' && r.type !== 'transfer');
+                    const pendingOrders = linkRows;
                     const rankedOrders = pendingOrders
                       .filter(order => matchesQuery([order.customerName, order.itemTitle, order.amount, order.transactionId].join(' ')))
                       .map(order => ({ order, ...transferMatch({ amount: Number(order.amount), currency: order.currency, method: order.paymentMethod, reference: order.transactionId, customerName: order.customerName, date: order.createdAt }, transfer) }))
