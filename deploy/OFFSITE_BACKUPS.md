@@ -125,6 +125,8 @@ mahad-offsite ship-binlogs && mahad-offsite status
 
 الـdump بالساعة بعد كده بيسجّل مكانه في الـbinlog (`--master-data=2`) تلقائيًا، و`ship-binlogs` بيبعت كل binlog مقفول كل 15 دقيقة (وبيقفل الحالي لو اتكتب فيه حاجة). MariaDB بيمسح نسخه المحلية بعد 10 أيام (`expire_logs_days`).
 
+**ليه `log_bin_trust_function_creators = 1` في الملف:** أول ما الـbinlog يشتغل، MariaDB بيرفض `CREATE TRIGGER` (خطأ 1419) لأي مستخدم من غير صلاحية SUPER. مايجريشن 368 بتعمل تريجرات، و`npm run migrate` بيدخل بمستخدم `DB_USER` من `.env` بتاع الإصدار (مش مكتوب في الريبو)، فلو مش root، أي مايجريشن تريجرات جاية هتفشل بعد تشغيل الـbinlog. الإعداد آمن مع `binlog_format = ROW`. اتأكد من المستخدم: `grep '^DB_USER=' <مجلد-الـapi-على-السيرفر>/.env`.
+
 **بعد أول يوم:** `du -sh /var/log/mysql` و`df -h /var/log`. لو الحجم كبير على الهارد: قلّل `expire_logs_days` في الملف (مثلًا 3 لأن النسخة الخارجية محتفظة 35 يوم) واعمل `systemctl restart mariadb`.
 
 ### الرجوع (لو حاجة غلط — الـbinlog، مش البيانات، هو اللي بيتشال)

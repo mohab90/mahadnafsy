@@ -322,9 +322,9 @@ test('a contact logged on a follow-up that came due takes it off the follow-ups'
   const update = db.calls.find(call => /^UPDATE leads SET last_follow_up=\?/.test(call.sql));
   assert.match(update.sql, /WHEN next_follow_up_date < DATE\('\d{4}-\d{2}-\d{2}'\) \+ INTERVAL 1 DAY THEN NULL ELSE next_follow_up_date END/);
   assert.match(update.sql, /JSON_REMOVE\(crm_json, '\$\.nextFollowUpDate'\)/);
-  // the date lives in the column alone (migration 370): the blob key is only ever removed, never set
-  assert.doesNotMatch(update.sql, /JSON_SET\(crm_json, '\$\.nextFollowUpDate'/);
-  assert.deepEqual(update.params.slice(2, 4), [null, null]);
+  // crm_json goes first: an UPDATE assigns left to right.
+  assert.ok(update.sql.indexOf('crm_json=CASE') < update.sql.indexOf('next_follow_up_date=CASE'));
+  assert.deepEqual(update.params.slice(2, 6), [null, null, null, null]);
 
   // «تم» closes it whatever its date.
   db.reset([[/SELECT \* FROM leads/, [[{ id: 'L1', tenant_id: 't' }]]]]);
@@ -334,9 +334,7 @@ test('a contact logged on a follow-up that came due takes it off the follow-ups'
   // A new date is the next follow-up.
   db.reset([[/SELECT \* FROM leads/, [[{ id: 'L1', tenant_id: 't' }]]]]);
   await appendLeadInteraction({ tenantId: 't', leadId: 'L1', interaction: { type: 'call', notes: 'هكلمها', nextFollowUp: '2026-10-09' } });
-  const given = db.calls.find(call => /^UPDATE leads SET last_follow_up=\?/.test(call.sql)).params.slice(2, 4);
-  assert.equal(given.length, 2);
-  for (const value of given) assert.match(value instanceof Date ? value.toISOString() : String(value), /^2026-10-09/);
+  assert.deepEqual(db.calls.find(call => /^UPDATE leads SET last_follow_up=\?/.test(call.sql)).params.slice(2, 4), ['2026-10-09', '2026-10-09']);
 });
 
 test('«بكرة» and a date set on the lead reach the column the lists read', async () => {
@@ -346,8 +344,7 @@ test('«بكرة» and a date set on the lead reach the column the lists read', 
   let res = await call(move, { params: { id: 'L1' }, body: { date: '2026-10-08' }, isSuperAdmin: true });
   assert.equal(res.statusCode, 200);
   const update = db.calls.find(call => /^UPDATE leads SET crm_json=CASE/.test(call.sql));
-  assert.equal(update.params[0], '2026-10-08');
-  assert.doesNotMatch(update.sql, /JSON_SET\(crm_json, '\$\.nextFollowUpDate'/, 'the blob keeps no copy of the date (migration 370)');
+  assert.deepEqual(update.params.slice(0, 3), ['2026-10-08', '2026-10-08', '2026-10-08']);
   res = await call(move, { params: { id: 'L1' }, body: { date: 'tomorrow' }, isSuperAdmin: true });
   assert.equal(res.statusCode, 400);
   assert.match(read('api/routes/admin/leads/write.js'), /next_follow_up_date=IF\(\?, \?, next_follow_up_date\)/);

@@ -22,3 +22,6 @@ expire_logs_days  = 10
 max_binlog_size   = 100M
 # A crash cannot lose a committed transaction from the log.
 sync_binlog       = 1
+# With the log on, MariaDB refuses CREATE TRIGGER / CREATE FUNCTION to a user without SUPER (error 1419). Migration 368 creates triggers and `npm run migrate` connects as the
+# app's DB_USER from the release's .env, which the repo does not name, so a non-root user would make the next trigger migration fail. ROW format makes this safe to relax.
+log_bin_trust_function_creators = 1
