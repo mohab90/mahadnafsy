@@ -22,6 +22,10 @@ function mockPool(ids, { changed = () => 1 } = {}) {
       }
       return [{ affectedRows: changed(params[0]) }, []];
     },
+    // the score summary behind GET /api/admin/leads/stats is rebuilt after a refresh that changed something (lib/leadsStatsAgg.js): a transaction of two statements
+    async getConnection() {
+      return { async beginTransaction() {}, async query() { return [{}, []]; }, async commit() {}, async rollback() {}, release() {} };
+    },
   };
 }
 const updates = pool => pool.queries.filter(q => /^\s*UPDATE leads l/i.test(q.sql));
