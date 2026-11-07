@@ -2813,6 +2813,7 @@ CREATE TABLE `installment_entries` (
   `paid` tinyint(1) NOT NULL DEFAULT 0,
   `paid_at` date DEFAULT NULL,
   `payment_id` varchar(100) DEFAULT NULL,
+  `subscriber_id` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_entry_plan_seq` (`plan_id`,`seq`),
   KEY `idx_entry_plan` (`plan_id`),

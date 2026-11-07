@@ -17,6 +17,7 @@ const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('./../lib/id');
 const { pool } = require('../lib/db');
+const { syncPlanEntries } = require('../lib/installmentEntries');
 const { dateOnlyInTimeZone } = require('../lib/dates');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
@@ -100,6 +101,7 @@ router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAut
        JSON.stringify(amounts.map(() => null)), JSON.stringify(amounts.map(() => null)), JSON.stringify(amounts.map(() => null)),
        notes || null, req.user?.email || req.staffRecord?.name || 'system']
     );
+    await syncPlanEntries(pool, req.tenantId, id);
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -274,6 +276,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
       [JSON.stringify(update.paidDates), JSON.stringify(update.paymentIds), JSON.stringify(update.paidAmounts),
        update.paidCount, update.status, planId, req.tenantId]
     );
+    await syncPlanEntries(conn, req.tenantId, planId);
 
     await conn.commit();
     queuePaymentReceipt(req.tenantId, payId);
@@ -301,6 +304,7 @@ router.delete('/api/admin/installment-plans/:planId', requireAuth, requireAdminO
     if (Number(plan.paid_count) > 0) return res.status(409).json({ error: 'Cannot delete a plan with recorded payments — it has real financial history' });
     const [r] = await pool.query('DELETE FROM installment_plans WHERE id=? AND tenant_id=? AND paid_count=0', [req.params.planId, req.tenantId]);
     if (!r.affectedRows) return res.status(409).json({ error: 'Plan changed concurrently — refresh and retry' });
+    await syncPlanEntries(pool, req.tenantId, req.params.planId); // the plan is gone: so are its rows
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -333,6 +337,7 @@ router.delete('/api/admin/installment-plans/:planId/entries/:index', requireAuth
        JSON.stringify(update.paymentIds), JSON.stringify(update.paidAmounts), update.installmentsCount, update.totalAmount,
        planId, req.tenantId]
     );
+    await syncPlanEntries(pool, req.tenantId, planId);
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

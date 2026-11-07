@@ -346,6 +346,9 @@ function createScheduledJobHandlers({ pool, logger }) {
     try {
       const drift = await require('./leadsStatsAgg').reconcileLeadsStats(pool, logger);
       logger.info('[jobs] lead counters recounted', drift);
+      // and the instalment rows (migration 369) from the plans they are copied from
+      const entries = await require('./installmentEntries').rebuildInstallmentEntries(pool);
+      logger.info('[jobs] instalment rows rebuilt', { entries });
     } catch (error) {
       logger.warn('[jobs] lead counters recount failed:', error.message);
     }

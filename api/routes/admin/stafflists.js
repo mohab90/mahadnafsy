@@ -36,6 +36,7 @@ const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
 const { buildView: buildClientsView, dueInstallments, readFilters: readClientFilters } = require('../../lib/staffClientsView');
 const { mapInstallmentPlan } = require('../../lib/installmentMath');
+const { dueFromEntries } = require('../../lib/installmentEntries');
 const { buildOverview, readOverviewClients } = require('../../lib/staffOverview');
 
 // What each client holds is read once, in lib/clientView.js, for the lists and the single-client profile alike.
@@ -1116,6 +1117,20 @@ router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireA
 // («متابعات التحصيل والأقساط»: the instalments due and coming; «مشتركين جدد ومدفوعات»: the last seven days), over the
 // manager's own clients. They were counted and listed in the browser out of every loaded client.
 // ────────────────────────────────────────────────────────────
+// The plans' own walk (before installment_entries): every plan in scope read and its arrays gone through here.
+async function dueFromPlans(sc, scopeParams, live, today, soon) {
+  const [planRows] = await pool.query(
+    `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count,
+            ip.installment_amounts, ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.notes, ip.created_at,
+            COALESCE(c.title, b.title) AS course_title, s.id AS client_id, s.name, s.phone
+       FROM installment_plans ip
+       JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id = ip.tenant_id
+       LEFT JOIN courses c ON c.id = ip.course_id AND c.tenant_id = ip.tenant_id
+       LEFT JOIN bundles b ON b.id = ip.bundle_id AND b.tenant_id = ip.tenant_id
+      WHERE s.tenant_id = ? AND ${live}`, scopeParams);
+  return dueInstallments(planRows.map(row => ({ clientId: row.client_id, name: row.name, phone: row.phone, plan: mapInstallmentPlan(row) })), today, soon);
+}
+
 router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const sc = staffSubscriberScope(req);
@@ -1126,16 +1141,12 @@ router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff
     const since = addDaysToDateOnly(today, -7);
     const scopeParams = [tenantId, ...sc.params];
     const live = `s.deleted_at IS NULL AND (${sc.where})`;
-    const [[planRows], [newClients], [[paymentCount]], [newPayments]] = await Promise.all([
-      pool.query(
-        `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count,
-                ip.installment_amounts, ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.notes, ip.created_at,
-                COALESCE(c.title, b.title) AS course_title, s.id AS client_id, s.name, s.phone
-           FROM installment_plans ip
-           JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id = ip.tenant_id
-           LEFT JOIN courses c ON c.id = ip.course_id AND c.tenant_id = ip.tenant_id
-           LEFT JOIN bundles b ON b.id = ip.bundle_id AND b.tenant_id = ip.tenant_id
-          WHERE s.tenant_id = ? AND ${live}`, scopeParams),
+    // The instalments due or coming within a week come from installment_entries (migration 369, lib/installmentEntries.js): a range read of the unpaid ones, not every plan's
+    // JSON walked here. A server whose table has not been filled yet (no row at all) reads the plans, as it did.
+    const soon = addDaysToDateOnly(today, 7);
+    const [[entriesHeld]] = await pool.query('SELECT EXISTS(SELECT 1 FROM installment_entries WHERE tenant_id = ?) AS held', [tenantId]);
+    const [due, [newClients], [[paymentCount]], [newPayments]] = await Promise.all([
+      Number(entriesHeld.held) ? dueFromEntries(pool, tenantId, { where: sc.where, params: sc.params }, today, soon) : dueFromPlans(sc, scopeParams, live, today, soon),
       pool.query(
         `SELECT s.id, s.name, s.email, s.phone, s.created_at FROM subscribers s
           WHERE s.tenant_id = ? AND ${live} AND s.created_at >= ? ORDER BY s.created_at DESC`, [...scopeParams, cairoDayStartUtc(since)]),
@@ -1147,11 +1158,8 @@ router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff
            JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
           WHERE s.tenant_id = ? AND ${live} AND p.deleted_at IS NULL AND p.date >= ? ORDER BY p.date DESC LIMIT 30`, [...scopeParams, since]),
     ]);
-    const due = dueInstallments(
-      planRows.map(row => ({ clientId: row.client_id, name: row.name, phone: row.phone, plan: mapInstallmentPlan(row) })),
-      today, addDaysToDateOnly(today, 7));
     res.json({
-      installments: { overdue: due.overdue.length, upcoming: due.upcoming.length, overdueRows: due.overdue.slice(0, 200), upcomingRows: due.upcoming.slice(0, 200) },
+      installments: { overdue: due.overdueCount ?? due.overdue.length, upcoming: due.upcomingCount ?? due.upcoming.length, overdueRows: due.overdue.slice(0, 200), upcomingRows: due.upcoming.slice(0, 200) },
       newClients: {
         count: newClients.length,
         rows: newClients.slice(0, 200).map(row => ({ id: row.id, name: row.name, email: row.email, phone: row.phone, createdAt: safeIsoString(row.created_at) })),

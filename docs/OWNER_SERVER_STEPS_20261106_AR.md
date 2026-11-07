@@ -9,7 +9,7 @@
 ```bash
 mysql -u root -N -e "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 3"
 ```
-**المفروض** أول سطر يبدأ بـ`360_` (يعني اللي شغّال دلوقتي هو `fd98aaac`). لو أكبر من كده، قوللي قبل النشر. الفرع الجديد هيشغّل مايجريشن **361 إلى 368** (368 بتضيف جداول عدّادات الليدز وتريجرات على `leads` وبتعمل عدّ أولي ~12 ث على 600 ألف ليد؛ محتاجة MariaDB 10.2.3 أو أحدث) (361 بتغيّر بيانات: السبت يوم شغل + مكافآت «شيت الشهر» → مرفوضة — شوف القسم 3 في `FINAL_REPORT_20261106_AR.md`).
+**المفروض** أول سطر يبدأ بـ`360_` (يعني اللي شغّال دلوقتي هو `fd98aaac`). لو أكبر من كده، قوللي قبل النشر. الفرع الجديد هيشغّل مايجريشن **361 إلى 369** (369 بتنسخ أقساط الخطط لجدول `installment_entries` وتضيف عموده؛ 368 بتضيف جداول عدّادات الليدز وتريجرات على `leads` وبتعمل عدّ أولي ~12 ث على 600 ألف ليد؛ محتاجة MariaDB 10.2.3 أو أحدث) (361 بتغيّر بيانات: السبت يوم شغل + مكافآت «شيت الشهر» → مرفوضة — شوف القسم 3 في `FINAL_REPORT_20261106_AR.md`).
 
 ## 1) النشر
 
@@ -23,7 +23,7 @@ MAHAD_DEPLOY_EMERGENCY='نشر أسبوعي من غير push' bash deploy/releas
 ```bash
 systemctl is-active mahad-api            # active
 curl -s http://127.0.0.1:3001/api/health/live    # {"status":"ok",…}
-mysql -u root -N -e "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"   # 368_…
+mysql -u root -N -e "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"   # 369_…
 ```
 وافتح اللوحة بإيدك: «الحسابات ← نظرة عامة» (اضغط على خزنة: لازم تفتح السجل على الخزنة والشهر)، «مركز المبيعات»، «اسأل الذكاء»، وفي «الموارد البشرية» كشف شهر فيه سبت.
 

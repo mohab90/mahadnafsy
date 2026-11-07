@@ -13,6 +13,7 @@
 // entry paid, the way the desk's «تسجيل قسط» does (routes/installments.js).
 
 const { applyInstallmentPayment, tryJsonArr } = require('./installmentMath');
+const { syncPlanEntries } = require('./installmentEntries');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('./paymentEntitlementAccess');
 const { grantCourseEntitlement } = require('./entitlements');
 const { branchIdForBranch } = require('./branches');
@@ -115,6 +116,7 @@ async function settlePlanEntry(conn, { tenantId, planId, index, subscriberId, pa
       [JSON.stringify(update.paidDates), JSON.stringify(update.paymentIds), JSON.stringify(update.paidAmounts),
        update.paidCount, update.status, planId, tenantId]
     );
+    await syncPlanEntries(conn, tenantId, planId);
     if (target !== index) logger.warn('instalment paid after the desk settled it — applied to the next open one', { planId, index, target, paymentId });
   } else {
     logger.warn('instalment paid on a plan with nothing left open — recorded on the course only', { planId, index, paymentId });
