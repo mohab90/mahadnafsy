@@ -2,7 +2,7 @@ import { Activity, Award, BookOpen, CalendarDays, CheckCircle, Clock, Copy, Cred
 
 import type { BranchType, Bundle, CommunicationRecord, Course, ExtraCertificateRequest, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem, UserSessionData } from '../../types';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
-import { clientItems } from '../../lib/agreedPrice';
+import { moneyItemsOf } from '../../lib/agreedPrice';
 import { branchLabels, normBranchKey, statusLabels } from './constants';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
 import { toDialable } from '../../lib/whatsappLink';
@@ -158,7 +158,7 @@ export function UnifiedClientSidebarFinancialCard({
       )}
       <div className="space-y-1.5">
         {/* A track is one line, with the money paid for it — not its courses each «لا مدفوعات». */}
-        {clientItems(subscriber, courses, bundles, settlementCurrency).map(held => {
+        {moneyItemsOf(subscriber).map(held => {
           const remaining = held.expected > 0 ? held.remaining : null;
           return (
             <div key={held.item} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">

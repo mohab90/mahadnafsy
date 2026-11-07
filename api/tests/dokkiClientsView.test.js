@@ -134,7 +134,7 @@ function screenRun(screen, clients, rounds, f) {
   };
   const balances = new Map();
   const balanceOf = s => {
-    if (!balances.has(s.id)) balances.set(s.id, screen.subscriberBalance(s, COURSES, BUNDLES));
+    if (!balances.has(s.id)) balances.set(s.id, screen.subscriberBalance(require('./_clientRule').withMoney(s, COURSES, BUNDLES), COURSES, BUNDLES));
     return balances.get(s.id);
   };
   const itemKeyOf = payment => (payment.bundleId ? `bundle:${payment.bundleId}` : (payment.courseId || ''));

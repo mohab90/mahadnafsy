@@ -42,30 +42,31 @@ const courses = [
   { id: 'c3', title: 'التربية', price: { EGP: 1500, SAR: 150, USD: 40 } },
 ];
 const bundles = [{ id: 'b1', title: 'دبلومة', price: { EGP: 4600, SAR: 460, USD: 120 }, courses: [{ id: 'c2' }, { id: 'c3' }] }];
+const balanceWith = (row, courses, bundles) => utils.subscriberBalance(require('./_clientRule').withMoney(row, courses, bundles), courses, bundles);
 const client = extra => ({ id: 's', name: 'x', phone: '01012345678', branch: 'ONLINE_EGYPT', paymentHistory: [], enrolledCourseIds: [], ...extra });
 const paid = (amount, extra = {}) => ({ id: `p${amount}`, amount, currency: 'EGP', status: 'paid', paymentType: 'course', at: '2026-09-01', ...extra });
 
 test('enrolled with nothing paid is not «مكتمل الدفع»', { skip: !utils }, () => {
-  const balance = utils.subscriberBalance(client({ enrolledCourseIds: ['c1'] }), courses, bundles);
+  const balance = balanceWith(client({ enrolledCourseIds: ['c1'] }), courses, bundles);
   assert.equal(balance.remainingEgp, 3000, 'the catalogue price is owed');
   assert.equal(utils.isFullyPaid(balance), false);
 });
 
 test('paid in full is «مكتمل الدفع»; paid in part is not', { skip: !utils }, () => {
-  const full = utils.subscriberBalance(client({ enrolledCourseIds: ['c1'], paymentHistory: [paid(3000, { courseId: 'c1' })] }), courses, bundles);
+  const full = balanceWith(client({ enrolledCourseIds: ['c1'], paymentHistory: [paid(3000, { courseId: 'c1' })] }), courses, bundles);
   assert.equal(utils.isFullyPaid(full), true);
-  const part = utils.subscriberBalance(client({ enrolledCourseIds: ['c1'], paymentHistory: [paid(1000, { courseId: 'c1' })] }), courses, bundles);
+  const part = balanceWith(client({ enrolledCourseIds: ['c1'], paymentHistory: [paid(1000, { courseId: 'c1' })] }), courses, bundles);
   assert.equal(part.remainingEgp, 2000);
   assert.equal(utils.isFullyPaid(part), false);
 });
 
 test('a client holding nothing is neither paid up nor owing', { skip: !utils }, () => {
-  const balance = utils.subscriberBalance(client({}), courses, bundles);
+  const balance = balanceWith(client({}), courses, bundles);
   assert.deepEqual([balance.items, balance.remainingEgp, utils.isFullyPaid(balance)], [0, 0, false]);
 });
 
 test('a track known only from its enrolment is the track, not its courses', { skip: !utils }, () => {
-  const balance = utils.subscriberBalance(client({ enrolledCourseIds: ['c2', 'c3'], enrolledBundleIds: ['b1'] }), courses, bundles);
+  const balance = balanceWith(client({ enrolledCourseIds: ['c2', 'c3'], enrolledBundleIds: ['b1'] }), courses, bundles);
   assert.equal(balance.items, 1, 'one item: the track');
   assert.equal(balance.remainingEgp, 4600, 'owed at the track price, not the two courses added up');
 });
@@ -85,7 +86,7 @@ test('every admin list sends the tracks a client was enrolled in', () => {
   assert.equal(lists.split('enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],').length - 1, 4); // four since 3 Nov 2026 («my-collection-clients» is gone)
   assert.match(read('api/lib/clientView.js'), /SELECT subscriber_id,course_id,bundle_id,access_type,lecture_limit FROM enrollments/); // the one reading, shared with the profile
   assert.match(read('api/routes/admin/subscribers.js'), /\.\.\.crm, enrolledCourseIds, enrolledBundleIds, courseAccess,/);
-  assert.match(read('admin/lib/agreedPrice.ts'), /\(subscriber\.enrolledBundleIds \|\| \[\]\)\.forEach\(id => \{ if \(id\) keys\.add\(`bundle:\$\{id\}`\); \}\);/);
+  assert.match(read('api/lib/clientItems.js'), /\(client\.enrolledBundleIds \|\| \[\]\)\.forEach\(id => \{ if \(id\) keys\.add\(`bundle:\$\{id\}`\); \}\);/);
 });
 
 test('no payment is recorded for a client without a real phone', () => {

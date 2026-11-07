@@ -5,7 +5,7 @@ import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { clientCurrency, errorMessage, paymentAmountInEGP, subscriberBalance } from '../onlineClientsUtils';
-import { clientItems } from '../../../../lib/agreedPrice';
+import { moneyItemsOf } from '../../../../lib/agreedPrice';
 import { isCollected } from '../../../../lib/money';
 import { downloadCsv } from '../../../../../shared/csv';
 
@@ -75,7 +75,7 @@ export function ViewTabsBar({
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
 }: Props) {
   // The items the table lists — a track as the track.
-  const courseTitles = (s: SubscriberItem) => clientItems(s, courses, bundles, clientCurrency(s)).map(item => item.title).join(' | ');
+  const courseTitles = (s: SubscriberItem) => moneyItemsOf(s).map(item => item.title).join(' | ');
   const toExport = async () => {
     const source = loadForExport ? await loadForExport() : filtered;
     return collOnlineSelected.size > 0 ? source.filter(s => collOnlineSelected.has(s.id)) : source;

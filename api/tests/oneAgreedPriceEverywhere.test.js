@@ -54,24 +54,23 @@ test('a client\'s balance counts their tracks, the currency they pay in, and wha
 });
 
 test('every screen reads that rule', () => {
-  const admin = read('admin/lib/agreedPrice.ts');
-  assert.match(admin, /if \(booked > 0\) return Math\.max\(booked, paidFor\(subscriber, item, currency\)\);/);
+  assert.match(read('api/lib/agreedPrice.js'), /if \(Number\(booked\) > 0\) return \{ price: Math\.max\(Number\(booked\), Number\(paid\) \|\| 0\), source: 'booking' \};/);
   // The table and the plans window list the same items (the plans page was removed on 5 Nov 2026).
   const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, /const courseRows = clientItems\(row, courses, bundles, branchCurrency\)/);
+  assert.match(table, /const courseRows = moneyItemsOf\(row\)/);
   assert.doesNotMatch(table, /multiCourseKey|completeBundles/);
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/InstallmentPlansModal.tsx'),
-    /const items = useMemo\(\(\) => clientItems\(subscriber, courses, bundles, defaultCurrency\)/);
-  assert.match(admin, /paidFor\(subscriber, item, currency\) \+ \(Number\(subscriber\.priorPaid\?\.\[item\]\) \|\| 0\)/);
+    /const items = useMemo\(\(\) => moneyItemsOf\(subscriber\), \[subscriber\]\)/);
+  assert.match(read('api/lib/clientItems.js'), /const paid = paidHere \+ priorPaid;/);
   const modal = paymentModalSource();
   // The instalment list and «كل المتبقي» used the catalogue.
   // 2 Nov 2026: the dialog's lines ARE clientItems' lines (the table's function), so the two cannot disagree; its own agreed-price read is only for a
   // course the Dokki desk says the client holds.
-  assert.match(modal, /: clientItems\(\{/);
-  assert.match(modal, /const px = money \? priceIn\(entry\?\.price, currency\) : agreedPriceFor\(subject, id, priceIn\(entry\?\.price, currency\), currency\);/);
+  assert.match(modal, /\(money\?\.items \|\| \[\]\)\.map\(line => \(\{/);
+  assert.match(modal, /const px = priceIn\(entry\?\.price, currency\);/);
   assert.match(modal, /const bal = _effPx > 0 \? Math\.max\(0, _effPx - alreadyPaid\) : 0;/);
   // The filters and the total read the table's own items (onlineSectionReview.test.js).
-  assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /const items = clientItems\(subscriber, courses, bundles, clientCurrency\(subscriber\)\);/);
+  assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /const items = moneyItemsOf\(subscriber\);/);
   assert.match(read('api/lib/paymentReceipt.js'), /await itemBalances\(db, \{ tenantId, subscriberId: payment\.subscriber_id \}\)/);
   assert.match(read('api/lib/outstandingBalances.js'), /const prior = Number\(priorPaid\) \|\| 0;/);
 });

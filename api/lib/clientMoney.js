@@ -4,16 +4,19 @@
 // instalment lists and the nightly check read (7 Nov 2026: «سعر الكورس أحيانًا رقم في صفحة العميل ورقم تاني عند زر دفع وحجز»).
 //
 // It is built on the rule and the writer that already exist — lib/agreedPrice.js (the client's own price in client_item_money, else what their booking recorded,
-// never below what was paid, else the catalogue; itemBalances) and lib/itemMoney.js — and adds what they did not cover: certificates (the price agreed for this client's
+// never below what was paid, else the catalogue — now lib/clientItems.js, the same function every list row is built with) and lib/itemMoney.js — and adds what they did not cover: certificates (the price agreed for this client's
 // certificate, else the price list's — lib/certificatePricing.js certificateDue) and the extras (carnets, books, consultations), each kept apart from the courses and tracks
 // (a certificate is its own service; a track is paid once). Every figure carries where it came from, so a screen can say «سعر متفق عليه» or «سعر الكتالوج».
 //
 // Amounts are DECIMAL in the database and added here in piastres (integers), never as floats.
 
-const { itemBalances } = require('./agreedPrice');
+const { clientItems } = require('./clientItems');
+const { loadMoneyCatalogue } = require('./clientMoneyItems');
+const { clientCurrency } = require('./staffClientsView');
+const { loadHoldings, loadPayments } = require('./clientView');
 const { certificateDue, certificateSource } = require('./certificatePricing');
 const { certificatePricing } = require('./certificatePayments');
-const { certificatePrices } = require('./itemMoney');
+const { certificatePrices, moneyOf } = require('./itemMoney');
 const { getTenantSetting } = require('./tenantSettings');
 
 /** Piastres: the integer a DECIMAL(14,2) amount is added in. */
@@ -21,15 +24,6 @@ const cents = value => Math.round((Number(value) || 0) * 100);
 const fromCents = value => value / 100;
 /** a − b − c … floored at zero, in piastres. */
 const remainingOf = (agreed, ...paid) => fromCents(Math.max(0, cents(agreed) - paid.reduce((sum, amount) => sum + cents(amount), 0)));
-
-const IN_LIST = ids => ids.map(() => '?').join(',');
-
-async function titlesOf(db, tenantId, table, ids) {
-  if (!ids.length) return new Map();
-  const [rows] = await db.query(
-    `SELECT id, COALESCE(NULLIF(title_ar, ''), title) AS title FROM ${table} WHERE tenant_id=? AND id IN (${IN_LIST(ids)})`, [tenantId, ...ids]);
-  return new Map(rows.map(row => [String(row.id), row.title]));
-}
 
 /** The carnets and books «تسعير الشهادات» lists, by label: { label → { EGP, SAR, USD } }. */
 async function extraCatalogue(db, tenantId) {
@@ -56,24 +50,21 @@ async function extraCatalogue(db, tenantId) {
  * }|null>} null when the client does not exist in this institute.
  */
 async function clientMoney(db, { tenantId, subscriberId }) {
-  const [[subscriber]] = await db.query('SELECT id, nationality FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [subscriberId, tenantId]);
+  const [[subscriber]] = await db.query('SELECT id, nationality, branch, market FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [subscriberId, tenantId]);
   if (!subscriber) return null;
 
-  const balances = await itemBalances(db, { tenantId, subscriberId });
-  const lines = [...balances.values()];
-  const courseTitles = await titlesOf(db, tenantId, 'courses', lines.filter(line => !line.bundleId && line.courseId).map(line => String(line.courseId)));
-  const trackTitles = await titlesOf(db, tenantId, 'bundles', lines.filter(line => line.bundleId).map(line => String(line.bundleId)));
-  const items = lines.map(line => ({
-    item: line.item,
-    kind: line.bundleId ? 'track' : 'course',
-    title: (line.bundleId ? trackTitles.get(String(line.bundleId)) : courseTitles.get(String(line.courseId))) || line.item,
-    currency: line.currency,
-    catalogue: Number(line.catalogue) || 0,
-    agreed: Number(line.expected) || 0,
-    source: line.source || 'none',
-    paid: Number(line.paid) || 0,
-    priorPaid: Number(line.priorPaid) || 0,
-    remaining: remainingOf(line.expected, line.paid, line.priorPaid),
+  // The client's own data, loaded fresh, through the one rule every list row is built with (lib/clientItems.js).
+  const held = await moneyOf(db, { tenantId, subscriberId });
+  const paymentHistory = (await loadPayments(tenantId, [subscriberId], { staffName: 'none' }, db))[subscriberId] || [];
+  const holdings = (await loadHoldings(tenantId, [subscriberId], db))[subscriberId];
+  const client = {
+    branch: subscriber.branch, market: subscriber.market, paymentHistory, customPrices: held.customPrices, priorPaid: held.priorPaid,
+    enrolledCourseIds: holdings?.ids || [], enrolledBundleIds: holdings?.bundleIds || [],
+  };
+  const catalogue = await loadMoneyCatalogue(db, tenantId);
+  const items = clientItems(client, catalogue, clientCurrency(client)).map(line => ({
+    item: line.item, kind: line.isTrack ? 'track' : 'course', title: line.title, currency: line.currency, catalogue: line.catalogue,
+    agreed: line.expected, source: line.source, paid: fromCents(cents(line.paid) - cents(line.priorPaid)), priorPaid: line.priorPaid, remaining: line.remaining,
   }));
 
   // Certificates: each request is its own line, at the price agreed for this client's certificate, else the price list's, else the request's own.

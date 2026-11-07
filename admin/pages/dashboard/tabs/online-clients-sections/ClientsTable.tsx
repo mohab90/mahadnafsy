@@ -25,7 +25,7 @@ const branchLabel = (value?: string | null): string => {
 const placeLabel = (row: SubscriberItem): string => (isOnlineClient(row) ? MARKET_LABELS[subscriberMarket(row)] : branchLabel(row.branch));
 import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { MARKET_LABELS, clientCurrency, isOnlineClient, subscriberMarket } from '../onlineClientsUtils';
-import { clientItems, itemKeyOf } from '../../../../lib/agreedPrice';
+import { moneyItemsOf, itemKeyOf } from '../../../../lib/agreedPrice';
 import { isCollected } from '../../../../lib/money';
 import ClientNameCell from './ClientNameCell';
 import ClientCard, { type ClientCardAction } from './ClientCard';
@@ -134,10 +134,10 @@ export function ClientsTable({
             // One row per course or track they hold, at the price agreed, with
             // what they paid for it here and before the system — the same items
             // and numbers as «صلاحية الكورسات», the payment dialog and the plans
-            // (lib/agreedPrice.ts clientItems). This guessed a track whenever a
+            // (the server's moneyItems). This guessed a track whenever a
             // client held all of its courses and folded several courses into one
             // «باقة» row, so the table could list items no other screen did.
-            const courseRows = clientItems(row, courses, bundles, branchCurrency).filter(item => !itemVisible || itemVisible(row, item.item)).map(item => ({
+            const courseRows = moneyItemsOf(row).filter(item => !itemVisible || itemVisible(row, item.item)).map(item => ({
               cid: item.item,
               label: item.isTrack ? `📌 ${item.title}` : item.title,
               expected: item.expected, paid: item.paid, pending: item.pending, remaining: item.remaining, cur: item.currency,

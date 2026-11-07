@@ -34,7 +34,7 @@ test('with the server\'s answer the dialog holds the price on file, whatever the
   const withServer = loaded.clientHoldings(stale, [course], [], 'EGP', money);
   assert.deepEqual(withServer.enrolledOptions.map(o => [o.cid, o.px, o.paid, o.remaining]), [['c1', 2000, 1300, 700]]);
   const alone = loaded.clientHoldings(stale, [course], [], 'EGP');
-  assert.equal(alone.enrolledOptions[0].px, 2500, 'without it, the stale copy is all there is');
+  assert.deepEqual(alone.enrolledOptions, [], 'without the server answer nothing is held: the browser has no rule of its own');
 });
 
 test('the dialog asks the server when it opens, again after any change, and books a held course at the price on file', () => {

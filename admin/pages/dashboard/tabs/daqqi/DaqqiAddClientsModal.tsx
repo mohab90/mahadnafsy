@@ -117,7 +117,7 @@ export function DaqqiAddClientsModal({
                   const chosenCourseId = daqqiAddClientsCourseSel[s.id] || (addRound?.courseId ?? '');
                   // The course's own line, or its track's: its price agreed, its
                   // payments and «مدفوع قبل السيستم» (lib/agreedPrice.ts).
-                  const money = courseMoneyFor(s, chosenCourseId, courses, bundles, 'EGP');
+                  const money = courseMoneyFor(s, chosenCourseId);
                   const paidForCourse = money?.paid ?? 0;
                   const cp = money?.expected || (addCourse?.price?.EGP ?? 0);
                   const rem = money ? money.remaining : cp;

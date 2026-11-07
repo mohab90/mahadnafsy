@@ -75,7 +75,8 @@ test('a refunded payment is never counted as money collected', () => {
   // 11 since 21 Oct 2026: a rep's month revenue on «أداء المبيعات» is the server's (GET /api/admin/leads/rep-revenue),
   // over collected money only.
   // 10 since 3 Nov 2026: the collection officer's own client list («my-collection-clients», read by nothing) is gone.
-  assert.ok(paymentSums >= 10, `expected the admin's payment sums, found ${paymentSums}`);
+  // 6 since 8 Nov 2026: what a client owes is the server's (api/lib/clientItems.js, `moneyItems` on every row); the admin's screens no longer sum rows for it.
+  assert.ok(paymentSums >= 6, `expected the admin's payment sums, found ${paymentSums}`);
   assert.deepEqual(unguarded, [],
     'these sum payments without asking whether the money was collected: ' + unguarded.join(', '));
 
@@ -99,10 +100,10 @@ test('a refunded payment is never counted as money collected', () => {
   // every payment screen in the admin except this one desk, which had its own
   // copy of the modal and did guard. Filtered once, where the list is read.
   const paymentModal = codeOnly(paymentModalSource());
-  assert.ok(paymentModal.includes('(subject.paymentHistory || []).filter(isCollected)'),
-    'the payment screen counts refunds as money the customer already paid');
-  assert.ok(paymentModal.includes("import { isCollected } from '../../lib/money'"),
-    'it must use the one predicate, not a second spelling of it');
+  // Since 8 Nov 2026 the dialog sums no payment at all: what was paid is the server's line (api/lib/clientItems.js, collected money only, GET /api/admin/clients/:id/money).
+  assert.ok(!paymentModal.includes('subject.paymentHistory'),
+    'the payment screen works out nothing from the rows it was handed: refunds could be counted as money already paid');
+  assert.ok(paymentModal.includes('useClientMoney('), 'it asks the server what the client has paid');
 });
 
 test('one predicate decides what "collected" means', () => {

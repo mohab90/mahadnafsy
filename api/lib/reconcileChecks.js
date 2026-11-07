@@ -359,6 +359,20 @@ const CHECKS = [
                             AND ABS(COALESCE(p.course_expected, 0) - m.agreed_price) > 0.009)`,
     hint: 'The client page and the payment list can show two prices for one course; run tools/client-money-diagnose.cjs.',
   },
+  // Two readings of one balance (lib/moneyParity.js): the rule every screen draws (lib/clientItems.js) against the SQL one the receipts and collections read
+  // (lib/agreedPrice.js itemBalances), on the 300 clients with the newest payments. A count here is a client two screens would show different debts.
+  {
+    key: 'client_money_readings_differ',
+    name: 'what a client owes reads the same on every screen (newest 300 clients)',
+    severity: 'critical',
+    run: async pool => {
+      const { compareClientMoney, recentClientIds } = require('./moneyParity');
+      let differing = 0;
+      for (const { tenantId, subscriberId } of await recentClientIds(pool)) differing += (await compareClientMoney(pool, { tenantId, subscriberIds: [subscriberId] })).length ? 1 : 0;
+      return differing;
+    },
+    hint: 'Run tools/client-money-parity.cjs: it lists the clients and items where the screens and the receipts disagree.',
+  },
   {
     key: 'certificate_price_two_copies',
     name: 'the price agreed for a certificate is the price on its request',
@@ -375,8 +389,8 @@ async function runReconcile(pool) {
   const out = [];
   for (const chk of CHECKS) {
     try {
-      const [[row]] = await pool.query(chk.sql);
-      out.push({ ...chk, n: Number(row.n) });
+      const n = chk.run ? await chk.run(pool) : Number((await pool.query(chk.sql))[0][0].n);
+      out.push({ ...chk, n });
     } catch (e) {
       out.push({ ...chk, n: null, error: e.message });
     }

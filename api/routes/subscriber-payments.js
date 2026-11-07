@@ -556,7 +556,9 @@ async function recordSubscriberPayment(req, res) {
     let priceChange = clientPrice;
     const serverPrice = heldPrice ?? held?.price ?? null;
     if (!priceTier && !clientPrice && itemNamed && !isRetake && courseExpected != null && serverPrice != null && !priceMatches(courseExpected, serverPrice)) {
-      if (!canSetClientPrice) return priceChangedResponse(serverPrice);
+      // A price the client already holds is changed on purpose — the desk says so (customPrice) — never by a figure an old screen sent; a price nobody holds yet
+      // (the catalogue's) may be set by an account that may set one.
+      if (!canSetClientPrice || heldPrice != null) return priceChangedResponse(serverPrice);
       resolvedExpected = courseExpected;
       priceChange = true;
     }

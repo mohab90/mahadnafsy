@@ -15,14 +15,7 @@ const path = require('node:path');
 const { ROOT } = require('./support/repo');
 
 
-function adminClientItems() {
-  let esbuild;
-  try { esbuild = require(path.join(ROOT, 'admin', 'node_modules', 'esbuild')); } catch { return null; }
-  const out = esbuild.buildSync({ entryPoints: [path.join(ROOT, 'admin', 'lib', 'agreedPrice.ts')], bundle: true, write: false, format: 'cjs', platform: 'node' });
-  const module_ = { exports: {} };
-  new Function('module', 'exports', out.outputFiles[0].text)(module_, module_.exports);
-  return module_.exports.clientItems;
-}
+const adminClientItems = () => require('./_clientRule').clientItems;
 
 const SLP = 'course-slp';        // أخصائي التخاطب
 const SPECIAL = 'course-special'; // اخصائي التربية الخاصة

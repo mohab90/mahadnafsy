@@ -23,6 +23,8 @@
 const { resolveCatalogPrice } = require('./catalogPrice');
 const { moneyOf, setItemMoney, priorPaidTotals } = require('./itemMoney');
 const { logClientEvent } = require('./clientHistory');
+const { clientCurrency } = require('./clientMarket');
+const { safeDateOnly } = require('./dates');
 
 const itemKey = ({ courseId, bundleId }) => (bundleId ? `bundle:${bundleId}` : String(courseId || ''));
 
@@ -64,8 +66,8 @@ const agreedPrice = async (db, options) => (await agreedPriceDetail(db, options)
 async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
   const held = await moneyOf(db, { tenantId, subscriberId });
   const [payments] = await db.query(
-    `SELECT course_id, bundle_id, amount, currency, status, course_expected FROM payments
-      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND payment_type IN ('COURSE','BUNDLE','OTHER')
+    `SELECT course_id, bundle_id, amount, currency, status, course_expected, date FROM payments
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND (payment_type IN ('COURSE','BUNDLE','OTHER') OR payment_type IS NULL)
         AND (course_id IS NOT NULL OR bundle_id IS NOT NULL)
       ORDER BY date, created_at`,
     [tenantId, subscriberId]);
@@ -73,10 +75,18 @@ async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
     // Active ones: a course taken away is not one still owed for.
     `SELECT course_id, bundle_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND status='active'`, [tenantId, subscriberId]);
 
+  // The currency an item is priced in when no payment names one: the client's own (the same answer as the lists and the money route, lib/clientMarket.js).
+  const [everyPayment] = await db.query('SELECT status, currency, date FROM payments WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL', [tenantId, subscriberId]);
+  const [[subscriber]] = await db.query('SELECT branch, market FROM subscribers WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, subscriberId]);
+  const fallbackCurrency = clientCurrency({
+    branch: subscriber?.branch, market: subscriber?.market,
+    paymentHistory: everyPayment.map(payment => ({ status: payment.status, currency: payment.currency, at: safeDateOnly(payment.date) })),
+  });
+
   const items = new Map();
   const touch = (courseId, bundleId, currency) => {
     const key = itemKey({ courseId, bundleId });
-    if (!items.has(key)) items.set(key, { item: key, courseId: bundleId ? null : courseId, bundleId, currency: currency || 'EGP', booked: 0, paid: 0 });
+    if (!items.has(key)) items.set(key, { item: key, courseId: bundleId ? null : courseId, bundleId, currency: currency || fallbackCurrency, booked: 0, paid: 0 });
     return items.get(key);
   };
   for (const payment of payments) {
@@ -87,6 +97,11 @@ async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
     if (payment.status === 'paid') entry.paid += Number(payment.amount) || 0;
   }
   for (const enrolment of enrolments) touch(enrolment.bundle_id ? null : enrolment.course_id, enrolment.bundle_id, null);
+  // An item whose only trace is a price agreed for it or money paid before the system is still an item: the money is the evidence (as the lists read it).
+  for (const key of new Set([...Object.keys(held.customPrices), ...Object.keys(held.priorPaid)])) {
+    if (!key || key.startsWith('multi:')) continue;
+    if (key.startsWith('bundle:')) touch(null, key.slice(7), null); else touch(key, null, null);
+  }
 
   // A track is one line (the rule of the staff lists, api/lib/staffClientsView.js clientItems, and of the booking dialog): holding EVERY course of a track — however
   // each was bought — is holding the track, at the track's price; and a course inside a held track is not a debt of its own, what was paid for it counts toward the

@@ -205,7 +205,7 @@ function NewRoundAttendees({
           </label>
           {displayList.map(s => {
             // This course's line (or its track's), as everywhere else.
-            const money = courseMoneyFor(s, roundCourse?.id || '', courses, bundles, 'EGP');
+            const money = courseMoneyFor(s, roundCourse?.id || '');
             const paid = money?.paid ?? 0;
             const cp = money?.expected || (roundCourse?.price?.EGP ?? 0);
             const enrolledNames = enrolledLabels(courses, bundles, s.enrolledCourseIds || []);

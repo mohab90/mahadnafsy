@@ -31,6 +31,7 @@ const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
 const { loadItemMoney, withItemMoney } = require('../../lib/itemMoney');
+const { withMoneyItems } = require('../../lib/clientMoneyItems');
 const { loadCollectionPicker, subscriberMarket } = require('../../lib/collectionDistribution');
 const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
@@ -450,7 +451,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
 
     const certificatesBySub = await loadCertificateRequests(req.tenantId, ids);
 
-    res.json(rows.map(r => {
+    res.json(await withMoneyItems(pool, req.tenantId, rows.map(r => {
       const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
       // client_code column is authoritative
       const clientCode = r.client_code || crm.clientCode || null;
@@ -484,7 +485,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         assignedCsName: r.assigned_cs_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
-    }));
+    })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -586,7 +587,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
 
   const staffCertificatesBySub = lite ? {} : await loadCertificateRequests(tenantId, ids);
 
-  return rows.map(r => {
+  const shaped = rows.map(r => {
     const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
     const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
     const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
@@ -614,6 +615,8 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
       updatedAt: safeIsoString(r.updated_at) || null,
     };
   });
+  // The rows that reach a screen carry what each client owes (lib/clientMoneyItems.js); the whole-scope pass that only filters does not need it.
+  return lite ? shaped : withMoneyItems(pool, tenantId, shaped);
 }
 
 /**
@@ -830,7 +833,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     const payBySubId = await loadPayments(req.tenantId, ids, { shape: 'slim' });
 
-    res.json(rows.map(r => {
+    res.json(await withMoneyItems(pool, req.tenantId, rows.map(r => {
       const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
@@ -849,7 +852,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
         assignedSalesName: r.assigned_sales_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
-    }));
+    })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -883,7 +886,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     const payBySubId = await loadPayments(req.tenantId, ids, { shape: 'slim' });
 
-    res.json(rows.map(r => {
+    res.json(await withMoneyItems(pool, req.tenantId, rows.map(r => {
       const crm = withOwned(withItemMoney(withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id)), moneyBySub.get(r.id)), r);
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
@@ -904,7 +907,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
         status: crm.status || (r.is_active ? 'active' : 'inactive'),
         installmentPlans: crm.installmentPlans || [],
       };
-    }));
+    })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

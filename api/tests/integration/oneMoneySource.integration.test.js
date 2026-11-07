@@ -163,3 +163,19 @@ test('two copies of one price that disagree are counted by the nightly check, li
   const [[payment]] = await pool.query("SELECT course_expected FROM payments WHERE tenant_id=? AND subscriber_id='sub-om-1' ORDER BY created_at, id LIMIT 1", [TENANT]);
   assert.equal(Number(payment.course_expected), 2000);
 });
+
+test('an instalment or a booking without a branch tier: an old screen\'s figure is refused even for the owner; a price changed on purpose (customPrice) is recorded and logged', { skip }, async () => {
+  const { agreedPrice } = require('../../lib/agreedPrice');
+  const priceNow = () => agreedPrice(pool, { tenantId: TENANT, subscriberId: 'sub-om-1', courseId: 'co-om-1' });
+  const instalment = overrides => book({ subscriber_id: 'sub-om-1', payment: { amount: 50, currency: 'EGP', paymentType: 'COURSE', courseId: 'co-om-1', paymentMethod: 'كاش', isInstallment: true, status: 'paid', ...overrides } });
+  assert.equal(await priceNow(), 2000);
+  const stale = await instalment({ courseExpected: 3000, note: 'stale-figure' });
+  assert.equal(stale.statusCode, 409, JSON.stringify(stale.body));
+  assert.deepEqual([stale.body.code, stale.body.price], ['PRICE_CHANGED', 2000]);
+  assert.equal(await priceNow(), 2000, 'nothing was written');
+  const onPurpose = await instalment({ courseExpected: 1800, customPrice: true, note: 'on-purpose' });
+  assert.equal(onPurpose.statusCode, 200, JSON.stringify(onPurpose.body));
+  assert.equal(await priceNow(), 1800);
+  const [[log]] = await pool.query("SELECT label FROM activity_logs WHERE tenant_id=? AND entity_id='sub-om-1' AND action='price_changed' ORDER BY `at` DESC, id DESC LIMIT 1", [TENANT]);
+  assert.match(log.label, /2,000 ← 1,800/);
+});

@@ -121,7 +121,8 @@ test('payments: full and slim shapes, recorded and absent staff names, grouped p
   assert.equal(full.s2[0].staffName, null, 'a payment nobody is named on has no name, not a guess');
   assert.equal(full.s2[0].paymentType, 'other');
   const slim = await loadPayments('t', ['s1', 's2'], { shape: 'slim', staffName: 'none' }, db);
-  for (const key of ['courseExpected', 'certType', 'certId', 'branch']) assert.equal(key in slim.s1[0], false, key);
+  for (const key of ['certType', 'certId', 'branch']) assert.equal(key in slim.s1[0], false, key);
+  assert.equal(slim.s1[0].courseExpected, 400, 'the price a booking recorded stays: the agreed price is read from it (lib/clientItems.js)');
   assert.equal(slim.s1[0].staffName, null);
   assert.deepEqual(await loadPayments('t', [], {}, { query: async () => { throw new Error('queried'); } }), {});
 });

@@ -25,7 +25,7 @@ const { ROOT, read, bundle: load } = require('./support/repo');
 
 
 
-const agreed = load('admin/lib/agreedPrice.ts');
+const agreed = require('./_clientRule');
 const groups = load('admin/pages/dashboard/tabs/leads/leadSourceGroups.ts');
 const sheets = load('shared/sheetImport.ts');
 

@@ -11,6 +11,8 @@
 // clients, so a change to one that forgets the other fails there.
 
 const { foldText, SEARCH_MIN_CHARS } = require('./searchText');
+const { clientItems, isCollected, itemKeyOf } = require('./clientItems');
+const { clientCurrency, isOnlineBranch, isOnlineClient, marketOf, normBranch } = require('./clientMarket');
 const { dateOnlyInTimeZone, addDaysToDateOnly } = require('./dates');
 
 const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
@@ -27,7 +29,6 @@ const BOOKING_YEAR_VIEWS = { booked2024: 2024, booked2025: 2025 };
 const OLD_DATA_STATUSES = ['old_data', 'daqqi_old_local', 'daqqi_old_intl'];
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-const normBranch = value => (value ? String(value).toUpperCase().replace(/[-\s]/g, '_') : '');
 
 /** The branch workspace a link names (?branch=…) and whether a client's branch is it (admin/pages/dashboard/branchWorkspaceFilters.ts). */
 function branchSlugToFilter(slug) {
@@ -58,15 +59,12 @@ function cairoDay(value) {
   return Number.isNaN(instant.getTime()) ? '' : dateOnlyInTimeZone(instant);
 }
 
-const isCollected = payment => !payment?.status || payment.status === 'paid';
 const toEgp = (amount, currency) => {
   const value = Number(amount) || 0;
   return !currency || currency === 'EGP' ? value : (FX[currency] > 0 ? value * FX[currency] : value);
 };
 
 // ── Where a client belongs ───────────────────────────────────────────────────────────────────────────────────
-const isOnlineBranch = branch => !['DAQQI', 'TAGAMOA'].includes(normBranch(branch));
-const isOnlineClient = client => isOnlineBranch(client.branch);
 const holdsOnline = client => isOnlineBranch(client.branch) || Object.values(client.coursePlacements || {}).some(isOnlineBranch);
 
 function isInternational(client) {
@@ -75,20 +73,6 @@ function isInternational(client) {
   const raw = String(client.branch || '').toLowerCase();
   if (raw.includes('saudi') || raw.includes('abroad') || raw.includes('خارج')) return true;
   return (client.paymentHistory || []).some(payment => payment.currency === 'SAR' || payment.currency === 'USD');
-}
-
-/** «محلي / سعودي / دولي»: where the desk moved the client, else what their latest collected payment was in, else their branch. */
-function marketOf(client) {
-  if (['local', 'saudi', 'intl'].includes(client.market)) return client.market;
-  const latest = (client.paymentHistory || []).filter(isCollected)
-    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
-  if (latest?.currency === 'SAR') return 'saudi';
-  if (latest?.currency === 'USD') return 'intl';
-  if (latest?.currency === 'EGP') return 'local';
-  const branch = normBranch(client.branch);
-  if (branch === 'ONLINE_SAUDI') return 'saudi';
-  if (branch === 'ONLINE_ABROAD') return 'intl';
-  return 'local';
 }
 
 // ── Follow-up (admin/lib/clientFollowUp.ts) ─────────────────────────────────────────────────────────────────
@@ -132,87 +116,7 @@ function matchesFollow(status, filter) {
   }
 }
 
-// ── What the client holds and owes (admin/lib/agreedPrice.ts) ───────────────────────────────────────────────
-const itemKeyOf = payment => (payment.bundleId ? `bundle:${payment.bundleId}` : (payment.courseId || ''));
-// A row typed «bundle» (a payment proof or an instalment for a track) is the track's money, as the SQL balance counts it — same rule as admin/lib/agreedPrice.ts.
-const isCoursePayment = payment => !payment.paymentType || payment.paymentType === 'course' || payment.paymentType === 'bundle'
-  || (payment.paymentType === 'other' && Boolean(payment.courseId || payment.bundleId));
-const catalogueIn = (price, currency) => Number((price || {})[currency]) || Number((price || {}).EGP) || 0;
-
-function paidFor(client, item, currency) {
-  return (client.paymentHistory || [])
-    .filter(payment => isCollected(payment) && isCoursePayment(payment) && itemKeyOf(payment) === item && (!currency || payment.currency === currency))
-    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-}
-
-function agreedPriceFor(client, item, catalogue, currency) {
-  const custom = Number(client.customPrices?.[item]) || 0;
-  if (custom > 0) return custom;
-  const booked = (client.paymentHistory || [])
-    // Only the item's own money, as admin/lib/agreedPrice.ts: a certificate or a carnet names the course too and its price is not the course's.
-    .filter(payment => (isCollected(payment) || payment.status === 'pending') && isCoursePayment(payment) && itemKeyOf(payment) === item && (!currency || payment.currency === currency))
-    .reduce((max, payment) => Math.max(max, Number(payment.courseExpected) || 0), 0);
-  if (booked > 0) return Math.max(booked, paidFor(client, item, currency));
-  return catalogue;
-}
-
-/** `catalogue`: { courses: Map(id → {price}), bundles: Map(id → {price, courseIds}) }. */
-function clientItems(client, catalogue, fallbackCurrency) {
-  const keys = new Set();
-  (client.paymentHistory || []).forEach(payment => {
-    const item = itemKeyOf(payment);
-    if (item && isCoursePayment(payment)) keys.add(item);
-  });
-  Object.keys(client.customPrices || {}).forEach(item => { if (!item.startsWith('multi:')) keys.add(item); });
-  (client.enrolledBundleIds || []).forEach(id => { if (id) keys.add(`bundle:${id}`); });
-  // Every course of a track held = the track (admin/lib/agreedPrice.ts clientItems).
-  const enrolledSet = new Set(client.enrolledCourseIds || []);
-  for (const [bundleId, bundle] of catalogue.bundles) {
-    const key = `bundle:${bundleId}`;
-    const ids = bundle?.courseIds || [];
-    if (!keys.has(key) && ids.length > 1 && ids.every(id => enrolledSet.has(id))) keys.add(key);
-  }
-  const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
-    .flatMap(item => catalogue.bundles.get(item.slice(7))?.courseIds || []));
-  (client.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });
-  // A course inside a held track is kept too: its row is folded into the track below, which is how money paid before the system for that course counts toward the
-  // track — same rule as admin/lib/agreedPrice.ts.
-  Object.entries(client.priorPaid || {}).forEach(([item, amount]) => {
-    if (item && Number(amount) > 0 && !item.startsWith('multi:')) keys.add(item);
-  });
-  const built = [...keys].map(item => {
-    const entry = item.startsWith('bundle:') ? catalogue.bundles.get(item.slice(7)) : catalogue.courses.get(item);
-    const currency = (client.paymentHistory || []).find(payment => itemKeyOf(payment) === item)?.currency || fallbackCurrency;
-    const expected = agreedPriceFor(client, item, catalogueIn(entry?.price, currency), currency);
-    const paid = paidFor(client, item, currency) + (Number(client.priorPaid?.[item]) || 0);
-    return { item, currency, expected, paid };
-  });
-  // The same rule as the table (admin/lib/agreedPrice.ts clientItems): a course inside a track the client holds is not an item of its own — its
-  // price is the track's — and what was paid for it counts toward the track, in the same currency, so a filter and a row cannot disagree.
-  const trackOf = new Map();
-  for (const row of built) {
-    if (!row.item.startsWith('bundle:')) continue;
-    for (const courseId of catalogue.bundles.get(row.item.slice(7))?.courseIds || []) if (!trackOf.has(courseId)) trackOf.set(courseId, row.item);
-  }
-  const carried = new Map();
-  const shown = built.filter(row => {
-    const track = row.item.startsWith('bundle:') ? undefined : trackOf.get(row.item);
-    if (!track) return true;
-    const owner = built.find(candidate => candidate.item === track);
-    if (owner && owner.currency === row.currency) carried.set(track, (carried.get(track) || 0) + row.paid);
-    return false;
-  });
-  return shown.map(row => {
-    const paid = row.paid + (carried.get(row.item) || 0);
-    return { currency: row.currency, paid, remaining: Math.max(0, row.expected - paid) };
-  });
-}
-
-const BRANCH_CURRENCY = { ONLINE_SAUDI: 'SAR', ONLINE_ABROAD: 'USD' };
-function clientCurrency(client) {
-  if (isOnlineClient(client)) return { local: 'EGP', saudi: 'SAR', intl: 'USD' }[marketOf(client)];
-  return BRANCH_CURRENCY[normBranch(client.branch)] || 'EGP';
-}
+// ── What the client holds and owes: lib/clientItems.js, the one rule (the browser's copy, admin/lib/agreedPrice.ts, is gone) ──────────────
 
 function balanceOf(client, catalogue) {
   const items = clientItems(client, catalogue, clientCurrency(client));
@@ -479,6 +383,6 @@ function dueInstallments(plans, today, soonUntil) {
 }
 
 module.exports = {
-  NO_COLLECTOR, dueInstallments, VIEWS, balanceOf, branchMatchesFilter, buildView, cairoDay, followUpOf, holdsOnline, isCollected,
+  NO_COLLECTOR, dueInstallments, VIEWS, balanceOf, clientCurrency, branchMatchesFilter, buildView, cairoDay, followUpOf, holdsOnline, isCollected,
   isInternational, marketOf, matchesSearch, readFilters, toEgp,
 };

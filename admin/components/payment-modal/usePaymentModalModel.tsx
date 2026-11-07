@@ -8,7 +8,6 @@ import { attachPhotosToNextPayment, fetchClientPhotoLinks, photoNeeds, uploadCli
 import { useCrmData, useStaticData } from '../../context/siteDataSlices';
 import { useEnsureSiteLists } from '../../context/SiteDataContext';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
-import { agreedPriceFor } from '../../lib/agreedPrice';
 import { useClientMoney } from '../../lib/clientMoney';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { attributeNextPayment } from '../../lib/paymentAttribution';
@@ -45,7 +44,7 @@ export function usePaymentModalModel({
   const [printData, setPrintData] = useState<PrintData | null>(null);
   // What this client owes, from the server, fresh every time the dialog opens and after any change (lib/clientMoney.ts): the price a held course is booked at
   // and every certificate's price come from here, never from the copy of the client the caller happened to hold.
-  const { money, loading: moneyLoading, refetch: refetchMoney } = useClientMoney(mode === 'subscriber' ? subject.id : null);
+  const { money, loading: moneyLoading, failed: moneyFailed, refetch: refetchMoney } = useClientMoney(mode === 'subscriber' ? subject.id : null);
   // Escape closes the dialog and focus starts inside it. The Daqqi desk had
   // this on its own copy of this modal and every other payment screen did not;
   // now they are the same screen, it belongs here. Called before the printData
@@ -209,9 +208,7 @@ export function usePaymentModalModel({
   // what their booking recorded. The catalogue is only the starting point for a
   // course they have not booked.
   const heldLine = money && d.courseId ? money.items.find(line => line.item === d.courseId && line.currency === d.currency) : undefined;
-  const _agreedPx = heldLine
-    ? (heldLine.source === 'client' || heldLine.source === 'booking' ? heldLine.agreed : 0)
-    : (d.courseId && !money ? agreedPriceFor(subject, d.courseId, 0, d.currency) : 0);
+  const _agreedPx = heldLine && (heldLine.source === 'client' || heldLine.source === 'booking') ? heldLine.agreed : 0;
   const _basePx = _agreedPx > 0 ? _agreedPx : _sysPx;
   const _customExp = Number(d.customExpected) || 0;
   const _discPct = Number(d.discountPct) || 0;
@@ -238,7 +235,7 @@ export function usePaymentModalModel({
 
   // What the client holds and has paid towards each (payment-modal/clientHoldings.ts): refunds and failed payments are
   // not money collected, and a course counts as held by its enrolment, its money, its agreed price or its housing.
-  const { payHistory, coursePayMap, enrolledOptions, heldCids, moneyFor } = clientHoldings(subject, courses, bundles, d.currency, money);
+  const { enrolledOptions, heldCids, moneyFor } = clientHoldings(subject, courses, bundles, d.currency, money);
 
   // The totals bar: every course and track they hold, at the price agreed.
   // It summed only bookings that had recorded a price — a quarter had none —
@@ -301,7 +298,7 @@ export function usePaymentModalModel({
   const subjectChosen = (!subjectOptions && !subjectSearch) || !!subject.id;
   // A tier-priced booking needs its price and the client's real name.
   const tierProblem = tierBooking && d.courseId
-    ? (pricingError || (moneyLoading ? 'بنحمّل سعر العميل…' : '') || (!chosenTier ? 'اختار الفرع عشان يظهر السعر' : tierPx == null ? 'الكورس ده مش متسعّر للفرع ده — حط سعره من صفحة الكورس' : '')
+    ? (pricingError || (moneyLoading ? 'بنحمّل سعر العميل…' : moneyFailed ? 'مقدرناش نجيب سعر العميل — حدّث الصفحة' : '') || (!chosenTier ? 'اختار الفرع عشان يظهر السعر' : tierPx == null ? 'الكورس ده مش متسعّر للفرع ده — حط سعره من صفحة الكورس' : '')
       || ((d.extraItems || []).some(item => item.type === 'course' && item.courseId && extraTierPrice(item) == null)
         ? 'في كورس مضاف مش متسعّر للفرع ده' : ''))
     : '';
@@ -448,6 +445,8 @@ export function usePaymentModalModel({
         customExpected: d.bookingType === 'installment'
           ? (changedPrice ? shownPrice : '')
           : (changedPrice || (_effPx > 0 && _effPx !== _sysPx) ? shownPrice : d.customExpected),
+        // A price typed or a discount chosen is a change of the client's price on purpose; the server takes it only so, from an account that may set one.
+        customPriceOn: canSetPrice && changedPrice,
       }, shouldPrint);
       finishWith(printPayload);
     } catch (error) {
@@ -470,7 +469,7 @@ export function usePaymentModalModel({
   const extraOptions = d.paymentType === 'carneh' ? extraItems.carnets : d.paymentType === 'book' ? extraItems.books : [];
 
   return {
-    mode, subject, draft, setDraft, onSubmit, onClose, requirePaymentApproval, lockPrice, branchOptions, instituteName, subjectOptions, subjectSearch, onSubjectChange, branchLabel, courses, bundles, content, authUser, isAdmin, staffMembers, daqqiRounds, currentStaff, canSetPrice, certCatalog, extraItems, printData, setPrintData, submitting, setSubmitting, submitError, setSubmitError, driveOn, photos, setPhotos, photoOnFile, setPhotoOnFile, photoBusy, setPhotoBusy, photoError, setPhotoError, ownEmail, asksWhoBroughtIt, broughtBy, setBroughtBy, upgradeFrom, setUpgradeFrom, d, set, catalogPricing, setCatalogPricing, pricingError, setPricingError, housingOpen, setHousingOpen, tracksOnly, setTracksOnly, bookingRounds, setBookingRounds, personName, phoneNow, setPhoneNow, phone2Now, setPhone2Now, personPhone, personPhone2, sysPrice, courseLabel, tierBooking, itemPricing, tierOptions, chosenTier, tierPct, tierPx, bookingBranch, housesClients, storeHasRounds, housingRounds, canHouse, housingRound, chooseTier, extraTierPrice, pickCourse, _sysPx, _agreedPx, _basePx, _customExp, _discPct, _clientPx, _effPx, _hasDiscount, _amtPaid, noteField, _extraTotal, _grandTotal, _remaining, payHistory, coursePayMap, moneyFor, enrolledOptions, heldCids, tracksHolding, retakeOpen, setRetakeOpen, retakeOptions, canRetake, upgradeCandidates, upgrading, upgradeSource, payTotalExpected, payTotalPaid, payRemaining, certRequests, certBasePrice, paymentMethods, hasIdentity, subjectChosen, tierProblem, egyptianId, identityProblem, certificatesTyped, photoNeed, photoMissing, pickPhoto, isValid, buildPrintData, handleSubmit, isCourse, isCert, isConsultation, isBookOrCarneh, extraOptions,
+    mode, subject, draft, setDraft, onSubmit, onClose, requirePaymentApproval, lockPrice, branchOptions, instituteName, subjectOptions, subjectSearch, onSubjectChange, branchLabel, courses, bundles, content, authUser, isAdmin, staffMembers, daqqiRounds, currentStaff, canSetPrice, certCatalog, extraItems, printData, setPrintData, submitting, setSubmitting, submitError, setSubmitError, driveOn, photos, setPhotos, photoOnFile, setPhotoOnFile, photoBusy, setPhotoBusy, photoError, setPhotoError, ownEmail, asksWhoBroughtIt, broughtBy, setBroughtBy, upgradeFrom, setUpgradeFrom, d, set, catalogPricing, setCatalogPricing, pricingError, setPricingError, housingOpen, setHousingOpen, tracksOnly, setTracksOnly, bookingRounds, setBookingRounds, personName, phoneNow, setPhoneNow, phone2Now, setPhone2Now, personPhone, personPhone2, sysPrice, courseLabel, tierBooking, itemPricing, tierOptions, chosenTier, tierPct, tierPx, bookingBranch, housesClients, storeHasRounds, housingRounds, canHouse, housingRound, chooseTier, extraTierPrice, pickCourse, _sysPx, _agreedPx, _basePx, _customExp, _discPct, _clientPx, _effPx, _hasDiscount, _amtPaid, noteField, _extraTotal, _grandTotal, _remaining, moneyFor, enrolledOptions, heldCids, tracksHolding, retakeOpen, setRetakeOpen, retakeOptions, canRetake, upgradeCandidates, upgrading, upgradeSource, payTotalExpected, payTotalPaid, payRemaining, certRequests, certBasePrice, paymentMethods, hasIdentity, subjectChosen, tierProblem, egyptianId, identityProblem, certificatesTyped, photoNeed, photoMissing, pickPhoto, isValid, buildPrintData, handleSubmit, isCourse, isCert, isConsultation, isBookOrCarneh, extraOptions,
   };
 }
 

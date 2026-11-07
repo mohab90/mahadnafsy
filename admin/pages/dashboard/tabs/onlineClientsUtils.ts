@@ -9,7 +9,7 @@ export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error || '');
 
 import { isCollected, paymentAmountInEGP, toEgp } from '../../../lib/money';
-import { clientItems } from '../../../lib/agreedPrice';
+import { moneyItemsOf } from '../../../lib/agreedPrice';
 import { currencyForBranch } from '../../../lib/branchCurrency';
 
 // Re-exported: seven modules import it from here, and the conversion itself
@@ -80,13 +80,13 @@ export const clientCurrency = (subscriber: SubscriberItem): 'EGP' | 'SAR' | 'USD
 
 /**
  * What the client holds and owes, from the same items, prices and payments the
- * table shows (lib/agreedPrice.ts clientItems) — so a filter and a row cannot
+ * table shows (the server's moneyItems, api/lib/clientItems.js) — so a filter and a row cannot
  * disagree. It used to count only courses that had a payment or a saved price,
  * at a catalogue price of nothing: a client enrolled with nothing paid owed
  * nothing, and «مكتمل الدفع» listed them.
  */
 export const subscriberBalance = (subscriber: SubscriberItem, courses: Course[], bundles: Bundle[]) => {
-  const items = clientItems(subscriber, courses, bundles, clientCurrency(subscriber));
+  const items = moneyItemsOf(subscriber);
   return {
     items: items.length,
     remainingEgp: items.reduce((sum, item) => sum + toEgp(item.remaining, item.currency), 0),

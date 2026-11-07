@@ -1,17 +1,12 @@
-// What a client already holds and has paid, as the payment dialog reads it: each course or track with the price agreed
-// for it, what has been paid towards it, and what is left. Pure — the client, the catalogue and the currency in, the rows
-// out — so it is the same wherever the dialog is opened.
-//
-// It is built on lib/agreedPrice.ts clientItems — the function the clients table reads — so the dialog and the table
-// cannot say two different things about one client (2 Nov 2026: «من برة متبقي رقم ومن عند زر حجز ودفع متبقي رقم تاني»).
+// What a client already holds and has paid, as the payment dialog reads it: each course or track with the price agreed for it, what has been paid
+// towards it, and what is left — the SERVER's lines (GET /api/admin/clients/:id/money, the server rule), the same ones the clients table and the
+// client's page draw, so they cannot say two different things about one client (2 Nov and 8 Nov 2026: «من برة متبقي رقم ومن عند زر حجز ودفع متبقي رقم تاني»).
 // Two rules the owner made fundamental («دا محتاج يبقى كونسبت أساسي في السيستم»):
 //  - a track is paid ONCE: the courses inside it are access, not a debt, and money recorded against one of them counts toward
 //    the track. They were listed beside the track, each with its own price and remaining, whenever the track was named by a payment;
 //  - a certificate, a carnet, a book, a consultation is its own service. It names the client's course («الكورس المرتبط») without
 //    paying for it: its money is never the course's.
-import { agreedPriceFor, clientItems, isCoursePayment, paidFor } from '../../lib/agreedPrice';
-import { isCollected } from '../../lib/money';
-import type { Bundle, Course, PaymentHistoryEntry } from '../../types';
+import type { Bundle, Course } from '../../types';
 import type { ClientMoney } from '../../lib/clientMoney';
 import type { SubjectInfo } from './paymentModalTypes';
 
@@ -24,40 +19,17 @@ const priceIn = (price: unknown, currency: string): number => {
 };
 
 export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles: Bundle[], currency: string, money: ClientMoney | null = null): {
-  payHistory: PaymentHistoryEntry[];
-  coursePayMap: Record<string, { paid: number }>;
   enrolledOptions: HeldOption[];
   heldCids: Set<string>;
   /** What the client paid towards this course and what it costs: its own line, or the line of the track that holds it. */
   moneyFor: (courseId: string) => HeldOption | null;
 } {
-  // Refunds stay in this list. lib/refunds.js flips the same payments row to 'refunded' and leaves its positive amount, so
-  // every sum has to say so — otherwise a refunded customer reads as having paid it and the desk under-charges them.
-  const payHistory: PaymentHistoryEntry[] = (subject.paymentHistory || []).filter(isCollected);
-  const coursePayMap: Record<string, { paid: number }> = {};
-  payHistory.filter(isCoursePayment).forEach(p => {
-    // 'bundle:ID' for a payment that names a track.
-    const effId = p.courseId || (p.bundleId ? `bundle:${p.bundleId}` : null);
-    if (effId) {
-      if (!coursePayMap[effId]) coursePayMap[effId] = { paid: 0 };
-      coursePayMap[effId].paid += Number(p.amount);
-    }
-  });
-
-  // What the client holds: the enrolments, a track they are enrolled in, every course of a track (one track), and any item that has
-  // money, an agreed price or «مدفوع قبل السيستم» against it.
-  // The server's answer when the dialog has it (lib/clientMoney.ts): the same figures as the client's page. The browser's own reading is only what a
-  // screen falls back to before that answer arrives, and for a client who does not exist yet.
-  const items = money ? money.items.map(line => ({
+  // What the client holds, as the server worked it out (lib/clientMoney.ts, the server rule) — the same figures as the client's page and the lists. The
+  // browser has no rule of its own: before the answer arrives, and for a client who does not exist yet, there is nothing held.
+  const items = (money?.items || []).map(line => ({
     item: line.item, title: line.title, isTrack: line.kind === 'track', currency: line.currency, expected: line.agreed,
-    paid: line.paid + line.priorPaid, pending: 0, remaining: line.remaining,
-  })) : clientItems({
-    paymentHistory: subject.paymentHistory || [],
-    customPrices: subject.customPrices,
-    priorPaid: subject.priorPaid,
-    enrolledCourseIds: subject.enrolledCourseIds || [],
-    enrolledBundleIds: subject.enrolledBundleIds,
-  }, courses, bundles, currency);
+    paid: line.paid + line.priorPaid, remaining: line.remaining,
+  }));
 
   const labelOf = (item: string): string => {
     if (item.startsWith('bundle:')) return bundles.find(b => b.id === item.slice(7))?.title || item;
@@ -78,9 +50,9 @@ export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles:
     if (!id || id.startsWith('multi:') || enrolledOptions.some(option => option.cid === id) || insideTracks.has(id)) continue;
     const isTrack = id.startsWith('bundle:');
     const entry = isTrack ? bundles.find(b => `bundle:${b.id}` === id) : courses.find(c => c.id === id);
-    // With the server's answer, an item it does not list has nothing agreed or paid: the catalogue is its price.
-    const px = money ? priceIn(entry?.price, currency) : agreedPriceFor(subject, id, priceIn(entry?.price, currency), currency);
-    const paid = money ? 0 : paidFor(subject, id, currency) + (Number(subject.priorPaid?.[id]) || 0);
+    // An item the server does not list has nothing agreed or paid: the catalogue is its price.
+    const px = priceIn(entry?.price, currency);
+    const paid = 0;
     enrolledOptions.push({ cid: id, label: labelOf(id), px, paid, remaining: px > 0 ? Math.max(0, px - paid) : null, isBnd: isTrack });
   }
 
@@ -96,5 +68,5 @@ export function clientHoldings(subject: SubjectInfo, courses: Course[], bundles:
       && (bundles.find(b => `bundle:${b.id}` === option.cid)?.courses || []).some(course => course.id === courseId)) || null;
   };
 
-  return { payHistory, coursePayMap, enrolledOptions, heldCids, moneyFor };
+  return { enrolledOptions, heldCids, moneyFor };
 }
