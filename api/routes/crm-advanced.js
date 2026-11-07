@@ -196,12 +196,10 @@ router.put('/api/admin/crm/leads/:id/follow-up', requireAuth, requireAdminOrStaf
       return res.status(loaded.status).json({ error: loaded.error, code: loaded.code });
     }
     await conn.query(
-      `UPDATE leads SET crm_json=CASE WHEN NOT JSON_VALID(crm_json) THEN crm_json
-                                      WHEN ? IS NULL THEN JSON_REMOVE(crm_json, '$.nextFollowUpDate')
-                                      ELSE JSON_SET(crm_json, '$.nextFollowUpDate', ?) END,
+      `UPDATE leads SET crm_json=CASE WHEN JSON_VALID(crm_json) THEN JSON_REMOVE(crm_json, '$.nextFollowUpDate') ELSE crm_json END,
                         next_follow_up_date=?, updated_at=NOW()
         WHERE tenant_id=? AND id=?`,
-      [date, date, date, loaded.tenantId, loaded.lead.id]);
+      [date, loaded.tenantId, loaded.lead.id]);
     await logLeadEventStrict(loaded.lead.id, 'followup_set', date ? `موعد متابعة: ${date}` : 'اتشال ميعاد المتابعة',
       { date, actor: actor(req) }, loaded.tenantId, conn);
     await conn.commit();

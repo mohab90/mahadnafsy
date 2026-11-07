@@ -33,6 +33,7 @@ const {
   logger,
   crypto,
   completeForBranch,
+  ymd,
 } = require('./_shared');
 const { toIdentity } = require('../../../lib/phoneNumber');
 const { clientHoldingPhone } = require('../../../lib/phoneDuplicates');
@@ -231,7 +232,10 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     const prevStatus = existing ? existing.status : null;
     const prevCrm = existing ? tryJson(existing.crm_json, {}) : {};
     delete prevCrm.communications;
-    const crmToStore = isNew ? crmData : { ...prevCrm, ...crmData };
+    // The follow-up day lives in leads.next_follow_up_date alone from now on (written below): the blob no longer carries a copy (migration 370 removes the old ones; the readers
+    // take the column first, mapLeadRow). What it was, for «a date was set» in the lead's history, is the column's value before this save.
+    const prevFollowUp = existing ? (ymd(existing.next_follow_up_date) || prevCrm.nextFollowUpDate || null) : null;
+    const { nextFollowUpDate: _followUpInColumn, ...crmToStore } = isNew ? crmData : { ...prevCrm, ...crmData };
 
     // Extract client_type for dedicated column
     const VALID_CLIENT_TYPES_LEAD = new Set([
@@ -396,7 +400,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
           { coalesceMinutes: 30, summarize: (count, data) => `اتعين ليك ${count} ليد — آخرهم ${data.lastName || 'ليد'}` }));
       }
       // Follow-up date set/changed?
-      if (crmData.nextFollowUpDate && crmData.nextFollowUpDate !== prevCrm.nextFollowUpDate) {
+      if (crmData.nextFollowUpDate && crmData.nextFollowUpDate !== prevFollowUp) {
         await logLeadEventStrict(id, 'followup_set', `موعد متابعة: ${crmData.nextFollowUpDate}`, { date: crmData.nextFollowUpDate }, tenantId, conn);
       }
     }

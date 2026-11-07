@@ -69,25 +69,18 @@ async function appendLeadInteraction({
       // was — COALESCE kept the old date — so a rep called, wrote it down, and
       // the lead stayed on «المتابعات» and in their alerts as overdue: «لما
       // العميل يظهر اشعار انه محتاج متابعه والسيلز يكلمه ويكتب التواصل لازم
-      // يتشال من اشعار المتابعات». crm_json's copy, which the lists fall back
-      // to, follows — and goes first, since an UPDATE assigns left to right
-      // and it reads the date before the date changes.
-      const nextDay = nextFollowUp ? nextFollowUp.toISOString().slice(0, 10) : null;
+      // يتشال من اشعار المتابعات». The date lives in the column alone now; the blob key is only ever removed (migration 370).
       // «تم» on the follow-ups page closes the follow-up whatever its date.
       const due = interaction?.closeFollowUp === true
         ? 'TRUE'
         : `next_follow_up_date < ${sqlCairoToday()} + INTERVAL 1 DAY`;
       await conn.query(
         `UPDATE leads SET last_follow_up=?,last_contact_note=?,
-         crm_json=CASE
-           WHEN NOT JSON_VALID(crm_json) THEN crm_json
-           WHEN ? IS NOT NULL THEN JSON_SET(crm_json, '$.nextFollowUpDate', ?)
-           WHEN ${due} THEN JSON_REMOVE(crm_json, '$.nextFollowUpDate')
-           ELSE crm_json END,
+         crm_json=CASE WHEN JSON_VALID(crm_json) THEN JSON_REMOVE(crm_json, '$.nextFollowUpDate') ELSE crm_json END,
          next_follow_up_date=CASE WHEN ? IS NOT NULL THEN ? WHEN ${due} THEN NULL ELSE next_follow_up_date END,
          updated_at=NOW()
          WHERE id=? AND tenant_id=?`,
-        [at, notes, nextDay, nextDay, nextFollowUp, nextFollowUp, leadId, tenantId]
+        [at, notes, nextFollowUp, nextFollowUp, leadId, tenantId]
       );
       await logLeadEventStrict(
         leadId, 'interaction', notes,
