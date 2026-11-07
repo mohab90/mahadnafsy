@@ -520,7 +520,7 @@ export function useDashboardModel() {
 
   // An employee who keeps the accounts (customer service) reads the 500 newest payments of their clients from the server;
   // the online manager has his own desk (usePaymentsDesk).
-  const staffOrders = useStaffOrders(readsOwnPayments && activeTab === 'orders' && !isOnlineManager, courses, bundles);
+  const staffOrders = useStaffOrders(readsOwnPayments && activeTab === 'orders' && !isOnlineManager && access.can('view_subscribers'), courses, bundles);
   // The administration's «الطلبات والمدفوعات» is a page of the server's list, counted by the database (tabs/orders/useOrdersDesk.ts); only the employee who keeps the accounts
   // holds rows here — their own clients' newest payments — and the screen is drawn from those.
   const effectiveOrders = useMemo(() => (readsOwnPayments ? staffOrders : []), [readsOwnPayments, staffOrders]);
@@ -530,7 +530,9 @@ export function useDashboardModel() {
   // this account (/api/auth/me): the menu used to ask the browser's copy of the role defaults by itself.
   const { can: accessCan } = access;
   const hasPermission = React.useCallback((perm: StaffPermission): boolean => accessCan(perm), [accessCan]);
-  const canOpenTab = access.canOpenTab;
+  // A tagamoa_* address draws the Dokki screen for the Tagamoa branch (screenForTab above), so the gate sees a Dokki name; a Dokki employee asking for Tagamoa's is refused
+  // here, before the screen asks Tagamoa's data (which the server refuses them: the lab's role sweep, 7 Nov 2026).
+  const canOpenTab = useCallback((tab: string) => access.canOpenTab(tab) && !(ownBranchRole === 'DAQQI' && physicalBranch === 'TAGAMOA'), [access, ownBranchRole, physicalBranch]);
 
   // Map each tab key to the minimum required permission (defined at module level)
 

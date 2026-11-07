@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import LeadOutcomeButtons from './leads/LeadOutcomeButtons';
 import { announceCrmChanged } from '../../../lib/crmChanged';
 import { useStaffHomeSummary } from '../useStaffHomeSummary';
+import { useAccess } from '../../../hooks/useAccess';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -156,12 +157,14 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
     loadTasks();
   }, [loadHrData, loadTasks]);
 
-  // Active offers + just enough catalogue to name what each one applies to.
+  // Active offers + just enough catalogue to name what each one applies to. The offers are the leads' desk's (GET /api/admin/sales-offers answers view_leads), so an
+  // account without it does not ask: the support desk's own home drew a refusal on every visit.
+  const mayReadOffers = useAccess().can('view_leads');
   useEffect(() => {
     const get = (url: string) => fetch(url, { credentials: 'include', headers: adminAuthHeaders() })
       .then(r => (r.ok ? r.json() : null)).catch(() => null);
     void Promise.all([
-      get('/api/admin/sales-offers?activeOnly=1'),
+      mayReadOffers ? get('/api/admin/sales-offers?activeOnly=1') : Promise.resolve(null),
       get('/api/courses'),
       get('/api/bundles'),
     ]).then(([offers, courses, bundles]) => {
@@ -172,7 +175,7 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
         branchOptions: [],
       });
     });
-  }, []);
+  }, [mayReadOffers]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);

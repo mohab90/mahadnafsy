@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useAccess } from '../../../hooks/useAccess';
 import { copyText } from '../../../../shared/copyText';
 import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -28,7 +29,12 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const [aiLoading, setAiLoading] = useState(false);
   // The money and the order counts the AI is told are the database's (the books, and the analytics summary), not a sum over the newest 500 orders.
   const [books, setBooks] = useState<{ totalEgp: number; todayEgp: number; payments: number } | null>(null);
-  useEffect(() => { mysqlAdmin.getOverviewRevenue().then(setBooks).catch(() => setBooks(null)); }, []);
+  // Each figure is asked of the route that holds it only by an account that may read it (the support desk and HR open this screen and were refused three of them).
+  const access = useAccess();
+  const mayReadBooks = access.can('view_financial');
+  const mayReadLeads = access.can('view_leads');
+  const mayReadClients = access.can('view_subscribers');
+  useEffect(() => { if (mayReadBooks) mysqlAdmin.getOverviewRevenue().then(setBooks).catch(() => setBooks(null)); }, [mayReadBooks]);
   const { summary: orderSummary } = useAnalyticsSummary('all');
   const paidOrdersCount = orderSummary?.orders ? orderSummary.orders.inRange.reduce((sum, row) => sum + row.count, 0) : null;
   const pendingOrdersCount = orderSummary?.orders?.pending ?? null;
@@ -37,9 +43,9 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const [leadFigures, setLeadFigures] = useState<Awaited<ReturnType<typeof mysqlAdmin.getLeadStats>> | null>(null);
   const [people, setPeople] = useState<Awaited<ReturnType<typeof mysqlAdmin.getSubscriberFigures>> | null>(null);
   useEffect(() => {
-    mysqlAdmin.getLeadStats().then(setLeadFigures).catch(() => setLeadFigures(null));
-    mysqlAdmin.getSubscriberFigures().then(setPeople).catch(() => setPeople(null));
-  }, []);
+    if (mayReadLeads) mysqlAdmin.getLeadStats().then(setLeadFigures).catch(() => setLeadFigures(null));
+    if (mayReadClients) mysqlAdmin.getSubscriberFigures().then(setPeople).catch(() => setPeople(null));
+  }, [mayReadLeads, mayReadClients]);
   const aiChatEndRef = useRef<HTMLDivElement>(null);
 
   const _aiBranchStats = useMemo(() => {

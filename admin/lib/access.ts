@@ -17,9 +17,10 @@
  * constants/permissions.js resolvePermissions). The browser's copy is only the fallback while that has not answered.
  * The server still refuses every request on its own; this decides what is offered.
  */
-import { FULL_ACCESS_ROLES, resolvePermissions, type PermissionKey, type RoleKey } from '../constants/permissions';
+import { FULL_ACCESS_ROLES, ROLE_DATA_SCOPE, resolvePermissions, type PermissionKey, type RoleKey } from '../constants/permissions';
 import { TAB_PERMISSION_MAP } from '../pages/dashboard/dashboardShared';
 import type { TabKey } from '../pages/dashboard/navigation';
+import { branchOfRole } from './physicalBranch';
 
 export interface Viewer {
   /** The server's administrator (/api/auth/me isAdmin): every screen. */
@@ -29,15 +30,18 @@ export interface Viewer {
   permissions: readonly string[] | '*';
   /** False for an account off the owner's delete list (/api/auth/me canDelete). */
   canDelete: boolean;
+  /** The data scope the server applies to the account (all, branch:…, assigned_sales, …): the staff row's own, else the role's default. */
+  dataScope: string;
 }
 
 /** The viewer, from what /api/auth/me said and — until it has — the staff record's own grid and role. */
-export function viewerOf({ isAdmin, role, serverPermissions, staffPermissions, canDelete }: {
+export function viewerOf({ isAdmin, role, serverPermissions, staffPermissions, canDelete, dataScope }: {
   isAdmin: boolean;
   role?: string | null;
   serverPermissions?: readonly string[] | '*' | null;
   staffPermissions?: readonly string[] | null;
   canDelete?: boolean | null;
+  dataScope?: string | null;
 }): Viewer {
   const roleKey = String(role || '').toLowerCase();
   const permissions = serverPermissions === '*' || Array.isArray(serverPermissions)
@@ -45,10 +49,12 @@ export function viewerOf({ isAdmin, role, serverPermissions, staffPermissions, c
     : roleKey
       ? resolvePermissions({ role: roleKey as RoleKey, permissions: staffPermissions as PermissionKey[] | null | undefined })
       : [];
-  return { isAdmin, role: roleKey, permissions, canDelete: canDelete !== false };
+  const scope = isAdmin ? 'all' : String(dataScope || (ROLE_DATA_SCOPE as Record<string, string>)[roleKey] || 'none');
+  return { isAdmin, role: roleKey, permissions, canDelete: canDelete !== false, dataScope: scope };
 }
 
 const BRANCH_HR_ROLES = ['daqqi_manager', 'tagamoa_manager'];
+const AGGREGATE_ONLY_TABS = new Set(['recurring_expenses']);
 
 /** Whether the viewer holds `permission` — api/constants/permissions.js hasPermission, with the owner's delete list. */
 export function can(viewer: Viewer, permission: string): boolean {
@@ -80,6 +86,11 @@ function canUseChannel(viewer: Viewer, channel: 'inbox' | 'whatsapp'): boolean {
 export function canOpenTab(viewer: Viewer, tab: string): boolean {
   if (viewer.isAdmin) return true;
   if (tab === 'team_inbox' || tab === 'whatsapp_web') return canUseChannel(viewer, tab === 'team_inbox' ? 'inbox' : 'whatsapp');
+  // Screens whose route answers only the company's or a branch's books (api/lib/financialScope.js: an account that sees its own clients gets a 403): the collection desk
+  // holds view_financial and was offered «المصروفات المتكررة», which refused it.
+  if (AGGREGATE_ONLY_TABS.has(tab) && !(viewer.dataScope === 'all' || viewer.dataScope.startsWith('branch:'))) return false;
+  // A Dokki employee is confined to Dokki: Tagamoa's screens ask for Tagamoa's data, which the server refuses them (lab sweep of 7 Nov 2026: seven refusals for the Dokki desk).
+  if (tab.startsWith('tagamoa_') && branchOfRole(viewer.role) === 'DAQQI') return false;
   const required = TAB_PERMISSION_MAP[tab as TabKey];
   if (required === null) return true;
   if (Array.isArray(required)) return required.some(permission => can(viewer, permission));

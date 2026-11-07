@@ -14,7 +14,8 @@ export function useAccess(): { viewer: Viewer; can: (permission: string) => bool
     serverPermissions: authUser?.permissions,
     staffPermissions: currentStaff?.permissions,
     canDelete: authUser?.canDelete,
-  }), [isAdmin, currentStaff?.role, currentStaff?.permissions, authUser?.permissions, authUser?.canDelete]);
+    dataScope: currentStaff?.dataScope,
+  }), [isAdmin, currentStaff?.role, currentStaff?.permissions, currentStaff?.dataScope, authUser?.permissions, authUser?.canDelete]);
   return {
     viewer,
     can: useCallback((permission: string) => can(viewer, permission), [viewer]),
