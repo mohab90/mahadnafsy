@@ -103,6 +103,9 @@ const PERMISSIONS = Object.freeze({
   // Reports
   VIEW_REPORTS:             'view_reports',
   VIEW_ACTIVITY:            'view_activity',
+  // «مين فاتح السيستم دلوقتي»: which employees and clients are in the system now and what each last did. The owner's and the managers' (the wildcard roles);
+  // it is in no other role's defaults, the permission screen can tick it for one person.
+  VIEW_PRESENCE:            'view_presence',
   // Running the sales team (targets, quotas, sales offers). Split out of
   // view_reports, which also opens company-wide analytics: a sales manager
   // needs to set a rep's target without being handed the KPI dashboard,

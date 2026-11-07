@@ -50,6 +50,7 @@ const OVERVIEW = () => [
   ['/admin/leads/followups-due', '../routes/admin/leads/stats', '/api/admin/leads/followups-due', {}],
   ['/admin/subscribers/stats?overview=1', '../routes/admin/stafflists', '/api/admin/subscribers/stats', { overview: '1' }],
   ['/admin/overview/revenue', '../routes/analytics/dashboard', '/api/admin/overview/revenue', {}],
+  ['/admin/overview/board', '../routes/analytics/dashboard', '/api/admin/overview/board', {}],
 ];
 
 // The accounts screens (7 Nov 2026): what «الحسابات» (no branch) or a branch's accounts («حسابات الدقي» / «حسابات التجمع», ?branch=daqqi|tagamoa) ask for when they

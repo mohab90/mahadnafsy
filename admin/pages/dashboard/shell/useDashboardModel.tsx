@@ -1,6 +1,6 @@
 // The dashboard's state and wiring: who is signed in and what they may open, the tab on screen and the URL it follows,
 // the lists each tab loads, the badges, the overlays and the payment handlers. Dashboard.tsx draws the shell from it.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DASHBOARD_MENU_GROUPS, isTabKey, type TabKey } from '../navigation';
 import { branchSlugToFilter } from '../branchWorkspaceFilters';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -331,6 +331,18 @@ export function useDashboardModel() {
         .map(u => ({ uid: u.uid, email: u.email, displayName: u.name, lastActiveAt: u.lastActiveAt })));
     }).catch(() => { /* presence store down: the panel keeps its last answer */ });
   }, 60000, isAdmin && activeTab === 'overview' && !onProfilePage);
+
+  // «مين فاتح السيستم دلوقتي»: the panel says it is open, with the screen on show, once a minute while the tab is in front (and when it comes back to the
+  // front), and at once when the screen changes — which counts, on the server, as something the employee did. Nothing else is sent: no address, no device.
+  const beatScreen = useRef<string | null>(null);
+  const sendBeat = useCallback(() => {
+    // The first beat after the panel mounts counts as «opened» too: every move between screens rebuilds the panel.
+    const opened = beatScreen.current !== activeTab;
+    beatScreen.current = activeTab;
+    void mysqlAdmin.adminPost('/staff/presence', { screen: activeTab, opened }).catch(() => { /* presence is not worth a toast */ });
+  }, [activeTab]);
+  useVisibleInterval(sendBeat, 60000, Boolean(authUser) && !onProfilePage);
+  useEffect(() => { if (beatScreen.current !== null && beatScreen.current !== activeTab && !document.hidden) sendBeat(); }, [activeTab, sendBeat]);
 
 
   const {

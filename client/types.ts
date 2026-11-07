@@ -307,6 +307,7 @@ export type StaffPermission =
   | 'manage_contacts'
   // Operations
   | 'view_activity'
+  | 'view_presence'
   | 'manage_daqqi'
   | 'manage_automation'
   // Client database (unified view — admin/manager only)

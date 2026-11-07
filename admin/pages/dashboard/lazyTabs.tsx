@@ -32,6 +32,7 @@ export const InterviewsTab = lazy(() => import('./tabs/InterviewsTab'));
 export const IpWhitelistTab = lazy(() => import('./tabs/IpWhitelistTab'));
 export const JoinUsAdminTab = lazy(() => import('./tabs/JoinUsAdminTab'));
 export const KpiDashboardTab = lazy(() => import('./tabs/KpiDashboardTab'));
+export const PresenceTab = lazy(() => import('./tabs/PresenceTab'));
 export const ManagementReportsTab = lazy(() => import('./tabs/ManagementReportsTab'));
 export const LeadSourcesSettingsTab = lazy(() => import('./tabs/LeadSourcesSettingsTab'));
 export const LeadsTab = lazy(() => import('./tabs/LeadsTab'));

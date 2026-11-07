@@ -17,6 +17,7 @@ const { toDialable } = require('../lib/phoneNumber');
 const { cairoToday } = require('../lib/dates');
 const { canTouchBranch } = require('../lib/physicalBranches');
 const weekly = require('../lib/weeklyBranchReport');
+const { catalog, runReport } = require('../lib/reportRunner');
 
 const router = express.Router();
 
@@ -61,6 +62,16 @@ router.get('/api/admin/reports/management', requireAuth, requireAdmin, async (re
 });
 
 // «التقرير اليومي على واتساب»: its numbers and hour, and what today's reads.
+// The report catalogue (group, title, one-line description) and one report over a range, as columns and rows (lib/reportRunner.js): what the page lists, exports and prints.
+router.get('/api/admin/reports/catalog', requireAuth, requireAdmin, (_req, res) => res.json(catalog()));
+router.get('/api/admin/reports/run/:key', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const report = await runReport(req.params.key, req.tenantId, reportRange(req.query));
+    if (!report) return res.status(404).json({ error: 'Unknown report' });
+    res.json(report);
+  } catch (error) { failed(res, error, 'report-run'); }
+});
+
 router.get('/api/admin/reports/whatsapp', requireAuth, requireAdmin, async (req, res) => {
   try {
     const settings = await ownerReportSettings(req.tenantId);

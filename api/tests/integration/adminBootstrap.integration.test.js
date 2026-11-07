@@ -97,7 +97,7 @@ test('the overview page figures are a second request of the same kind, and equal
   const boot = await bootstrap('overview');
   assert.equal(boot.status, 200, JSON.stringify(boot.body));
   const keys = Object.keys(boot.body.pieces);
-  assert.equal(keys.length, 4);
+  assert.equal(keys.length, 5);
   for (const key of keys) {
     const own = await get(`/api${key}`);
     assert.equal(own.status, 200, key);

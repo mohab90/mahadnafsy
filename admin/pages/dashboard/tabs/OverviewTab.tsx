@@ -17,6 +17,7 @@ import type { TabKey } from '../navigation';
 import { isCollected, toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
+import OverviewBoard from './overview/OverviewBoard';
 import { cardRows, enrollmentsFromStats, salesFromStats, sourcesFromStats, statusCounts, useNewestLeads, type ModalRow } from './overview/overviewFigures';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -641,22 +642,8 @@ export default function OverviewTab({
               ];
               return (
                 <div className="space-y-6">
-                  {/* ── Today's snapshot (admin only) ── */}
-                  {isAdmin && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {[
-                        { label: 'إيراد اليوم', value: `${Math.round(todayRevenue).toLocaleString('ar-EG-u-nu-latn')} ج`, color: 'from-emerald-500 to-teal-600' },
-                        { label: 'إيراد الشهر', value: `${Math.round(monthRevenue / 1000)}K ج`, color: 'from-blue-500 to-indigo-600' },
-                        { label: 'عملاء أونلاين اليوم', value: String(todayClients), color: 'from-violet-500 to-purple-600' },
-                        { label: 'عملاء محتملون اليوم', value: String(todayNewLeads), color: 'from-amber-500 to-orange-600' },
-                      ].map(w => (
-                        <div key={w.label} className={`bg-gradient-to-br ${w.color} rounded-2xl p-4 text-white shadow-md`}>
-                          <p className="text-xs font-medium opacity-80 mb-1">{w.label}</p>
-                          <p className="text-2xl font-extrabold">{w.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* ── The board: today against yesterday and last week, the alerts, who is in now (admin only) ── */}
+                  {isAdmin && <OverviewBoard />}
                   {/* KPI Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                     {kpiCards.map(item => {

@@ -6610,8 +6610,27 @@ CREATE TABLE `online_presence` (
   `name` varchar(100) DEFAULT NULL,
   `email` varchar(320) DEFAULT NULL,
   `last_seen` datetime(3) NOT NULL,
+  `page` varchar(200) DEFAULT NULL,
+  `course_id` varchar(64) DEFAULT NULL,
   PRIMARY KEY (`tenant_id`,`uid`),
   KEY `idx_online_presence_seen` (`tenant_id`,`last_seen`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- staff_presence: migration 380 — «مين فاتح السيستم دلوقتي», one row per member of staff (lib/staffPresence.js).
+CREATE TABLE `staff_presence` (
+  `tenant_id` varchar(64) NOT NULL,
+  `staff_key` varchar(100) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `role` varchar(40) DEFAULT NULL,
+  `screen` varchar(64) DEFAULT NULL,
+  `last_seen_at` datetime(3) NOT NULL,
+  `last_action_at` datetime(3) DEFAULT NULL,
+  `last_action_kind` varchar(8) DEFAULT NULL,
+  `last_action_label` varchar(255) DEFAULT NULL,
+  `seen_day` date NOT NULL,
+  `first_seen_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`tenant_id`,`staff_key`),
+  KEY `idx_staff_presence_seen` (`tenant_id`,`last_seen_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- login_email_codes: migration 347 — the code mailed to an account the security policy names, hash only (lib/loginEmailCode.js).

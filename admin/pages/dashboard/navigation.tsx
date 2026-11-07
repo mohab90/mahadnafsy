@@ -72,6 +72,7 @@ export type TabKey =
   | 'financial'
   | 'financial_reports'
   | 'activity'
+  | 'presence_now'
   | 'footer_settings'
   | 'discounts'
   | 'notifications'
@@ -177,6 +178,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'kpi_dashboard', label: 'لوحة KPI للمدير', icon: BarChart3 },
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
+      // «مين فاتح السيستم دلوقتي»: the employees and clients in the system now.
+      { key: 'presence_now', label: 'مين فاتح السيستم دلوقتي', icon: Users },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
       // Sits under الإدارة by request. It previously had its own heading
       // because ask_ai is also granted to sales and support, so for those roles

@@ -172,6 +172,7 @@ const TAB_ENTRIES = {
   overview: `${T}/OverviewTab.tsx`,
   management_reports: `${T}/ManagementReportsTab.tsx`,
   kpi_dashboard: `${T}/KpiDashboardTab.tsx`,
+  presence_now: `${T}/PresenceTab.tsx`,
   consultations: `${T}/ConsultationsTab.tsx`,
   online_clients: `${D}/DashboardClientTabs.tsx`,
   daqqi_clients: `${D}/DashboardClientTabs.tsx`,
@@ -386,7 +387,7 @@ function elementProps(body, element) {
 const PROFILE_TABS = ['staff_home', 'staff_settings', 'my_hr'];
 const DASHBOARD_ELEMENTS = {
   OverviewTab: { tabs: ['overview'] },
-  DashboardStandaloneTabs: { tabs: ['management_reports', 'kpi_dashboard', 'daqqi_attendance', 'consultations', 'notifications', 'activity', 'quizzes', 'course_waitlist', 'live_streams'] },
+  DashboardStandaloneTabs: { tabs: ['management_reports', 'kpi_dashboard', 'presence_now', 'daqqi_attendance', 'consultations', 'notifications', 'activity', 'quizzes', 'course_waitlist', 'live_streams'] },
   DashboardDirectContentRoutes: { tabs: ['policies', 'about_page', 'home_offer', 'institute_gallery', 'cert_pricing', 'cert_requests', 'page_courses', 'content_hub'] },
   CoursesTab: { tabs: ['courses', 'lectures', 'instructors', 'bundles', 'testimonials', 'discounts'] },
   DashboardClientTabs: { tabs: ['online_clients', 'daqqi_clients'] },

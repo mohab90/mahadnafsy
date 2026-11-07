@@ -1,10 +1,11 @@
 'use strict';
 const logger = require('../lib/logger');
 const { departmentOf, describeRequest, summarizeBody } = require('../lib/activityDescribe');
+const { notePresence, whoIs } = require('../lib/staffPresence');
 
 // Marking a notification read is not an act anyone looks for in the log, and a
 // WhatsApp or team message an employee sends is kept with its conversation.
-const NOT_WORTH_A_ROW = /^\/api\/admin\/notifications\/[^/]+\/read$|^\/api\/staff\/(whatsapp-web\/send|me\/messages)$/;
+const NOT_WORTH_A_ROW = /^\/api\/admin\/notifications\/[^/]+\/read$|^\/api\/staff\/(whatsapp-web\/send|me\/messages|presence)$/;
 
 function createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }) {
   return function auditAdmin(req, res, next) {
@@ -23,6 +24,8 @@ function createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }) {
           // in the details so nothing the old label said is lost.
           const described = describeRequest(req.method, rawPath);
           const label = described.text.substring(0, 255);
+          // A successful write is the proof that someone is working: «آخر حاجة عملها» on the presence screen (throttled, lib/staffPresence.js).
+          notePresence(whoIs(req), { action: { kind: 'write', label } });
           const actorName = req.staffRecord?.name || req.user?.name || (req.isSuperAdmin ? 'المالك' : null);
           const department = departmentOf({ role: req.staffRecord?.role, isOwner: !!req.isSuperAdmin && !req.staffRecord });
           const summary = summarizeBody(req.body);

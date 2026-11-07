@@ -11,4 +11,5 @@ router.use(require('./admin/analyticsscreens'));
 router.use(require('./admin/subscribers'));
 router.use(require('./admin/leads'));
 router.use(require('./admin/offers'));
+router.use(require('./admin/presence'));
 module.exports = router;

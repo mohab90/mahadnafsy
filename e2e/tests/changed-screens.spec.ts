@@ -24,7 +24,8 @@ type Screen = { name: string; url: string; budget: number; calls?: RegExp[]; not
 
 const SCREENS: Screen[] = [
   { name: 'panel start-up', url: '/dashboard', budget: 8, calls: [/\/api\/admin\/bootstrap$/] },
-  { name: 'expenses page', url: '/dashboard/financial/expenses', budget: 8, calls: [/\/api\/admin\/expenses\/page$/] },
+  // 9: the eight it had, and the panel's presence beat (POST /api/staff/presence, once on opening and then once a minute — «مين فاتح السيستم دلوقتي»)
+  { name: 'expenses page', url: '/dashboard/financial/expenses', budget: 9, calls: [/\/api\/admin\/expenses\/page$/] },
   { name: 'accounts overview', url: '/dashboard/financial/overview', budget: 8, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'sales hub', url: '/dashboard/sales_hub', budget: 10, notCalls: [/\/api\/admin\/orders$/] },
   { name: 'staff performance', url: '/dashboard/staff_performance', budget: 10, notCalls: [/\/api\/admin\/orders$/] },

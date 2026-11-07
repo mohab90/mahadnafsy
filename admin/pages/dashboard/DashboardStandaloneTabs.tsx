@@ -8,6 +8,7 @@ import {
   CourseWaitlistTab,
   KpiDashboardTab,
   ManagementReportsTab,
+  PresenceTab,
   LiveStreamsTab,
   NotificationsAdminTab,
   QuizzesTab,
@@ -33,6 +34,14 @@ export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: Dash
         <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-slate-600" /></div>}>
           <TabErrorBoundary>
             <ManagementReportsTab notify={notify} />
+          </TabErrorBoundary>
+        </Suspense>
+      )}
+
+      {activeTab === 'presence_now' && (
+        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-emerald-600" /></div>}>
+          <TabErrorBoundary>
+            <PresenceTab />
           </TabErrorBoundary>
         </Suspense>
       )}
