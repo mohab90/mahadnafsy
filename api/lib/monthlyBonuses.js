@@ -183,4 +183,4 @@ async function saveMonthlyBonuses(db, { tenantId, year, month, actorId = null })
   return { ...result, written, kept, cleared };
 }
 
-module.exports = { SOURCE, monthBounds, loadPlan, computeMonthlyBonuses, saveMonthlyBonuses };
+module.exports = { SOURCE, monthBounds, loadPlan, bookingsOf, computeMonthlyBonuses, saveMonthlyBonuses };
