@@ -1026,5 +1026,60 @@
     }
    ]
   }
+ },
+ {
+  "id": "recruitmentWorkflow: the note trail is append-only; migration 199 only adds and appends enum members, and puts the permission types on the table the approval screen reads",
+  "why": "moved from a unit test that matched source text; the behaviour is integration/hrRecruitmentDecisionsAndStaffFile",
+  "checks": [
+   {
+    "file": "api/routes/hr/recruitment-workflow.js",
+    "mustNot": {
+     "source": "UPDATE recruitment_notes|DELETE FROM recruitment_notes",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/199_v25_recruitment_and_hr_controls.sql",
+    "mustNot": {
+     "source": "DROP COLUMN|DROP TABLE",
+     "flags": "i"
+    }
+   },
+   {
+    "file": "api/migrations/199_v25_recruitment_and_hr_controls.sql",
+    "must": {
+     "source": "ENUM\\('NEW','REVIEWED','ACCEPTED','REJECTED','CONTACTED'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/199_v25_recruitment_and_hr_controls.sql",
+    "must": {
+     "source": "ENUM\\('ANNUAL','SICK','UNPAID','MATERNITY','EMERGENCY','PERMISSION','OTHER','LATE_PERMIT','EARLY_LEAVE'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/199_v25_recruitment_and_hr_controls.sql",
+    "must": {
+     "source": "ALTER TABLE IF EXISTS leaves\\s*\\n\\s*MODIFY COLUMN type",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/199_v25_recruitment_and_hr_controls.sql",
+    "mustNot": {
+     "source": "ALTER TABLE IF EXISTS leave_requests",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "INSERT INTO leaves\\b",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

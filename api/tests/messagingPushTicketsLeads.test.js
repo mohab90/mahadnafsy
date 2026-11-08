@@ -337,44 +337,6 @@ test('a confirmation says what it confirms, not «delete» by default', () => {
 
 // ── Schema and search ───────────────────────────────────────────────────────
 
-test('no table in schema.sql names a column or a key twice', () => {
-  // `uq_subs_tenant_phone` stood twice on subscribers: MySQL refuses the whole
-  // CREATE TABLE («Duplicate key name»), so a fresh database had no clients table.
-  const schema = read('api/schema.sql').split('\r\n').join('\n');
-  const tick = String.fromCharCode(96);
-  const table = new RegExp('CREATE TABLE ' + tick + '([a-z0-9_]+)' + tick + ' \\(\\n([\\s\\S]*?)\\n\\) ENGINE', 'g');
-  const column = new RegExp('^\\s*' + tick + '([A-Za-z0-9_]+)' + tick + ' ');
-  const key = new RegExp('^\\s*(?:UNIQUE |FULLTEXT )?KEY ' + tick + '([A-Za-z0-9_]+)' + tick);
-  const twice = [];
-  let match, tables = 0;
-  while ((match = table.exec(schema))) {
-    tables += 1;
-    const seen = new Set();
-    for (const line of match[2].split('\n')) {
-      const name = (line.match(key) || [])[1] ? `key ${line.match(key)[1]}` : (line.match(column) || [])[1] ? `column ${line.match(column)[1]}` : null;
-      if (!name) continue;
-      if (seen.has(name)) twice.push(`${match[1]}: ${name}`);
-      seen.add(name);
-    }
-  }
-  assert.ok(tables > 100, `read ${tables} tables`);
-  assert.deepEqual(twice, []);
-});
-
-test('schema.sql has what production has', () => {
-  const schema = read('api/schema.sql');
-  for (const table of ['community_event_registrations', 'customer_devices', 'incoming_transfers', 'subscriber_requests']) {
-    assert.ok(schema.includes('CREATE TABLE `' + table + '` ('), table);
-  }
-  const push = schema.slice(schema.indexOf('CREATE TABLE `push_subscriptions`'));
-  const block = push.slice(0, push.indexOf(') ENGINE'));
-  assert.ok(block.includes('`staff_id` varchar(36) DEFAULT NULL'));
-  assert.ok(block.includes('`is_admin` tinyint(1) NOT NULL DEFAULT 0'));
-  assert.ok(block.includes('KEY `idx_push_tenant_staff` (`tenant_id`,`staff_id`,`is_active`)'));
-  assert.ok(schema.includes('`intake_limit`'));
-  assert.ok(schema.includes('`linked_transfer_id`'));
-});
-
 test('a course page tells a search engine it is a course, with no price and nothing that closes the script', () => {
   // Shared by the release's generator and the API's fresh pages.
   const seo = read('api/lib/seoPages.js');

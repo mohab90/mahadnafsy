@@ -21,6 +21,7 @@ const ROUTES = [
   ['../routes/admin/stafflists', 'put', '/api/admin/subscribers/:id/assign-collection', ['manage_subscribers']],
   ['../routes/crm-advanced', 'put', '/api/admin/crm/leads/:id/status', ['manage_leads']],
   ['../routes/config', 'post', '/api/admin/fx-rates/refresh', ['manage_financial']],
+  ['../routes/hr/staff-file', 'put', '/api/admin/hr/staff/:staffId/pay', ['manage_financial']],
   ['../routes/hr/talent', 'post', '/api/admin/hr/join-us/:id/to-applicant', ['manage_hr']],
 ];
 

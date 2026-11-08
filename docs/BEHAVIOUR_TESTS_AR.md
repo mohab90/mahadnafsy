@@ -105,3 +105,9 @@ node api/tools/test-pin-report.cjs --dir=<نسخة قديمة من tests>   # م
 - اختبارات «امسح الشجرة كلها وامنع نمط» هي بالتعريف قاعدة نص: اتنقلت لـ`tools/source-rules.json` كـ«scan» (مجلدات + امتدادات + أنماط ممنوعة + حد أدنى لعدد الملفات يثبت إن المسح بيقرا): ممنوع `window.confirm/prompt/alert` في الأدمن، ممنوع `CURDATE()`/`HOUR(NOW())` في المسارات والمكتبات، ممنوع `console.*` في وقت التشغيل. وفي `source-rules.mjs`: `escapeHtml` معرَّفة في `api/lib/html.js` بس، وكل ملف بيدخّل دفعات بيكتب سجل التدقيق.
 - اتشال من `financeSafetyContracts` ٣ اختبارات (القيود اليدوية → `integration/accountingJournalsAndPeriods` + `journal.test.js`، صورة الإيصال → `uploadSafety.test.js`، FX → قواعد).
 - فحص الجودة: ٦٩ فحص، قواعد المصدر: ٣٤ قاعدة.
+
+### الدفعة السادسة
+الرقم: **١٠٧٧ من ٣٢٠٩ (٣٣٫٦٪)**.
+- `integration/hrRecruitmentDecisionsAndStaffFile`: الاتصال ما بيرجّعش طلب متقرّر، القبول بينقل المتقدم لمرحلة المقابلة، التقييم واحد من ٨ وكل جولة ليها مقيّمها، سجل الملاحظات بيكبر ومبيتكتبش فوقه، قائمة المستندات بتقول الناقص، الراتب والعمولة (نسبة >١٠٠ مرفوضة)، إذن التأخير ما بيخصمش أيام.
+- `integration/schemaHasWhatProductionHas`: بناء القاعدة من `schema.sql` + المايجريشن هو اللي بيثبت إن مفيش عمود/مفتاح متكرر.
+- اتشال: recruitmentWorkflow (١٤ من ١٥)، اختبارين schema من messagingPushTicketsLeads. القاعدة النصية الباقية (سجل الملاحظات append-only، مايجريشن ١٩٩ بيضيف بس) في `tools/source-rules.json`.
