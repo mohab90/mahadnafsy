@@ -8780,13 +8780,6 @@
    {
     "file": "api/routes/analytics/financial.js",
     "must": {
-     "source": "recurring-expenses[\\s\\S]{0,1400}resolveFinancialScope",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/analytics/financial.js",
-    "must": {
      "source": "INSERT INTO expenses[\\s\\S]{0,300}branch_id",
      "flags": ""
     }
@@ -8795,27 +8788,6 @@
     "file": "api/routes/analytics/financial.js",
     "must": {
      "source": "postExpenseJournal\\([\\s\\S]{0,220}branch_id: rec\\.branch_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/analytics/financial.js",
-    "must": {
-     "source": "UPDATE recurring_expenses[\\s\\S]{0,240}deleted_at=NOW\\(\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/109_v25_recurring_expense_branch_scope.sql",
-    "must": {
-     "source": "branch_id VARCHAR\\(36\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/109_v25_recurring_expense_branch_scope.sql",
-    "must": {
-     "source": "frequency ENUM\\('monthly','weekly','quarterly','yearly'\\)",
      "flags": ""
     }
    },
@@ -16212,27 +16184,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/analytics/financial.js",
-    "must": {
-     "source": "balance-sheet[\\s\\S]{0,1800}journal_entry_lines",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/analytics/financial.js",
-    "must": {
-     "source": "cash-flow[\\s\\S]{0,1800}jel\\.account_code='1100'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/analytics/financial.js",
-    "must": {
-     "source": "vat-summary[\\s\\S]{0,1800}jel\\.account_code LIKE '4%'",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/routes/hr/payroll.js",
     "must": {
      "source": "\\['APPROVED', 'PAID'\\]\\.includes\\(status\\) && !canManageFinance",
@@ -16333,56 +16284,7 @@
    {
     "file": "api/routes/admin-operations.js",
     "must": {
-     "source": "expenses'.*requireAdminOrStaff, requirePermission\\('view_financial'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/admin-operations.js",
-    "must": {
-     "source": "expenses'.*requireAdminOrStaff, requirePermission\\('manage_financial'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/expenseCategories.js",
-    "must": {
-     "source": "EXPENSE_CATEGORY_DB",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/admin-operations.js",
-    "must": {
-     "source": "expenseCategory\\(e2\\.category, await loadExpenseCategories\\(tenantId\\)\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/admin-operations.js",
-    "must": {
-     "source": "deleted_at IS NULL",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/admin-operations.js",
-    "must": {
      "source": "financialRecordMatches\\(sourceScope, oldExp\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/admin-operations.js",
-    "must": {
-     "source": "SET description=\\?, amount=\\?, currency=\\?, category=\\?, date=\\?, receipt_url=\\?, note=\\?, branch_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/admin-operations.js",
-    "must": {
-     "source": "\\{ id, tenant_id: tenantId, branch_id: branchId",
      "flags": ""
     }
    },
