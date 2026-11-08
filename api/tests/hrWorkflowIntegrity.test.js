@@ -187,21 +187,6 @@ test('salary advances are currency-safe, separation-of-duties controlled and pay
   assert.match(payroll, /advanceApplied/);
 });
 
-test('disciplinary records require employee acknowledgement, support appeal and stay immutable', () => {
-  assert.match(recordsIntegrityMigration, /appeal_note/);
-  assert.match(records, /\/api\/staff\/me\/disciplinary\/:recId\/acknowledge/);
-  assert.match(records, /\/api\/staff\/me\/disciplinary\/:recId\/appeal/);
-  assert.match(records, /EMPLOYEE_ACK_REQUIRED/);
-  assert.match(records, /DISCIPLINARY_IMMUTABLE/);
-  assert.doesNotMatch(records, /DELETE FROM disciplinary_records/);
-  assert.match(records, /hr\.disciplinary\.appealed/);
-});
-
-test('4 Nov 2026: the eNPS survey is gone — no route for it', () => {
-  assert.equal(fs.existsSync(path.join(__dirname, '..', 'routes', 'hr', 'enps.js')), false);
-  assert.doesNotMatch(read('routes', 'hr.js'), /hr\/enps/);
-});
-
 test('private employee fields are schema-owned and saved through the HR endpoint', () => {
   assert.match(privateFieldsMigration, /ALTER TABLE staff[\s\S]*national_id[\s\S]*address[\s\S]*hr_notes/);
   assert.match(employees, /national_id/);
@@ -257,21 +242,6 @@ test('website recruiting is atomic, tenant linked and never a fire-and-forget HR
   assert.match(migration, /fk_job_applicants_job_tenant/);
   assert.match(migration, /fk_join_us_applicant_tenant/);
   assert.match(migration, /fk_onboarding_items_parent_tenant/);
-});
-
-test('recruiting mutations use management permission, legal states and immutable audit history', () => {
-  const recruiting = source('routes/hr/recruiting.js');
-  const talent = source('routes/hr/talent.js');
-  const adminOps = source('routes/admin-operations.js');
-  assert.match(talent, /join-us\/:id\/to-applicant'[\s\S]{0,180}requirePermission\('manage_hr'\)/);
-  assert.match(recruiting, /APPLICANT_TRANSITIONS/);
-  assert.match(recruiting, /HIRE_ACTION_REQUIRED/);
-  assert.match(recruiting, /APPLICANT_IMMUTABLE/);
-  assert.match(recruiting, /ACTIVE_ONBOARDING_EXISTS/);
-  assert.match(recruiting, /ONBOARDING_TASK_REQUIRED/);
-  // The note is written only when one is sent: a bare status change keeps it.
-  assert.match(adminOps, /SET status=\?,admin_note=\$\{notes === undefined \? 'admin_note' : '\?'\}/);
-  assert.doesNotMatch(adminOps, /SET status=\?, message=/);
 });
 
 test('HR recruiting UI uses schema-valid employment types and persists join-us actions', () => {

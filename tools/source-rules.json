@@ -744,5 +744,35 @@
     "code": false
    }
   ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: the eNPS survey is gone — no route for it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/enps.js",
+    "absent": true
+   },
+   {
+    "file": "api/routes/hr.js",
+    "mustNot": {
+     "source": "hr/enps",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: a lead merge hides the source, it never deletes a lead",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/leadMerge.js",
+    "mustNot": {
+     "source": "DELETE FROM leads",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

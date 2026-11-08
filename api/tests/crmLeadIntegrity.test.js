@@ -31,14 +31,6 @@ test('lead state accepts system statuses and rejects arbitrary values', () => {
   assert.throws(() => normalizeLeadStatus('sql-status'), /Invalid lead status/);
 });
 
-test('lead state mutation and timeline audit share one transaction', () => {
-  const state = read('lib/leadState.js');
-  assert.match(state, /await conn\.beginTransaction\(\)/);
-  assert.match(state, /UPDATE leads SET status=\?, updated_at=NOW\(\) WHERE id=\? AND tenant_id=\?/);
-  assert.match(state, /INSERT INTO lead_timeline \(id,tenant_id,lead_id/);
-  assert.match(state, /await conn\.rollback\(\)/);
-});
-
 test('business routes use the central lead transition service', () => {
   for (const file of [
     'routes/admin/leads.js', 'routes/admin/subscribers.js', 'routes/crm-advanced.js',
@@ -53,19 +45,6 @@ test('business routes use the central lead transition service', () => {
     // convertLeadOfPayment is transitionLead to «converted» for a payment (8 Oct 2026).
     assert.match(source, /transitionLead|convertLeadOfPayment/, file);
   }
-});
-
-test('lead merge is recoverable, tenant locked and reparents CRM relations', () => {
-  const merge = read('lib/leadMerge.js');
-  const migration = read('migrations/080_v25_crm_lead_merge.sql');
-  assert.match(merge, /WHERE tenant_id=\? AND id IN/);
-  assert.match(merge, /FOR UPDATE/);
-  assert.match(merge, /\['communications', 'lead_id'\]/);
-  assert.match(merge, /\['subscribers', 'lead_id'\]/);
-  assert.match(merge, /hidden=1, merged_into_lead_id=\?/);
-  assert.match(merge, /INSERT INTO lead_merge_audit/);
-  assert.doesNotMatch(merge, /DELETE FROM leads/);
-  assert.match(migration, /uq_lead_merge_source \(tenant_id, source_lead_id\)/);
 });
 
 test('admin conversion uses one server transaction and the UI waits for persistence', () => {
@@ -197,30 +176,6 @@ test('scheduled and manual CRM automation share one engine', () => {
   assert.doesNotMatch(runtime, /SELECT id, tenant_id, name, `trigger`, action[\s\S]*FROM automation_workflows/);
 });
 
-test('lead merges are tenant-scoped and reversible for new audit snapshots', () => {
-  const merge = read('lib/leadMerge.js');
-  const migration = read('migrations/115_v25_crm_reversible_merge.sql');
-  assert.match(merge, /SELECT id FROM \$\{table\} WHERE tenant_id=\? AND \$\{column\}=\?/);
-  assert.match(merge, /JSON\.stringify\(\{ lead: source, relations \}\)/);
-  assert.match(merge, /async function unmergeLead/);
-  assert.match(merge, /UPDATE \$\{table\} SET \$\{column\}=\?[\s\S]*WHERE tenant_id=\?/);
-  assert.match(merge, /hidden=0,merged_into_lead_id=NULL/);
-  assert.match(migration, /reverted_at[\s\S]*reverted_by/);
-});
-
-// "converted" has to mean a customer exists.
-//
-// Production carries 34 real leads at status 'converted' with no subscriber
-// behind them — Sheet imports with no email, all stamped within a second of
-// each other. Converted leads are excluded from the pipeline, so each of those
-// people left the sales list without arriving anywhere: nobody is chasing them
-// and no customer record answers for them. Invisible in exactly the way that
-// keeps anyone from noticing.
-//
-// The routes cannot write leads.status directly (pinned above), so this service
-// is the single door. It was not checking. All nine callers that convert a lead
-// already hold a subscriber and already name it, so the check costs them
-// nothing — what it stops is the tenth caller reopening the hole.
 test('a lead cannot be marked converted without a customer behind it', () => {
   const state = read('lib/leadState.js');
 

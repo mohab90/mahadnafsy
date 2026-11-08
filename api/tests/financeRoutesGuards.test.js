@@ -21,12 +21,13 @@ const ROUTES = [
   ['../routes/admin/stafflists', 'put', '/api/admin/subscribers/:id/assign-collection', ['manage_subscribers']],
   ['../routes/crm-advanced', 'put', '/api/admin/crm/leads/:id/status', ['manage_leads']],
   ['../routes/config', 'post', '/api/admin/fx-rates/refresh', ['manage_financial']],
+  ['../routes/hr/talent', 'post', '/api/admin/hr/join-us/:id/to-applicant', ['manage_hr']],
 ];
 
 for (const [file, method, routePath, opens] of ROUTES) {
   test(`${method.toUpperCase()} ${routePath} opens for ${opens.join(' or ')} and for nothing less`, async () => {
     let router;
-    try { router = require(file); } catch (error) { assert.fail(`${file}: ${error.message}`); }
+    try { router = require(file); if (router.router) router = router.router; } catch (error) { assert.fail(`${file}: ${error.message}`); }
     const layer = router.stack.find(item => item.route?.path === routePath && item.route.methods[method]);
     if (!layer) return assert.fail(`${method} ${routePath} is no longer a route of ${file}`);
     for (const permission of opens) {
