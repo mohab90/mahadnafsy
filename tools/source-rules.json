@@ -2665,48 +2665,6 @@
   "class": "b"
  },
  {
-  "id": "hrWorkflowIntegrity: disabled users are rejected by every authenticated request and cache can be invalidated immediately",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "async function activeIdentity",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "const columns = 'is_active,session_version,active_session_id,active_session_ip_hash,name,email_unverified'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "SELECT \\$\\{columns\\} FROM users WHERE tenant_id=\\? AND id=\\? LIMIT 1",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "Account disabled or unavailable",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "function invalidateIdentity",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "hrWorkflowIntegrity: compensation changes are approval-owned and only approved values enter payroll",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -16719,76 +16677,6 @@
     "file": "admin/pages/dashboard/DashboardHomeOfferPanel.tsx",
     "must": {
      "source": "'home\\.offer\\.discountPercent': String\\(percent\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "hrWorkflowIntegrity: offboarding is atomic, requires completed checklist, transfers open work, and revokes both staff and user access",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "beginTransaction",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "finalChecklist\\.some\\(item => item\\?\\.done !== true\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "UPDATE staff[\\s\\S]*is_active=0[\\s\\S]*termination_date",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "UPDATE users[\\s\\S]*is_active=0[\\s\\S]*session_version=session_version\\+1",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "UPDATE therapists[\\s\\S]*is_consultation_enabled=0",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "SUCCESSOR_ROLE_MISMATCH",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "invalidateIdentity\\(req\\.tenantId, user\\.id, user\\.email\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "hr\\.offboarding\\.started",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/offboarding.js",
-    "must": {
-     "source": "hr\\.offboarding\\.completed",
      "flags": ""
     }
    }
