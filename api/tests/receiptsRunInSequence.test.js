@@ -81,20 +81,7 @@ test('the gaps are read per branch, from the payments that carry a number', asyn
 
 
 
-test('the receipt, the register and the managers see the number — and voiding one tells the managers', () => {
-  assert.match(paymentModalSource(), /إيصال رقم \{data\.receiptNo\}/);
-  assert.match(paymentModalSource(), /forgetReceipts\(\);/);
-  
-  
-  // The alert is in the accounts — the branch's own and the main ones — not on the Dokki schedule page.
-  
-  
-  const gaps = read('api/routes/misc/receiptGaps.js');
-  
-  
-  const corrections = read('api/lib/paymentCorrections.js');
-  
-});
+
 
 test('the endpoint answers the managers, a branch’s manager sees only their branch, a rep is refused', async () => {
   const stub = (rel, exports) => { const file = require.resolve(rel); require.cache[file] = { id: file, filename: file, loaded: true, exports }; };

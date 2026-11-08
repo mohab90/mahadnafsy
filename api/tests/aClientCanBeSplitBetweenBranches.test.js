@@ -21,13 +21,4 @@ test('every client list reaches a branch by its own clients and by the courses p
   
 });
 
-test('the table lists a split client in both branches, each with its own courses; the modal offers the partial transfer', () => {
-  const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  // The Dokki list holds the clients the branch owns and the ones with a course placed in it — on the server now.
-  
-  
-  
-  
-  
-  assert.match(paymentModalSource(), /subject\.coursePlacements\?\.\[d\.courseId\]/, 'a payment for a placed course is that branch\'s');
-});
+

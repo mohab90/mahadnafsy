@@ -42,29 +42,7 @@ test('every way of linking to WhatsApp outside the system is recognised, and not
   delete global.window;
 });
 
-test('the buttons open the system\'s own WhatsApp; the floating sender is gone and the search button is only an icon', () => {
-  const app = read('admin/App.tsx');
-  
-  const links = read('admin/components/InSystemWhatsApp.tsx');
-  
-  
-  
-  
-  // «الغي زر واتس اللى تحت»: the floating sender (20 Oct 2026) is withdrawn; the chat opens through the links alone.
-  
 
-  const booking = read('admin/pages/dashboard/DashboardQuickBooking.tsx');
-  
-  
-  
-  
-  assert.doesNotMatch(dashboardSource(), /navigate=\{navigate\}\s+notify=\{notify\}/);
-
-  const page = read('admin/pages/dashboard/tabs/whatsapp/WhatsAppWebTab.tsx');
-  
-  
-  
-});
 
 test('a number\'s card says who it is, the course asked about or held, and the money only to whoever may see it', () => {
   const route = read('api/routes/whatsapp-web.js');

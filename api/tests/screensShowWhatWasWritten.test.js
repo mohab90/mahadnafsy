@@ -37,17 +37,7 @@ test('the client page lists every recorded payment, marks the ones awaiting appr
   
 });
 
-test('a staff member\'s own lists are refreshed one at a time, and the timer and tab focus ask only when they are stale', () => {
-  const own = read('admin/pages/dashboard/useStaffOwnData.ts');
-  
-  
-  
-  
-  const dashboard = dashboardSource();
-  assert.ok(dashboard.includes('void fetchSalesDataIfStale(110 * 1000)'), 'the timer');
-  assert.ok(dashboard.includes('void fetchSalesDataIfStale(2 * 60 * 1000)'), 'the return to the tab');
-  assert.ok(!/visibilityState === 'visible'\) void fetchSalesData\(\)/.test(dashboard), 'a return to the tab is not a full download');
-});
+
 
 test('the transaction number typed in the payment dialog is sent as the payment\'s transaction number, not folded into its note', () => {
   // payments.transaction_id is UNIQUE, so only the main payment of a save carries it.

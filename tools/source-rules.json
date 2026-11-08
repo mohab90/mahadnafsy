@@ -25083,5 +25083,4362 @@
     }
    }
   ]
+ },
+ {
+  "id": "aCarnetIsNotTheCoursesMoney: the desk is asked «أكبر من المتبقي» only for the course\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const left = d\\.paymentType === 'course' && chosen && _effPx > 0",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "accountingTenantScope: financial reports and reconciliation scope journal headers by tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "WHERE je\\.tenant_id=\\? AND je\\.entry_date BETWEEN",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aClientCanBeSplitBetweenBranches: the table lists a split client in both branches, each with its own courses; the modal offers the partial transfer",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "subject\\.coursePlacements\\?\\.\\[d\\.courseId\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aClientPriceIsTheManagersToSet: the dialog offers it to whoever holds the permission, and the percentages as a list",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const canSetPrice = isAdmin \\|\\| hasPermission\\(",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "'set_client_price'\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "\\{canSetPrice && \\(<>",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<select value=\\{tierPct\\} aria-label=\"نسبة الخصم\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aFailedLoadIsNotSavedOverTheRealSettings: «عملاء متصلون الآن» is fed from the presence endpoint",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "const \\[onlineUsers, setOnlineUsers\\] = useState",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "mysqlAdmin\\.getOnlineUsers\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "arabicPaymentErrors: the payment hooks send the reason under the key the toast reads, and the dialog translates",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "setSubmitError\\(arabicReason\\(error, ",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "arabicReason\\(String\\(detail\\.reason\\), ''\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aRegistrationReachesTheClientBase: one routine creates the lead, and both callers use it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "require\\('(?:\\.\\.\\/)+lib\\/registrationLead'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aSecondPhoneAndOneForm: the booking\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<PhoneConfirm",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "authMeAdminIsTheServersAdmin: auth/me decides admin with the list the server enforces",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "FULL_ACCESS_ROLES_AUTH",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "authTenantIdentity: login, password reset and 2FA never resolve an identity outside request tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "FROM users WHERE tenant_id=\\? AND email = \\? AND is_active = 1",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "FROM subscribers WHERE tenant_id=\\? AND LOWER\\(TRIM\\(email\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "FROM otp_codes WHERE tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "SET password_hash=\\?, session_version=session_version\\+1[\\s\\S]*WHERE id=\\? AND tenant_id=\\? AND session_version=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "tid: req\\.tenantId",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "logLoginAttempt\\(\\{ userId: user\\.id",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCourseActionsAndDokkiBooks: a refund names a course, and the payment behind it is optional",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "!rr\\.payment_id && !rr\\.course_item",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "applyUnlinkedRefund\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "action: `refund_\\$\\{normalizedStatus\\.toLowerCase\\(\\)\\}`",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCourseActionsAndDokkiBooks: a branch\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "const BOX_WINDOWS = \\[1, 7, 15, 30\\];",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientSingleSource: the code step says where the code went, and only when the API did send one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "startEmailCodeStep\\(req",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "commissionDurability: the old fire-and-forget path is gone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "crm_commissions",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "commission calc error",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "consultationRequests: every way of paying goes through the same consultation",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "if \\(String\\(order\\.type \\|\\| ''\\)\\.toUpperCase\\(\\) === 'CONSULTATION'\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "INSERT IGNORE INTO consultations",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseRetake: the payment dialog offers «إعادة» only for a client who holds a course, in its own dialog",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "\\{ v: 'retake', ic: '🔁', lb: 'إعادة' \\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const canRetake = mode === 'subscriber' && Boolean\\(subject\\.id\\) && retakeOptions\\.length > 0;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<RetakeDialog",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: admin conversion uses one server transaction and the UI waits for persistence",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "requestedCourseId",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "LIMIT 1 FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "transitionLead\\(\\{[\\s\\S]*toStatus: 'converted'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "await conn\\.commit\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: lead assignments validate tenant staff and persist audit in the same transaction",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "bulk-assign'[\\s\\S]*await conn\\.beginTransaction\\(\\)[\\s\\S]*logLeadEventStrict[\\s\\S]*await conn\\.commit\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: CRM interactions use one tenant-owned transactional service",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "appendLeadInteraction",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: CRM writes, bulk messaging and interaction deletion preserve role data scope",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "WHERE l\\.tenant_id=\\? AND l\\.id=\\?\\$\\{writeScope\\.sql\\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "Lead branch is outside your data scope",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "accessScope: leadScope\\(req, 'l'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmTenantScope: lead conversion is tenant-owned, transactional and releases once",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "FROM leads WHERE id=\\? AND tenant_id=\\? AND hidden=0",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "SELECT id FROM subscribers[\\s\\S]{0,120}WHERE tenant_id=\\?[\\s\\S]{0,80}lead_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "SELECT id FROM subscribers[\\s\\S]{0,80}deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "let transactionStarted = false",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "finally \\{ conn\\.release\\(\\); \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmTenantScope: account creation first payment is period-locked and journaled atomically",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "assertWritable\\(paymentDate, conn, tenantId\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "postPaymentJournal\\([\\s\\S]*tenantId[\\s\\S]*\\}, conn\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "Payment subscriber not found in tenant",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "firstPayment insert failed",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmTenantScope: CRM operational views share the canonical role and branch scope",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "leadScope\\(req, 'l'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "distributionByCourseAndSource: the rules are stored, and every path that picks a rep says which lead it is placing",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "rotation\\.next\\(lead\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiLinkAndPaymentApproval: a desk payment is approved, rejected and linked through the payments route, with the server\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "const isDeskPayment = \\(row: OrderItem\\) => row\\.source === 'crm';",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "await mysqlAdmin\\.updatePaymentStatus\\(row\\.id, 'paid', undefined, method\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "await mysqlAdmin\\.updatePaymentStatus\\(row\\.id, 'failed', reason\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "updatePaymentStatus\\(row\\.id, 'paid', undefined, storedMethodOf\\(row\\) \\|\\| transfer\\.method, \\{ transferId: transfer\\.id \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "adminPost\\(`\\/admin\\/orders\\/\\$\\{row\\.id\\}\\/confirm-payment`, \\{\\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "mustNot": {
+     "source": "notify\\('error', '[^']*تحقق من أن الطلب",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "notify\\('error', messageOf\\(error, 'تعذر تأكيد الدفعة\\.'\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "const canAcceptDirectly = isAdmin \\|\\| approverRole === 'manager' \\|\\| approverRole === 'support';",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "\\{canAcceptDirectly && \\(\\s*<button onClick=\\{\\(\\) => handleConfirmOrder\\(row\\)\\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "🔗 ربط",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiLinkAndPaymentApproval: the review list names the course or track and the branch",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "الفرع<\\/th>\\s*<th[^>]*>الدفعة خاصة بإيه<\\/th>",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "const forTitle = heldBundle \\? `📌 \\$\\{heldBundle\\.title\\}` : \\(heldCourse\\?\\.titleAr \\|\\| heldCourse\\?\\.title \\|\\| productTitle\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "row\\.isInstallment && <span[^>]*>قسط<\\/span>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiLinkAndPaymentApproval: the clients screen reads the context\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "salesOwnDaqqiRounds: siteDaqqiRounds,",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "salesOwnDaqqiRounds: salesOwnDaqqiRounds \\?\\? \\[\\],",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "setStaffScopedRounds: bulkSetDaqqiRounds,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiLinkAndPaymentApproval: the payment dialog sees a course held by money, a price, a prior payment or the round",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "heldItemIds\\?: string\\[\\];",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "\\(money\\?\\.items \\|\\| \\[\\]\\)\\.map\\(line => \\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "for \\(const id of subject\\.heldItemIds \\|\\| \\[\\]\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const alreadyPaid = moneyFor\\(d\\.courseId\\)\\?\\.paid \\?\\? 0;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiPaidTracksHousingAndRoster: a booking can name the round and the client is seated when it is recorded",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "daqqiRoundId\\?: string;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const bookingBranch = String\\(chosenTier\\?\\.branch \\|\\|",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const canHouse = housesClients && d\\.bookingType === 'new_booking' && housingRounds\\.length > 0;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "mysqlAdmin\\.listDaqqiRoundsForBooking\\(bookingBranch\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<Home size=\\{13\\} \\/> تسكين في روند",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<DaqqiRoundPicker",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "layer=\"over\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiPaidTracksHousingAndRoster: the cockpit\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "p\\.status='paid' AND p\\.deleted_at IS NULL AND p\\.branch='DAQQI'\\$\\{paymentAliasScopeSql\\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "mustNot": {
+     "source": "p\\.source='daqqi'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "p\\.status='paid' AND p\\.deleted_at IS NULL AND p\\.staff_id IS NOT NULL",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "status='paid' AND deleted_at IS NULL\\$\\{paymentScopeSql\\}\\s+GROUP BY payment_method",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "entitlements: subscriber projection and primary admin flows never use crm_json as course access authority",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "INSERT INTO enrollments|enrolledCourseIds.*crm_json",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "grantCourseSelections",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "extraRowsInAnInstalment: the dialog offers the courses the client lacks and flags them as new bookings",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<optgroup label=\"🆕 حجز كورس جديد\">",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "newBooking: d\\.bookingType === 'installment' && !!e\\.target\\.value && !heldCids\\.has\\(e\\.target\\.value\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "financeSafetyContracts: payment links fail closed without configuration, redeem once, and installment reads enforce scope",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "PAYMENT_LINKS_ENABLED !== 'true'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "PAYMENT_LINK_CHECKOUT_URL_TEMPLATE",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "mustNot": {
+     "source": "mahadnafsy\\.com\\/#\\/pay",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "mustNot": {
+     "source": "installment_plans[\\s\\S]{0,160}next_due_date",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "ip\\.due_dates, ip\\.paid_dates, ip\\.payment_ids",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "!paidDates\\[index\\] && !paymentIds\\[index\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "financeSafetyContracts: expense UI waits for the server ledger and the API preserves category, branch and editable fields",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "expenseCategoryLabel\\(s\\.category, categories\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "financeSafetyContracts: account onboarding and finance screens keep payments in the ledger-backed workflow",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "firstPaymentStatus = canApproveFinancial \\? 'paid' : 'pending'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "paymentBundleId",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "if \\(firstPaymentStatus === 'paid'\\)[\\s\\S]{0,250}postPaymentJournal",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "inSystemWhatsApp: the buttons open the system\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "navigate=\\{navigate\\}\\s+notify=\\{notify\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "joinUsApplicationsTwoLists: the Dokki manager is shown the applications and interviews screens",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "branchHrOnly && activeScreen === 'hr' \\? 'branch_hr' : activeScreen",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadAggregateRoutes: the stored score is read only where the refresh keeps it current",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "SUM\\(l\\.score\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadAggregates: leads.score is aggregated only because the refresh keeps it equal to the formula",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "SUM\\(l\\.score\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadAggregates: dates leaving the lead mapper are calendar dates, not Date.toString()",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "nextFollowUpDate: ymd\\(r\\.next_follow_up_date\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadArchiveAndDedup: distributors skip archive rows",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "excludeArchiveSourcesSql\\('l\\.source'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadTabsTracksAndAgreedPrice: the payment dialog opens at the price this client agreed",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const _agreedPx = heldLine && \\(heldLine\\.source === 'client' \\|\\| heldLine\\.source === 'booking'\\) \\? heldLine\\.agreed : 0;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const _basePx = _agreedPx > 0 \\? _agreedPx : _sysPx;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "Math\\.round\\(_basePx \\* \\(1 - _discPct \\/ 100\\)\\) : _basePx\\)\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "menuGateMatchesApi: no screen an HR account can open answers 403",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/leads\\/staff-performance', requireAuth, requireAdminOrStaff, requireAnyPermission\\('view_leads', 'view_hr'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "messagingPushTicketsLeads: the owner names who brought a payment, the name rides on that payment only, and a slip of the finger is asked about",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "if \\(asksWhoBroughtIt\\) attributeNextPayment\\(broughtBy\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "attributeNextPayment\\(null\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const left = d\\.paymentType === 'course' && chosen && _effPx > 0 \\? Math\\.max\\(0, _effPx - chosen\\.paid\\) : null;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "if \\(!upgrading && left !== null && _amtPaid > left && !await confirmDialog\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "mustNot": {
+     "source": "useSiteData\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "mfaPolicy: the sign-in lookup resolves staff, so the issued token carries the concurrent-device flag without the middleware querying staff",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "SELECT u\\.id, u\\.email, u\\.name, u\\.password_hash, u\\.session_version, u\\.email_unverified",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "AS is_staff",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "const isOperator = Boolean\\(user\\.is_staff\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "isInstituteOwner\\(\\{ email: user\\.email, uid: user\\.id",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "isStaff: isOperator",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "isStaff: req\\.user\\.is_staff === true",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "sessionId: session\\.sessionId, mfaVerified: (true|false),\\n\\s*\\}\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "mfaPolicy: the emailed code is what makes a session MFA-verified, and the middleware reads that claim",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "rotateSingleSession\\(pool",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "mfaVerified: true",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "mobileClearance: the dashboard clears its booking button on phones only",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "pb-28",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "md:pb-8",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "notificationAudience: lead notifications go to the rep concerned, or to management while nobody has the lead",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "createNotification\\('lead', '👤 ليدز اتعينت ليك',[\\s\\S]{0,120}tenantId, crmData\\.assignedSalesId,",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "createNotification\\('lead', '📋 ليدز جديدة ليك', leadLine,[\\s\\S]{0,80}tenantId, salesId,",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "mustNot": {
+     "source": "'👤 تعيين ليد'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneAgreedPriceEverywhere: every screen reads that rule",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "\\(money\\?\\.items \\|\\| \\[\\]\\)\\.map\\(line => \\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const px = priceIn\\(entry\\?\\.price, currency\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const bal = _effPx > 0 \\? Math\\.max\\(0, _effPx - alreadyPaid\\) : 0;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneAgreedPriceEverywhere: the dialog hands the handler the price it shows; an instalment only a price the desk changed",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "customExpected: d\\.bookingType === 'installment'\\s+\\? \\(changedPrice \\? shownPrice : ''\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "if \\(price\\) await setAgreedPrice\\(conn, \\{ tenantId, subscriberId: responseSubscriber\\.id, courseId, bundleId, price \\}\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "onlineSectionReview: no payment is recorded for a client without a real phone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "if \\(firstPayment && Number\\(firstPayment\\.amount\\) > 0\\) \\{\\s+\\/\\/ No money against a client who cannot be reached[^\\n]*\\n\\s+if \\(!isRealPhone\\(phone\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "orderRoleIntegrity: the orders screen offers no shortcut to a paid or refunded order",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "mustNot": {
+     "source": "updateOrderStatus\\(row\\.id, 'paid'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "mustNot": {
+     "source": "<option value=\"refunded\">",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "otpSecurity: password-reset OTPs are HMAC protected at rest and verified from delivered mail",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "createHmac\\('sha256'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "hashOtp\\(\\{\\s*tenantId:\\s*req\\.tenantId,\\s*email:\\s*safeEmail",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ownerAndCustomerServiceAccounts: a password typed on a staff page is set, and a reset shows what it set",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "res\\.json\\(\\{ ok: true, temporaryPassword: newPassword \\}\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ownerAndCustomerServiceAccounts: every account changes its own password, the owner included",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "isProfileTab\\(activeTab\\) && !currentStaff && \\([\\s\\S]{0,120}<OwnerProfilePage[\\s\\S]{0,200}isOwner=\\{isAdmin\\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "صفحات الموظف غير متاحة لحسابك",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ownerAndCustomerServiceAccounts: customer service works both branches\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "canViewDaqqiClients=\\{isDaqqiManager \\|\\| isReceptionDaqqi \\|\\| isSupport \\|\\| isAdmin\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ownerAndCustomerServiceAccounts: customer service reads and escalates refunds; deciding them stays with accounts",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/finance\\/refunds', requireAuth, requireAdminOrStaff, requireAnyPermission\\('view_financial', 'manage_inbox'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "refunds\\/:id\\/escalate', requireAuth, requireAdminOrStaff, requireAnyPermission\\('view_financial', 'manage_inbox'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "router\\.put\\('\\/api\\/admin\\/finance\\/refunds\\/:id', requireAuth, requireAdminOrStaff, requirePermission\\('approve_refunds'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ownerAndCustomerServiceAccounts: the Dokki desk\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "else if \\(isNew && !salesId && !csId && BRANCH_DESK_ROLES\\.includes\\(staffRole\\)\\) \\{\\s*[\\s\\S]{0,200}salesId = req\\.staffRecord\\.id;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentIntegrity: a declined transaction credits nothing",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "if \\(!paymobSuccess\\(params\\)\\) return res\\.json\\(\\{ ok: true, verified: true, paid: false \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "if \\(paymobSuccess\\(params\\)\\) \\{[\\s\\S]{0,400}?finalisePaymobOrder",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "String\\(params\\.success \\?\\? params\\.obj\\?\\.success \\?\\? ''\\)\\.toLowerCase\\(\\) === 'true'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentIntegrity: the captured amount and currency have to match the order",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "capture\\.amountCents !== expectedCents",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "return \\{ found: true, amountMismatch: true \\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "return \\{ found: true, currencyMismatch: true \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentIntegrity: an order that is already paid does not walk back to pending",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "ORDER_ALREADY_PAID",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "status\\s*=\\s*IF\\(status='paid', status,\\s*'pending'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "ON DUPLICATE KEY UPDATE status='pending'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentIntegrity: the catalogue decides the price, not the caller",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "PRICE_MISMATCH",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "!priceMatches\\(amount, catalogPrice\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "SELECT amount, currency(, [a-z_, ]+)? FROM orders WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "const \\{[^}]*\\bamount\\b[^}]*\\} = req\\.body[\\s\\S]{0,400}?paymobIntention",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentIntegrity: course access is granted from the database, never from the order body",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "SECURITY: always fetch bundle courses from DB",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "if \\(!planEntry && \\(orderType === 'course' \\|\\| orderType === 'bundle'\\) && sub\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentReceiptEveryPath: every path that makes a payment paid queues it, and none writes its own",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "✅ تم استلام دفعتك — ",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "purchaseWithoutEmail: the receipt and the card capture pass the client on",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "must": {
+     "source": "sub = await ensureSubscriberForOrder\\(conn, \\{\\s+tenantId,\\s+subscriberId: order\\.subscriber_id \\|\\| null,\\s+email: order\\.customer_email,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "receiptsRunInSequence: the receipt, the register and the managers see the number — and voiding one tells the managers",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "إيصال رقم \\{data\\.receiptNo\\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "forgetReceipts\\(\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "salesAccountJourney: «إحصائياتي» points at a tab the rep can actually open",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "staff-performance', requireAuth, requireAdminOrStaff, requireAnyPermission\\('view_leads', 'view_hr'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "salesDeskSixOctober: a carnet or a book is never a course instalment, and books beside its course",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "\\(d\\.paymentType !== 'course' \\|\\| !!d\\.courseId\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "salesDeskSixOctober: every rep has the inbox and «واتسابي», collection «واتسابي» only, whatever their grid says",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "canOpenTab=\\{canOpenTab\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "screensShowWhatWasWritten: a staff member\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "void fetchSalesDataIfStale\\(110 \\* 1000\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "void fetchSalesDataIfStale\\(2 \\* 60 \\* 1000\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "visibilityState === 'visible'\\) void fetchSalesData\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "sessionRevocation: every credential mutation invalidates all older user sessions",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "WHERE id=\\? AND tenant_id=\\? AND session_version=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "invalidateIdentity\\(payload\\.tid, payload\\.uid\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "clearAuthCookie\\(res\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "sessionRevocation: the dead legacy OTP 2FA endpoint and the authenticator endpoints are gone; the emailed code verifies",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "router\\.post\\('\\/api\\/auth\\/verify-2fa'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "router\\.post\\('\\/api\\/auth\\/2fa\\/",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "router\\.post\\('\\/api\\/auth\\/login\\/email-code\\/verify'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "settingsHub: the hub pages open from a link, and the page editors draw inside صفحات الموقع",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "const page = CONTENT_HUB_TABS\\.find\\(t => t\\.key === tab\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "urlTab === 'content_hub' && urlParam",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "activeTab === 'content_hub' && contentHubSubTab\\.startsWith\\('page_'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccessAudit: creating a login does not move the employee to another branch",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "const branchId = req\\.branchAccountReach\\?\\.branchId\\s*\\?\\? req\\.body\\.branch_id \\?\\? req\\.body\\.branchId \\?\\? staffByEmail\\?\\.branch_id \\?\\? 'branch-other';",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "SELECT id, role, branch_id FROM staff WHERE tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "req\\.body\\.branch_id \\|\\| 'branch-other'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: collection works leads like a rep: the sales view, their own leads, a lead of their own",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "writeScope\\.scope === 'assigned_cs' && staffRole !== 'collection'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "if \\(isNew\\) \\{ csId = req\\.staffRecord\\.id;",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "else if \\(isNew && !salesId && !csId && !skipAutoAssign\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name, crm_json",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: the remaining data goes to a collection officer in one request, into the column their scope reads",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "const BACK_IN_PLAY = \\['archived', 'not_interested_hidden'\\];",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: a collection account\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "code: 'COLLECTION_BOOKING_REQUIRED'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: booking is on every account, and every account may record it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "\\n      <Suspense fallback=\\{null\\}>\\s*<DashboardQuickBooking",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountTakeover: a branch manager opens new accounts only, filed under their branch",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "req\\.branchAccountReach = reach; return next\\(\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAnnouncementsPopupVideoAndBranchRequests: the administration writes it, the employee reads and closes it, and it is wired in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "<StaffAnnouncementPopup \\/>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAnnouncementsPopupVideoAndBranchRequests: in pounds a resident non-Egyptian is priced from their own list, not the Egyptian one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "nationality === 'non_egyptian_egypt'\\) return Number\\(tiers\\.residentEGP\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAnnouncementsPopupVideoAndBranchRequests: the operation number, sender and number never block a booking; the new clients are rows of the payments table",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "mustNot": {
+     "source": "transferNeedsDetails|transferProblem",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffListsWaitForTheScreen: the screens that page from the server are named, and an employee\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "salesOwn(Leads|Subscribers|Orders)|setStaffScoped(Subscribers|Leads)|staffScreenReadsLists|wantsStaffLists",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "setStaffListsWanted\\(!isNonAdminStaff \\|\\| !staffScreenPagesFromServer\\(activeTab\\)\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffListsWaitForTheScreen: the bell counts on the server for every employee, so it needs no list",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "const countsOwnFollowups = !!currentStaff && access\\.can\\('view_leads'\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffListsWaitForTheScreen: the pages that wait for the lists read none of them",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "<DashboardOnlineManagerPanels[^>]*summary=\\{onlineManagerSummary\\}",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "<MyProfilePage[^>]*(leads|subscribers)=",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staticRulesKept: a lead is never created by an upsert that could land on another institute\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "mustNot": {
+     "source": "INSERT INTO leads[\\s\\S]{0,900}ON DUPLICATE KEY UPDATE name=",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "mustNot": {
+     "source": "DELETE FROM leads",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "systemAuditFixes: a number that already has an account is told how to get in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "error: 'رقم الهاتف مستخدم بالفعل'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "systemLogCertificatesRefundsTracks: «تكملة»: the course joins the track, its money with it, access untouched",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "course-upgrade`, \\{",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "lb: 'تكملة لمسار'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "systemLogCertificatesRefundsTracks: refunds: the course under the client, contact and its result, organised actions, filters",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "COALESCE\\(NULLIF\\(c\\.title_ar, ''\\), c\\.title, b\\.title\\) AS course_title",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "LEFT JOIN bundles b ON b\\.id = COALESCE\\(p\\.bundle_id, IF\\(rr\\.course_item LIKE 'bundle:%'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "JSON_OBJECT\\('outcome', cm\\.outcome",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theBranchManagersHr: a branch manager opening «الموارد البشرية» from any link lands on their branch\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "const branchHrOnly = \\['daqqi_manager', 'tagamoa_manager'\\]\\.includes\\(String\\(currentStaff\\?\\.role \\|\\| ''\\)\\.toLowerCase\\(\\)\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "must": {
+     "source": "branchHrOnly && activeScreen === 'hr' \\? 'branch_hr' : activeScreen",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "thePaymentTilesAreSmallerAndColoured: each booking kind has its own colour and a small icon tile",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "grid h-7 w-7 place-items-center rounded-lg text-base",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "mustNot": {
+     "source": "px-5 py-3 rounded-xl text-base font-extrabold",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "thePaymentTilesAreSmallerAndColoured: the item types are one taller row of seven, «مسار» among them, and it lists the tracks only",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "grid grid-cols-4 gap-1\\.5[^\"]*sm:grid-cols-7",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "flex h-14 flex-col items-center",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "!\\(tracksOnly && isCourse\\) && <optgroup label=\"🎓 الكورسات\">",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "transferDetailsConsultationsAndCourses: the operation number, sender and number are optional — typed, they travel with the payment",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "mustNot": {
+     "source": "transferNeedsDetails|transferProblem",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "const isValid = !subjectChosen",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "field\\.label\\} <span className=\"text-gray-400 font-normal\">\\(اختياري\\)<\\/span>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "transfersLedgerInTheAccounts: the accounts screen lists and records transfers on the ledger",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "mustNot": {
+     "source": "type: 'transfer'|r\\.type === 'transfer'\\)\\.length",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "const ledger = useIncomingTransfers\\(canManageFinancial\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "const availableTransfers = ledger\\.transfers\\.filter\\(transfer => !transfer\\.paymentId\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "transfersSheetImport: the route and the screen",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "mustNot": {
+     "source": "رفع ملف التحويلات|ImportTransfersModal",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/dashboard/tabs/OrdersTab.tsx",
+     "admin/pages/dashboard/tabs/orders/ordersTypes.ts",
+     "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+     "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+     "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+     "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
+    ],
+    "must": {
+     "source": "rankedTransfers = availableTransfers",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "twoPeopleOneNumberOnPurpose: the booking form says whose number it is, offers the file, and the linked account is told in search",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/components/payment-modal/paymentDraft.ts",
+     "admin/components/payment-modal/PrintReceiptModal.tsx",
+     "admin/components/payment-modal/paymentTiles.ts",
+     "admin/components/payment-modal/paymentModalTypes.ts",
+     "admin/components/payment-modal/PhotoPicker.tsx",
+     "admin/components/payment-modal/SubjectSearchPicker.tsx",
+     "admin/components/payment-modal/usePaymentModalModel.tsx",
+     "admin/components/payment-modal/clientHoldings.ts",
+     "admin/components/PaymentModal.tsx",
+     "admin/components/payment-modal/PaymentItemSection.tsx",
+     "admin/components/payment-modal/PaymentExtrasSection.tsx",
+     "admin/components/payment-modal/PaymentPersonSection.tsx"
+    ],
+    "must": {
+     "source": "<SharedPhonePanel ",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "vatRate: a rate above zero puts the tax line back on the document",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "must": {
+     "source": "p\\._netAmount = vatPct > 0\\s*\\n\\s*\\? parseFloat\\(\\(p\\._amount \\/ \\(1 \\+ vatPct \\/ 100\\)\\)\\.toFixed\\(2\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "whatsappOutboundGate: the welcome message the desk switched off is actually gated now",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "require\\('\\.\\.\\/\\.\\.\\/lib\\/lifecycle'\\)\\.trigger\\('lead_created'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "sendWhatsApp\\([^)]*نرحب بك",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "writeStatements: the consultation insert names only columns consultations has",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "mustNot": {
+     "source": "INSERT IGNORE INTO consultations",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "writeStatements: nothing writes to a registrations table — there is none",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "mustNot": {
+     "source": "INTO registrations\\b",
+     "flags": "i"
+    }
+   }
+  ]
  }
 ]

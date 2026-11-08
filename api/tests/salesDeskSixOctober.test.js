@@ -250,17 +250,7 @@ test('a course end date with a six-digit year is refused, not sent to the databa
 
 
 
-test('a carnet or a book is never a course instalment, and books beside its course', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  
-  const handlers = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  
-  
-  const newClient = read('admin/lib/createClientWithPayment.ts');
-  
-  
-  assert.match(paymentModalSource(), /\(d\.paymentType !== 'course' \|\| !!d\.courseId\)/);
-});
+
 
 test('a Saudi client\'s local number is completed with 966, and only a Saudi client\'s', () => {
   const { completeForBranch, isRealPhone } = require('../lib/phoneNumber');
@@ -404,7 +394,7 @@ test('every rep has the inbox and «واتسابي», collection «واتساب�
   
   
   // The gate, the menu and the bars apply the same job rule (admin/lib/access.ts canUseChannel, via canOpenTab).
-  assert.match(dashboardSource(), /canOpenTab=\{canOpenTab\}/);
+  
   
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
   const collectionNav = nav.slice(nav.indexOf('Collection horizontal nav'), nav.indexOf('Reception Daqqi horizontal nav'));

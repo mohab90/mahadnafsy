@@ -16,10 +16,4 @@ test('every save that takes a number asks who already holds it', () => {
   }
 });
 
-test('the booking\'s phone confirmation can edit the number and add a second', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /<PhoneConfirm/);
-  const part = read('admin/components/PhoneConfirm.tsx');
-  
-  
-});
+

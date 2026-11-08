@@ -105,7 +105,7 @@ test('the administration writes it, the employee reads and closes it, and it is 
   
   
   
-  assert.match(dashboardSource(), /<StaffAnnouncementPopup \/>/);
+  
   
   
   
@@ -172,19 +172,7 @@ test('in pounds a resident non-Egyptian is priced from their own list, not the E
   const route = read('api/routes/certificates.js');
   
   
-  assert.match(paymentModalSource(), /nationality === 'non_egyptian_egypt'\) return Number\(tiers\.residentEGP\)/);
+  
 });
 
-test('the operation number, sender and number never block a booking; the new clients are rows of the payments table', () => {
-  const modal = paymentModalSource();
-  assert.doesNotMatch(modal, /transferNeedsDetails|transferProblem/);
-  const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
-  
-  const view = read('admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx');
-  
-  
-  
-  const rows = read('admin/pages/dashboard/tabs/orders/ClientRequestRows.tsx');
-  
-  
-});
+

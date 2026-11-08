@@ -70,10 +70,4 @@ test('a branch manager\'s old grid still opens the branch HR, and HR boxes do no
   
 });
 
-test('a branch manager opening «الموارد البشرية» from any link lands on their branch\'s HR', () => {
-  // The institute's HR tab refuses them (view_hr does not apply to the role), and
-  // links and saved addresses (/dashboard/hr, /dashboard/hr/attendance) led there.
-  const dashboard = dashboardSource();
-  assert.match(dashboard, /const branchHrOnly = \['daqqi_manager', 'tagamoa_manager'\]\.includes\(String\(currentStaff\?\.role \|\| ''\)\.toLowerCase\(\)\);/);
-  assert.match(dashboard, /branchHrOnly && activeScreen === 'hr' \? 'branch_hr' : activeScreen/);
-});
+

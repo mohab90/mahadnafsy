@@ -53,36 +53,9 @@ test('a client\'s balance counts their tracks, the currency they pay in, and wha
   assert.deepEqual([balances.get('c-2').expected, balances.get('c-2').remaining], [2500, 2500]);
 });
 
-test('every screen reads that rule', () => {
-  
-  // The table and the plans window list the same items (the plans page was removed on 5 Nov 2026).
-  const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  
-  
-  
-  
-  const modal = paymentModalSource();
-  // The instalment list and «كل المتبقي» used the catalogue.
-  // 2 Nov 2026: the dialog's lines ARE clientItems' lines (the table's function), so the two cannot disagree; its own agreed-price read is only for a
-  // course the Dokki desk says the client holds.
-  assert.match(modal, /\(money\?\.items \|\| \[\]\)\.map\(line => \(\{/);
-  assert.match(modal, /const px = priceIn\(entry\?\.price, currency\);/);
-  assert.match(modal, /const bal = _effPx > 0 \? Math\.max\(0, _effPx - alreadyPaid\) : 0;/);
-  // The filters and the total read the table's own items (onlineSectionReview.test.js).
-  
-  
-  
-});
 
-test('the dialog hands the handler the price it shows; an instalment only a price the desk changed', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /customExpected: d\.bookingType === 'installment'\s+\? \(changedPrice \? shownPrice : ''\)/);
-  const handler = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  
-  // «مشترك جديد»: each course's own price or discount, not just the first's.
-  const account = authRouteSource();
-  assert.match(account, /if \(price\) await setAgreedPrice\(conn, \{ tenantId, subscriberId: responseSubscriber\.id, courseId, bundleId, price \}\);/);
-});
+
+
 
 test('the access panel edits the price, what was paid before, the lectures and the subscription date', () => {
   const route = read('api/routes/core/content.js');

@@ -50,61 +50,9 @@ test('financial statements and payroll money transitions use ledger and finance 
 
 
 
-test('payment links fail closed without configuration, redeem once, and installment reads enforce scope', () => {
-  const finance = financeRouteSource();
-  const checkout = read('api/routes/lead-capture-crm.js');
-  const installments = read('api/routes/installments.js');
-  assert.match(finance, /PAYMENT_LINKS_ENABLED !== 'true'/);
-  assert.match(finance, /PAYMENT_LINK_CHECKOUT_URL_TEMPLATE/);
-  assert.doesNotMatch(finance, /mahadnafsy\.com\/#\/pay/);
-  
-  
-  // The overdue count comes from the schedule itself, never from a stored
-  // next_due_date that can go stale. It used to read the array in SQL at index
-  // paid_count — a count, not an index, so a plan whose instalments were
-  // settled out of order pointed at the wrong entry and missed the overdue one.
-  // It now selects the arrays and walks every entry, which is what the AR-aging
-  // screen already did; the guarantee here is the source, not the mechanism.
-  assert.doesNotMatch(finance, /installment_plans[\s\S]{0,160}next_due_date/);
-  assert.match(finance, /ip\.due_dates, ip\.paid_dates, ip\.payment_ids/);
-  assert.match(finance, /!paidDates\[index\] && !paymentIds\[index\]/);
-  
-  
-  
-});
 
-test('expense UI waits for the server ledger and the API preserves category, branch and editable fields', () => {
-  const route = read('api/routes/admin-operations.js');
-  const state = read('admin/context/site-data-hooks/useExpensesState.ts');
-  const panel = read('admin/pages/dashboard/tabs/financial/FinancialExpensesPanel.tsx');
-  const runtime = read('admin/context/site-data-hooks/useAdminDataRuntime.ts');
-  
-  
-  // The category map moved to lib/expenseCategories.js so the budget route can
-  // reach it too: budgets are keyed by the Arabic label and expenses by the
-  // English code, and with the map locked inside this route the two could never
-  // be joined — «الفعلي» read 0 for every category.
-  const categories = read('api/lib/expenseCategories.js');
-  
-  
-  // The labels are the settings' list (الإعدادات › فئات المصاريف), read per tenant.
-  assert.ok(financeRouteSource().includes('expenseCategoryLabel(s.category, categories)'));
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  // An emptied ledger has to read as empty: neither the load nor the poll may
-  // skip an empty answer. The load is on demand since 11 Oct 2026 (siteLists.ts).
-  
-  
-});
+
+
 
 
 
@@ -117,9 +65,9 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   const accessPanel = read('admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx');
   const agreed = read('api/lib/agreedPrice.js');
 
-  assert.match(auth, /firstPaymentStatus = canApproveFinancial \? 'paid' : 'pending'/);
-  assert.match(auth, /paymentBundleId/);
-  assert.match(auth, /if \(firstPaymentStatus === 'paid'\)[\s\S]{0,250}postPaymentJournal/);
+  
+  
+  
   
   // The Daqqi-branch half of this screen used to post the payment itself. It
   // calls the shared helper now — the one the Daqqi desk also calls — so a

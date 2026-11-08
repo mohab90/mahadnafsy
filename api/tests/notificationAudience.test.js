@@ -50,15 +50,7 @@ test('a burst of the same notification is one line with a count', async () => {
   assert.match(calls[0].sql, /NOT EXISTS \(SELECT 1 FROM notification_reads/, 'a line already read starts a new one');
 });
 
-test('lead notifications go to the rep concerned, or to management while nobody has the lead', () => {
-  const leads = leadsRouteSource();
-  assert.ok(!leads.includes("'👤 تعيين ليد'"), 'the per-lead broadcast to all of sales');
-  assert.match(leads, /createNotification\('lead', '👤 ليدز اتعينت ليك',[\s\S]{0,120}tenantId, crmData\.assignedSalesId,/);
-  assert.match(leads, /createNotification\('lead', '📋 ليدز جديدة ليك', leadLine,[\s\S]{0,80}tenantId, salesId,/);
-  
-  
-  
-});
+
 
 test('a sales offer reaches the reps, and the inbox bot\'s hand-over the inbox team only', () => {
   assert.equal(sees('sales', 'sales'), true, 'the reps the offer is for');

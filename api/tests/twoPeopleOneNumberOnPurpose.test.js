@@ -29,10 +29,4 @@ test('a number is shared only by a new account, with the holder named and a reas
   
 });
 
-test('the booking form says whose number it is, offers the file, and the linked account is told in search', () => {
-  assert.match(paymentModalSource(), /<SharedPhonePanel /);
-  
-  
-  
-  
-});
+

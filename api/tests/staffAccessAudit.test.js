@@ -65,18 +65,6 @@ test('only a full-access role may delete a client, by default or otherwise', () 
   assert.deepEqual([...FULL_ACCESS_ROLES].sort(), ['admin', 'manager']);
 });
 
-test('creating a login does not move the employee to another branch', () => {
-  // The staff page's "create a login" button posts the employee object, which
-  // carries no branch field; this statement's ON DUPLICATE clause rewrites
-  // branch_id, and the fallback was the literal 'branch-other'. So giving the
-  // Dokki manager a login would have moved her out of Dokki — and out of every
-  // branch-wide broadcast (hr/staffprofile.js selects staff by branch_id).
-  const src = authRouteSource();
-  // A branch manager's new account is their branch's; otherwise what was posted, else the row's own.
-  assert.match(src, /const branchId = req\.branchAccountReach\?\.branchId\s*\?\? req\.body\.branch_id \?\? req\.body\.branchId \?\? staffByEmail\?\.branch_id \?\? 'branch-other';/);
-  assert.match(src, /SELECT id, role, branch_id FROM staff WHERE tenant_id=\?/);
-  assert.ok(!/req\.body\.branch_id \|\| 'branch-other'/.test(src),
-    'the branch is decided from the request alone again');
-});
+
 
 

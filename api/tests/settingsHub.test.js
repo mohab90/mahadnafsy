@@ -64,13 +64,4 @@ test('search finds a setting however it is spelled', () => {
 
 
 
-test('the hub pages open from a link, and the page editors draw inside صفحات الموقع', () => {
-  const dashboard = dashboardSource();
-  assert.match(dashboard, /const page = CONTENT_HUB_TABS\.find\(t => t\.key === tab\)/);
-  assert.match(dashboard, /urlTab === 'content_hub' && urlParam/);
-  assert.match(dashboard, /activeTab === 'content_hub' && contentHubSubTab\.startsWith\('page_'\)/);
-  // /dashboard/hr/<section> opens it; the addresses of the merged tabs open the tab that holds them now.
-  const hr = read('admin/pages/dashboard/tabs/HRTab.tsx');
-  
-  
-});
+

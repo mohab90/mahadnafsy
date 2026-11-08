@@ -68,14 +68,4 @@ test('bundle selections expand then grant every tenant course through the same s
   assert.equal(calls.filter(call => call.sql.includes('INSERT INTO enrollments')).length, 2);
 });
 
-test('subscriber projection and primary admin flows never use crm_json as course access authority', () => {
-  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  const mapper = read('lib/mappers.js');
-  const auth = authRouteSource();
-  const subscribers = read('routes/admin/subscribers.js');
-  
-  assert.doesNotMatch(auth, /INSERT INTO enrollments|enrolledCourseIds.*crm_json/);
-  
-  assert.match(auth, /grantCourseSelections/);
-  
-});
+

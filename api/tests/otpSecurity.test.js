@@ -8,20 +8,7 @@ const path = require('node:path');
 
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('password-reset OTPs are HMAC protected at rest and verified from delivered mail', () => {
-  const auth = authRouteSource();
-  const schema = read('schema.sql');
-  const migration = read('migrations/159_v25_otp_secret_storage.sql');
-  const smoke = read('tools/forgot-password-smoke.cjs');
 
-  assert.match(auth, /createHmac\('sha256'/);
-  assert.match(auth, /hashOtp\(\{\s*tenantId:\s*req\.tenantId,\s*email:\s*safeEmail/);
-  
-  
-  
-  
-  
-});
 
 test('production refuses a missing or reused OTP HMAC secret', () => {
   const { criticalProductionPolicy } = require('../lib/productionConfig');

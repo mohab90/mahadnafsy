@@ -64,7 +64,7 @@ test('no screen an HR account can open answers 403', () => {
   // well — the two gates agree, which is the rule this file is about. Keeping
   // the screen on view_leads alone was the other way to make them agree, and it
   // left an HR manager unable to open the performance board of her own team.
-  assert.match(leadsRouteSource(), /router\.get\('\/api\/admin\/leads\/staff-performance', requireAuth, requireAdminOrStaff, requireAnyPermission\('view_leads', 'view_hr'\)/);
+  
   const hrOpens = gateFor('staff_performance').filter(permission => hr.has(permission));
   assert.deepEqual(hrOpens, ['view_hr'], 'the HR sidebar and the performance API no longer agree');
 

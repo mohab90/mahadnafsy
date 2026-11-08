@@ -54,8 +54,8 @@ test('the payment hooks send the reason under the key the toast reads, and the d
   for (const file of ['admin/pages/unified-client/useUnifiedClientPayments.ts', 'admin/pages/unified-client/useUnifiedClientLifecycleActions.ts']) {
     assert.match(read(file), /reason: arabicReason\(error\)/, file);
   }
-  assert.match(paymentModalSource(), /setSubmitError\(arabicReason\(error, /);
-  assert.match(dashboardSource(), /arabicReason\(String\(detail\.reason\), ''\)/);
+  
+  
 });
 
 test('the booking route no longer answers a rep in English', () => {

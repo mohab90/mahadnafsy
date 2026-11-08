@@ -44,10 +44,4 @@ test('the booking says it carries its own price only when one was typed', () => 
   assert.equal(bookingTierFields({ ...base, customPriceOn: false, customExpected: '2500' }).customPrice, undefined);
 });
 
-test('the dialog offers it to whoever holds the permission, and the percentages as a list', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /const canSetPrice = isAdmin \|\| hasPermission\(/);
-  assert.match(modal, /'set_client_price'\);/);
-  assert.match(modal, /\{canSetPrice && \(<>/);
-  assert.match(modal, /<select value=\{tierPct\} aria-label="نسبة الخصم"/);
-});
+

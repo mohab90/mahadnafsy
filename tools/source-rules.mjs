@@ -116,14 +116,16 @@ for (const entry of JSON.parse(readFileSync(join(ROOT, 'tools', 'source-rules.js
     continue;
   }
   RULES.push({
-    id: entry.id, why: entry.why, files: [...new Set(entry.checks.map(check => check.file))],
+    id: entry.id, why: entry.why, files: [...new Set(entry.checks.flatMap(check => check.files || [check.file]))],
     custom: read => entry.checks.flatMap(check => {
       let text;
-      try { text = read(check.file); } catch { return check.absent ? [] : [`${check.file} is missing`]; }
-      if (check.absent) return [`${check.file} exists again`];
+      // `files` is a source assembled from several files, joined in order (the way the test helpers read a route that is split into parts)
+      const label = check.file || check.files.join(' + ');
+      try { text = check.files ? check.files.map(read).join('\n') : read(check.file); } catch { return check.absent ? [] : [`${label} is missing`]; }
+      if (check.absent) return [`${label} exists again`];
       const body = check.code ? withoutComments(text) : text;
-      if (check.must && !new RegExp(check.must.source, check.must.flags).test(body)) return [`${check.file} no longer matches /${check.must.source}/`];
-      if (check.mustNot && new RegExp(check.mustNot.source, check.mustNot.flags).test(body)) return [`${check.file} matches /${check.mustNot.source}/, which it must not`];
+      if (check.must && !new RegExp(check.must.source, check.must.flags).test(body)) return [`${label} no longer matches /${check.must.source}/`];
+      if (check.mustNot && new RegExp(check.mustNot.source, check.mustNot.flags).test(body)) return [`${label} matches /${check.mustNot.source}/, which it must not`];
       return [];
     }),
   });

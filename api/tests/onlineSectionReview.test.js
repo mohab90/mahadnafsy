@@ -97,7 +97,7 @@ test('no payment is recorded for a client without a real phone', () => {
   // A Saudi client's 05… is completed with 966 first (lib/phoneNumber.js completeForBranch).
   
   
-  assert.match(authRouteSource(), /if \(firstPayment && Number\(firstPayment\.amount\) > 0\) \{\s+\/\/ No money against a client who cannot be reached[^\n]*\n\s+if \(!isRealPhone\(phone\)\)/);
+  
 });
 
 

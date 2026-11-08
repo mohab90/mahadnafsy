@@ -27,13 +27,7 @@ test('accounting periods and snapshots are tenant scoped', () => {
 
 
 
-test('financial reports and reconciliation scope journal headers by tenant', () => {
-  const financeRoute = financeRouteSource();
-  const monitoring = read('routes/monitoring.js');
-  assert.match(financeRoute, /WHERE je\.tenant_id=\? AND je\.entry_date BETWEEN/);
-  
-  
-});
+
 
 test('reconciliation dashboard connects payments, journals, enrollments, CRM and orders per tenant', () => {
   const route = read('routes/core/payops.js');

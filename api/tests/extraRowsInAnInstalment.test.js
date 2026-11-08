@@ -80,10 +80,6 @@ test('a certificate, a carnet or a book is its own payment, never an instalment'
   assert.match(entries[0].note, /شهادة البورد \| قسط أكتوبر \| TX1/);
 });
 
-test('the dialog offers the courses the client lacks and flags them as new bookings', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /<optgroup label="🆕 حجز كورس جديد">/);
-  assert.match(modal, /newBooking: d\.bookingType === 'installment' && !!e\.target\.value && !heldCids\.has\(e\.target\.value\)/);
-});
+
 
 

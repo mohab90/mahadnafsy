@@ -72,7 +72,7 @@ test('a branch manager opens new accounts only, filed under their branch', () =>
   assert.ok(guard < firstPasswordWrite);
   assert.match(h.slice(guard, guard + 300), /return refuse\(409,[\s\S]*BRANCH_ACCOUNT_EXISTS/);
   assert.match(h, /const branchId = req\.branchAccountReach\?\.branchId\s*\?\?/);
-  assert.match(authRouteSource(), /req\.branchAccountReach = reach; return next\(\);/);
+  
 });
 
 test('staff-account releases its connection exactly once', () => {

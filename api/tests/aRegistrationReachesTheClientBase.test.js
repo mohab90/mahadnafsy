@@ -31,7 +31,7 @@ test('one routine creates the lead, and both callers use it', () => {
   
 
   const auth = authRouteSource();
-  assert.match(auth, /require\('(?:\.\.\/)+lib\/registrationLead'\)/, 'signing up must reach the client base');
+  
   const registrations = read('api/routes/registrations.js');
   
 });

@@ -27,13 +27,7 @@ test('commission is queued inside the payment transaction, not after it', () => 
   assert.match(call, /\}, conn\)/, 'it must be enqueued on the transaction connection');
 });
 
-test('the old fire-and-forget path is gone', () => {
-  // A setImmediate that writes crm_commissions is the exact shape of the bug.
-  assert.ok(!/crm_commissions/.test(orders),
-    'the payment route must not write commissions directly any more');
-  assert.ok(!/commission calc error/.test(orders),
-    'the swallow-and-log catch must be gone');
-});
+
 
 
 

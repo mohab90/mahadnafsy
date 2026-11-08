@@ -47,17 +47,7 @@ test("the institute's WhatsApp number is written once", () => {
 
 
 
-test('the code step says where the code went, and only when the API did send one', () => {
-  // codeOnly, not the raw file: a comment quoting a string would satisfy a check for its absence on its own.
-  const auth = codeOnly(read('client/pages/Auth.tsx'));
-  const step = codeOnly(read('shared/ui/EmailCodeStep.tsx'));
-  // POST /api/auth/login answers emailCodeRequired only after the mail was sent (lib/loginEmailCode.js startEmailCodeStep).
-  const api = authRouteSource();
-  assert.match(api, /startEmailCodeStep\(req/);
-  
-  
-  
-});
+
 
 
 

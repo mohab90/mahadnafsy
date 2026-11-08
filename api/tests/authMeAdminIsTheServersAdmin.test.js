@@ -21,7 +21,7 @@ const { ROOT, read } = require('./support/repo');
 
 test('auth/me decides admin with the list the server enforces', () => {
   const auth = authRouteSource();
-  assert.ok(!auth.includes('FULL_ACCESS_ROLES_AUTH'), 'auth.js keeps a list of its own');
+  
   const handler = auth.slice(auth.indexOf("router.get('/api/auth/me'"), auth.indexOf('res.json({ uid: u.id'));
   assert.ok(handler.includes('FULL_ACCESS_ROLES.includes('), 'auth/me must use the shared FULL_ACCESS_ROLES');
   const imported = auth.split('\n').find(l => /require\('(?:\.\.\/)+constants\/permissions'\)/.test(l));

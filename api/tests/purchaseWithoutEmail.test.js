@@ -219,12 +219,7 @@ test('no identity at all is refused', async () => {
   await assert.rejects(() => ensureSubscriberForOrder(provisioning([]), { tenantId: 't1', email: '', name: 'x', phone: '' }), /requires an identity/);
 });
 
-test('the receipt and the card capture pass the client on', () => {
-  const proofs = read('api/routes/payment-proofs.js');
-  
-  const capture = checkoutSource();
-  assert.match(capture, /sub = await ensureSubscriberForOrder\(conn, \{\s+tenantId,\s+subscriberId: order\.subscriber_id \|\| null,\s+email: order\.customer_email,/);
-});
+
 
 
 

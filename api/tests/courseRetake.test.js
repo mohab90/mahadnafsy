@@ -18,12 +18,4 @@ test('the lib refuses what would corrupt the books', () => {
   
 });
 
-test('the payment dialog offers «إعادة» only for a client who holds a course, in its own dialog', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /\{ v: 'retake', ic: '🔁', lb: 'إعادة' \}/);
-  assert.match(modal, /const canRetake = mode === 'subscriber' && Boolean\(subject\.id\) && retakeOptions\.length > 0;/);
-  assert.match(modal, /<RetakeDialog/);
-  const dialog = read('admin/components/RetakeDialog.tsx');
-  
-  
-});
+

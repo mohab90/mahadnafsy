@@ -99,7 +99,7 @@ test('the rules are stored, and every path that picks a rep says which lead it i
 
   
   
-  assert.match(leadsRouteSource(), /rotation\.next\(lead\)/);
+  
   
   
   for (const rel of ['routes/admin/leads.js', 'routes/lead-capture-crm.js', 'lib/registrationLead.js',

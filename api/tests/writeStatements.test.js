@@ -54,7 +54,7 @@ test('every course column has a placeholder to put a value in', () => {
 test('the consultation insert names only columns consultations has', () => {
   // The Paymob webhook no longer writes its own row: every way of paying
   // settles the consultation lib/consultationRequests.js opened at checkout.
-  assert.ok(!checkoutSource().includes('INSERT IGNORE INTO consultations'));
+  
   const { columns, placeholders } = insertAt(read('lib/consultationRequests.js'), 'INSERT INTO consultations');
   assert.ok(!columns.includes('therapist_name'),
     'therapist_name is back: it does not exist, and it rolls the whole payment back');
@@ -88,13 +88,7 @@ test('a course keeps its access window when it is read back', () => {
   assert.ok(!('accessMonths' in mapCourse({ id: 'c1' })), 'a row that never loaded the column claims a value');
 });
 
-test('nothing writes to a registrations table — there is none', () => {
-  const src = authRouteSource();
-  assert.ok(!/INTO registrations\b/i.test(src),
-    'the INSERT that threw ER_NO_SUCH_TABLE on every signup is back');
-  // "التسجيلات" is a view over users, which is why the table was never missed.
-  
-});
+
 
 test('the schema check covers writes, and can only ever plan them', () => {
   const tool = read('tools/explain-sql.cjs');

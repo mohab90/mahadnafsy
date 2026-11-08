@@ -28,6 +28,4 @@ test('the course\'s instalments sum only its own money', async () => {
 
 
 
-test('the desk is asked «أكبر من المتبقي» only for the course\'s own money', () => {
-  assert.match(paymentModalSource(), /const left = d\.paymentType === 'course' && chosen && _effPx > 0/);
-});
+
