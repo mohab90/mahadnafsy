@@ -8,23 +8,6 @@ const path = require('node:path');
 
 const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('accounting migration creates tenant-native chart and scopes ledger and periods', () => {
-  const sql = read('migrations/072_v25_accounting_tenant_scope.sql');
-  assert.match(sql, /CREATE TABLE IF NOT EXISTS tenant_chart_of_accounts/);
-  assert.match(sql, /PRIMARY KEY \(tenant_id, code\)/);
-  assert.match(sql, /ALTER TABLE journal_entries[\s\S]*tenant_id/);
-  assert.match(sql, /ALTER TABLE accounting_periods[\s\S]*tenant_id/);
-  assert.match(sql, /uq_period_single_open \(tenant_id, open_guard\)/);
-});
-
-test('chart, balances, manual journals and period locks use request tenant', () => {
-  const route = read('routes/accounting-erp.js');
-  assert.match(route, /FROM tenant_chart_of_accounts[\s\S]*WHERE tenant_id=\?/);
-  assert.match(route, /INNER JOIN journal_entries je[\s\S]*WHERE je\.tenant_id=\?/);
-  assert.match(route, /assertWritable\(date, conn, req\.tenantId\)/);
-  assert.match(route, /INSERT INTO journal_entries[\s\S]{0,120}\(id, tenant_id[\s\S]{0,160}branch, branch_id\)/);
-});
-
 test('journal core writes tenant header and tenant chart in the same transaction', () => {
   const finance = read('lib/finance.js');
   assert.match(finance, /INSERT INTO journal_entries[\s\S]*\(id, tenant_id, branch, branch_id/);

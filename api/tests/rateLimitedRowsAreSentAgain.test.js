@@ -28,11 +28,11 @@ const limited = seconds => answer(429, { error: 'طلبات كثيرة جدًا�
 
 test('a row the rate limiter turned away is sent again once its minute is up', { skip: !api }, async () => {
   const calls = serve(limited(1), answer(200, { ok: true, id: 'L1' }));
-  const started = Date.now();
+  const started = performance.now(); // elapsed time, read from the monotonic clock
   const saved = await api.mysqlAdmin.adminPost('/admin/leads', { name: 'هاله', phone: '01012345001' });
   assert.deepEqual(saved, { ok: true, id: 'L1' });
   assert.equal(calls.length, 2, 'the same POST went twice: the first never reached the route');
-  assert.ok(Date.now() - started >= 900, 'and only after the wait the limiter asked for');
+  assert.ok(performance.now() - started >= 900, 'and only after the wait the limiter asked for');
 });
 
 test('the 15-minute login lock is not waited out behind the person\'s back', { skip: !api }, async () => {

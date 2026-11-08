@@ -110,10 +110,10 @@ test('login buckets: one account across every network, and a known browser is no
 
 test('an unknown account still pays for one password check', async () => {
   const { compareDummy } = require('../lib/passwordHash');
-  const started = Date.now();
+  const started = performance.now(); // elapsed time, read from the monotonic clock
   assert.equal(await compareDummy('whatever'), false);
   await compareDummy('again');
-  assert.ok(Date.now() - started > 20, 'the dummy compare costs a real bcrypt round');
+  assert.ok(performance.now() - started > 20, 'the dummy compare costs a real bcrypt round');
 });
 
 test('a staff session is a shift; a customer keeps the long one; the cookie lasts as long as the token', () => {

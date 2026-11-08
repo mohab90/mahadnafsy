@@ -84,10 +84,11 @@ function lineOf(src, offset) {
   return src.slice(0, offset).split('\n').length;
 }
 
-export function scanTenantViolations() {
+/** `dirs`: the folders scanned (the routes by default; check 30 of the quality gate scans api/lib on its own baseline). */
+export function scanTenantViolations({ dirs = ['api/routes'] } = {}) {
   const TENANT_TABLES = [...buildTenantTables()];
   const TABLE_RE = new RegExp(`\\b(?:FROM|UPDATE|INTO|JOIN)\\s+\`?(${TENANT_TABLES.join('|')})\`?\\b`, 'gi');
-  const routeFiles = walk(join(ROOT, 'api/routes'), '.js');
+  const routeFiles = dirs.flatMap(dir => walk(join(ROOT, dir), '.js'));
   const violations = [];
 
   for (const f of routeFiles) {
@@ -113,7 +114,7 @@ export function scanTenantViolations() {
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').replace(/^([A-Z]):/i, ''));
 if (isMain) {
-  const { tenantTableCount, violations } = scanTenantViolations();
+  const { tenantTableCount, violations } = scanTenantViolations(process.argv.includes('--lib') ? { dirs: ['api/lib'] } : undefined);
   if (process.argv.includes('--list')) {
     for (const v of violations) console.log(`${v.file}:${v.line}  [${v.tables}]\n    ${v.snippet}\n`);
   }

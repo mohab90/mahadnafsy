@@ -461,25 +461,6 @@ test('automation is backend-owned and workflow edits wait for persistence', () =
   assert.match(automationPage, /const deleted = await deleteAutomationWorkflow/);
 });
 
-test('admin API helper paths never duplicate the configured /api base', () => {
-  const adminRoot = path.join(root, 'admin');
-  const files = [];
-  const walk = directory => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'dist') continue;
-      const full = path.join(directory, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.(?:ts|tsx)$/.test(entry.name)) files.push(full);
-    }
-  };
-  walk(adminRoot);
-  for (const file of files) {
-    const source = fs.readFileSync(file, 'utf8');
-    assert.doesNotMatch(source, /mysqlAdmin\.admin(?:Get|Post|Put|Patch|Delete)(?:<[\s\S]{0,300}?>)?\(\s*[`'"]\/api\//,
-      `${path.relative(root, file)} passes an already-prefixed /api path to mysqlAdmin`);
-  }
-});
-
 test('operational admin tools are database-backed rather than browser demos', () => {
   const webhooks = read('admin/pages/dashboard/tabs/WebhooksTab.tsx');
   const tasks = read('admin/pages/dashboard/tabs/TasksBoardTab.tsx');
@@ -696,22 +677,6 @@ test('admin namespace authenticates before database-backed feature gates', () =>
   assert.match(auth, /if \(req\.user\?\.uid && req\.user\?\.tenant_id === req\.tenantId\) return next\(\)/);
 });
 
-test('admin payment drafts use the canonical Egypt/Saudi/international currency mapping', () => {
-  const mapping = read('admin/lib/branchCurrency.ts');
-  assert.match(mapping, /ONLINE_SAUDI'\) return 'SAR'/);
-  assert.match(mapping, /ONLINE_ABROAD'\) return 'USD'/);
-  assert.match(mapping, /return 'EGP'/);
-
-  const consumers = [
-    'admin/pages/Dashboard.tsx',
-    'admin/pages/dashboard/DashboardQuickBooking.tsx',
-    'admin/pages/dashboard/tabs/LeadsTab.tsx',
-    'admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx',
-  ].map(read).join('\n');
-  assert.match(consumers, /currencyForBranch\(/);
-  assert.doesNotMatch(consumers, /ONLINE_ABROAD[^\n]{0,100}\?\s*'SAR'/);
-});
-
 test('unified client finance computes balances and certificates in the branch settlement currency', () => {
   const payments = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
   const lifecycle = read('admin/pages/unified-client/useUnifiedClientLifecycleActions.ts');
@@ -766,77 +731,4 @@ test('a sign-in that never reached the server does not read as a wrong password'
     assert.match(source, /تحقق من الاتصال/, `${relativePath}: timeout wording`);
     assert.match(source, /تحقق من اتصالك بالإنترنت/, `${relativePath}: unreachable wording`);
   }
-});
-
-test('the API client retries the network failure that can actually recover', () => {
-  // fetch reports an unreachable host as TypeError and a request past the
-  // timeout as AbortError. Retrying only TypeError meant the client retried
-  // "nothing is listening" and gave up on "the server was just slow".
-  for (const relativePath of ['admin/lib/mysqlapi.ts', 'client/lib/mysqlapi.ts']) {
-    const source = read(relativePath);
-    assert.match(source, /err instanceof DOMException && err\.name === 'AbortError'/,
-      `${relativePath}: a timed-out request must be retryable`);
-    assert.ok(!/if \(err instanceof TypeError && _retry < MAX_RETRIES\)/.test(source),
-      `${relativePath}: the TypeError-only retry condition must be gone`);
-  }
-});
-
-test('a missing image renders no src rather than an empty one', () => {
-  // src="" makes the browser re-request the current page URL as an image — a
-  // whole extra page download for every card without a picture, on the public
-  // pages that get the most traffic. React warns about it for that reason.
-  const img = read('shared/img.ts');
-  assert.match(img, /string \| undefined/, 'cdnImg must be able to return undefined');
-  assert.match(img, /if \(!url\) return undefined;/);
-  assert.ok(!/if \(!url\) return '';/.test(img), 'the empty-string return must be gone');
-});
-
-test('identical in-flight GETs are shared, not repeated', () => {
-  // Measured on a dashboard load: 64 API calls across 37 distinct paths, 42% of
-  // them duplicates — five independent call sites ask for the same data and
-  // React's double-invoke doubles whatever they do. Each duplicate is a real
-  // query against the database, and that burst is where the 502s on dashboard
-  // load came from.
-  for (const relativePath of ['admin/lib/mysqlapi.ts', 'client/lib/mysqlapi.ts']) {
-    const source = read(relativePath);
-    assert.match(source, /const inFlightGets = new Map<string, Promise<unknown>>\(\)/,
-      `${relativePath}: in-flight GETs must be tracked`);
-    assert.match(source, /method === 'GET' && _retry === 0/,
-      `${relativePath}: only first-attempt GETs may be shared — a retry must not re-register`);
-    assert.match(source, /\.finally\(\(\) => \{ inFlightGets\.delete\(key\); \}\)/,
-      `${relativePath}: the entry must be dropped when the promise settles, or this becomes a stale cache`);
-    // A shared POST would collapse two intended writes into one.
-    assert.ok(!/method === 'POST'[\s\S]{0,80}inFlightGets/.test(source),
-      `${relativePath}: writes must never be shared`);
-  }
-});
-
-// Every accounting screen is still reachable from the strip that opens it.
-//
-// The twenty sub-tabs were collapsed to ten headings. A merge like that orphans
-// a screen the moment a leaf is left out of the new grouping: the render block
-// in FinancialTab still exists, still matches on its FinancialSubTab value, and
-// nothing can ever set that value — so the screen simply stops existing with no
-// error anywhere. That has already happened once on this codebase, to five tabs
-// at a time, and was caught by a gate rather than by anyone opening the page.
-//
-// The union is the source of truth for what exists; the strip is the source of
-// truth for what can be opened. They have to be the same set.
-test('every financial sub-tab in the union is reachable from the sub-tab strip', () => {
-  const utils = read('admin/pages/dashboard/tabs/financial/financialTabUtils.ts');
-  const strip = read('admin/pages/dashboard/tabs/financial/FinancialSubTabs.tsx');
-
-  const union = utils.match(/export type FinancialSubTab =([\s\S]*?);/)?.[1] || '';
-  const declared = [...union.matchAll(/'([a-z_]+)'/g)].map(m => m[1]);
-  assert.ok(declared.length >= 20, `only ${declared.length} sub-tabs parsed from the union`);
-
-  // A leaf is the first element of a [key, label, Icon] tuple in the strip.
-  const reachable = new Set([...strip.matchAll(/\[\s*'([a-z_]+)'\s*,\s*'/g)].map(m => m[1]));
-  const orphaned = declared.filter(key => !reachable.has(key));
-  assert.deepEqual(orphaned, [], 'these screens still render but nothing can open them');
-
-  // And nothing points at a screen that does not exist, which renders a blank
-  // tab rather than an error.
-  const unknown = [...reachable].filter(key => !declared.includes(key));
-  assert.deepEqual(unknown, [], 'the strip offers screens the union does not declare');
 });

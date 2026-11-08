@@ -106,6 +106,8 @@ function calcLeadScoreServer(status, interestLevel, commsArr, nextFollowUpDate, 
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
 function tryJson(str, fallback) {
+  // A JSON column comes back parsed from MariaDB 10.11 (an array or an object) and as text elsewhere: both are the answer.
+  if (str && typeof str === 'object') return str;
   try { return str ? JSON.parse(str) : fallback; } catch { return fallback; }
 }
 

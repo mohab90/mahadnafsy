@@ -751,6 +751,38 @@ console.log('\n28. Values written into ENUM columns');
   }
 }
 
+// ── 29. Source rules ─────────────────────────────────────────────────────────
+// The rules that are a property of the source and that no call can reach — a path that must not be written, two lists that must name the same
+// things. They were unit tests that read a file and matched a regular expression (they broke whenever the code moved with nothing changed);
+// tools/source-rules.mjs holds them as data, here, where a failure stops the release.
+console.log('\n29. Source rules');
+{
+  const sourceRules = await import('./source-rules.mjs');
+  const violations = sourceRules.scanSourceRules();
+  if (violations.length === 0) {
+    pass(`source rules: ${sourceRules.RULES.length} rules hold`);
+  } else {
+    for (const violation of violations.slice(0, 10)) console.log(`     ${violation.rule}: ${violation.file} — ${violation.detail}`);
+    fail(`source rules: ${violations.length} violation(s) — run: node tools/source-rules.mjs`);
+  }
+}
+
+// ── 30. Tenant isolation in api/lib ──────────────────────────────────────────
+// Check 14 holds every query in api/routes. The libraries run the same queries on behalf of the routes (and of the workers), so the same scan
+// runs over api/lib on its own baseline: the 23 queries it finds today are workers and id-keyed rows that have no tenant in hand (outbox claims,
+// OTP rows by id, a lead by its own id inside a transaction). The count can only decrease. These are the rules the unit tests used to pin one
+// library at a time with regular expressions (`WHERE tenant_id=?` next to a table name).
+console.log('\n30. Tenant isolation in api/lib');
+{
+  const LIB_TENANT_BASELINE = 23;
+  const { violations: libViolations } = scanTenantViolations({ dirs: ['api/lib'] });
+  if (libViolations.length <= LIB_TENANT_BASELINE) {
+    pass(`tenant-scope violations in api/lib: ${libViolations.length} (≤ baseline ${LIB_TENANT_BASELINE}; lower the baseline as you clean them)`);
+  } else {
+    fail(`tenant-scope violations in api/lib increased to ${libViolations.length} (baseline ${LIB_TENANT_BASELINE}) — a new library query on a tenant-scoped table is missing tenant_id. Run: node tools/tenant-scope-scan.mjs --lib --list`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {
