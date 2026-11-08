@@ -231,6 +231,8 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         -- Days judged under the policy's tiers (fingerprint sheet import) carry
         -- their own deduction in days; only older rows are charged per minute.
         COALESCE(SUM(a.deduction_days), 0) AS late_deduction_days,
+        -- A weekly day off that was worked, in days of pay (migration 382).
+        COALESCE(SUM(a.overtime_days), 0) AS overtime_days,
         COALESCE(SUM(CASE WHEN a.status IN ('PRESENT','LATE','REMOTE') THEN 1
                           WHEN a.status='HALF_DAY' THEN 0.5 ELSE 0 END),0) AS present_days,
         COUNT(*) AS logged_days
@@ -389,6 +391,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         commissionSource, totalSalesEgp: Math.round(totalSales * 100) / 100,
         bonusTotal, deductionTotal, dedSocial, dedTax, unpaidLeaveDays, salaryCurrency, salaryFx,
         salarySource: emp.salary_source, unexcusedAbsentDays: line.unexcusedAbsentDays, absenceChargedDays: line.absenceChargedDays, lateDeductionDays: Number(attStats.late_deduction_days) || 0,
+        overtimeDays: line.overtimeDays, overtimePay: line.overtimePay,
         policyId: policy.id, policyVersion: policy.version,
       });
       await conn.query(`
@@ -1021,6 +1024,7 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
         COUNT(CASE WHEN a.status='LEAVE' THEN 1 END) AS leave_days,
         COALESCE(SUM(a.early_leave_minutes),0) AS total_early_minutes,
         COALESCE(SUM(a.deduction_days),0) AS deduction_days,
+        COALESCE(SUM(a.overtime_days),0) AS overtime_days,
         COUNT(a.review_flag) AS flagged_days,
         COUNT(CASE WHEN a.permit_used='free_day' THEN 1 END) AS free_days_used,
         COUNT(CASE WHEN a.permit_used='leave_balance' THEN 1 END) AS balance_days_used,

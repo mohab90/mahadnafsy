@@ -3,7 +3,8 @@
 // A month of fingerprint punches → each working day's attendance, under the
 // company's policy (hr_policy_versions, migration 243):
 //
-//   • weekly days off (Friday)              → not a working day
+//   • weekly days off (Friday)              → not a working day; worked (punches on it) → overtime, at the policy's
+//                                             weekend_overtime_days (1, 1.5, 2 …) a day, which HR can change per day
 //   • working day 11:00–18:30               → lateness is minutes after the
 //                                             start, early leave minutes before
 //                                             the end
@@ -58,6 +59,8 @@ function normalizePolicy(policy = {}) {
     earlyTiered: policy.early_leave_tiered === undefined ? true : Boolean(Number(policy.early_leave_tiered)),
     freeDays: Number(policy.free_day_per_month ?? 1),
     freeAfterMonths: Number(policy.free_day_after_months ?? 6),
+    // A weekly day off that was worked is overtime worth this many days' pay (8 Nov 2026: «بيوم ولا يوم ونص ولا يومين»).
+    weekendOvertimeDays: Number(policy.weekend_overtime_days ?? 1),
   };
 }
 
@@ -114,11 +117,23 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
       : (permit.type === 'LATE_PERMIT' ? p.morningPermit : p.eveningPermit));
   }
   const days = [];
+  const overtime = [];
   for (const { date, weekday } of monthDates(month)) {
-    if (p.weekend.has(weekday) || skipDates.has(date)) continue;
+    if (skipDates.has(date)) continue;
     if (firstDate && date < firstDate) continue;
     if (lastDate && date > lastDate) continue;
     const times = [...new Set((punches[date] || []).map(toMinutes).filter(v => v !== null))].sort((a, b) => a - b);
+    // A weekly day off is no working day: nobody is absent or late on it. Punched on, it was worked: overtime, judged no further.
+    if (p.weekend.has(weekday)) {
+      if (times.length) {
+        overtime.push({
+          date, status: 'PRESENT', checkIn: times.length >= 2 ? times[0] : null, checkOut: times.length >= 2 ? times[times.length - 1] : (times.length ? times[0] : null),
+          lateMinutes: 0, earlyLeaveMinutes: 0, permit: null, deductionDays: 0, punches: times.map(toHHMM),
+          flag: times.length === 1 ? 'single_punch' : null, overtimeDays: p.weekendOvertimeDays,
+        });
+      }
+      continue;
+    }
     const day = {
       date, status: 'ABSENT', checkIn: null, checkOut: null, lateMinutes: 0, earlyLeaveMinutes: 0,
       permit: null, deductionDays: 0, punches: times.map(toHHMM), flag: null,
@@ -205,13 +220,15 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
     flagged: days.filter(d => d.flag).length,
     morningPermitsUsed: days.filter(d => /morning/.test(d.permit || '')).length,
     eveningPermitsUsed: days.filter(d => /evening/.test(d.permit || '')).length,
+    weekendWorked: overtime.length,
+    overtimeDays: overtime.reduce((sum, d) => sum + d.overtimeDays, 0),
   };
   return {
-    days: days.map(d => ({
+    days: [...days, ...overtime].sort((a, b) => a.date.localeCompare(b.date)).map(d => ({
       date: d.date, status: d.status,
       checkIn: d.checkIn == null ? null : toHHMM(d.checkIn), checkOut: d.checkOut == null ? null : toHHMM(d.checkOut),
       lateMinutes: d.lateMinutes, earlyLeaveMinutes: d.earlyLeaveMinutes,
-      permit: d.permit, deductionDays: d.deductionDays, punches: d.punches, flag: d.flag,
+      permit: d.permit, deductionDays: d.deductionDays, punches: d.punches, flag: d.flag, overtimeDays: d.overtimeDays || 0,
     })),
     summary,
   };

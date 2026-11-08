@@ -15,7 +15,8 @@ const { cairoToday, addDaysToDateOnly } = require('./dates');
  * considers people who HAVE a schedule — someone with no work_schedules rows has
  * never been asked to check in, and is left alone. A day with any row at all
  * (present, late, leave, holiday, a manual entry) is never touched, so approved
- * leave and holidays cannot become absences.
+ * leave and holidays cannot become absences. Its rows are AUTO_ABSENCE, not MANUAL_ENTRY: a fingerprint upload of
+ * the month replaces them with what the device recorded (a manual entry it would have to leave alone).
  */
 async function markAutoAbsences({ pool, tenantId, date = null }) {
   const setting = await getTenantSetting('hr_auto_absence', { tenantId, fallback: {} }) || {};
@@ -24,7 +25,7 @@ async function markAutoAbsences({ pool, tenantId, date = null }) {
   const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
   const [result] = await pool.query(
     `INSERT IGNORE INTO attendance_logs (id, tenant_id, staff_id, date, status, notes, source)
-     SELECT UUID(), s.tenant_id, s.id, ?, 'ABSENT', 'غياب تلقائي — لم يُسجَّل حضور ولا إجازة', 'MANUAL_ENTRY'
+     SELECT UUID(), s.tenant_id, s.id, ?, 'ABSENT', 'غياب تلقائي — لم يُسجَّل حضور ولا إجازة', 'AUTO_ABSENCE'
        FROM staff s
        JOIN work_schedules w ON w.tenant_id=s.tenant_id AND w.staff_id=s.id AND w.day_of_week=? AND w.is_off_day=0
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL

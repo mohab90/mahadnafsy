@@ -107,11 +107,21 @@ async function computeMonthlyBonuses(db, { tenantId, year, month }) {
     let ladder = null; let collection = null; let mine = [];
     if (scheme === 'SALES_BOOKINGS') {
       mine = bookings.filter(booking => ownerOf(booking, scheme) === row.id).map(booking => ({ ...booking, weight: bookingWeight(plan, booking.priceEgp) }));
-      const count = Math.round(mine.reduce((sum, booking) => sum + booking.weight, 0) * 100) / 100;
       const firstTarget = Number(row.booking_first_target) > 0 ? Number(row.booking_first_target) : null;
-      ladder = { bookings: count, ...ladderBonus(plan, count, firstTarget) };
+      const weightOf = list => Math.round(list.reduce((sum, booking) => sum + booking.weight, 0) * 100) / 100;
+      // Half-month rounds: the 1st to the 15th, the 16th to the end, each on the whole ladder.
+      const rounds = plan.salesPeriod === 'HALF_MONTH'
+        ? [['1–15', mine.filter(booking => Number(booking.day.slice(8, 10)) <= 15)], [`16–${bounds.last.slice(8, 10)}`, mine.filter(booking => Number(booking.day.slice(8, 10)) > 15)]]
+        : [['الشهر', mine]];
+      const perRound = rounds.map(([label, list]) => ({ label, bookings: weightOf(list), ...ladderBonus(plan, weightOf(list), firstTarget) }));
+      for (const booking of mine) booking.round = perRound.length > 1 ? (Number(booking.day.slice(8, 10)) <= 15 ? perRound[0].label : perRound[1].label) : null;
+      ladder = { bookings: weightOf(mine), amount: money(perRound.reduce((sum, round) => sum + round.amount, 0)), firstTarget, rounds: perRound,
+        tier: perRound.length === 1 ? perRound[0].tier : null, extraBookings: perRound.length === 1 ? perRound[0].extraBookings : 0, extraAmount: perRound.length === 1 ? perRound[0].extraAmount : 0 };
       total += ladder.amount;
-      lines.push(`حجوزات ${count} (أول تارجيت ${firstTarget ?? plan.bookingLadder[0]?.bookings ?? '—'}) ← ${ladder.amount}`);
+      const target = firstTarget ?? plan.bookingLadder[0]?.bookings ?? '—';
+      lines.push(perRound.length > 1
+        ? perRound.map(round => `روند ${round.label}: ${round.bookings} حجز ← ${round.amount}`).join(' · ') + ` (أول تارجيت ${target} لكل روند)`
+        : `حجوزات ${ladder.bookings} (أول تارجيت ${target}) ← ${ladder.amount}`);
       if (plan.courseSalesBonusEnabled) {
         const fromCourses = money(mine.reduce((sum, booking) => sum + courseBonusAmount(booking.bonuses.sales, booking.priceEgp), 0));
         total += fromCourses;

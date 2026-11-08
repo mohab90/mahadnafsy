@@ -27,10 +27,12 @@ const DEFAULT_POLICY = Object.freeze({
   // One extra paid day off a month once six months have been worked (migration 357).
   free_day_per_month: 1,
   free_day_after_months: 6,
+  // A weekly day off that was worked is overtime worth this many days' pay (migration 382).
+  weekend_overtime_days: 1,
 });
 const ATTENDANCE_POLICY_COLUMNS = `work_start_time,work_end_time,morning_permit_minutes,evening_permit_minutes,
             morning_permits_per_month,evening_permits_per_month,late_tiers_json,early_leave_tiered,
-            free_day_per_month,free_day_after_months`;
+            free_day_per_month,free_day_after_months,weekend_overtime_days`;
 // LATE_PERMIT / EARLY_LEAVE are إذن تأخير and إذن انصراف مبكر. They ride the
 // same request-and-approve flow as leave because that is what they are — a
 // request a manager says yes or no to — but they are not days off, which is

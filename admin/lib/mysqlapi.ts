@@ -317,6 +317,8 @@ export interface BonusPlan {
   bookingLadder: { bookings: number; amount: number }[];
   extraPerBooking: { from: number; to: number | null; amount: number }[];
   courseSalesBonusEnabled: boolean;
+  /** The reps' ladder runs per month, or per half month (1–15 and 16 to the end), each half on the whole ladder. */
+  salesPeriod?: 'MONTH' | 'HALF_MONTH';
 }
 /** A collector's level: from this much collected (EGP), a percentage of the month's whole or a fixed amount. */
 export interface BonusLevel { from: number; kind: 'percent' | 'fixed'; value: number }
@@ -325,10 +327,11 @@ export interface MonthlyBonuses {
   year: number; month: number; from: string; to: string; total: number;
   employees: {
     staffId: string; name: string; role: string; scheme: string; schemeLabel: string; total: number; summary: string;
-    ladder: { bookings: number; amount: number; tier: { bookings: number; amount: number } | null; extraBookings: number; extraAmount: number; firstTarget: number | null } | null;
+    ladder: { bookings: number; amount: number; tier: { bookings: number; amount: number } | null; extraBookings: number; extraAmount: number; firstTarget: number | null;
+      rounds?: { label: string; bookings: number; amount: number }[] } | null;
     collection: { amount: number; collected: number; payments: number; level: BonusLevel | null } | null;
     deskBonus: number | null;
-    bookings: { paymentId: string; client: string; clientCode: string; title: string; day: string; currency: string; price: number; priceEgp: number; weight?: number; deskBonus?: number }[];
+    bookings: { paymentId: string; client: string; clientCode: string; title: string; day: string; currency: string; price: number; priceEgp: number; weight?: number; deskBonus?: number; round?: string | null }[];
   }[];
 }
 

@@ -139,3 +139,20 @@ test('saved as one bonus per employee awaiting approval; saved again it replaces
   assert.deepEqual(second.cleared, ['rep-a'], 'rep A now under her first target: her pending bonus goes');
   assert.deepEqual(await rows(), [['coll-d', 1050, 'APPROVED'], ['desk-c', 320, 'PENDING'], ['rep-b', 1500, 'PENDING']]);
 });
+
+test('a rep\'s ladder per half month (9 Nov 2026): each round on the whole ladder, the bonus the two added; the collectors stay monthly', { skip }, async () => {
+  // Rep A: 11 bookings in the first half (the 10th); four c3 more on the 20th → 12 in the second half.
+  for (const id of ['a8', 'a9', 'a10', 'a11']) { await client(id, 'rep-a'); await pay({ client: id, course: 'c3', amount: 1000, staff: 'rep-a', expected: 12000, day: 20 }); }
+  await pool.query("UPDATE staff SET booking_first_target=10 WHERE id='rep-a' AND tenant_id=?", [T]);
+  const settings = require('../../lib/tenantSettings');
+  const plan = await settings.getTenantSetting('bonus_plan', { tenantId: T });
+  const monthly = byId(await bonuses.computeMonthlyBonuses(pool, { tenantId: T, year: 2026, month: 9 }));
+  assert.deepEqual([monthly['rep-a'].ladder.bookings, monthly['rep-a'].total], [23, 2920], 'a month: 23 → 2,500 + 3 × 140');
+  await settings.setTenantSetting('bonus_plan', { ...plan, salesPeriod: 'HALF_MONTH' }, { tenantId: T });
+  const halves = byId(await bonuses.computeMonthlyBonuses(pool, { tenantId: T, year: 2026, month: 9 }));
+  assert.deepEqual(halves['rep-a'].ladder.rounds.map(round => [round.label, round.bookings, round.amount]), [['1–15', 11, 1000], ['16–30', 12, 1000]]);
+  assert.equal(halves['rep-a'].total, 2000);
+  assert.deepEqual(new Set(halves['rep-a'].bookings.map(booking => booking.round)), new Set(['1–15', '16–30']));
+  assert.equal(halves['coll-d'].total, monthly['coll-d'].total, 'a collector is monthly whatever the reps\' period');
+  await settings.setTenantSetting('bonus_plan', plan, { tenantId: T });
+});

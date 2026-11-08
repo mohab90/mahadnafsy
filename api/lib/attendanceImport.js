@@ -10,7 +10,8 @@
 //
 // Days already decided stay as they are: an approved leave (leave_id) and a
 // day HR entered by hand (MANUAL_ENTRY). Re-uploading the same month replaces
-// the imported days only.
+// the imported days only — and a night's automatic absence (AUTO_ABSENCE), which
+// is what the system guessed with no punch to go on, not a decision anybody made.
 
 const { uuidv4 } = require('./id');
 const { cairoToday } = require('./dates');
@@ -111,17 +112,17 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
       await db.query(
         `INSERT INTO attendance_logs
            (id, tenant_id, staff_id, date, check_in, check_out, total_hours, late_minutes, early_leave_minutes,
-            deduction_days, permit_used, punches_json, review_flag, status, source, import_batch_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'FINGERPRINT_IMPORT', ?)
+            deduction_days, permit_used, punches_json, review_flag, status, source, import_batch_id, overtime_days)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'FINGERPRINT_IMPORT', ?, ?)
          ON DUPLICATE KEY UPDATE
            check_in=VALUES(check_in), check_out=VALUES(check_out), total_hours=VALUES(total_hours),
            late_minutes=VALUES(late_minutes), early_leave_minutes=VALUES(early_leave_minutes),
            deduction_days=VALUES(deduction_days), permit_used=VALUES(permit_used), punches_json=VALUES(punches_json),
            review_flag=VALUES(review_flag), status=VALUES(status), source='FINGERPRINT_IMPORT',
-           import_batch_id=VALUES(import_batch_id)`,
+           import_batch_id=VALUES(import_batch_id), overtime_days=VALUES(overtime_days)`,
         [uuidv4(), tenantId, r.staffId, d.date, d.checkIn, d.checkOut,
           hours == null ? null : Math.round(hours * 100) / 100, d.lateMinutes, d.earlyLeaveMinutes,
-          d.deductionDays, d.permit, JSON.stringify(d.punches), d.flag, d.status, batchId]);
+          d.deductionDays, d.permit, JSON.stringify(d.punches), d.flag, d.status, batchId, d.overtimeDays > 0 ? d.overtimeDays : null]);
       written += 1;
     }
   }

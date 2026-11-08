@@ -69,6 +69,9 @@ function computePayrollLine(emp = {}, ctx = {}) {
   // the daily rate; minutes on older rows are still charged per minute.
   const lateDeductionDays = Number(attendance.late_deduction_days) || 0;
   const lateDeduction    = minuteRate * lateMins + dailyRate * lateDeductionDays;
+  // 8 Nov 2026: a weekly day off that was worked is overtime, paid at the day's rate times what HR set it at (1, 1.5, 2 … days; migration 382).
+  const overtimeDays = Number(attendance.overtime_days) || 0;
+  const overtimePay = dailyRate * overtimeDays;
 
   // crm_commissions is authoritative when it has rows; the percentage of sales
   // is only a fallback, so a rep is never paid on both bases at once.
@@ -86,7 +89,7 @@ function computePayrollLine(emp = {}, ctx = {}) {
     commissionSource = 'flat_rate';
   }
 
-  const grossSalary = baseSalary + totalAllowances + commission + instructorEarnings + bonus;
+  const grossSalary = baseSalary + totalAllowances + commission + instructorEarnings + bonus + overtimePay;
 
   // An advance is recovered only as far as the salary can carry it.
   //
@@ -114,7 +117,7 @@ function computePayrollLine(emp = {}, ctx = {}) {
   return {
     housing, transport, food, otherFixed, totalAllowances,
     dedSocial, dedTax,
-    absentDays, unexcusedAbsentDays, absenceChargedDays, lateMins, lateDeductionDays, dailyRate, minuteRate, absenceDeduction, lateDeduction,
+    absentDays, unexcusedAbsentDays, absenceChargedDays, lateMins, lateDeductionDays, dailyRate, minuteRate, absenceDeduction, lateDeduction, overtimeDays, overtimePay,
     commission, commissionCount, commissionSource,
     // advanceDeduction is what was due this month; advanceApplied is what the
     // salary could actually absorb, and is the figure the books must use.

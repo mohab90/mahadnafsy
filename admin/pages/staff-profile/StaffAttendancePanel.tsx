@@ -9,7 +9,7 @@ import { CAIRO_TIME_ZONE, cairoDay, cairoMonthOnly } from '../../../shared/cairo
 
 interface AttendanceLog {
   id: string; date: string; check_in: string | null; check_out: string | null;
-  total_hours: number | null; late_minutes: number; status: string; notes: string | null;
+  total_hours: number | null; late_minutes: number; status: string; notes: string | null; overtime_days?: number | string | null;
 }
 
 const ATTENDANCE_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -20,6 +20,8 @@ const ATTENDANCE_STATUS_LABEL: Record<string, { label: string; cls: string }> = 
   LEAVE:    { label: 'إجازة',   cls: 'bg-purple-50 text-purple-700 border-purple-200' },
   HOLIDAY:  { label: 'عطلة',    cls: 'bg-gray-50 text-gray-600 border-gray-200' },
   REMOTE:   { label: 'عن بُعد', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+  // A weekly day off (Friday) with nothing on it, shown by the server (not stored); worked, it is overtime.
+  WEEKLY_OFF: { label: 'إجازة أسبوعية', cls: 'bg-slate-50 text-slate-500 border-slate-200' },
 };
 
 export default function StaffAttendancePanel({ staffId }: { staffId?: string }) {
@@ -41,7 +43,7 @@ export default function StaffAttendancePanel({ staffId }: { staffId?: string }) 
   }, [id, attMonth, attYear]);
 
   const attSummary = useMemo(() => {
-    const present = attLogs.filter(l => l.status === 'PRESENT' || l.status === 'REMOTE').length;
+    const present = attLogs.filter(l => (l.status === 'PRESENT' || l.status === 'REMOTE') && !(Number(l.overtime_days) > 0)).length;
     const late = attLogs.filter(l => l.status === 'LATE' || l.late_minutes > 0).length;
     const absent = attLogs.filter(l => l.status === 'ABSENT').length;
     const leave = attLogs.filter(l => l.status === 'LEAVE').length;
@@ -102,9 +104,11 @@ export default function StaffAttendancePanel({ staffId }: { staffId?: string }) 
             ) : (
               <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
                 {attLogs.map(log => {
-                  const cfg = ATTENDANCE_STATUS_LABEL[log.status] || { label: log.status, cls: 'bg-gray-50 text-gray-600 border-gray-200' };
+                  const overtime = Number(log.overtime_days) > 0;
+                  const cfg = overtime ? { label: `أوفر تايم +${Number(log.overtime_days)} يوم`, cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
+                    : ATTENDANCE_STATUS_LABEL[log.status] || { label: log.status, cls: 'bg-gray-50 text-gray-600 border-gray-200' };
                   return (
-                    <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                    <div key={log.id || `off-${log.date}`} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
                       <span className="font-bold text-gray-700 w-24 flex-shrink-0">{cairoDay(log.date)}</span>
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${cfg.cls}`}>{cfg.label}</span>
                       <span className="text-gray-500 text-xs flex-1 text-center" dir="ltr">

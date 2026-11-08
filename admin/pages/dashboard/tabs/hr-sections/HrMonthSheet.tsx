@@ -18,7 +18,7 @@ type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type AttendanceRow = {
   id: string; name: string; department_name?: string | null; biometric_user_no?: string | null; base_salary?: number | null;
   present_days?: number; absent_days?: number; late_days?: number; total_late_minutes?: number;
-  leave_days?: number; deduction_days?: number | string; flagged_days?: number; free_days_used?: number; free_days_allowed?: number;
+  leave_days?: number; deduction_days?: number | string; overtime_days?: number | string; flagged_days?: number; free_days_used?: number; free_days_allowed?: number;
   excused_days?: number; leave_balance?: { entitlement: number; used: number; remaining: number };
 };
 type Run = { id: string; month: number | string; year: number | string; status: string; employee_count?: number };
@@ -103,14 +103,16 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
         + num(item.other_deductions ?? item.other_deduction) + num(item.advance_deductions ?? item.advance_deduction)
       : null;
     // Before the run: what the month would cost at the basic salary, so the column is never just «not calculated».
+    // A worked weekly day off is overtime: the day's pay times what HR set it at (1, 1.5, 2 … days; api/lib/payrollCalc.js).
+    const overtimePay = row.base_salary ? (num(row.base_salary) / PAY_MONTH_DAYS) * num(row.overtime_days) : 0;
     const estimate = !item && row.base_salary
-      ? Math.max(0, num(row.base_salary) - (num(row.base_salary) / PAY_MONTH_DAYS) * (num(row.absent_days) + (num(row.absent_days) - num(row.excused_days)) * (UNEXCUSED_ABSENCE_DAYS - 1) + num(row.deduction_days)))
+      ? Math.max(0, num(row.base_salary) + overtimePay - (num(row.base_salary) / PAY_MONTH_DAYS) * (num(row.absent_days) + (num(row.absent_days) - num(row.excused_days)) * (UNEXCUSED_ABSENCE_DAYS - 1) + num(row.deduction_days)))
       : null;
     // The salary with the month's additions and before any deduction: base + allowances + commission + teaching + the bonus HR typed; before the run, the basic salary.
     const gross = item
-      ? num(item.base_salary) + num(item.total_allowances ?? item.allowances_total) + num(item.commission) + num(item.instructor_earnings) + num(item.bonus_amount)
-      : (row.base_salary ? num(row.base_salary) : null);
-    return { row, item, deductions, estimate, gross };
+      ? num(item.base_salary) + num(item.total_allowances ?? item.allowances_total) + num(item.commission) + num(item.instructor_earnings) + num(item.bonus_amount) + overtimePay
+      : (row.base_salary ? num(row.base_salary) + overtimePay : null);
+    return { row, item, deductions, estimate, gross, overtimePay };
   }), [attendance, items]);
   // One block per department, in the order above.
   const groups = useMemo(() => {
@@ -192,7 +194,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                       {members.some(member => member.item) && <span className="mr-2 font-semibold text-emerald-700">الصافي {fmtMoney(members.reduce((sum, member) => sum + num(member.item?.net_salary), 0))}</span>}
                     </td>
                   </tr>
-                  {members.map(({ row, item, deductions, estimate, gross }) => {
+                  {members.map(({ row, item, deductions, estimate, gross, overtimePay }) => {
                 return (
                   <tr key={row.id} className="hover:bg-gray-50/60">
                     <td className="px-3 py-2">
@@ -213,7 +215,10 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                       {row.leave_balance ? `${n(row.leave_balance.remaining)} من ${n(row.leave_balance.entitlement)}` : <span className="text-gray-300">—</span>}
                     </td>
                     <td className={`px-3 py-2 tabular-nums ${num(row.deduction_days) ? 'font-bold text-amber-700' : 'text-gray-300'}`}>{num(row.deduction_days) ? n(num(row.deduction_days)) : '—'}</td>
-                    <td className="px-3 py-2 tabular-nums text-emerald-700">{item && (num(item.commission) + num(item.bonus_amount)) ? `+${fmtMoney(num(item.commission) + num(item.bonus_amount))}` : '—'}</td>
+                    <td className="px-3 py-2 tabular-nums text-emerald-700">
+                      {item && (num(item.commission) + num(item.bonus_amount)) ? `+${fmtMoney(num(item.commission) + num(item.bonus_amount))}` : (num(row.overtime_days) ? '' : '—')}
+                      {num(row.overtime_days) ? <span className="block text-[11px] text-indigo-700">أوفر تايم {n(num(row.overtime_days))} يوم{overtimePay ? ` · +${fmtMoney(Math.round(overtimePay))}` : ''}</span> : null}
+                    </td>
                     <td className="px-3 py-2 tabular-nums text-red-600">{deductions ? `−${fmtMoney(deductions)}` : '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-800">{gross !== null ? <span className={item ? 'font-semibold' : 'text-xs text-gray-500'}>{item ? '' : '≈ '}{fmtMoney(Math.round(gross))}</span> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2 font-extrabold tabular-nums text-gray-900">

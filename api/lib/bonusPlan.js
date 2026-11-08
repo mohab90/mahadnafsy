@@ -8,7 +8,9 @@
 //                    the highest band the price reaches. A band says from which price, and whether that price itself is in it («من 4400» / «أكتر من 11000»).
 //   booking ladder   the bookings of the month reach a tier («10 حجز ← 1000»); past the tier, each booking adds the amount of the band it falls in
 //                    («من 20 لـ30: 140 للحجز»). A rep's first target («أول تارجيت»: 10, 15 or 20) is where the ladder starts for them: below it, nothing.
-//                    Half a booking counts half.
+//                    Half a booking counts half. The ladder is a month's, or (salesPeriod HALF_MONTH, 9 Nov 2026: «التارجيت بيكون كل 15 يوم») each
+//                    half month's — the 1st to the 15th and the 16th to the end are two rounds, each on the whole ladder, and the bonus is the two added.
+//                    Only the reps': the collectors and the desk stay monthly.
 //   collection       a collector's levels («من 50,000: 2%», «من 80,000: 3%» or a fixed amount): the level the month's collected money reaches applies to
 //                    the whole of it.
 
@@ -44,7 +46,8 @@ function normalizePlan(raw = {}) {
     }
   }
   extraPerBooking.sort((a, b) => a.from - b.from);
-  return { bookingWeights, bookingLadder, extraPerBooking, courseSalesBonusEnabled: plan.courseSalesBonusEnabled === true };
+  return { bookingWeights, bookingLadder, extraPerBooking, courseSalesBonusEnabled: plan.courseSalesBonusEnabled === true,
+    salesPeriod: plan.salesPeriod === 'HALF_MONTH' ? 'HALF_MONTH' : 'MONTH' };
 }
 
 /** How many bookings a course or track of this price in EGP counts as: the weight of the highest band the price reaches (one when no band says). */

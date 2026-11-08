@@ -102,11 +102,11 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                       {open === item.staffId && item.bookings.length > 0 && (
                         <tr><td colSpan={4} className="bg-gray-50 p-2">
                           <table className="w-full text-xs">
-                            <thead className="text-gray-500"><tr><th className="p-1 text-right">اليوم</th><th className="p-1 text-right">العميل</th><th className="p-1 text-right">الكورس / المسار</th><th className="p-1 text-right">السعر</th><th className="p-1 text-right">بالمصري</th><th className="p-1 text-right">{item.scheme === 'SALES_BOOKINGS' ? 'يتحسب حجز' : 'مكافأة الكورس'}</th></tr></thead>
+                            <thead className="text-gray-500"><tr><th className="p-1 text-right">اليوم</th>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <th className="p-1 text-right">الروند</th>}<th className="p-1 text-right">العميل</th><th className="p-1 text-right">الكورس / المسار</th><th className="p-1 text-right">السعر</th><th className="p-1 text-right">بالمصري</th><th className="p-1 text-right">{item.scheme === 'SALES_BOOKINGS' ? 'يتحسب حجز' : 'مكافأة الكورس'}</th></tr></thead>
                             <tbody>
                               {item.bookings.map(booking => (
                                 <tr key={booking.paymentId} className="border-t border-gray-100">
-                                  <td className="p-1" dir="ltr">{booking.day}</td><td className="p-1">{booking.client} {booking.clientCode && <span className="text-gray-400">({booking.clientCode})</span>}</td>
+                                  <td className="p-1" dir="ltr">{booking.day}</td>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <td className="p-1">{booking.round}</td>}<td className="p-1">{booking.client} {booking.clientCode && <span className="text-gray-400">({booking.clientCode})</span>}</td>
                                   <td className="p-1">{booking.title}</td><td className="p-1">{n(booking.price)} {booking.currency}</td><td className="p-1">{n(booking.priceEgp)}</td>
                                   <td className="p-1 font-bold">{item.scheme === 'SALES_BOOKINGS' ? n(booking.weight) : n(booking.deskBonus)}</td>
                                 </tr>
@@ -190,6 +190,14 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
               </div>
             ))}
             {!disabled && <button type="button" className="text-xs font-bold text-amber-700" onClick={() => edit('extraPerBooking', [...plan.extraPerBooking, { from: 0, to: null, amount: 0 }])}>+ شريحة</button>}
+            <label className="mt-4 block text-xs">
+              <span className="mb-1 block font-bold text-gray-700">تارجيت السيلز</span>
+              <select disabled={disabled} value={plan.salesPeriod || 'MONTH'} onChange={e => edit('salesPeriod', e.target.value as BonusPlan['salesPeriod'])} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs">
+                <option value="HALF_MONTH">كل 15 يوم (روندين في الشهر: 1–15 و16–آخر الشهر)</option>
+                <option value="MONTH">شهري</option>
+              </select>
+              <span className="mt-1 block text-[11px] text-gray-500">السلّم كله بيتطبق على كل روند لوحده. التحصيل والريسبشن شهري دايمًا.</span>
+            </label>
             <label className="mt-4 flex items-center gap-2 text-xs">
               <input disabled={disabled} type="checkbox" checked={plan.courseSalesBonusEnabled} onChange={e => edit('courseSalesBonusEnabled', e.target.checked)} />
               تشغيل «مكافأة السيلز» المسجّلة في صفحة كل كورس (مقفولة دلوقتي)

@@ -7,8 +7,8 @@ const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, 
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { outOfReach, requireHr, staffInReach, staffReachSql, notifyBranchManagers } = require('../../lib/branchHr');
 const { toNumbers } = require('../../lib/mappers');
-const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
-const { normalizePolicy, tierDays, toMinutes } = require('../../lib/attendancePolicy');
+const { sqlCairoToday, cairoToday, cairoYearMonth, cairoDayOf } = require('../../lib/dates');
+const { normalizePolicy, tierDays, toMinutes, monthDates } = require('../../lib/attendancePolicy');
 const { leaveBalanceOf } = require('../../lib/leaveBalance');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
@@ -113,6 +113,7 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
       earlyTiered: req.body.early_leave_tiered === undefined ? 1 : (req.body.early_leave_tiered ? 1 : 0),
       freeDays: Number(req.body.free_day_per_month ?? DEFAULT_POLICY.free_day_per_month),
       freeAfterMonths: Number(req.body.free_day_after_months ?? DEFAULT_POLICY.free_day_after_months),
+      weekendOvertime: Number(req.body.weekend_overtime_days ?? DEFAULT_POLICY.weekend_overtime_days),
     };
     const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
     const tiersOk = att.tiers.length <= 6 && att.tiers.every(t => Number.isFinite(Number(t.over)) && Number(t.over) >= 0
@@ -120,7 +121,8 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
     if (!HHMM.test(att.start) || !HHMM.test(att.end) || att.end <= att.start || !tiersOk
       || ![att.morningMin, att.eveningMin].every(v => Number.isInteger(v) && v >= 0 && v <= 480)
       || ![att.morningCount, att.eveningCount, att.freeDays].every(v => Number.isInteger(v) && v >= 0 && v <= 31)
-      || !(Number.isInteger(att.freeAfterMonths) && att.freeAfterMonths >= 0 && att.freeAfterMonths <= 120)) {
+      || !(Number.isInteger(att.freeAfterMonths) && att.freeAfterMonths >= 0 && att.freeAfterMonths <= 120)
+      || !(Number.isFinite(att.weekendOvertime) && att.weekendOvertime > 0 && att.weekendOvertime <= 5)) {
       return res.status(400).json({ error: 'مواعيد العمل أو الأذونات أو شرائح التأخير مش صحيحة' });
     }
     const values = {
@@ -164,13 +166,13 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
         (id,tenant_id,version,annual_leave_days,sick_leave_days,work_days_per_month,
          workday_minutes,grace_minutes,overtime_multiplier,audit_retention_days,
          weekend_days_json,effective_from,created_by,${ATTENDANCE_POLICY_COLUMNS})
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, version, values.annual, values.sick, values.workDays,
         values.workMinutes, values.grace, values.overtime, values.retention, JSON.stringify(weekend),
         effective_from, req.staffRecord?.id || req.user?.uid || null,
         `${att.start}:00`, `${att.end}:00`, att.morningMin, att.eveningMin, att.morningCount, att.eveningCount,
         JSON.stringify(att.tiers.map(t => ({ over: Number(t.over), days: Number(t.days) })).sort((a, b) => a.over - b.over)),
-        att.earlyTiered, att.freeDays, att.freeAfterMonths]
+        att.earlyTiered, att.freeDays, att.freeAfterMonths, att.weekendOvertime]
     );
     await writeAuditEvent({
       action: 'hr.policy.created',
@@ -523,11 +525,22 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
     if (!range) return res.status(400).json({ error: 'month and year are invalid' });
     const [rows] = await pool.query(
       `SELECT id, staff_id, branch, date, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, leave_id,
-              status, notes, source, import_batch_id, created_at, updated_at
+              status, notes, source, import_batch_id, overtime_days, created_at, updated_at
        FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date>=? AND date<? ORDER BY date`,
       [staffId, req.tenantId, range.start, range.end]
     );
-    res.json(rows.map(row => toNumbers(row, ["total_hours", "deduction_days"])));
+    // 8 Nov 2026, «تظهر الجمعه وتكتبه اجازه اسبوعيه»: a weekly day off with nothing recorded on it is shown as one (not stored: id null,
+    // status WEEKLY_OFF). Worked, it has its own row, as overtime.
+    const dayOf = value => (value instanceof Date ? cairoDayOf(value) : String(value).slice(0, 10));
+    const held = new Set(rows.map(row => dayOf(row.date)));
+    const weekend = normalizePolicy(await getEffectiveHrPolicy(pool, req.tenantId, String(range.start).slice(0, 10))).weekend;
+    const offDays = monthDates(String(range.start).slice(0, 7))
+      .filter(day => weekend.has(day.weekday) && !held.has(day.date))
+      .map(day => ({ id: null, staff_id: staffId, date: day.date, check_in: null, check_out: null, total_hours: null, late_minutes: 0, early_leave_minutes: 0,
+        deduction_days: 0, permit_used: null, review_flag: null, leave_id: null, status: 'WEEKLY_OFF', notes: 'إجازة أسبوعية', source: 'POLICY', overtime_days: null }));
+    const all = [...rows.map(row => toNumbers(row, ['total_hours', 'deduction_days', 'overtime_days'])), ...offDays]
+      .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
+    res.json(all);
   } catch (e) { hrError(res, e); }
 });
 
@@ -542,7 +555,9 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     // FREE_DAY is the paid day off every employee of six months has each month: stored as a HOLIDAY marked free_day, so a fingerprint re-upload counts it.
     // 3 Nov 2026, «الغياب دا باذن او بدون او من رصيد الاجازات»: an absence is told apart on the day. ABSENT is without permission and costs two days (4 Nov 2026,
     // lib/payrollCalc.js UNEXCUSED_ABSENCE_DAYS); ABSENT_EXCUSED is an ABSENT row marked 'excused' and costs the one. LEAVE_BALANCE is a HOLIDAY marked 'leave_balance': it costs nothing and spends a day of the year's 21.
-    const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY','ABSENT_EXCUSED','LEAVE_BALANCE'];
+    // OVERTIME (8 Nov 2026): a weekly day off that was worked, stored as PRESENT with overtime_days — what it is worth in days of pay (1, 1.5, 2 …),
+    // the policy's weekend_overtime_days unless HR says otherwise. Nobody is late on it and nothing is deducted.
+    const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY','ABSENT_EXCUSED','LEAVE_BALANCE','OVERTIME'];
     if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid attendance status' });
     const manualDeduction = req.body.deduction_days === undefined || req.body.deduction_days === '' || req.body.deduction_days === null ? null : Number(req.body.deduction_days);
     if (manualDeduction !== null && !(Number.isFinite(manualDeduction) && manualDeduction >= 0 && manualDeduction <= 1)) {
@@ -551,13 +566,18 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     if ((check_in && !validClockTime(check_in)) || (check_out && !validClockTime(check_out))) {
       return res.status(400).json({ error: 'Time must use HH:mm format' });
     }
+    const overtime = status === 'OVERTIME';
+    const overtimeTyped = req.body.overtime_days === undefined || req.body.overtime_days === '' || req.body.overtime_days === null ? null : Number(req.body.overtime_days);
+    if (overtime && overtimeTyped !== null && !(Number.isFinite(overtimeTyped) && overtimeTyped > 0 && overtimeTyped <= 5)) {
+      return res.status(400).json({ error: 'الأوفر تايم لازم يكون عدد أيام من أكتر من صفر لحد 5 (مثلاً 1 أو 1.5 أو 2)' });
+    }
     const freeDay = status === 'FREE_DAY';
     const fromBalance = status === 'LEAVE_BALANCE';
-    const safeStatus = freeDay || fromBalance ? 'HOLIDAY' : status === 'ABSENT_EXCUSED' ? 'ABSENT' : (status || 'PRESENT');
+    const safeStatus = freeDay || fromBalance ? 'HOLIDAY' : status === 'ABSENT_EXCUSED' ? 'ABSENT' : overtime ? 'PRESENT' : (status || 'PRESENT');
     const permit = freeDay ? 'free_day' : fromBalance ? 'leave_balance' : status === 'ABSENT_EXCUSED' ? 'excused' : null;
     // Calculate lateness against the employee schedule, then the tenant policy.
     let lateMin = 0;
-    if (check_in) {
+    if (check_in && !overtime) {
       const [h,m2] = check_in.split(':').map(Number);
       const minutesIn = h * 60 + m2;
       const expected = await attendanceStart(conn, req.tenantId, staff_id, date);
@@ -576,11 +596,12 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     }
     // What the day costs under the company policy (lib/attendancePolicy.js): the tiers on lateness and on leaving early. HR can type the number instead.
     const rules = normalizePolicy(await getEffectiveHrPolicy(conn, req.tenantId, date));
-    const earlyMin = check_out && !['ABSENT', 'HOLIDAY'].includes(safeStatus) ? Math.max(0, rules.end - toMinutes(check_out)) : 0;
-    const judged = check_in && !['ABSENT', 'HOLIDAY'].includes(safeStatus);
+    const earlyMin = check_out && !overtime && !['ABSENT', 'HOLIDAY'].includes(safeStatus) ? Math.max(0, rules.end - toMinutes(check_out)) : 0;
+    const judged = check_in && !overtime && !['ABSENT', 'HOLIDAY'].includes(safeStatus);
     const lateFromPolicy = judged ? Math.max(0, toMinutes(check_in) - rules.start) : 0;
     const computedDeduction = !judged && !earlyMin ? 0 : Math.min(1, tierDays(lateFromPolicy, rules.tiers) + (rules.earlyTiered ? tierDays(earlyMin, rules.tiers) : 0));
-    const deductionDays = safeStatus === 'ABSENT' || safeStatus === 'HOLIDAY' ? 0 : (manualDeduction ?? computedDeduction);
+    const deductionDays = overtime || safeStatus === 'ABSENT' || safeStatus === 'HOLIDAY' ? 0 : (manualDeduction ?? computedDeduction);
+    const overtimeDays = overtime ? (overtimeTyped ?? rules.weekendOvertimeDays) : null;
     await conn.beginTransaction();
     transactionStarted = true;
     const [[ownedStaff]] = await conn.query(
@@ -616,13 +637,13 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
       });
     }
     await conn.query(
-      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, status, notes, source)
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'MANUAL_ENTRY')
+      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, status, notes, source, overtime_days)
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'MANUAL_ENTRY', ?)
        ON DUPLICATE KEY UPDATE check_in=VALUES(check_in), check_out=VALUES(check_out),
          total_hours=VALUES(total_hours), late_minutes=VALUES(late_minutes), early_leave_minutes=VALUES(early_leave_minutes),
          deduction_days=VALUES(deduction_days), permit_used=VALUES(permit_used), review_flag=NULL,
-         status=VALUES(status), notes=VALUES(notes), source='MANUAL_ENTRY'`,
-      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, lateMin, earlyMin, deductionDays, permit, safeStatus, notes||null]
+         status=VALUES(status), notes=VALUES(notes), source='MANUAL_ENTRY', overtime_days=VALUES(overtime_days)`,
+      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, overtime ? 0 : lateMin, earlyMin, deductionDays, permit, safeStatus, notes||null, overtimeDays]
     );
     await conn.commit();
     transactionStarted = false;

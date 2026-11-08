@@ -12,6 +12,7 @@ type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type Log = {
   id: string; date: string; status: string; check_in: string | null; check_out: string | null; late_minutes: number; early_leave_minutes: number;
   deduction_days: number | string | null; permit_used: string | null; source: string; notes: string | null; leave_id: string | null;
+  overtime_days?: number | string | null;
 };
 type Bonus = { id: string; type: 'bonus' | 'deduction'; amount: number | string; status: string; reason: string | null; for_month: number | null; for_year: number | null };
 type Basics = {
@@ -21,8 +22,11 @@ type Basics = {
 
 const STATUS_OPTIONS: [string, string][] = [
   ['PRESENT', 'حاضر'], ['LATE', 'متأخر'], ['ABSENT', 'غياب بدون إذن (يخصم يومين)'], ['ABSENT_EXCUSED', 'غياب بإذن (يخصم يوم)'], ['LEAVE_BALANCE', 'غياب من رصيد الإجازات (بدون خصم)'],
-  ['HALF_DAY', 'نص يوم'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'],
+  ['HALF_DAY', 'نص يوم'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'], ['OVERTIME', 'أوفر تايم (اشتغل في الإجازة الأسبوعية)'],
 ];
+// A weekly day off (Friday) with nothing on it comes from the server as WEEKLY_OFF (not stored); worked, it is OVERTIME at 1, 1.5, 2 … days' pay.
+const WEEKLY_OPTIONS: [string, string][] = [['WEEKLY_OFF', 'إجازة أسبوعية'], ['OVERTIME', 'أوفر تايم (اشتغل في الإجازة الأسبوعية)']];
+const OVERTIME_DAYS = ['1', '1.5', '2', '2.5', '3'];
 const field = 'w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm disabled:bg-gray-50';
 const hhmm = (value: string | null) => (value ? String(value).slice(0, 5) : '');
 const dateOnly = (value: string) => String(value).slice(0, 10);
@@ -30,11 +34,12 @@ const statusOf = (log: Log) => {
   if (log.status === 'HOLIDAY' && log.permit_used === 'free_day') return 'FREE_DAY';
   if (log.status === 'HOLIDAY' && log.permit_used === 'leave_balance') return 'LEAVE_BALANCE';
   if (log.status === 'ABSENT' && log.permit_used === 'excused') return 'ABSENT_EXCUSED';
+  if (Number(log.overtime_days) > 0) return 'OVERTIME';
   return log.status;
 };
 const weekday = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: CAIRO_TIME_ZONE });
 
-type DayDraft = { status: string; check_in: string; check_out: string; deduction: string; notes: string };
+type DayDraft = { status: string; check_in: string; check_out: string; deduction: string; notes: string; overtime?: string };
 
 export default function HrMonthEditModal({ staffId, name, month, canEditSalary, notify, onClose, onSaved }: {
   staffId: string; name: string; month: string; canEditSalary: boolean; notify: Notify; onClose: () => void; onSaved: () => void;
@@ -70,7 +75,8 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
 
   const draftOf = (log: Log): DayDraft => days[dateOnly(log.date)] || {
     status: statusOf(log), check_in: hhmm(log.check_in), check_out: hhmm(log.check_out),
-    deduction: log.deduction_days == null ? '' : String(Number(log.deduction_days)), notes: log.notes || '',
+    deduction: log.deduction_days == null ? '' : String(Number(log.deduction_days)), notes: log.status === 'WEEKLY_OFF' ? '' : log.notes || '',
+    overtime: Number(log.overtime_days) > 0 ? String(Number(log.overtime_days)) : '1',
   };
   const editDay = (log: Log, patch: Partial<DayDraft>) => setDays(current => ({ ...current, [dateOnly(log.date)]: { ...draftOf(log), ...patch } }));
 
@@ -79,7 +85,8 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
     try {
       await mysqlAdmin.adminPost('/admin/hr/attendance', {
         staff_id: staffId, date, status: draft.status, check_in: draft.check_in || undefined, check_out: draft.check_out || undefined,
-        notes: draft.notes || undefined, deduction_days: draft.deduction === '' ? undefined : Number(draft.deduction),
+        notes: draft.notes || undefined, deduction_days: draft.status === 'OVERTIME' || draft.deduction === '' ? undefined : Number(draft.deduction),
+        overtime_days: draft.status === 'OVERTIME' ? Number(draft.overtime || 1) : undefined,
       });
       notify('success', `اتعدل يوم ${date}`);
       await load(); onSaved();
@@ -132,7 +139,7 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
         <div className="space-y-6" dir="rtl">
           <section>
             <h4 className="mb-2 text-sm font-extrabold text-gray-900">أيام الشهر</h4>
-            <p className="mb-2 text-xs text-gray-500">أي يوم تعدله هنا بيتحسب «تسجيل يدوي» ورفع شيت البصمة تاني ما بيغيّروش. سيب الخصم فاضي ويتحسب من السياسة، أو اكتب رقم من 0 ليوم كامل (0.25 = ربع يوم).</p>
+            <p className="mb-2 text-xs text-gray-500">أي يوم تعدله هنا بيتحسب «تسجيل يدوي» ورفع شيت البصمة تاني ما بيغيّروش. سيب الخصم فاضي ويتحسب من السياسة، أو اكتب رقم من 0 ليوم كامل (0.25 = ربع يوم). الجمعة «إجازة أسبوعية»؛ لو حد اشتغلها اختار «أوفر تايم» وحدد بكام يوم (يوم، يوم ونص، يومين…) وبيتضاف على المرتب.</p>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-gray-50 text-right text-xs font-bold text-gray-500">
@@ -143,19 +150,24 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
                     const date = dateOnly(log.date);
                     const draft = draftOf(log);
                     const locked = Boolean(log.leave_id);
+                    const weekly = log.status === 'WEEKLY_OFF' || (log.source === 'POLICY');
+                    const offDay = weekly || statusOf(log) === 'OVERTIME';
                     return (
-                      <tr key={log.id} className={days[date] ? 'bg-amber-50/40' : ''}>
-                        <td className="px-2 py-1.5 text-gray-800">{weekday(date)}{log.source === 'MANUAL_ENTRY' && <span className="mr-1 text-[10px] text-indigo-600">يدوي</span>}{locked && <span className="mr-1 text-[10px] text-sky-600">إجازة معتمدة</span>}</td>
-                        <td className="px-2 py-1.5"><select disabled={locked} className={field} value={draft.status} onChange={e => editDay(log, { status: e.target.value })}>{STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
+                      <tr key={log.id || `off-${date}`} className={days[date] ? 'bg-amber-50/40' : weekly ? 'bg-gray-50/60' : ''}>
+                        <td className="px-2 py-1.5 text-gray-800">{weekday(date)}{log.source === 'MANUAL_ENTRY' && <span className="mr-1 text-[10px] text-indigo-600">يدوي</span>}{log.source === 'AUTO_ABSENCE' && <span className="mr-1 text-[10px] text-gray-500">تلقائي</span>}{locked && <span className="mr-1 text-[10px] text-sky-600">إجازة معتمدة</span>}</td>
+                        <td className="px-2 py-1.5"><select disabled={locked} className={field} value={draft.status} onChange={e => editDay(log, { status: e.target.value })}>{(offDay ? WEEKLY_OPTIONS : STATUS_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
                         <td className="px-2 py-1.5"><input type="time" disabled={locked} className={field} value={draft.check_in} onChange={e => editDay(log, { check_in: e.target.value })} /></td>
                         <td className="px-2 py-1.5"><input type="time" disabled={locked} className={field} value={draft.check_out} onChange={e => editDay(log, { check_out: e.target.value })} /></td>
-                        <td className="px-2 py-1.5"><input type="number" min={0} max={1} step={0.25} disabled={locked} className={`${field} w-20`} value={draft.deduction} onChange={e => editDay(log, { deduction: e.target.value })} /></td>
+                        <td className="px-2 py-1.5">{draft.status === 'OVERTIME'
+                          ? <select className={`${field} w-24`} value={draft.overtime || '1'} onChange={e => editDay(log, { overtime: e.target.value })} title="الأوفر تايم بكام يوم">{OVERTIME_DAYS.map(value => <option key={value} value={value}>+{value} يوم</option>)}</select>
+                          : draft.status === 'WEEKLY_OFF' ? <span className="text-xs text-gray-400">—</span>
+                          : <input type="number" min={0} max={1} step={0.25} disabled={locked} className={`${field} w-20`} value={draft.deduction} onChange={e => editDay(log, { deduction: e.target.value })} />}</td>
                         <td className="px-2 py-1.5"><input className={field} disabled={locked} value={draft.notes} onChange={e => editDay(log, { notes: e.target.value })} /></td>
-                        <td className="px-2 py-1.5">{days[date] && <button type="button" disabled={busy === `day:${date}`} onClick={() => void saveDay(date, draft)} className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={12} /> حفظ</button>}</td>
+                        <td className="px-2 py-1.5">{days[date] && draft.status !== 'WEEKLY_OFF' && <button type="button" disabled={busy === `day:${date}`} onClick={() => void saveDay(date, draft)} className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={12} /> حفظ</button>}</td>
                       </tr>
                     );
                   })}
-                  {logs.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-gray-400">مفيش أيام متسجلة للشهر ده — ضيف يوم من تحت</td></tr>}
+                  {logs.filter(log => log.status !== 'WEEKLY_OFF').length === 0 && <tr><td colSpan={7} className="py-6 text-center text-gray-400">مفيش أيام متسجلة للشهر ده — ضيف يوم من تحت</td></tr>}
                 </tbody>
               </table>
             </div>
