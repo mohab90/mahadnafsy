@@ -88,6 +88,8 @@ test('a rep\'s «paid» is recorded as pending and moves nothing until a finance
   assert.equal(paid.status, 'paid');
   assert.equal(await cash(), 1000, 'the journal is posted on approval');
   assert.equal(await enrolled(), 1, 'and the course opens');
+  const [commissions] = await pool.query('SELECT commission_amount, status FROM crm_commissions WHERE tenant_id=? AND payment_id=?', [T, made.body.id]);
+  assert.deepEqual(commissions.map(row => [Number(row.commission_amount), row.status]), [[100, 'PENDING']], 'approving pays the rep 10% of it, the same commission as recording it paid would have');
 
   const again = await call(approval, 'patch', '/api/admin/payments/:id/status', { params: { id: made.body.id }, body: { status: 'paid' }, staff: MANAGER });
   assert.equal(again.statusCode, 200);

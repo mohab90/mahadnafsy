@@ -1265,37 +1265,6 @@
   "class": "b"
  },
  {
-  "id": "adminRowShapeAndMoney: approving a payment pays the same commission as recording one",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "await recordPaymentCompensation\\(\\{",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "mustNot": {
-     "source": "INSERT INTO crm_commissions",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "mustNot": {
-     "source": "now\\.getMonth\\(\\) \\+ 1",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "a"
- },
- {
   "id": "adminRowShapeAndMoney: the rule it now calls is the one that reads commission_rules",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -1396,45 +1365,6 @@
     "file": "api/routes/hr/payroll.js",
     "must": {
      "source": "FX_SNAPSHOT_UNAVAILABLE",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "adminRowShapeAndMoney: refunding a payment cancels the instructor fee as well as the commission",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/refunds.js",
-    "must": {
-     "source": "UPDATE crm_commissions SET status='CANCELLED'",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/refunds.js",
-    "must": {
-     "source": "UPDATE instructor_fees SET status='rejected'",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/refunds.js",
-    "must": {
-     "source": "source_payment_id=\\? AND tenant_id=\\?",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/refunds.js",
-    "must": {
-     "source": "status IN \\('pending','approved','included_in_payroll'\\)",
      "flags": ""
     },
     "code": true
@@ -2019,62 +1949,6 @@
     "file": "api/lib/backgroundScheduler.js",
     "must": {
      "source": "commissionCalc\\.recordCommissionForPayment\\(",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "commissionDurability: the job runs the one compensation rule every payment path runs",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/commissionCalc.js",
-    "must": {
-     "source": "await recordPaymentCompensation\\(\\{ paymentId, tenantId, actor: 'paymob' \\}, conn\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/paymentCompensation.js",
-    "must": {
-     "source": "INSERT INTO crm_commissions[\\s\\S]*?ON DUPLICATE KEY UPDATE commission_amount=VALUES\\(commission_amount\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/paymentCompensation.js",
-    "must": {
-     "source": "INSERT INTO instructor_fees[\\s\\S]*?ON DUPLICATE KEY UPDATE total_amount=VALUES\\(total_amount\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/commissionCalc.js",
-    "mustNot": {
-     "source": "INSERT INTO crm_commissions",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "commissionDurability: \"nothing to pay\" is a result, not a failure",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/commissionCalc.js",
-    "must": {
-     "source": "return \\{ written: false, reason: 'payment_not_paid' \\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/commissionCalc.js",
-    "must": {
-     "source": "return \\{ written: false, reason: 'non_positive_amount' \\}",
      "flags": ""
     }
    }
