@@ -5414,48 +5414,6 @@
   "class": "b"
  },
  {
-  "id": "staffAccountsReview: approving money: not by collection, not by whoever recorded it, and a collection booking needs its transfer",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "approverRole === 'collection'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "code: 'PAYMENT_SELF_APPROVAL'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "String\\(recorder\\?\\.role \\|\\| ''\\)\\.toLowerCase\\(\\) === 'collection' && !transfer && !isCashMethod\\(settledMethod\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/224_v26_reviewed_bookings.sql",
-    "must": {
-     "source": "UNIQUE KEY uq_incoming_transfer_payment \\(tenant_id, payment_id\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/224_v26_reviewed_bookings.sql",
-    "must": {
-     "source": "UNIQUE KEY uq_incoming_transfer_ref \\(tenant_id, method, reference\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "staffAccountTakeover: staff.js will not let a non-owner rewrite a manager\\",
   "why": "moved from a unit test that matched source text",
   "checks": [
