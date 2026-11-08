@@ -93,6 +93,7 @@ test('completeCourse: 80% of lectures is enough to earn the certificate', async 
     { match: 'INSERT IGNORE INTO course_completions', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO certificate_lifecycle_events', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO message_outbox', rows: { affectedRows: 1 } },
+    { match: 'FROM message_outbox WHERE tenant_id=? AND dedupe_key', rows: [{ id: 'queued-1' }] },
   ]);
   const result = await completeCourse(
     { tenantId: 't1', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn
@@ -123,6 +124,7 @@ test('completeCourse: requireFullProgress=true succeeds once all lectures are do
     { match: 'INSERT IGNORE INTO course_completions', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO certificate_lifecycle_events', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO message_outbox', rows: [] },
+    { match: 'FROM message_outbox WHERE tenant_id=? AND dedupe_key', rows: [{ id: 'queued-1' }] },
   ]);
   const result = await completeCourse({ tenantId: 'tenant-x', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn);
   assert.equal(result.alreadyCompleted, false);
