@@ -18,12 +18,7 @@ const integrityMigration = read('migrations/146_v25_saas_control_plane_integrity
 
 
 
-test('staff, course and user creation paths use the server-side quota guard', () => {
-  
-  
-  
-  assert.ok((auth.match(/requireTenantQuota\('users'/g) || []).length >= 4);
-});
+
 
 
 

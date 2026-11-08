@@ -13,13 +13,7 @@ const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8
 const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
 const form = read('admin/pages/dashboard/tabs/NewSubscriberModal.tsx');
 
-test('one «مشترك جديد» form opens from every account; the booking screen no longer does', () => {
-  assert.equal((tab.match(/<NewSubscriberModal/g) || []).length, 1, 'one use, for all three accounts');
-  
-  
-  
-  
-});
+
 
 
 

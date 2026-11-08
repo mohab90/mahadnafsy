@@ -8,19 +8,7 @@ const assert = require('node:assert/strict');
 const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('database backup has one shell-free atomic implementation with integrity evidence', () => {
-  const server = read('server.js');
-  const scheduler = read('lib/backgroundScheduler.js');
-  const backup = read('lib/dbBackup.js');
-  assert.equal((scheduler.match(/scheduleDbBackup\(\)/g) || []).length, 1);
-  
-  
-  
-  
-  
-  
-  
-});
+
 
 test('the MySQL-only dump flag is conditional, because MariaDB refuses to start with it', () => {
   const backup = read('lib/dbBackup.js');

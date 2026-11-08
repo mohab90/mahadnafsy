@@ -126,6 +126,12 @@ for (const entry of JSON.parse(readFileSync(join(ROOT, 'tools', 'source-rules.js
       let body = check.code ? withoutComments(text) : text;
       // a window of the source, the way the test cut it: from the first `from` to the first `to` (to the end when there is none)
       if (check.from !== undefined) body = body.slice(body.indexOf(check.from), check.to !== undefined ? body.indexOf(check.to) : undefined);
+      if (check.count) {
+        const found = (body.match(new RegExp(check.count.source, check.count.flags)) || []).length;
+        const { op, n } = check.count;
+        const holds = op === '==' ? found === n : op === '>=' ? found >= n : op === '>' ? found > n : op === '<=' ? found <= n : found < n;
+        return holds ? [] : [`${label}: /${check.count.source}/ appears ${found} times, expected ${op} ${n}`];
+      }
       if (check.must && !new RegExp(check.must.source, check.must.flags).test(body)) return [`${label} no longer matches /${check.must.source}/`];
       if (check.mustNot && new RegExp(check.mustNot.source, check.mustNot.flags).test(body)) return [`${label} matches /${check.mustNot.source}/, which it must not`];
       return [];

@@ -38001,5 +38001,771 @@
     }
    }
   ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: and both creation routes accept up to the payment, not exactly it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-utils.js",
+    "code": true,
+    "count": {
+     "source": "Partial refunds are not enabled",
+     "flags": "g",
+     "op": "==",
+     "n": 0
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "code": true,
+    "count": {
+     "source": "requestedAmount - Number\\(payment\\.amount \\|\\| 0\\) > 0\\.01",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "aNewSubscriberIsOneFormForEveryAccount: one «مشترك جديد» form opens from every account; the booking screen no longer does",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/OnlineClientsTab.tsx",
+    "count": {
+     "source": "<NewSubscriberModal",
+     "flags": "g",
+     "op": "==",
+     "n": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditFindingsThatWereReal: the claims that were already handled stay handled",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/campaigns.js",
+    "count": {
+     "source": "assertSafeWebhookUrl",
+     "flags": "g",
+     "op": ">=",
+     "n": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "backupRecovery: database backup has one shell-free atomic implementation with integrity evidence",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "count": {
+     "source": "scheduleDbBackup\\(\\)",
+     "flags": "g",
+     "op": "==",
+     "n": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCurrencyChange: imports into «سعودي قديم» create Saudi-market clients",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/collectionSheets.js",
+    "count": {
+     "source": "kind === 'old_intl' \\? 'ONLINE_SAUDI' : 'ONLINE_EGYPT'",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientItemMoneyHasOneHome: every list and every detail that sends a client with its prices fills them from the table",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "count": {
+     "source": "withItemMoney\\(withInstallmentPlans\\(",
+     "flags": "g",
+     "op": "==",
+     "n": 4
+    }
+   },
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "count": {
+     "source": "await loadItemMoney\\(pool, \\{ tenantId(: req\\.tenantId)?, subscriberIds: ids \\}\\)",
+     "flags": "g",
+     "op": "==",
+     "n": 4
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientItemMoneyHasOneHome: every comparison of the new table\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/360_v26_client_item_money_leaves_crm_json.sql",
+    "count": {
+     "source": "COLLATE utf8mb4_unicode_ci",
+     "flags": "g",
+     "op": "==",
+     "n": 6
+    }
+   },
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "count": {
+     "source": " COLLATE utf8mb4_unicode_ci AS (id|name|phone|email)",
+     "flags": "g",
+     "op": "==",
+     "n": 12
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: CRM reminders render in their own tab and heavy lead views stay deferred",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "count": {
+     "source": "subTab === 'communications'",
+     "flags": "g",
+     "op": "==",
+     "n": 0
+    }
+   }
+  ]
+ },
+ {
+  "id": "dashboardTabDedupe: nothing navigates to a key that no longer routes",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/StaffProfile.tsx",
+    "count": {
+     "source": "\\/dashboard\\/hr",
+     "flags": "g",
+     "op": "==",
+     "n": 4
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: the student dashboard text links can be pressed on a phone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/UserDashboard.tsx",
+    "count": {
+     "source": "inline-flex min-h-\\[36px\\] items-center text-xs",
+     "flags": "g",
+     "op": "==",
+     "n": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "fixesOf4Nov: no bonus is written by the system, and the month sheet has no required / reached / bonus columns",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrMonthSheet.tsx",
+    "mustNot": {
+     "source": "month-bonuses|المطلوب|المحقق",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "fixesOf4Nov: an activate, pause or convert save names the fields it changes, so a stale screen is not refused",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/site-data-hooks/useCrmCoreState.ts",
+    "must": {
+     "source": "updateSubscriber = async \\(item: SubscriberItem, only\\?: string\\[\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useCrmCoreState.ts",
+    "must": {
+     "source": "const changedFields = only \\? \\[\\.\\.\\.new Set\\(only\\)\\] : base",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/online-clients-sections/BulkActionBar.tsx",
+    "must": {
+     "source": "updateSubscriber\\(\\{ \\.\\.\\.sub, clientStatus: newStatus \\}, \\['clientStatus'\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx",
+    "must": {
+     "source": "updateSubscriber\\(nextRow, nextClientStatus \\? \\['status', 'clientStatus'\\] : \\['status'\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/UnifiedClientPage.tsx",
+    "must": {
+     "source": "status: subscriber!\\.status === 'active' \\? 'paused' : 'active' \\}, \\['status'\\]\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "fixesOf4Nov: the client database pages each population in its own query, with the order inside it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/ClientDbTab.tsx",
+    "must": {
+     "source": "setSummaryFailed\\(true\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ClientDbTab.tsx",
+    "mustNot": {
+     "source": "setRows\\(\\[\\]\\); setTotal\\(0\\); notify",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerAccountPortalOnlyMeetingsAndPay: the dashboard bounces a lecturer to the portal, and the portal\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/App.tsx",
+    "count": {
+     "source": "<NotForLecturers><Dashboard \\/><\\/NotForLecturers>",
+     "flags": "g",
+     "op": "==",
+     "n": 6
+    }
+   }
+  ]
+ },
+ {
+  "id": "menuRestructure4Nov: 4 Nov 2026: الحملات is the messaging hub alone, opening on the inbox; email, SMS and drip screens are gone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/CampaignsTab.tsx",
+    "count": {
+     "source": "\\{ id: '",
+     "flags": "g",
+     "op": "==",
+     "n": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneMoneySourceBrowser: the rows and the dialog read the server: moneyItems on every list row, one money route",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "count": {
+     "source": "withMoneyItems\\(",
+     "flags": "g",
+     "op": "==",
+     "n": 4
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: legacy deployment entrypoints fail closed without credentials or remote mutation",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/legacy-deploy-disabled.cjs",
+    "must": {
+     "source": "process\\.exitCode = 78",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: release preparation requires a clean commit and emits SHA-256 evidence",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "status', '--porcelain",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "--format=tar\\.gz",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "requiredBuilds",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "artifactEvidence",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "sha256",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/pre-deploy-check.mjs",
+    "must": {
+     "source": "readiness:production:live",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/activate-static-release.sh",
+    "must": {
+     "source": "component must be admin or client",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/activate-static-release.sh",
+    "must": {
+     "source": "nginx -t",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/server.js",
+    "must": {
+     "source": "migrations are delegated to the release job",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: remote smoke workflow is staging-only and requires HTTPS",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": ".github/workflows/smoke.yml",
+    "must": {
+     "source": "environment: staging",
+     "flags": ""
+    }
+   },
+   {
+    "file": ".github/workflows/smoke.yml",
+    "must": {
+     "source": "SMOKE_BASE_URL",
+     "flags": ""
+    }
+   },
+   {
+    "file": ".github/workflows/smoke.yml",
+    "mustNot": {
+     "source": "production DB|SSH-tunnel|self-hosted",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/mahad-api-smoke.mjs",
+    "must": {
+     "source": "must use HTTPS unless it targets localhost",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: the deploy script uses the release it was given",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "^R=\\$\\{1:-[a-z0-9-]+\\}$",
+     "flags": "m"
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "mustNot": {
+     "source": "^R=[a-z0-9-]+$",
+     "flags": "m"
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "deploy staging[\\s\\S]*STAGING FAILED - production untouched",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "PRODUCTION FAILED - rolled back",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "^TARGET=\\$\\{MAHAD_DEPLOY_TARGET:-both\\}$",
+     "flags": "m"
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "if \\[ \"\\$TARGET\" = staging \\]; then[\\s\\S]*?exit 0",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "grep -qx \"APP_RELEASE=\\$R\" \"\\$STAGING_API\\/\\.env\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "^echo \"staging is healthy; continuing to production\"$",
+     "flags": "m"
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "APP_RELEASE=\\$R",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "\\[ -s \"/staging/\\$R-\\$part\\.tgz\" \\] \\|\\| \\{",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: the deploy migrates before it switches the code, and checks what the API reports",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy-release.sh",
+    "from": "deploy() {",
+    "to": "rollback_api() {",
+    "must": {
+     "source": "MIGRATION FAILED[\\s\\S]*return 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "from": "deploy() {",
+    "to": "rollback_api() {",
+    "must": {
+     "source": "applied_migration \"\\$port\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "mustNot": {
+     "source": "npm run migrate 2>&1 \\| grep",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "tail -n \\+4",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "git branch -r --contains HEAD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "npm run release:gate -- --skip-live",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "MAHAD_DEPLOY_EMERGENCY",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "tests\\/public-smoke\\.spec\\.ts tests\\/payment-flow\\.spec\\.ts",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "MAHAD_SKIP_E2E",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "npm run test:e2e:install",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "must": {
+     "source": "PRODUCTION IS UNTOUCHED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/release-all.sh",
+    "count": {
+     "source": "npm run release:prepare",
+     "flags": "g",
+     "op": "==",
+     "n": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "publicLeadsHoldUpAtProductionScale: only the website\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "count": {
+     "source": "loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "rateLimitIsolation: successful staff logins do not exhaust a shared branch IP limit",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/rateLimits.js",
+    "from": "const loginLimiter",
+    "to": "const resetPasswordLimiter",
+    "count": {
+     "source": "skipSuccessfulRequests: true",
+     "flags": "g",
+     "op": ">=",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "saasEntitlements: staff, course and user creation paths use the server-side quota guard",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "count": {
+     "source": "requireTenantQuota\\('users'",
+     "flags": "g",
+     "op": ">=",
+     "n": 4
+    }
+   }
+  ]
+ },
+ {
+  "id": "salesAccountJourney: the personal page owns one heading and one tab bar, and every bar opens it from one icon",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "code": true,
+    "count": {
+     "source": "<ProfileIconButton ",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowQueriesFoundByTheLab: «converted lead without a client» is NOT A AND NOT B AND NOT C, and the count is not a derived table",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/reconcileChecks.js",
+    "from": "const LIVE_SUBSCRIBER_FOR_LEAD",
+    "to": "const CHECKS",
+    "count": {
+     "source": "\\bAND NOT ",
+     "flags": "g",
+     "op": ">=",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowReportsFoundOn30Oct: the campaign report starts its five independent reads together",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/analytics/campaigns.js",
+    "from": "router.get('/api/admin/reports/campaign'",
+    "to": "router.patch('/api/admin/leads/:id/utm'",
+    "count": {
+     "source": "await pool\\.query",
+     "flags": "g",
+     "op": "==",
+     "n": 0
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: collection works leads like a rep: the sales view, their own leads, a lead of their own",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "count": {
+     "source": "\\['sales', 'collection'\\]\\.includes\\(String\\(req\\.staffRecord\\?\\.role",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAnnouncementsPopupVideoAndBranchRequests: the administration writes it, the employee reads and closes it, and it is wired in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/staff-announcements.js",
+    "count": {
+     "source": "requirePermission\\('manage_staff'\\)",
+     "flags": "g",
+     "op": "==",
+     "n": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "systemLogCertificatesRefundsTracks: grants run the rule, so the table, the panel and the payment dialog agree",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/entitlements.js",
+    "count": {
+     "source": "await nameCompletedTracks\\(db, \\{ tenantId, subscriberId, actor \\}\\);",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "theDeskCanApproveAPartOfIt: a partial request can be made in the first place",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-utils.js",
+    "count": {
+     "source": "requestedAmount - Number\\(payment\\.amount \\|\\| 0\\) > 0\\.01",
+     "flags": "g",
+     "op": "==",
+     "n": 2
+    }
+   }
+  ]
  }
 ]

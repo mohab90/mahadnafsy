@@ -128,13 +128,7 @@ test('a monthly charge on the 1st appears in the forecast', () => {
 // theDeskCanApproveAPartOfIt.test.js for the rest of that chain.
 
 
-test('and both creation routes accept up to the payment, not exactly it', () => {
-  const source = codeOnly(read('routes/admin-utils.js'));
-  assert.equal((source.match(/Partial refunds are not enabled/g) || []).length, 0,
-    'the refusal is gone from the customer route and the admin one');
-  assert.equal((source.match(/requestedAmount - Number\(payment\.amount \|\| 0\) > 0\.01/g) || []).length, 2,
-    'both still refuse more than was paid — that ceiling never moves');
-});
+
 
 // ── payroll and the exchange rate ──────────────────────────────────────────
 

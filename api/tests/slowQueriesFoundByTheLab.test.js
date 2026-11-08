@@ -74,16 +74,7 @@ test('«paid, or phone, or email» is asked as separate lookups, so each can use
   assert.ok(!/\(p\.id=CONCAT\('proof-',pp\.id\) OR p\.transaction_id=pp\.id\)/.test(payops));
 });
 
-test('«converted lead without a client» is NOT A AND NOT B AND NOT C, and the count is not a derived table', () => {
-  const checks = read('api/lib/reconcileChecks.js');
-  const predicate = checks.slice(checks.indexOf('const LIVE_SUBSCRIBER_FOR_LEAD'), checks.indexOf('const CHECKS'));
-  
-  assert.ok((predicate.match(/\bAND NOT /g) || []).length >= 2);
-  
-  const payops = read('api/routes/core/payops.js');
-  
-  
-});
+
 
 
 

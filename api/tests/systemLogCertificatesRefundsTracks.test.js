@@ -126,10 +126,7 @@ test('a dry run names nothing', async () => {
   assert.ok(!db.calls.some(call => /^\s*UPDATE|INSERT/.test(call.sql)));
 });
 
-test('grants run the rule, so the table, the panel and the payment dialog agree', () => {
-  const entitlements = read('api/lib/entitlements.js');
-  assert.equal((entitlements.match(/await nameCompletedTracks\(db, \{ tenantId, subscriberId, actor \}\);/g) || []).length, 2);
-});
+
 
 test('«تكملة»: the course joins the track, its money with it, access untouched', async () => {
   const entitlements = require('../lib/entitlements');

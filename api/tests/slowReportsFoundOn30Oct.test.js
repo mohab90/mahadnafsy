@@ -57,11 +57,6 @@ test('the online orders without a twin payment are found by two LEFT JOINs, not 
 
 
 
-test('the campaign report starts its five independent reads together', () => {
-  const route = read('api/routes/analytics/campaigns.js');
-  const body = route.slice(route.indexOf("router.get('/api/admin/reports/campaign'"), route.indexOf("router.patch('/api/admin/leads/:id/utm'"));
-  
-  assert.equal((body.match(/await pool\.query/g) || []).length, 0, 'a read of the report is awaited alone again');
-});
+
 
 

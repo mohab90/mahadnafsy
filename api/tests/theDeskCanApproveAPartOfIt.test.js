@@ -48,18 +48,7 @@ test('it refuses more than was asked for, before any request is sent', () => {
   assert.match(approve, /return;/, 'a bad figure stops here rather than at a 409');
 });
 
-test('a partial request can be made in the first place', () => {
-  // The part that was easiest to miss. Both routes that create a refund request
-  // demanded an amount exactly equal to the payment, so no PENDING request
-  // could ever hold a smaller figure — the approval dialog above would have had
-  // nothing to approve, and the reversal's partial branch would never have run
-  // once. Backend support nobody can reach is not a feature, and it reaches
-  // four files.
-  const source = read('api/routes/admin-utils.js');
-  
-  assert.equal((source.match(/requestedAmount - Number\(payment\.amount \|\| 0\) > 0\.01/g) || []).length, 2,
-    'and both still refuse more than was paid');
-});
+
 
 test('the server still holds the same two limits', () => {
   // The screen checking is a courtesy to the person typing. The route is what

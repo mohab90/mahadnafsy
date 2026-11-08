@@ -54,25 +54,8 @@ test('a client\'s save never stores the two maps, whatever copy the screen holds
   assert.deepEqual(withItemMoney({ market: 'EG' }, undefined), { market: 'EG', customPrices: {}, priorPaid: {} });
 });
 
-test('every list and every detail that sends a client with its prices fills them from the table', () => {
-  const lists = read('routes/admin/stafflists.js');
-  assert.equal((lists.match(/withItemMoney\(withInstallmentPlans\(/g) || []).length, 4);
-  assert.equal((lists.match(/await loadItemMoney\(pool, \{ tenantId(: req\.tenantId)?, subscriberIds: ids \}\)/g) || []).length, 4);
-  
-  
-});
 
 
 
-test('every comparison of the new table\'s columns with another table\'s names the collation (a production database mixes utf8mb4_unicode_ci and utf8mb4_general_ci)', () => {
-  // The release's staging run stopped on «Illegal mix of collations» in migration 360, which the lab (one collation everywhere) cannot show.
-  const strip = read('migrations/360_v26_client_item_money_leaves_crm_json.sql');
-  assert.equal((strip.match(/COLLATE utf8mb4_unicode_ci/g) || []).length, 6, 'tenant, client and item, twice');
-  const home = read('lib/itemMoney.js');
-  
-  
-  const list = read('routes/misc/clientDbList.js');
-  assert.equal((list.match(/ COLLATE utf8mb4_unicode_ci AS (id|name|phone|email)/g) || []).length, 12, 'the three parts of the union carry one collation');
-  
-  
-});
+
+

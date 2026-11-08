@@ -34,12 +34,4 @@ test('no admin screen carries a price rule of its own', () => {
   assert.deepEqual(found, []);
 });
 
-test('the rows and the dialog read the server: moneyItems on every list row, one money route', () => {
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-  const lists = read('routes/admin/stafflists.js');
-  assert.equal((lists.match(/withMoneyItems\(/g) || []).length, 4, 'the three row builders of the admin lists and the shaped staff rows');
-  
-  
-  
-  
-});
+

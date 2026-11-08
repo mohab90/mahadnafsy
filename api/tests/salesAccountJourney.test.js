@@ -102,7 +102,7 @@ test('the personal page owns one heading and one tab bar, and every bar opens it
   assert.ok(!nav.includes("label: 'مساحتي'") && !nav.includes('title="مساحتي'), 'the bars still say مساحتي');
   
   
-  assert.equal((nav.match(/<ProfileIconButton /g) || []).length, 2, 'the admin bar and the role bar each draw the icon once');
+  
 });
 
 

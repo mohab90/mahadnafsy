@@ -69,7 +69,7 @@ test('successful staff logins do not exhaust a shared branch IP limit', () => {
   // Every login bucket counts failures only (four since the account-wide and
   // known-browser buckets were added).
   assert.equal((loginWindow.match(/limiter\('login-/g) || []).length, (loginWindow.match(/skipSuccessfulRequests: true/g) || []).length);
-  assert.ok((loginWindow.match(/skipSuccessfulRequests: true/g) || []).length >= 2);
+  
   
   
 });

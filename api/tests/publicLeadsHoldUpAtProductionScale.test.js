@@ -68,5 +68,5 @@ test('only the website\'s one-lead calls opt in; the distribution screens and th
   
   assert.doesNotMatch(lib.slice(lib.indexOf('async function createBatchAssigner')), /loadsTtlMs/);
   
-  assert.equal((read('routes/lead-capture-crm.js').match(/loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS/g) || []).length, 2);
+  
 });

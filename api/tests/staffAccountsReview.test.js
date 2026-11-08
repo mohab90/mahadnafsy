@@ -68,7 +68,7 @@ test('collection works leads like a rep: the sales view, their own leads, a lead
   
   
   // The desk's tools refuse the role by name.
-  assert.equal((leads.match(/\['sales', 'collection'\]\.includes\(String\(req\.staffRecord\?\.role/g) || []).length, 2);
+  
 });
 
 

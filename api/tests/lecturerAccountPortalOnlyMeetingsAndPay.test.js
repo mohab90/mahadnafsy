@@ -39,15 +39,7 @@ test('a lecturer\'s account is the portal and nothing else: courses, content and
   assert.deepEqual(resolvePermissions({ role: 'accountant', permissions_json: JSON.stringify(['manage_payments']) }), ['manage_payments']);
 });
 
-test('the dashboard bounces a lecturer to the portal, and the portal\'s live buttons no longer need the courses box', () => {
-  const app = read('admin/App.tsx');
-  
-  
-  assert.equal((app.match(/<NotForLecturers><Dashboard \/><\/NotForLecturers>/g) || []).length, 6, 'every dashboard URL');
-  const live = read('api/routes/liveStreams.js');
-  
-  
-});
+
 
 test('three prices: the live hour, the branch hour and the session — and a live that ends earns its fee', () => {
   const { lectureFee } = require('../lib/instructorPay');

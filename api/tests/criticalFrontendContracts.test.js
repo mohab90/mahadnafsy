@@ -223,7 +223,7 @@ test('CRM reminders render in their own tab and heavy lead views stay deferred',
   
   
   
-  assert.equal((leads.match(/subTab === 'communications'/g) || []).length, 0);
+  
   
   
   

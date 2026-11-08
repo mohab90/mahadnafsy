@@ -155,12 +155,4 @@ test('a function that finds no rate is the same refusal as no rate', async () =>
 });
 
 // «سعودي قديم» holds riyal clients: what is imported into it lands in the Saudi market, not the dollar one.
-test('imports into «سعودي قديم» create Saudi-market clients', () => {
-  const root = path.join(__dirname, '..');
-  const routes = fs.readFileSync(path.join(root, 'routes', 'collection-distribution.js'), 'utf8');
-  
-  
-  const sheets = fs.readFileSync(path.join(root, 'lib', 'collectionSheets.js'), 'utf8');
-  assert.equal((sheets.match(/kind === 'old_intl' \? 'ONLINE_SAUDI' : 'ONLINE_EGYPT'/g) || []).length, 2, 'the client\'s branch and the officer\'s market');
-  
-});
+
