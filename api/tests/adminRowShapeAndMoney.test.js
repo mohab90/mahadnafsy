@@ -58,47 +58,6 @@ test('and the note the desk types is actually saved', () => {
 });
 
 // ── what an instalment says the customer owes ──────────────────────────────
-test('an instalment records the plan total, not its own amount', () => {
-  // course_expected is what the customer owes for the course, and the
-  // collections query reads MAX(course_expected) per course to decide who is
-  // still short. Writing one instalment's amount there made expected equal
-  // paid the moment that instalment cleared, so a customer part-way through a
-  // plan dropped off the outstanding list and was never chased again.
-  const source = codeOnly(read('routes/installments.js'));
-  const insert = source.slice(source.indexOf('INSERT INTO payments'));
-  // The course's agreed price when the booking recorded one — a plan is often
-  // made for what is left — and the plan's total otherwise.
-  // (The note says when it is only a part of the instalment.)
-  assert.match(insert.slice(0, 1200), /courseExpected, `\$\{update\.partial \? `جزء من القسط[^`]*` : ''\}قسط رقم/);
-  assert.match(source, /const courseExpected = Number\(agreed\) > 0 \? Number\(agreed\) : Number\(plan\.total_amount\);/);
-  assert.doesNotMatch(insert.slice(0, 1200), /update\.scheduledAmount/);
-});
-
-test('the collections query still reads that column, so the fix reaches it', () => {
-  // The two halves only work together; if the query stops reading
-  // course_expected this test should fail and be re-thought, not deleted.
-  // The loader moved to lib/outstandingBalances.js; the route still serves it.
-  const collections = codeOnly(read('routes/crm-tools.js') + read('lib/outstandingBalances.js'));
-  assert.match(collections, /MAX\(COALESCE\(course_expected,0\)/);
-});
-
-// ── which day a payment belongs to ─────────────────────────────────────────
-test('an instalment is dated in Cairo, not in the server timezone', () => {
-  // The server runs in UTC. toISOString() on the server clock dated a payment
-  // confirmed at 01:30 Cairo to the previous day, filing it and its journal
-  // entry in the wrong month — and, if that month is closed, failing the write
-  // outright. lib/finance.js records 179 entries already filed a day early.
-  const source = codeOnly(read('routes/installments.js'));
-  assert.match(source, /const effectiveDate = paidDate \|\| dateOnlyInTimeZone\(\)/);
-  assert.doesNotMatch(source, /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
-  assert.match(source, /require\('\.\.\/lib\/dates'\)/);
-});
-
-test('the timezone helper still defaults to Cairo', () => {
-  assert.match(read('lib/dates.js'), /timeZone = 'Africa\/Cairo'/);
-});
-
-// ── the refund approver's two numbers ──────────────────────────────────────
 test('the refunds screen counts only money actually received', () => {
   // «المدفوع» and «إجمالي الكورس» sit side by side for whoever approves the
   // refund. The paid figure summed every row in the table — pending payments

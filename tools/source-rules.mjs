@@ -7,7 +7,7 @@
  * A rule: { id, why, files, mustNot?, must?, custom? }
  *   files   — exact repo paths, or { dir, ext: [...] } for every file under a folder
  *   mustNot — regular expressions no file may match            must — regular expressions every file has to match
- *   custom  — (read) => [message] for a rule that compares two files
+ *   custom  — (read, list) => [message] for a rule that compares files; list(dir, ext) gives every file under api/<dir> as a repo path
  * Add a rule here only when no behaviour test can hold it. Tenant scoping of a query is held by check 14 (tenant-scope-scan), not here.
  *
  * Usage: node tools/source-rules.mjs        prints every violation, exit 1 when there is one
@@ -56,13 +56,34 @@ export const RULES = [
       ];
     },
   },
+  {
+    id: 'every-plan-writer-rewrites-its-rows',
+    why: "installment_entries (migration 369) copies the plans' JSON arrays and stays true only while every writer of a plan rewrites it with syncPlanEntries in the same file",
+    files: { dir: 'api', ext: ['.js'] },
+    custom: (read, list) => {
+      const out = []; const writers = [];
+      for (const file of [...list('api/routes'), ...list('api/lib')].filter(name => !name.endsWith('installmentEntries.js'))) {
+        const source = read(file);
+        const writes = (source.match(/(INSERT INTO installment_plans|UPDATE installment_plans|DELETE FROM installment_plans)/g) || []).length;
+        if (!writes) continue;
+        writers.push(file.replace(/^api\//, ''));
+        const syncs = (source.match(/syncPlanEntries\(/g) || []).length;
+        if (syncs < writes) out.push(`${file} writes a plan ${writes} time(s) and rewrites its rows ${syncs} time(s)`);
+      }
+      const known = ['lib/planEntryPayment.js', 'lib/planFollowsMoney.js', 'routes/installments.js'];
+      for (const file of writers) if (!known.includes(file)) out.push(`${file} is a new writer of installment plans: add it to this rule once it rewrites the rows`);
+      return out;
+    },
+  },
 ];
 
 /** Applies one rule to a reader `read(path) => text`; returns the violations as { rule, file, detail }. */
-export function checkRule(rule, read, listFiles = spec => (Array.isArray(spec) ? spec : walk(join(ROOT, spec.dir), spec.ext).map(file => relative(ROOT, file).split(sep).join('/')))) {
+const listUnder = (dir, exts = ['.js']) => walk(join(ROOT, dir), exts).map(file => relative(ROOT, file).split(sep).join('/'));
+
+export function checkRule(rule, read, listFiles = spec => (Array.isArray(spec) ? spec : listUnder(spec.dir, spec.ext)), list = listUnder) {
   const out = [];
   if (rule.custom) {
-    for (const detail of rule.custom(read)) out.push({ rule: rule.id, file: Array.isArray(rule.files) ? rule.files.join(' + ') : rule.files.dir, detail });
+    for (const detail of rule.custom(read, list)) out.push({ rule: rule.id, file: Array.isArray(rule.files) ? rule.files.join(' + ') : rule.files.dir, detail });
     return out;
   }
   for (const file of listFiles(rule.files)) {
