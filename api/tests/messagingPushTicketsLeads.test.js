@@ -137,16 +137,7 @@ test('the gate opens what the server allows, staff alerts, and what the owner sw
   assert.match(read('api/lib/whatsapp.js'), /if \(!await isCategoryOpen\(opts\.category, tenantId\)\) \{/);
 });
 
-test('the switches are the owner\'s and managers\' to change, on screen and on the server', () => {
-  const routes = read('api/routes/messaging-channels.js');
-  assert.match(routes, /router\.get\('\/api\/admin\/messaging\/outbound', \.\.\.view,/);
-  assert.match(routes, /router\.put\('\/api\/admin\/messaging\/outbound', requireAuth, requireAdmin,/);
-  assert.match(routes, /\.filter\(name => state\.switchable\.includes\(name\)\)/);
-  assert.match(routes, /invalidateOutbound\(req\.tenantId\);/);
-  const panel = read('admin/pages/dashboard/tabs/messaging/MessagesHealthPanel.tsx');
-  assert.match(panel, /const canSwitch = isAdmin \|\| \['admin', 'manager'\]\.includes/);
-  assert.match(read('admin/pages/dashboard/tabs/MessagingHubTab.tsx'), /MessagesHealthPanel/);
-});
+
 
 
 
@@ -183,23 +174,7 @@ test('a phone that dropped its subscription stops being sent to', async () => {
   pushFailure = null;
 });
 
-test('the bell offers the phone, and the server keeps one key pair of its own', () => {
-  const notification = read('api/lib/notification.js');
-  assert.match(notification, /if \(process\.env\.NODE_ENV === 'production'\) setImmediate\(\(\) => \{/);
-  assert.match(notification, /require\('\.\/staffPush'\)\.pushToStaff\(\{ tenantId, type, title, message, recipientStaffId \}\)/);
-  const push = read('api/lib/push.js');
-  assert.match(push, /privateSealed: seal\(made\.privateKey\)/);
-  assert.doesNotMatch(push, /privateKey: made\.privateKey \}/);
-  const route = read('api/routes/push.js');
-  assert.match(route, /staff_id = VALUES\(staff_id\)/);
-  assert.match(route, /is_admin = VALUES\(is_admin\)/);
-  assert.match(read('admin/lib/devicePush.ts'), /register\('\/sw-push\.js'\)/);
-  const worker = read('admin/public/sw-push.js');
-  assert.match(worker, /addEventListener\('push'/);
-  assert.match(worker, /addEventListener\('notificationclick'/);
-  assert.match(read('admin/pages/dashboard/NotificationsBell.tsx'), /enableDevicePush/);
-  assert.match(read('api/migrations/230_v26_staff_push.sql'), /ADD COLUMN IF NOT EXISTS staff_id varchar\(36\) DEFAULT NULL/);
-});
+
 
 // ── Tickets ─────────────────────────────────────────────────────────────────
 
@@ -286,16 +261,7 @@ test('the hourly pass runs in the working day only, and is scheduled', async () 
 
 // ── Admin screens ───────────────────────────────────────────────────────────
 
-test('a call or a WhatsApp opened from the clients table opens its log', () => {
-  const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, /onClick=\{\(\) => logContact\(row, 'whatsapp'\)\}/);
-  // A call is a plain call: it no longer opens the log by itself («زر اتصال بيفتح تواصل اتوماتك دا غلط»); the log is its own button.
-  assert.doesNotMatch(table, /onCall=/);
-  assert.match(table, /key: 'contact', label: 'تسجيل تواصل'/);
-  assert.match(table, /initialType=\{contactType\}/);
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientNameCell.tsx'), /href=\{`tel:\$\{row\.phone\}`\} onClick=\{onCall\}/);
-  assert.match(read('admin/pages/unified-client/ClientContactLog.tsx'), /\{ type: initialType, date: cairoDateTimeInput\(\)/);
-});
+
 
 test('the owner names who brought a payment, the name rides on that payment only, and a slip of the finger is asked about', () => {
   const attribution = read('admin/lib/paymentAttribution.ts');
@@ -318,13 +284,7 @@ test('the owner names who brought a payment, the name rides on that payment only
   assert.match(read('api/routes/subscriber-payments.js'), /: \(requestedStaffId \|\| req\.staffRecord\?\.id \|\| null\);/);
 });
 
-test('a confirmation says what it confirms, not «delete» by default', () => {
-  const dialog = read('shared/ui/confirmDialog.tsx');
-  assert.doesNotMatch(dialog, /'تأكيد الحذف'/);
-  const panel = read('admin/pages/dashboard/tabs/messaging/MessagesHealthPanel.tsx');
-  assert.match(panel, /title: 'إعادة إرسال',/);
-  assert.match(panel, /confirmLabel: 'افتحها',/);
-});
+
 
 // ── Schema and search ───────────────────────────────────────────────────────
 

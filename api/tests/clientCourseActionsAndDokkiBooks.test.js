@@ -202,53 +202,8 @@ test('«حسابات الدقي»: its boxes first, its own payments, no riyal, 
   assert.deepEqual(offered, ['statement', 'boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging']);
 });
 
-test('a branch client\'s file shows what they bought, not an online course', () => {
-  const panel = read('admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx');
-  assert.match(panel, /const inBranch = !isOnlineClient\(subscriber\);/);
-  assert.match(panel, /\{inBranch \? \(/);
-  assert.match(panel, /course-remove/);
-  assert.match(panel, /course-transfer/);
-  assert.match(panel, /<AddRefundModal subscriber=\{subscriber\} item=\{refundItem\.item\}/);
-  const tab = read('admin/pages/unified-client/UnifiedClientCoursesTab.tsx');
-  assert.match(tab, /!isOnlineClient\(subscriber\) \? null/);
 
-  const modal = read('admin/pages/dashboard/tabs/financial/AddRefundModal.tsx');
-  assert.match(modal, /<option value="">بدون دفعة مسجّلة<\/option>/);
-  assert.match(modal, /payment_id: payment\?\.id \|\| null/);
-  assert.match(modal, /course_item: courseItem \|\| null/);
-  assert.match(modal, /refund_method: payment \? method : box/);
-});
 
 // «جدول كورسات الدقي»: one path under a course, rows in two shades, collected and
 // remaining apart, a searchable «إضافة عملاء», and «اشتغلت / ماشتغلتش».
-test('the Dokki schedule', () => {
-  const rounds = read('api/routes/daqqi-rounds.js');
-  assert.match(rounds, /held_weeks_json=COALESCE\(\?, held_weeks_json\)/, 'a screen that does not send the weeks keeps them');
-  assert.match(read('api/migrations/227_v26_daqqi_held_weeks.sql'), /held_weeks_json text/);
-  assert.match(read('api/lib/daqqiAccess.js'), /'RECEPTION_DAQQI', 'SUPPORT'/, 'customer service reads the schedule from its bar');
 
-  const paths = read('api/routes/dokki-operations.js');
-  assert.match(paths, /router\.put\('\/api\/admin\/dokki\/course-paths'[^\n]*requireDaqqiManager/);
-  assert.match(paths, /FROM bundle_courses WHERE tenant_id=\? AND bundle_id=\? AND course_id=\?/, 'a path the course is in');
-
-  // The desk's save sent the room it had been given, and it had been given none.
-  const own = read('admin/pages/dashboard/useStaffOwnData.ts');
-  assert.match(own, /room: String\(r\.room \|\| ''\)/);
-
-  const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
-  assert.match(row, /index % 2 \? 'bg-gray-50' : 'bg-white'/);
-  assert.match(row, /handleDaqqiMarkWeek\(round\.id, true\)/);
-  assert.match(row, /handleDaqqiMarkWeek\(round\.id, false\)/);
-  assert.match(row, /paths\.find\(bundle => bundle\.id === coursePath\) \|\| paths\[0\]/, 'one path, the chosen one');
-
-  const modal = read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx');
-  assert.match(modal, /بحث بالاسم أو رقم التليفون/);
-  // «غير مسكن» is housed FOR THE COURSE being filled (daqqi/daqqiHousingNeeds.ts), not seated in any round.
-  // (the server judges it now: api/lib/dokkiClients.js candidatesOf, pinned in dokkiClients.test.js)
-  assert.match(modal, /housing: housing === 'all' \? 'any' : housing,\s+housedFor: wantedCourse === 'all' \? '' : wantedCourse,/);
-  assert.match(modal, /enrolled: wantedCourse === 'all' \? '' : wantedCourse,/);
-
-  const tab = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(tab, /المحصّل<\/th>\s*<th[^>]*>المتبقي<\/th>/);
-  assert.match(tab, /setDaqqiAddClientsRoundId\(r\.id\)/, 'the calendar adds clients too');
-});

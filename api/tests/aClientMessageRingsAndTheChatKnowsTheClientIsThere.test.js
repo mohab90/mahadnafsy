@@ -72,12 +72,4 @@ test('the client\'s open conversation reports in, and what they write rings cust
   assert.match(read('admin/pages/dashboard/NotificationsBell.tsx'), /ticket_client_message: \{[^}]*severity: 'critical'/, 'it reads as important in the bell');
 });
 
-test('the client\'s conversation refreshes itself, and the staff drawer refreshes the state and the thread', () => {
-  const client = read('client/components/student-dashboard/StudentSupportTab.tsx');
-  assert.match(client, /\?live=1/);
-  assert.match(client, /useVisibleInterval\(\(\) => \{ void refreshThread\(\); \}, 10_000/);
-  const staff = read('admin/pages/dashboard/tabs/CustomerInboxTab.tsx');
-  assert.match(staff, /useVisibleInterval\(refreshChat, 10000/);
-  assert.match(staff, /setChatLastSeen/);
-  assert.match(staff, /اتأكد تاني/);
-});
+

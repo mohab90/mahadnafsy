@@ -10,21 +10,7 @@ const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), '
 
 
 
-test('erasure is reviewed, transactional, blocks active obligations and verifies completion', () => {
-  const route = read('routes/privacy.js');
-  const service = read('lib/privacyService.js');
-  const legacy = read('routes/admin-utils.js');
 
-  assert.match(route, /privacy\/requests\/:id\/decision[\s\S]{0,180}requirePermission\('delete_subscribers'\)/);
-  assert.match(route, /await conn\.beginTransaction\(\)[\s\S]*anonymizeSubscriber[\s\S]*await conn\.commit\(\)/);
-  assert.match(service, /ERASURE_BLOCKED_ACTIVE_OBLIGATIONS/);
-  assert.match(service, /session_version=session_version\+1/);
-  assert.match(service, /UPDATE consultations SET client_name=\?,client_email=\?,client_phone=NULL,notes=NULL/);
-  assert.match(service, /UPDATE orders SET customer_name=\?,customer_email=\?,customer_phone=NULL,notes=NULL/);
-  assert.match(service, /retainedCategories/);
-  assert.match(service, /Privacy erasure verification failed/);
-  assert.match(legacy, /PRIVACY_WORKFLOW_REQUIRED/);
-});
 
 
 

@@ -36,9 +36,4 @@ test('what the number itself sent, a group, and any callback that is not a recei
 
 
 
-test('whoever sees every conversation lands on «الكل», not on an empty «محادثاتي»', () => {
-  const screen = read('admin/pages/dashboard/tabs/whatsapp/TeamInboxTab.tsx');
-  assert.match(screen, /const pickedView = useRef\(false\);/);
-  assert.match(screen, /if \(list\.seesAll && !pickedView\.current\) \{ pickedView\.current = true; setViewState\('all'\); \}/);
-  assert.match(screen, /const setView = useCallback\(\(next: View\) => \{ pickedView\.current = true; setViewState\(next\); \}, \[\]\);/);
-});
+

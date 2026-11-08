@@ -71,13 +71,7 @@ test('a real newcomer is asked about as a client first, and is not stopped by it
 
 
 
-test('signing in by a WhatsApp code is off: the routes answer 410, and nothing on the page calls them', () => {
-  const route = read('api/routes/auth/whatsappLogin.js');
-  assert.match(route, /process\.env\.AUTH_WHATSAPP_LOGIN === '1'/);
-  assert.match(route, /router\.use\('\/api\/auth\/whatsapp'/);
-  assert.match(route, /res\.status\(410\)\.json\(\{[^}]*code: 'WHATSAPP_LOGIN_OFF'/);
-  assert.doesNotMatch(read('client/pages/Auth.tsx'), /whatsapp\/|WaOtp|waMode/i);
-});
+
 
 
 

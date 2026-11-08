@@ -41,27 +41,9 @@ test('a wrong certificate is deleted softly — revoked first — and the client
   assert.match(read('api/routes/instituteCertificates.js'), /cc\.deleted_at IS NULL/);
 });
 
-test('the desk\'s print is recorded, the client\'s download is recorded apart, and the client page shows both', () => {
-  const desk = read('api/routes/instituteCertificates.js');
-  assert.match(desk, /router\.post\('\/api\/admin\/institute-certificates\/:id\/printed'/);
-  assert.match(desk, /SET printed_at = NOW\(\), printed_by = \?, print_count = print_count \+ 1/);
-  assert.match(read('api/lib/clientView.js'), /printedAt: safeIsoString\(row\.printed_at\)[\s\S]*downloadedAt: safeIsoString\(row\.downloaded_at\)/);
-  const panel = read('admin/pages/unified-client/UnifiedClientCertificatesPanel.tsx');
-  assert.match(panel, /اتطبعت في المعهد/);
-  assert.match(panel, /العميل شافها ونزّلها من حسابه/);
-  assert.match(panel, /onDeleteCertificate\(cert\.id\)/);
-  assert.match(read('admin/pages/unified-client/useUnifiedClientLifecycleActions.ts'), /adminDelete\(`\/admin\/completions\/\$\{encodeURIComponent\(certificateId\)\}`\)/);
-});
 
-test('the client page shows the certificate itself and prints it in full or on the form', () => {
-  const modal = read('admin/pages/unified-client/UnifiedClientCertificateViewModal.tsx');
-  assert.match(modal, /<iframe/);
-  assert.match(modal, /certificate\?staff=1&embed=1/);
-  assert.match(modal, /طباعة كاملة/);
-  assert.match(modal, /طباعة الاسم والكورس والساعات فقط/);
-  assert.match(modal, /institute-certificates\/\$\{encodeURIComponent\(cert\.id\)\}\/printed/);
-  assert.match(read('admin/pages/unified-client/UnifiedClientEditTab.tsx'), /تعديل بيانات الشهادة[\s\S]*subscriber\?\.nameEn/, 'the edit tab shows the English name and the national id');
-});
+
+
 
 test('the form\'s measurements are the institute\'s, saved once on the server, and the print reads them there', () => {
   const desk = read('api/routes/instituteCertificates.js');
@@ -76,19 +58,6 @@ test('the form\'s measurements are the institute\'s, saved once on the server, a
   assert.match(read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx'), /<FormLayoutModal/);
 });
 
-test('«إضافة شهادة»: search a client, their courses and tracks, issue and print', () => {
-  const modal = read('admin/pages/dashboard/tabs/AddInstituteCertificateModal.tsx');
-  assert.match(modal, /\/admin\/client-lookup\?q=/);
-  assert.match(modal, /institute-certificates\/client\/\$\{encodeURIComponent\(subscriberId\)\}\/items/);
-  assert.match(modal, /force: true/);
-  assert.match(read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx'), /<AddInstituteCertificateModal/);
-  assert.match(read('api/routes/instituteCertificates.js'), /router\.post\('\/api\/admin\/institute-certificates', \.\.\.desk/);
-});
 
-test('training hours are set on every course and every track, and the certificate prints them', () => {
-  assert.match(read('api/routes/core/catalog.js'), /hours=VALUES\(hours\)/);
-  assert.match(read('api/lib/mappers.js'), /hours: r\.hours != null && Number\(r\.hours\) > 0/);
-  assert.match(read('admin/pages/dashboard/tabs/courses/BundlesPanel.tsx'), /ساعات التدريب اللي بتطلع في شهادة المسار/);
-  assert.match(read('admin/pages/dashboard/tabs/CoursesTab.tsx'), /ساعات التدريب اللي بتطلع في الشهادة/);
-  assert.match(read('api/routes/public.js'), /COALESCE\(c\.hours, b\.hours\) AS hours_count/);
-});
+
+

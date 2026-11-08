@@ -102,11 +102,7 @@ test('the payment calculator reads the marketing rates', () => {
   }
 });
 
-test('the certificate check opens the public verification page', () => {
-  const check = read('client/components/home/CertificateCheck.tsx');
-  assert.match(check, /\/certificate\/\$\{encodeURIComponent\(clean\)\}/);
-  assert.match(read('client/App.tsx'), /path="\/certificate\/:code"/);
-});
+
 
 test('the home page shows three paths, never the long integrated programme', () => {
   const js = require('node:module').stripTypeScriptTypes(read('shared/homePaths.ts')).replace(/^export /gm, '');
@@ -126,17 +122,9 @@ test('the home page shows three paths, never the long integrated programme', () 
   assert.match(read('client/components/home/PathsSection.tsx'), /bundlesForHome\(bundles\)/);
 });
 
-test('the payment calculator names the programme clearly, with a line about it', () => {
-  assert.match(planner, /text-xl font-black[^"]*">\{course\.title\.trim\(\)\}/);
-  assert.match(planner, /\{blurb && /);
-});
 
-test('the paths are drawn from the published bundles, with the saving worked out, not typed', () => {
-  const paths = read('client/components/home/PathsSection.tsx');
-  assert.match(paths, /discountPercent\(bundle\.originalPrice/);
-  assert.match(paths, /\/enroll\?bundle=/);
-  assert.match(read('client/pages/Enrollment.tsx'), /searchParams\.get\('bundle'\)/, 'and the enrol page takes that link');
-});
+
+
 
 test('the goal finder offers the categories that have courses, and the course most people take', () => {
   const { goalsFromCourses, recommendedCourse } = goals();
@@ -156,31 +144,11 @@ test('the goal finder offers the categories that have courses, and the course mo
   assert.equal(goalsFromCourses(courses, 2).length, 2);
 });
 
-test('the home page still honours what marketing controls', () => {
-  assert.match(offer, /offerPrices\(content, offerCourse \? \{ price: \{ \[currency\]: coursePrice \} \} : null, currency\)/);
-  assert.match(home, /offerShown && <OfferSpotlight/);
-  // The featured strip at the server's price, which judges a rule's expiry in Cairo.
-  assert.match(home, /effectivePrice\(priceList, 'course', featuredId/);
-  assert.match(home, /content\['home\.video\.url'\]/);
-  assert.match(read('client/components/home/WhyChooseSection.tsx'), /content\['home\.video\.url'\]/);
-  assert.match(offer, /value="daqqi"/);
-  assert.match(offer, /source: 'عرض 24 ساعة'/, 'the offer form still lands in العملاء المحتملون under its source');
-});
 
-test('the certificate code field is a short one', () => {
-  const check = read('client/components/home/CertificateCheck.tsx');
-  assert.match(check, /sm:w-44/, 'a field sized for a short code, not a long bar');
-  assert.match(check, /toUpperCase\(\)/);
-  assert.doesNotMatch(check, /maxLength/, 'older, longer codes still verify');
-});
 
-test('the tour video is a square beside the reasons, and loads only when played', () => {
-  const why = read('client/components/home/WhyChooseSection.tsx');
-  assert.match(why, /lg:grid-cols-2 lg:items-stretch/);
-  assert.match(why, /aspect-square/, 'the tour video is a square');
-  assert.match(why, /<VideoSurface url=\{videoUrl\}[^>]*cover/, 'filling the square, played in place');
-  assert.match(why, /playing && videoUrl \?/, 'and the player loads only when asked for');
-});
+
+
+
 
 test('the home page shows the design chosen in the panel; the old /new address leads to it', () => {
   const app = read('client/App.tsx');

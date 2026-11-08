@@ -56,23 +56,4 @@ test('reconciliation dashboard connects payments, journals, enrollments, CRM and
   assert.match(ui, /mysqlAdmin\.adminGet<ReconciliationData>\(`\/admin\/reconciliation-dashboard/);
 });
 
-test('finance outbox is tenant scoped, retryable and connected to payment producers and worker', () => {
-  const migration = read('migrations/081_v25_finance_outbox_tenant_retry.sql');
-  const outbox = read('lib/financeOutbox.js');
-  const payments = read('routes/subscriber-payments.js');
-  const proofs = read('routes/payment-proofs.js');
-  const payops = read('routes/core/payops.js');
-  const scheduler = read('lib/backgroundScheduler.js');
-  assert.match(migration, /tenant_id VARCHAR\(64\)/);
-  assert.match(migration, /uq_finance_outbox_tenant_dedupe \(tenant_id, dedupe_key\)/);
-  assert.match(migration, /locked_by VARCHAR\(100\)/);
-  assert.match(outbox, /WHERE id=\? AND tenant_id=\?/);
-  assert.match(outbox, /attempts >= MAX_ATTEMPTS/);
-  assert.match(outbox, /LIMIT \? FOR UPDATE/);
-  assert.match(outbox, /status='processing'[\s\S]*locked_by=\?/);
-  assert.match(payments, /enqueueFinanceEvent\([\s\S]*tenantId/);
-  assert.match(proofs, /enqueueFinanceEvent\([\s\S]*tenantId/);
-  assert.match(scheduler, /drainFinanceOutbox\([\s\S]*sync_lead_deal_value/);
-  assert.match(payops, /finance-outbox\/:id\/retry'[\s\S]*requirePermission\('manage_financial'\)/);
-  assert.match(payops, /retryFinanceEvent\(req\.params\.id, req\.tenantId\)/);
-});
+

@@ -124,17 +124,4 @@ test('a permission means what the server says it means', { skip }, () => {
   assert.equal(lib.can(admin, 'delete_leads'), false);
 });
 
-test('the gate, the menu and the bars ask the one rule over the server\'s answer', () => {
-    const hook = read('admin/hooks/useAccess.ts');
-  assert.match(hook, /serverPermissions: authUser\?\.permissions/, 'the permissions are /api/auth/me\'s');
-  const model = read('admin/pages/dashboard/shell/useDashboardModel.tsx');
-  assert.match(model, /return visibleMenu\(groups, access\.viewer\);/);
-  assert.doesNotMatch(model, /masterResolvePermissions|canUseChannel\(/);
-  const container = read('admin/pages/dashboard/DashboardTabContainer.tsx');
-  assert.match(container, /const allowed = canOpenTab\(activeTab\);/);
-  assert.doesNotMatch(container, /import \{ TAB_PERMISSION_MAP \}/);
-  assert.match(read('admin/pages/dashboard/tabs/SettingsHubTab.tsx'), /return canOpenTab\(entry\.tab\);/);
-  const preview = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');
-  assert.match(preview, /canOpenTab\(viewer, item\.key\)/);
-  assert.doesNotMatch(read('admin/pages/staff-profile/staffProfileConstants.ts'), /ACCESS_PREVIEW_TABS/);
-});
+

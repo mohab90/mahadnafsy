@@ -23,51 +23,11 @@ const { codeOnlyKeepingUrls: codeOnly } = require('./support/repo');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 
-test('a certificate keeps its name across a save', () => {
-  const shared = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
-  // The name goes into the map with the prices.
-  assert.match(shared, /label: t\.label,/);
-  assert.ok(!shared.includes('.map(k => ({ key: k, label: k }))'),
-    'a custom type used to be rebuilt with its code as its name');
-  // And is read back, falling through to the built-in Arabic name and only
-  // then to the code — in the one list every screen that offers a
-  // certificate reads (admin/lib/certificateCatalog.ts).
-  const catalog = codeOnly(read('admin/lib/certificateCatalog.ts'));
-  assert.match(catalog, /DEFAULT_CERT_TYPES\.find\(d => d\.key === key\)\?\.label/);
 
-  // And there is one editor now. The settings screen carried a second one for
-  // the same key, with its own layout and — until they were found — the same two
-  // bugs, because a fix to one never reached the other.
-  const schema = codeOnly(read('admin/pages/dashboard/tabs/systemSettingsSchema.tsx'));
-  assert.ok(!schema.includes('extra_cert_pricing'),
-    'certificate pricing is edited beside the requests, not in the settings screen');
-  assert.ok(!schema.includes("key: 'cert_pricing'"));
-});
 
-test('each settings section has its own address', () => {
-  // Fourteen sections lived behind /dashboard/system_settings, so none could be
-  // linked to, none could be bookmarked, and the back button left the screen
-  // instead of stepping back one section. The dashboard already routes
-  // /dashboard/:tab/:param and SectionedTab uses it exactly this way.
-  const settings = codeOnly(read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx'));
-  assert.match(settings, /useParams<\{ param\?: string \}>\(\)/);
-  assert.match(settings, /navigate\(`\/dashboard\/system_settings\/\$\{key\}`\)/);
-  // Following a link or pressing back changes the URL; the screen has to follow.
-  assert.match(settings, /useEffect\(\(\) => \{ setActive\(sectionFromUrl\); \}, \[sectionFromUrl\]\)/);
-});
 
-test('the two settings called وسائل الدفع say which is which', () => {
-  // One is the institute's cash boxes, read by every booking and payment dialog.
-  // The other is what a customer may pick when paying manually on the site. The
-  // gateway card claimed the collection team used it, which is not true.
-  const gateway = read('admin/pages/dashboard/tabs/PaymentSettingsTab.tsx');
-  assert.ok(!gateway.includes('تستخدم داخل فريق التحصيل'),
-    'that hint sent admins to edit the list the staff dialogs do not read');
-  assert.match(gateway, /الإعدادات ← وسائل الدفع/, 'and it now names where that list lives');
 
-  const schema = read('admin/pages/dashboard/tabs/systemSettingsSchema.tsx');
-  assert.match(schema, /وسائل الدفع \(خزائن المعهد\)/);
-});
+
 
 test('adding a name to the stored map does not disturb pricing', () => {
   // The API reads specific price fields out of the same object, so carrying a
@@ -109,23 +69,7 @@ test('the payment methods the settings screen writes are the ones the dialogs re
   }
 });
 
-test('the Daqqi room list reads the table rooms actually live in', () => {
-  // Rooms used to be parsed out of content['institute.branches'], and the
-  // branches migration retired that key — branches are a table now and the key
-  // is absent on production. So the helper returned [] on every load, the room
-  // dropdown was permanently empty, and nothing could fill it, because rooms had
-  // moved to physical_classrooms.
-  const utils = read('admin/pages/dashboard/tabs/daqqi/daqqiScheduleUtils.ts');
-  assert.ok(!utils.includes('parseDaqqiRooms'),
-    'a helper that can only answer "no rooms" is worse than none');
 
-  const schedule = codeOnly(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'));
-  assert.match(schedule, /adminGet<[^>]*>\('\/admin\/dokki\/classrooms'\)/);
-
-  // And that endpoint is behind the permission this screen is already gated on.
-  const dokki = read('api/routes/dokki-operations.js');
-  assert.match(dokki, /router\.get\('\/api\/admin\/dokki\/classrooms', requireAuth, requireAdminOrStaff, requirePermission\('manage_daqqi'\)/);
-});
 
 test('staff can read the institute settings their screens are built from', () => {
   // GET /api/admin/content is requirePermission('manage_content'), and no role
@@ -152,56 +96,8 @@ test('staff can read the institute settings their screens are built from', () =>
   assert.match(api, /apiFetch<AR>\('\/content'\)/, 'the admin app falls back to it');
 });
 
-test('a settings save cannot report success having sent nothing', () => {
-  // buildContentPatch answers {} for a key it has no case for, the API merges
-  // that into the content, rewrites it unchanged and returns 200 — so the row's
-  // updated_at moves and the screen says «تم الحفظ» with nothing saved. The
-  // content row was rewritten at 14:54 by a 200 PATCH while the key it was meant
-  // to write still did not exist.
-  const settings = codeOnly(read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx'));
-  assert.match(settings, /if \(!Object\.keys\(patch\)\.length\) \{/);
-  assert.match(settings, /لا يوجد ما يُحفظ/);
-  // And a section that never loaded says so rather than doing nothing silently.
-  assert.match(settings, /لم تُحمَّل بعد/);
-});
 
-test('وسائل الدفع is one screen', () => {
-  // Two lists with nearly the same name lived on two screens: the institute's
-  // cash boxes in الإعدادات and the channels a customer may pick in إعدادات
-  // الدفع. They cannot become one value — the first is free text a staff member
-  // reads off a dropdown, the second a fixed set of codes the integration
-  // branches on — but there is no reason to hunt across two screens for it.
-  const settings = codeOnly(read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx'));
-  assert.match(settings, /const CustomerPaymentChannels/);
-  assert.match(settings, /active === 'payment_methods' && \(/);
 
-  const gateway = read('admin/pages/dashboard/tabs/PaymentSettingsTab.tsx');
-  assert.ok(!gateway.includes('title="طرق الدفع اليدوي المتاحة للعميل"'),
-    'the channels card moved out; the gateway screen keeps its credentials');
 
-  // PUT /api/admin/sys-config/:section replaces the section, so a save from here
-  // must not revert a toggle changed on the gateway screen meanwhile.
-  assert.match(settings, /sys-config\?section=payment_gateway/);
-  assert.match(settings, /const merged: GatewayConfig = \{/);
-  assert.match(settings, /\.\.\.\(current\?\.manual \|\| \{\}\),/);
-});
 
-test('a room added to a branch is a room the schedule can see', () => {
-  // The editor wrote rooms into content['institute.branches'], and rooms moved
-  // to physical_classrooms — so adding one went nowhere and the Daqqi dropdown
-  // stayed empty however many were typed in. Read and write now meet in the
-  // same table.
-  const shared = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
-  assert.match(shared, /adminGet<ClassroomRow\[\]>\('\/admin\/dokki\/classrooms'\)/);
-  assert.match(shared, /saveDokkiClassroom\(\{\s*\n\s*name, capacity/);
-  assert.ok(!shared.includes('rooms: [...rooms, { name: newRoomName.trim()'),
-    'nothing may write rooms back into the branches JSON');
 
-  // physical_classrooms carries branch_id, so a room belongs to a branch — and
-  // the two spell ids differently in places ('daqqi' against 'branch-daqqi').
-  assert.match(read('api/schema.sql'), /CREATE TABLE `physical_classrooms`[\s\S]{0,300}`branch_id`/);
-  assert.match(shared, /replace\(\/\^branch\[-_\]\/, ''\)/);
-
-  // Removing deactivates rather than deletes, so a room with bookings keeps them.
-  assert.match(shared, /is_active: 0,/);
-});

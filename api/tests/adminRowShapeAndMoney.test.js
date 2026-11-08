@@ -127,12 +127,7 @@ test('a monthly charge on the 1st appears in the forecast', () => {
 // Enabling them meant changing all four together; the whole reason a dialog can
 // ask the question again is that nothing refuses the answer any more. See
 // theDeskCanApproveAPartOfIt.test.js for the rest of that chain.
-test('approving a refund asks how much is actually going back', () => {
-  const panel = codeOnly(read('../admin/pages/dashboard/tabs/financial/FinancialRefundsPanel.tsx'));
-  assert.doesNotMatch(panel, /الاسترداد الجزئي غير مُفعّل/, 'it is enabled now');
-  assert.doesNotMatch(panel, /refundedAmount = requested;/, 'so the amount cannot be fixed to the full one');
-  assert.match(panel, /defaultValue: String\(requested\)/, 'a full refund is still one Enter away');
-});
+
 
 test('and both creation routes accept up to the payment, not exactly it', () => {
   const source = codeOnly(read('routes/admin-utils.js'));

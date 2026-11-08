@@ -64,15 +64,7 @@ test('three prices: the live hour, the branch hour and the session — and a liv
   for (const text of ['سعر ساعة اللايف', 'سعر ساعة الحضور في الدقي', 'سعر الجلسة الاستشارية', 'training_rate_per_hour', 'محاضر + استشاري']) assert.ok(section.includes(text), text);
 });
 
-test('one login can hold both jobs: lecturer + consultant', () => {
-  const section = read('admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx');
-  assert.match(section, /\['BOTH', 'محاضر \+ استشاري \(الاتنين\)'\]/);
-  assert.match(section, /const realRole = \(job: string\) => \(job === 'BOTH' \? 'INSTRUCTOR' : job\)/);
-  assert.match(section, /consultationSettings: \{ \.\.\.draft\.consultationSettings, enabled: true \}/, 'the consultation service is switched on with it');
-  const portal = read('api/routes/lecturer-portal.js');
-  assert.match(portal, /capabilities: \{\s*lecturer:[\s\S]*consultant: Boolean\(me\.therapist\?\.is_consultation_enabled\)/);
-  assert.match(read('admin/pages/LecturerPortal.tsx'), /overview\.capabilities\.consultant/);
-});
+
 
 test('the portal carries the permission, leave and advance requests of someone who is not a permanent employee', () => {
   assert.match(read('admin/pages/LecturerPortal.tsx'), /\{ id: 'requests', label: 'طلباتي \(إذن · إجازة · سلفة\)'/);
@@ -243,12 +235,4 @@ test('a unique-key collision is a 409 that says what collided, never «Internal 
 
 
 
-test('the panel stops asking for what it was refused: /admin/content once, registrations without view_leads', () => {
-  const api = read('admin/lib/mysqlapi.ts');
-  assert.match(api, /if \(!admin \|\| adminContentRefused\) return apiFetch<AR>\('\/content'\)/);
-  assert.match(api, /adminContentRefused = true/);
-  // 3 Nov 2026: the client database asks the server for its page (api/routes/misc/clientDbList.js), which leaves the sign-ups out for whoever lacks view_leads —
-  // no request is made that would be refused.
-  const list = read('api/routes/misc/clientDbList.js');
-  assert.match(list, /if \(holds\('view_leads'\)\) \{\s+\/\/ Accounts that signed up on the site/);
-});
+

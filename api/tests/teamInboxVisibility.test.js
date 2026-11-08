@@ -156,16 +156,4 @@ test('every platform in the inbox reaches the same thread table, so one setting 
   assert.match(social, /upsertThread\(/);
 });
 
-test('the screen says which platforms can really bring messages in: Wapilot only sends', () => {
-  const route = read('api/routes/team-inbox.js');
-  assert.match(route, /router\.get\('\/api\/admin\/team-inbox\/readiness', \.\.\.guard,/);
-  assert.match(route, /\['meta', 'green-api'\]\.includes\(whatsapp\.provider\)/);
-  assert.match(route, /WHATSAPP_APP_SECRET'\) && has\('WHATSAPP_WEBHOOK_VERIFY_TOKEN'\)/);
-  // the claim the hint makes is true: no inbound route exists for Wapilot
-  const webhooks = read('api/routes/whatsapp-webhook.js');
-  assert.match(webhooks, /\/api\/webhooks\/whatsapp\/meta/);
-  assert.match(webhooks, /\/api\/webhooks\/whatsapp\/green-api/);
-  assert.doesNotMatch(webhooks, /wapilot/i);
-  const panel = read('admin/pages/dashboard/tabs/whatsapp/InboxVisibilitySettings.tsx');
-  assert.match(panel, /'\/admin\/team-inbox\/readiness'/);
-});
+

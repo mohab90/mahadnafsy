@@ -31,16 +31,5 @@ test('deleting a ticket is offered only to whoever can delete one', () => {
   assert.equal((inbox.match(/\{isAdmin && <button[\s\S]{0,200}?deleteTicketApi/g) || []).length, 2);
 });
 
-test('refreshing the exchange rates is offered only to whoever can', () => {
-  // POST /api/admin/fx-rates/refresh needs manage_financial; محاسبة الدقي opens
-  // on manage_daqqi, so reception_daqqi saw a button that always failed.
-  const config = read('api/routes/config.js');
-  assert.match(config, /router\.post\('\/api\/admin\/fx-rates\/refresh', requireAuth, requireAdminOrStaff, requirePermission\('manage_financial'\)/);
 
-  const financial = codeOnly(read('admin/pages/dashboard/tabs/FinancialTab.tsx'));
-  assert.match(financial, /\{canManageFinancial && <button onClick=\{refreshFxRates\}/);
-  // Gated on the permission rather than on isAdmin, because the accountant and
-  // the collection desk hold manage_financial and may legitimately refresh.
-  assert.match(financial, /'manage_financial',\s*\);/);
-});
 

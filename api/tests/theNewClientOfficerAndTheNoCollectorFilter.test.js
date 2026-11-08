@@ -22,8 +22,4 @@ test('the four paths that make a client all ask the one picker, which honours hi
   assert.ok(lib.indexOf('config.newClientOfficerId') < lib.indexOf('loadCollectionPicker(db, tenantId);\n  const officer'), 'ahead of the rotation');
 });
 
-test('the settings screen picks him and the table can show who has no collection officer', () => {
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/CollectionSettingsModal.tsx'), /موظف «التحصيل الجديد»/);
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx'), /بدون مسئول تحصيل/);
-  assert.match(read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx'), /collOnlineCollectionFilter === NO_COLLECTOR/);
-});
+

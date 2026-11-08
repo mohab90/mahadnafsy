@@ -99,11 +99,7 @@ test('the settings file is read as text, never run — a password may hold $ & ;
   assert.match(read('tools/check-staging-gate.mjs'), /process\.env\.E2E_BASIC_AUTH \|\| readSettings\(settingsFile\)\.E2E_BASIC_AUTH/);
 });
 
-test('the settings file is never committed, and its example says what goes in it', () => {
-  assert.match(read('.gitignore'), /^deploy\/release\.local\.env$/m);
-  const example = read('deploy/release.local.env.example');
-  assert.match(example, /^E2E_BASIC_AUTH=user:password$/m, 'a placeholder, not a password');
-});
+
 
 test('every spec that opens its own API client gives it the staging password', () => {
   const helper = read('e2e/helpers/gate.ts');

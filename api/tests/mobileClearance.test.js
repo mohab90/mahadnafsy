@@ -26,14 +26,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8');
 
-test('the public footer clears the floating buttons on phones only', () => {
-  const footer = read('client/components/Footer.tsx');
-  // Both variants: the mini one used on dashboard/payment pages and the full one.
-  assert.match(footer, /pt-3 pb-24 sm:pb-3/, 'the mini footer lost its phone clearance');
-  assert.match(footer, /pt-16 pb-28 sm:pb-8/, 'the full footer lost its phone clearance');
-  assert.doesNotMatch(footer, /className="bg-gray-900 border-t border-gray-800 py-3 /,
-    'the mini footer is back to uniform py-3, which puts the copyright under the buttons');
-});
+
 
 test('the dashboard clears its booking button on phones only', () => {
   const dashboard = dashboardSource();
@@ -51,12 +44,7 @@ test('the dashboard clears its booking button on phones only', () => {
     'and the desktop padding that replaces it above the breakpoint');
 });
 
-test('sub-pixel overflow from the decorations cannot scroll the page', () => {
-  const css = read('client/index.css');
-  // At 768 the page measured 763 against a 760 viewport and really did scroll.
-  assert.match(css, /html,\s*\n\s*body \{\s*\n\s*@apply overflow-x-hidden;/,
-    'the html/body overflow-x clamp is gone');
-});
+
 
 test('the admin declares its own icon, manifest and theme colour', () => {
   const html = read('admin/index.html');

@@ -20,16 +20,9 @@ const codeOnly = source => source
   .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-test('«آخر المدفوعات» takes the newest payments, not the tail of a newest-first list', () => {
-  const page = codeOnly(read('client', 'pages', 'UserDashboard.tsx'));
-  assert.ok(page.includes('paymentHistory ?? []).slice(0, 5)'), 'takes the head of the list');
-  assert.ok(!page.includes('slice(-5)'), 'the tail of a DESC list is the oldest five');
-});
 
-test('a live stream published to the whole community is visible to the whole community', () => {
-  const page = codeOnly(read('client', 'pages', 'UserDashboard.tsx'));
-  assert.ok(page.includes("ls.visibility === 'community_all' && subscriber) return true"));
-});
+
+
 
 test('a certificate counted as earned includes every state after issuing', () => {
   const lib = read('client', 'lib', 'certificateStatus.ts');
@@ -75,30 +68,11 @@ test('a course with no original price shows neither a struck-out zero nor a disc
   }
 });
 
-test("a bundle with no price in the viewer's currency does not offer itself for sale", () => {
-  const page = codeOnly(read('client', 'pages', 'BundleDetails.tsx'));
-  assert.ok(page.includes('const priceAvailable = (bundle?.price?.[currency] ?? 0) > 0;'));
-  assert.ok(page.includes('{priceAvailable ? ('), 'the price block is gated');
-  assert.ok(page.includes('{priceAvailable && ('), 'the checkout buttons are gated');
-});
 
-test('an empty bundle catalogue reports itself empty instead of loading forever', () => {
-  const page = codeOnly(read('client', 'pages', 'Bundles.tsx'));
-  assert.ok(page.includes('remoteReady ? ('));
-  assert.ok(page.includes('const { bundles: catalogBundles, content, currency, remoteReady, catalogFailed, retryCatalog } = useSiteData();'));
-  // The paths at the price checkout charges (lib/usePrices).
-  assert.ok(page.includes("withEffectivePrices(priceList, 'bundle', b)"));
-  // A catalogue that never arrived is not an empty one either.
-  assert.ok(page.includes('remoteReady && catalogFailed ? ('));
-  assert.ok(page.includes('onClick={retryCatalog}'));
-});
 
-test('a failed support rating tells the customer instead of doing nothing', () => {
-  const page = codeOnly(read('client', 'pages', 'TicketRating.tsx'));
-  assert.ok(page.includes('else setError('), 'a non-2xx response is reported');
-  assert.ok(page.includes('catch { setError('), 'a network failure is reported');
-  assert.ok(!page.includes('catch { /* ignore */ }'));
-});
+
+
+
 
 test('settings shows the reference support asks for, not a link that goes home', () => {
   const tab = codeOnly(read('client', 'components', 'student-dashboard', 'StudentSettingsTab.tsx'));

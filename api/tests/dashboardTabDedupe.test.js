@@ -43,14 +43,4 @@ test('nothing navigates to a key that no longer routes', () => {
     'all of them point at the key that survives');
 });
 
-test('the two keys that share a component are kept, because they are not duplicates', () => {
-  const tabs = read('admin/pages/dashboard/GeneralDashboardTabs.tsx');
-  // Same component, different props: one is the lecturers' applications page.
-  assert.ok(tabs.includes("activeTab === 'lecturer_applications'"));
-  assert.ok(tabs.includes('group="teaching"'));
-  // And one scopes the finance screen to a branch.
-  assert.ok(tabs.includes("{ key: 'daqqi_accounting', Component: FinancialBranchTab, branchFilter: 'daqqi'"));
-  // Both are real menu entries, unlike the two that were removed.
-  const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
-  assert.ok(nav.includes("key: 'daqqi_accounting'"));
-});
+

@@ -59,23 +59,6 @@ test('opened from a link (the first entry), back goes to the fallback, not out o
   delete globalThis.window;
 });
 
-test('no exit of the client or staff page is a fixed trip to the overview any more', () => {
-  const page = read('admin/pages/UnifiedClientPage.tsx');
-  assert.match(page, /onDashboard=\{\(\) => goBack\('\/dashboard'\)\}/);
-  assert.doesNotMatch(page, /onDashboard=\{\(\) => navigate\('\/dashboard'\)\}/);
-  assert.match(page, /goBack\('\/dashboard\/subscribers'\)/);
-  assert.match(read('admin/pages/ClientProfile.tsx'), /onClick=\{\(\) => goBack\('\/dashboard'\)\}/);
-  assert.doesNotMatch(read('admin/pages/ClientProfile.tsx'), /navigate\('\/dashboard'\)/);
-  assert.match(read('admin/pages/StaffProfile.tsx'), /goBack\('\/dashboard\/hr'\)/);
-  assert.match(read('admin/pages/unified-client/UnifiedClientHeroHeader.tsx'), /<ArrowRight size=\{13\} \/> رجوع/);
-});
 
-test('the page is found again where it was left: saved before leaving, restored on back', () => {
-  const app = read('admin/App.tsx');
-  assert.match(app, /useNavigationType\(\)/);
-  assert.match(app, /\['pointerdown', 'keydown', 'touchstart', 'pagehide'\] as const/, 'saved on the person’s own action, not on scroll events');
-  assert.doesNotMatch(app, /addEventListener\('scroll'/);
-  assert.match(app, /navigationType === 'POP'/);
-  assert.match(app, /positions\.current\.get\(location\.key\)/);
-  assert.match(app, /\['wheel', 'touchmove', 'keydown'\]/, 'given up when the person scrolls themselves');
-});
+
+

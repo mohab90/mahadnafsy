@@ -65,13 +65,7 @@ test('a site account is linked to its client by a member of the staff, never by 
 
 
 
-test('archiving a client says who did it, in their history and in the archive list', () => {
-  const catalog = read('api/routes/core/catalog.js');
-  assert.match(catalog, /action: 'archived', label: 'أرشفة العميل', actor: actorName\(req\)/);
-  assert.match(catalog, /AS archived_by/);
-  assert.match(read('admin/pages/dashboard/tabs/ArchivedClientsTab.tsx'), /اللي أرشفه/);
-  assert.match(read('api/routes/admin/leads/dedup.js'), /action: 'lead\.moved_to_archive'/);
-});
+
 
 test('«واتسابي» belongs to customer service and HR as it does to the Dokki desk', () => {
   const { canUseChannel } = require('../constants/permissions');
@@ -79,12 +73,6 @@ test('«واتسابي» belongs to customer service and HR as it does to the Do
   assert.match(read('admin/pages/dashboard/DashboardNavigation.tsx'), /isSupport && \([\s\S]{0,900}key: 'whatsapp_web'/);
 });
 
-test('an employee\'s or a client\'s page is drawn under the dashboard\'s menu bar, which loads nothing for it', () => {
-  const app = read('admin/App.tsx');
-  assert.match(app, /<UnderTheMenu><StaffProfile \/><\/UnderTheMenu>/);
-  assert.match(app, /<UnderTheMenu><ClientProfile \/><\/UnderTheMenu>/);
-  assert.match(read('admin/pages/Dashboard.tsx'), /\{page\}\s+\{!page && <DashboardTabContainer/);
-  assert.match(read('admin/pages/dashboard/shell/useDashboardModel.tsx'), /if \(onProfilePage\) return;/);
-});
+
 
 

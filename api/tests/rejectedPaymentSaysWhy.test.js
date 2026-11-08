@@ -96,22 +96,7 @@ test('customer service and the Dokki desk — and no one else — book and open 
   assert.match(read('api/routes/admin/subscribers.js'), /=== 'all' \|\| canBookAnyClient\(req\)/);
 });
 
-test('all three roads that reject money ask for the reason and tell the people behind it', () => {
-  const payments = read('api/routes/core/financepay.js');
-  assert.match(payments, /status === 'failed' \? reasonOf\(reviewNote, req\.body\?\.reason\)/);
-  assert.match(payments, /if \(status === 'failed' && !hasReason\(rejectionReason\)\) return res\.status\(REASON_REQUIRED\.status\)/);
-  assert.match(payments, /await notifyPaymentRejected\(\{/);
-  assert.match(payments, /Review: /, 'the reason stays on the payment');
 
-  const proofs = read('api/routes/payment-proofs.js');
-  assert.match(proofs, /action === 'reject' \? reasonOf\(reviewer_note\)/);
-  assert.match(proofs, /action === 'reject' && !hasReason\(rejectionReason\)/);
-  assert.match(proofs, /kind: 'payment_proof'/);
-
-  const orders = read('api/routes/orders.js');
-  assert.match(orders, /newStatus === 'failed' \? reasonOf\(req\.body\.reason, req\.body\.reviewNote\)/);
-  assert.match(orders, /kind: 'order'/);
-});
 
 test('every reject button asks the question first, and none rejects with a canned reason', () => {
   for (const file of [

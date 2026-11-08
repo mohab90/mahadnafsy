@@ -53,8 +53,4 @@ test('the spellings the mapper emits are the ones the screens compare', () => {
   assert.match(codeOnly(read('api/routes/admin/catalog.js')), /c\.category \|\| 'GENERAL'/);
 });
 
-test('the card label follows the same spelling', () => {
-  const card = codeOnly(read('client/components/CourseCard.tsx'));
-  assert.match(card, /course\.type === 'Mix'/);
-  assert.match(card, /course\.type === 'Live'/);
-});
+

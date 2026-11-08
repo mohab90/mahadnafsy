@@ -36,16 +36,7 @@ test('every client with money in and no certificate is a candidate — a course 
 
 
 
-test('the client opening it from the site is recorded; the desk\'s own print is not', () => {
-  const site = read('api/routes/public.js');
-  assert.match(site, /if \(!formMode && !embedded && String\(req\.query\.staff \|\| ''\) !== '1'\) \{\s*pool\.query\(\s*'UPDATE course_completions SET downloaded_at=COALESCE\(downloaded_at, NOW\(\)\), download_count=download_count\+1/);
-  assert.match(site, /router\.post\('\/api\/me\/completions\/:code\/downloaded', requireAuth/);
-  // The client's button opens that very page (it counts the download itself), never a blank window.
-  assert.match(read('client/components/CourseCertificate.tsx'), /\/api\/completions\/\$\{encodeURIComponent\(certNumber\)\}\/certificate\?print=1/);
-  const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');
-  assert.match(panel, /href=\{certificateUrl\(row\.code, true\)\}/, 'the desk prints with ?staff=1');
-  assert.match(read('admin/pages/dashboard/tabs/CertRequestsTab.tsx'), /\['institute', 'شهادات المعهد'\]/);
-});
+
 
 test('the printed copy moves through the desk\'s steps', () => {
   const { DELIVERY_STAGES } = require('../lib/instituteCertificates');

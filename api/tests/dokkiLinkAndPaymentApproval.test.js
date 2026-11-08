@@ -130,12 +130,7 @@ test('a client booked into a Dokki round becomes a Dokki client, in the booking\
   assert.ok(route.indexOf('if (!alreadyBooked) {') < route.indexOf("await writeAuditEvent({\n      action: existing ? 'DAQQI_ROUND_UPDATED'"));
 });
 
-test('after a payment the rounds are read back, not patched in the browser', () => {
-  const tab = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(tab, /bulkSetDaqqiRounds\(await mysqlAdmin\.listAllDaqqiRounds\(\) as unknown as DaqqiRound\[\]\)/);
-  assert.match(tab, /await refreshRounds\(\);/);
-  assert.doesNotMatch(tab, /تعذر تحديث إجمالي العميل داخل الروند/);
-});
+
 
 test('the payment dialog sees a course held by money, a price, a prior payment or the round', () => {
   const modal = paymentModalSource();

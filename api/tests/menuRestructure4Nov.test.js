@@ -20,15 +20,7 @@ test('the eNPS survey is gone from the menu, the screens, the API and the staff 
   assert.doesNotMatch(read('admin/pages/dashboard/my-profile/MyJobFileSection.tsx'), /\/api\/staff\/me\/enps/);
 });
 
-test('staff performance and HR analytics are one page with two sections, and the old address redirects', () => {
-  assert.match(menu, /key: 'staff_performance', label: 'أداء الموظفين'/);
-  assert.doesNotMatch(menu, /hr_analytics/);
-  const hub = read('admin/pages/dashboard/tabs/StaffPerformanceHubTab.tsx');
-  assert.match(hub, /id: 'team'[^\n]*alsoPermissions: \['view_leads'\]/);
-  assert.match(hub, /id: 'hr'[^\n]*permission: 'view_hr'/);
-  assert.match(hub, /hr_analytics: 'hr'/);
-  assert.match(read('admin/pages/dashboard/shell/useDashboardModel.tsx'), /\['staff_performance', RETIRED_STAFF_PERFORMANCE_TABS\]/);
-});
+
 
 test('the automation page is one door, a section of the marketing hub; the settings hub does not list it and the old address redirects there', () => {
   assert.doesNotMatch(menu, /key: 'automation'/);

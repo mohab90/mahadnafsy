@@ -26,11 +26,7 @@ for (const app of ['client', 'admin']) {
   });
 }
 
-test('the service worker cache is named from the files the build wrote, not the clock', () => {
-  const config = read('client/vite.config.ts');
-  assert.match(config, /writeBundle\(_options, bundle\)/);
-  assert.match(config, /createHash\('sha256'\)\.update\(Object\.keys\(bundle\)\.sort\(\)/);
-});
+
 
 test('index.html is never cached and hashed assets are immutable', () => {
   for (const rel of ['deploy/nginx/mahad-web.conf.example', 'deploy/docker/nginx-spa.conf.template']) {

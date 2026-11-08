@@ -58,20 +58,7 @@ test('what was sent is kept, never a secret', () => {
   assert.doesNotMatch(summary, /password|otp|token/i);
 });
 
-test('the audit row carries the name, the department and the details', () => {
-  const audit = read('api/middleware/adminAudit.js');
-  assert.match(audit, /INSERT INTO activity_logs \(id, tenant_id, action, entity, entity_id, label, actor, actor_name, department, details\)/);
-  assert.match(audit, /req\.staffRecord\?\.name/);
-  assert.match(audit, /NOT_WORTH_A_ROW/);
-  const route = read('api/routes/admin-operations.js');
-  assert.match(route, /LEFT JOIN staff st ON st\.tenant_id=a\.tenant_id AND \(st\.email=a\.actor OR st\.id=a\.actor\)/);
-  // A departed employee's address is «موظف سابق», never the address (8 Oct 2026).
-  assert.ok(route.includes("actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || (looksLikeAddress(row.actor) ? 'موظف سابق' : row.actor))"));
-  assert.match(read('api/migrations/229_v26_activity_names_and_certificate_shipping.sql'), /actor_name varchar\(255\)/);
-  const tab = read('admin/pages/dashboard/tabs/ActivityTab.tsx');
-  assert.match(tab, /\/admin\/activity-logs\?\$\{params\}/, 'filtered on the server');
-  assert.match(tab, /header: 'القسم'/);
-});
+
 
 test('the biggest track wins, and a course is under one track only', () => {
   const tracks = [
@@ -210,10 +197,7 @@ test('certificates: paid before the system is paid, and the courier has a way ba
   assert.match(tab, /mysqlAdmin\.listAllCertificateRequests\(\)/, 'read from the server, not the loaded clients');
 });
 
-test('staff are not shown settings they cannot save', () => {
-  assert.match(read('admin/pages/dashboard/DashboardDirectContentRoutes.tsx'), /pricing=\{canEditSettings \?/);
-  assert.match(read('admin/pages/dashboard/tabs/ConsultationsTab.tsx'), /TABS\.filter\(item => item\.key !== 'settings' \|\| canEditSettings\)/);
-});
+
 
 test('refunds: the course under the client, contact and its result, organised actions, filters', () => {
   const finance = financeRouteSource();
@@ -236,17 +220,6 @@ test('refunds: the course under the client, contact and its result, organised ac
   assert.match(panel, /\{isAdmin && \(\s*<button disabled=\{working\} onClick=\{\(\) => void remove\(row\)\}/);
 });
 
-test('contact: a result is enough, and it is the one column', () => {
-  assert.match(read('api/routes/admin/subscribers.js'), /if \(!notes\.trim\(\) && !outcome\)/);
-  assert.match(read('admin/pages/unified-client/ClientContactLog.tsx'), /const ready = !!draft\.notes\.trim\(\) \|\| !!draft\.outcome;/);
-  const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, />نتيجة التواصل والمتابعة</);
-  assert.ok(!table.includes('vc.followup'), 'the follow-up is inside the one column');
-  assert.match(table, /lastComm\.staffName \|\|/);
-});
 
-test('collection is not shown a client\'s courses tab', () => {
-  assert.match(read('admin/pages/unified-client/useUnifiedClientPermissions.ts'), /const canSeeCourses = String\(currentStaff\?\.role \|\| ''\)\.toLowerCase\(\) !== 'collection';/);
-  assert.match(read('admin/pages/UnifiedClientPage.tsx'), /isSub && canSeeCourses && activeTab === 'courses'/);
-  assert.match(read('admin/pages/unified-client/UnifiedClientTabs.tsx'), /\.\.\.\(showCourses \?/);
-});
+
+

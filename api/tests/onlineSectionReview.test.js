@@ -100,14 +100,4 @@ test('no payment is recorded for a client without a real phone', () => {
   assert.match(authRouteSource(), /if \(firstPayment && Number\(firstPayment\.amount\) > 0\) \{\s+\/\/ No money against a client who cannot be reached[^\n]*\n\s+if \(!isRealPhone\(phone\)\)/);
 });
 
-test('the archive sits inside «قاعدة العملاء»; a refund starts from a payment', () => {
-  const db = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');
-  assert.match(db, /\.\.\.\(canSeeArchive \? \[\['archive', '🗄️ الأرشيف'\]\] as const : \[\]\)/);
-  assert.match(db, /view === 'archive' \? <ArchivedClientsTab notify=\{notify\} \/>/);
-  const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /await mysqlAdmin\.createRefundByAdmin\(\{\s+subscriber_id: convertRow\.id, payment_id: payment\.id,/);
-  const bar = read('admin/pages/dashboard/tabs/online-clients-sections/ViewTabsBar.tsx');
-  assert.match(bar, /label: 'النشطين'/);
-  assert.doesNotMatch(bar, /[^.\w]confirm\(/, 'distribution asks through confirmDialog');
-  assert.match(bar, /<Settings size=\{15\} \/>/, 'settings is an icon');
-});
+

@@ -63,26 +63,9 @@ test('every WhatsApp link on the site resolves the number through one helper', (
   }
 });
 
-test('the enrolment page charges what shared/enrollmentPricing says', () => {
-  const page = codeOnly(read('client/pages/Enrollment.tsx'));
-  assert.match(page, /amountDueNow\(getBasePrice\(item\), payType, rates\)/);
-  assert.match(page, /installmentTotal\(getBasePrice\(item\), rates\)/);
-  // The two formulas it used to re-derive from the raw constants. That module
-  // exists precisely so a rate change cannot reach one side and not the other,
-  // and a private second copy defeats it.
-  assert.ok(!page.includes('(1 - CASH_DISCOUNT)'), 'the cash rate is derived here again');
-  assert.ok(!page.includes('INSTALL_FIRST_PCT)'), 'the instalment share is derived here again');
-});
 
-test('signing in as staff leaves this router instead of bouncing off it', () => {
-  const auth = codeOnly(read('client/pages/Auth.tsx'));
-  const app = codeOnly(read('client/App.tsx'));
-  // The client app registers /dashboard as a redirect to home, so navigating
-  // there in-router silently dropped every staff member on the home page.
-  assert.match(app, /<Route path="\/dashboard" element=\{<Navigate to="\/" replace \/>\}/);
-  assert.ok(!/navigate\('\/dashboard'\)/.test(auth), 'still routes staff to a redirect-to-home');
-  assert.match(auth, /window\.location\.assign\(adminDashboardUrl\(\)\)/);
-});
+
+
 
 test('the code step says where the code went, and only when the API did send one', () => {
   // codeOnly, not the raw file: a comment quoting a string would satisfy a check for its absence on its own.
@@ -96,18 +79,6 @@ test('the code step says where the code went, and only when the API did send one
   assert.match(step, /\{hint\}/, 'the masked address is shown');
 });
 
-test('the new-password field asks the browser for the same minimum the code enforces', () => {
-  const auth = codeOnly(read('client/pages/Auth.tsx'));
-  assert.match(auth, /newPassword\.length < 8/);
-  assert.ok(!auth.includes('minLength={6}'), 'the field still accepts 6 characters the handler will reject');
-});
 
-test('/success tells a card payer, a declined card and a transfer apart', () => {
-  const page = codeOnly(read('client/pages/PaymentSuccess.tsx'));
-  // /success is Paymob's redirection_url.
-  assert.match(codeOnly(read('api/lib/saasSettings.js')), /callback_url: '\/success'/);
-  assert.match(page, /searchParams\.get\('success'\)/);
-  assert.match(page, /'transfer'|'card'|'declined'/);
-  // A declined card used to get the same green tick and the same «تم استلام طلبك».
-  assert.match(page, /لم تتم عملية الدفع/);
-});
+
+

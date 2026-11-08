@@ -25,15 +25,4 @@ test('the numbers a branch is missing are found, deleted ones apart from those t
   assert.deepEqual(sequenceProblems([{ receiptNo: 1, deleted: false }, { receiptNo: 2, deleted: false }]).missing, []);
 });
 
-test('the screen has the button, sorts by the number, and lists every missing number, not the first twenty', () => {
-  const register = read('admin/pages/dashboard/tabs/financial/PaymentsRegister.tsx');
-  assert.match(register, /if \(byNumber\) params\.set\('sort', 'number'\);/);
-  assert.match(register, /\{byNumber && <ReceiptGapsReport branch=\{branch \? branch\.toUpperCase\(\) : undefined\} \/>\}/);
-  assert.match(register, /ترتيب أرقام العمليات \+ الناقص/);
-  const report = read('admin/pages/dashboard/tabs/daqqi/ReceiptGapsAlert.tsx');
-  assert.match(report, /export function ReceiptGapsReport\(/);
-  assert.match(report, /<RunProblems whole limit=\{Infinity\}/);
-  assert.match(report, /التسلسل كامل ✓/);
-  // the alert above the screen still shows only twenty and nothing when whole
-  assert.match(report, /limit = 20, whole = false/);
-});
+

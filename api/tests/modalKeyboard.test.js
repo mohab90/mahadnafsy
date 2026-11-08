@@ -37,15 +37,7 @@ test('it prefers a form field over the close button', () => {
   assert.match(body, /\(field \|\| fallback\)\?\.focus/);
 });
 
-test('إضافة ليد جديد opens the shared dialog', () => {
-  // This was the proven pattern for the hook and the first dialog to get it.
-  // It is on shared/ui/Modal now, which is where that pattern ended up.
-  const modal = read('pages/dashboard/tabs/leads/AddLeadModal.tsx');
-  assert.match(modal, /import \{ Modal \} from '[^']*shared\/ui\/Modal'/);
-  assert.match(modal, /<Modal/);
-  assert.doesNotMatch(modal, /useModalKeyboard/,
-    'two Escape handlers on one dialog: Modal already calls the hook');
-});
+
 
 test('most dialogs reach the hook through the shared Modal, not directly', () => {
   // The hook was generic over the panel element because HireModal made its

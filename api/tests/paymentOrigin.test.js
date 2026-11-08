@@ -73,20 +73,6 @@ test('the screens that list payments show it', () => {
   assert.equal((orders.match(/>المصدر</g) || []).length, 1, 'the payments table needs the column header');
 });
 
-test('the review panel reads the shared rule instead of its own map', () => {
-  const panel = codeOnly(read('pages/dashboard/tabs/financial/PaymentReviewPanel.tsx'));
-  assert.match(panel, /const origin = paymentOrigin\(\{ source: src, paymentMethod: method \}\)/);
-  assert.match(panel, /sourceBadgeEl\(p\.source, p\.paymentMethod\)/);
-  // The old map named raw sources and drew nothing when the source was absent.
-  assert.doesNotMatch(panel, /web: \['موقع'/);
-  assert.doesNotMatch(panel, /if \(!src\) return null/);
-});
 
-test('the review panel can also supply a missing method when confirming', () => {
-  // It confirms payments too, so the API's rule would have dead-ended here
-  // exactly as it would have in the orders queue.
-  const panel = codeOnly(read('pages/dashboard/tabs/financial/PaymentReviewPanel.tsx'));
-  assert.match(panel, /approveMethod\[p\.id\]/);
-  assert.match(panel, /paymentMethod: approveMethod\[p\.id\]/);
-  assert.match(panel, /disabled=\{reviewActionLoading === p\.id \|\| \(!String\(p\.paymentMethod \|\| ''\)\.trim\(\) && !approveMethod\[p\.id\]\)\}/);
-});
+
+

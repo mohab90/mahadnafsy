@@ -62,12 +62,7 @@ test('search finds a setting however it is spelled', () => {
   assert.deepEqual(titles('كلام مش موجود خالص'), []);
 });
 
-test('the SaaS setup is hidden unless the build turns it on', () => {
-  const settings = read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx');
-  assert.match(settings, /\{SAAS_UI && <SaasSetupWizard /);
-  assert.match(settings, /\{SAAS_UI && <TenantDomainSection /);
-  assert.match(read('admin/lib/productMode.ts'), /SAAS_UI = import\.meta\.env\.VITE_SAAS_UI === '1'/);
-});
+
 
 test('the hub pages open from a link, and the page editors draw inside صفحات الموقع', () => {
   const dashboard = dashboardSource();

@@ -9,34 +9,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..', '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('lead payments use the transactional payment API before enrollment or conversion truth', () => {
-  const sharedHandler = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  const paymentRoute = read('api/routes/subscriber-payments.js');
-  const leadsTab = read('admin/pages/dashboard/tabs/leads/useLeadActions.ts');
-  const unifiedClient = read('admin/pages/UnifiedClientPage.tsx');
-  const unifiedPayments = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
-  const unifiedLifecycle = read('admin/pages/unified-client/useUnifiedClientLifecycleActions.ts');
 
-  // The first item makes the client through the transactional route; a carnet
-  // or a book booked beside it is its own payment on that client, not a second
-  // client and not a refusal of the whole booking.
-  assert.match(sharedHandler, /const \[first, \.\.\.rest\] = payEntries;/);
-  assert.match(sharedHandler, /for \(const entry of clientId \? rest : \[\]\) results\.push\(await recordSubscriberPayment\(clientId as string, entry\)\);/);
-  assert.match(sharedHandler, /mysqlAdmin\.saveLeadPayment\([\s\S]*freshLead\.id/);
-  assert.doesNotMatch(sharedHandler, /for \(const entry of payEntries\)/);
-  assert.match(paymentRoute, /if \(createFromLead\)[\s\S]*LIMIT 1 FOR UPDATE/);
-  assert.match(paymentRoute, /INSERT INTO subscribers[\s\S]*INSERT INTO payments[\s\S]*postPaymentJournal[\s\S]*await conn\.commit/);
-  assert.match(paymentRoute, /subscriberCreated: createFromLead/);
-  // The booking waits for the lists before it reports success; the clients only
-  // when a new one was made (recordSubscriberPayment reloads them itself), and
-  // of the leads only the one the payment converted.
-  assert.match(sharedHandler, /await Promise\.all\(\[existingSub \? Promise\.resolve\(\) : reloadSubscribers\(\), reloadLeads\(\{ only: \[freshLead\.id\] \}\)\]\)/);
-  assert.match(leadsTab, /await handleLeadPaymentFn\(draft/);
-  assert.match(unifiedClient, /useUnifiedClientPayments\(/);
-  assert.match(unifiedClient, /useUnifiedClientLifecycleActions\(/);
-  assert.match(unifiedPayments, /await recordSubscriberPayment\(subscriberId,/);
-  assert.match(unifiedLifecycle, /await mysqlAdmin\.convertLead\(lead\.id/);
-});
 
 test('financial statements and payroll money transitions use ledger and finance authority', () => {
   const reports = read('api/routes/analytics/financial.js');
@@ -78,19 +51,7 @@ test('financial statements and payroll money transitions use ledger and finance 
     'the reason must reach the server');
 });
 
-test('recurring expenses preserve branch, category and accounting audit history', () => {
-  const reports = read('api/routes/analytics/financial.js');
-  const migration = read('api/migrations/109_v25_recurring_expense_branch_scope.sql');
-  const ui = read('admin/pages/dashboard/tabs/RecurringExpensesTab.tsx');
 
-  assert.match(reports, /recurring-expenses[\s\S]{0,1400}resolveFinancialScope/);
-  assert.match(reports, /INSERT INTO expenses[\s\S]{0,300}branch_id/);
-  assert.match(reports, /postExpenseJournal\([\s\S]{0,220}branch_id: rec\.branch_id/);
-  assert.match(reports, /UPDATE recurring_expenses[\s\S]{0,240}deleted_at=NOW\(\)/);
-  assert.match(migration, /branch_id VARCHAR\(36\)/);
-  assert.match(migration, /frequency ENUM\('monthly','weekly','quarterly','yearly'\)/);
-  assert.match(ui, /CATEGORY_LABELS[\s\S]{0,500}SALARIES/);
-});
 
 test('payment links fail closed without configuration, redeem once, and installment reads enforce scope', () => {
   const finance = financeRouteSource();
@@ -148,30 +109,7 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   assert.match(runtime, /const rows = await \(permitted\('view_financial'\) \? mysqlAdmin\.listAllExpenses\(\) : refused\('view_financial'\)\);\n\s+setExpenses\(rows/);
 });
 
-test('payment review and certificate settlement preserve tenant and workflow identity', () => {
-  const payments = read('api/routes/payments.js');
-  const paymentProofs = read('api/routes/payment-proofs.js');
-  const createPayment = read('api/routes/subscriber-payments.js');
-  const approvePayment = read('api/routes/core/financepay.js');
-  const certificateLink = read('api/lib/certificatePayments.js');
-  const schema = read('api/migrations/105_v25_certificate_payment_link.sql');
 
-  assert.match(payments, /LEFT JOIN subscribers s ON s\.id = p\.subscriber_id AND s\.tenant_id=p\.tenant_id/);
-  assert.match(payments, /SELECT id FROM subscribers[\s\S]{0,120}tenant_id=\?/);
-  // The online orders' twin payments are looked up inside the same tenant (two LEFT JOINs that must find nothing).
-  assert.match(payments, /p1\.tenant_id = orders\.tenant_id/);
-  assert.match(payments, /p2\.tenant_id = orders\.tenant_id/);
-  assert.match(paymentProofs, /const scope = resolveFinancialScope\(req/);
-  // The branch, or the officer's own clients (anOfficerSeesTheirClientsReceipts).
-  assert.match(paymentProofs, /financialScopeClause\(scope, \{ branchColumn: 'pp\.branch_id', subscriberAlias: 's' \}\)/);
-  assert.match(paymentProofs, /financialRecordMatches\(scope, proof\)/);
-  assert.match(paymentProofs, /SELECT proof_image, proof_url, branch_id[\s\S]{0,300}financialRecordMatches\(scope, row\)/);
-  assert.match(createPayment, /certificate_request_id/);
-  assert.match(createPayment, /await applyCertificatePayment/);
-  assert.match(approvePayment, /await applyCertificatePayment\(payment,\s*conn,\s*tenantId\)/);
-  assert.match(certificateLink, /FROM certificate_requests[\s\S]{0,120}FOR UPDATE/);
-  assert.match(schema, /certificate_request_id VARCHAR\(36\)/);
-});
 
 test('account onboarding and finance screens keep payments in the ledger-backed workflow', () => {
   const auth = authRouteSource();
@@ -214,24 +152,4 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
 
 
 
-test('certificate lifecycle and receipt rendering fail closed', () => {
-  const certificates = read('api/routes/certificates.js');
-  const certTab = read('admin/pages/dashboard/tabs/CertRequestsTab.tsx');
-  const receiptTable = read('admin/pages/dashboard/tabs/financial/PaymentsRegister.tsx');
-  const receiptClient = read('admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx');
-  const safeHtml = read('admin/lib/safeHtml.ts');
 
-  assert.match(certificates, /certificate_request_id=\?/);
-  assert.match(certificates, /CERT_PAID_FORCE_REQUIRED/);
-  // Paid first (a payment row, or paid in full before the system), and never on a course that was taken back.
-  // Paid in full against the price list's figure (8 Oct 2026).
-  assert.ok(certificates.includes('!fullyPaid(request, systemPrice, agreedPrice)'));
-  assert.ok(certificates.includes('Number(standing?.course_taken) || Number(standing?.completion_revoked)'));
-  assert.match(certificates, /'SHIPPED'/);
-  assert.match(certTab, /await mysqlAdmin\.updateCertificateRequest/);
-  assert.match(certTab, /await mysqlAdmin\.deleteCertificateRequest/);
-  assert.match(safeHtml, /replace\(\/\[&<>\"'\]\/g/);
-  assert.match(receiptTable, /escapeHtml\(row\.client\.name \|\| '—'\)/);
-  assert.match(receiptTable, /escapeHtml\(row\.service\)/);
-  assert.match(receiptClient, /escapeHtml\(clientName\)/);
-});

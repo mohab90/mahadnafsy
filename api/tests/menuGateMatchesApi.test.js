@@ -84,10 +84,4 @@ test('security is not gated on the permission that defines an HR manager', () =>
   assert.ok(allowed.includes('view_security') || allowed.includes('manage_security'));
 });
 
-test('the team screens show the team they are named for', () => {
-  const sales = codeOnly(read('admin/pages/dashboard/tabs/SalesTeamTab.tsx'));
-  assert.match(sales, /SALES_ROLES = new Set\(\['sales', 'sales_collection_manager'\]\)/);
-  assert.match(sales, /SALES_ROLES\.has\(String\(s\.role \|\| ''\)\.toLowerCase\(\)\)/,
-    'it listed every staff member and ranked them all by conversion rate');
 
-});

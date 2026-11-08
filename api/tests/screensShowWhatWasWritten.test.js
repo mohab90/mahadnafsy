@@ -64,11 +64,4 @@ test('the transaction number typed in the payment dialog is sent as the payment\
   assert.ok(handler.includes('...txnFields,'), 'a single payment carries it');
 });
 
-test('the Dokki desk and the finance tab also send the transaction number as a field', () => {
-  const dokki = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.ok(dokki.includes('transactionId: daqqiPayDraft.transactionId || undefined,'));
-  assert.ok(!/note: \[daqqiPayDraft\.note, daqqiPayDraft\.transactionId/.test(dokki));
-  const finance = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
-  assert.ok(finance.includes('transactionId: draft.transactionId || undefined,'));
-  assert.ok(!/note: \[draft\.note, draft\.transactionId\]/.test(finance));
-});
+

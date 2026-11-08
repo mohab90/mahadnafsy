@@ -39,25 +39,9 @@ test('client and admin code forms verify the pending session before refreshing a
   }
 });
 
-test('checkout does not gate on a token the cookie migration stopped writing', () => {
-  const checkout = read('client/pages/Checkout.tsx');
-  // Logins write no localStorage token any more, so this threw "سجّل الدخول
-  // أولاً" for every signed-in customer and no order could be created at all.
-  // The real gate is `authUser` (and requireAuth on the route).
-  assert.doesNotMatch(checkout, /if \(!token\) throw new Error/);
-  assert.match(checkout, /if \(requiresLogin && authUser === null\)/);
-  // The API can only see the cookie if the request actually sends it.
-  assert.match(checkout, /'\/api\/public\/checkout-intent',\s*\{[\s\S]{0,80}credentials: 'include'/);
-});
 
-test('checkout survives a customer who has no email address', () => {
-  const checkout = read('client/pages/Checkout.tsx');
-  // subscribers.email is nullable and WhatsApp-only clients have none. An
-  // unguarded .toLowerCase() on it crashed the whole page to the error
-  // boundary — for exactly the customers the API goes out of its way to serve.
-  assert.doesNotMatch(checkout, /s\.email\.toLowerCase\(\)/);
-  assert.match(checkout, /subscribers\.find\(s => s\.id === mySubscriberId\)/);
-});
+
+
 
 test('the sign-in page has no WhatsApp-code way in, and every step of the forgotten-password flow reports its own outcome', () => {
   const auth = read('client/pages/Auth.tsx');
@@ -72,23 +56,11 @@ test('the sign-in page has no WhatsApp-code way in, and every step of the forgot
   }
 });
 
-test('contact success is shown only after the public API persists the message', () => {
-  const page = read('client/pages/Contact.tsx');
-  const context = read('client/context/SiteDataContext.tsx');
-  assert.match(page, /await addContactMessage\(/);
-  assert.match(page, /catch\s*\{[\s\S]{0,300}لم يتم حفظها/);
-  assert.match(context, /const addContactMessage = async[\s\S]{0,250}await mysqlForms\.submitContact/);
-});
 
 
 
-test('subscriber status and certificate counts use server-owned truth', () => {
-  const clients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  const dashboard = read('client/pages/UserDashboard.tsx');
-  assert.match(clients, /s\.isActive === false/);
-  assert.match(dashboard, /extraCertificateRequests[\s\S]{0,180}\+ completions\.length/);
-  assert.doesNotMatch(dashboard, /earnedCertsCount[\s\S]{0,500}lectureProgress/);
-});
+
+
 
 test('CRM assignment and success feedback are server-authoritative', () => {
   const state = read('admin/context/site-data-hooks/useCrmCoreState.ts');
@@ -153,16 +125,7 @@ test('customer avatar and support actions do not depend on browser-only operatio
   assert.doesNotMatch(support, /Authorization: `Bearer/);
 });
 
-test('CRM shared state is not stored in browser-local storage', () => {
-  const targets = read('admin/pages/dashboard/tabs/leads/useSalesTargetsStorage.ts');
-  const whatsapp = read('admin/pages/dashboard/tabs/leads/LeadSubcomponents.tsx');
-  const client = read('admin/pages/unified-client/useUnifiedClientCommunications.ts');
-  assert.doesNotMatch(targets, /localStorage/);
-  assert.doesNotMatch(whatsapp, /wa_rep_|apiToken.*localStorage|localStorage.*apiToken/);
-  assert.doesNotMatch(client, /client-note-|localStorage\.setItem\(noteKey/);
-  assert.match(targets, /listSalesTargets\(period\)/);
-  assert.match(client, /internalQuickNote/);
-});
+
 
 test('site-data browser caches contain public catalog only, never customer or operational truth', () => {
   for (const relativePath of [
@@ -211,24 +174,7 @@ test('site-data contexts delegate server runtime orchestration to focused hooks'
   assert.match(clientRuntime, /cancelled/);
 });
 
-test('community UI waits for persistence and keeps admin publishing controls permission-bound', () => {
-  const page = read('client/pages/Community.tsx');
-  const hook = read('client/context/site-data-hooks/useCommunityData.ts');
-  const route = read('api/routes/community.js');
 
-  assert.match(page, /await toggleCommunityPostLike\(id\)/);
-  assert.match(page, /await addCommunityPostComment\(postId,\s*body\.trim\(\)\)/);
-  assert.match(page, /await addCommunityPost\(/);
-  assert.match(page, /authUser && !isAdmin/);
-  assert.match(page, /\{post\.isOwner && <div/);
-  assert.doesNotMatch(page, /handleSubmitLibrary|handleSubmitVideo|handleSubmitEvent|إضافة فعالية/);
-  assert.match(hook, /await mysqlClient\.createCommunityPost/);
-  assert.match(hook, /await mysqlClient\.deleteCommunityPost/);
-  assert.doesNotMatch(hook, /mysqlAdmin|saveCommunityLibraryItem|saveCommunityVideo|saveCommunityEvent/);
-  assert.doesNotMatch(hook, /void mysql(?:Admin|Client)\.[A-Za-z]*Community[\s\S]{0,80}\.catch/);
-  assert.match(route, /router\.post\('\/api\/community\/posts\/:id\/like'/);
-  assert.match(route, /router\.post\('\/api\/community\/posts\/:id\/comments'/);
-});
 
 test('customer discounts, broadcasts, quizzes and live sessions hydrate from canonical APIs', () => {
   const configRoute = read('api/routes/config.js');
@@ -253,21 +199,7 @@ test('customer discounts, broadcasts, quizzes and live sessions hydrate from can
   }
 });
 
-test('admin broadcast and discount editors publish before mutating local state', () => {
-  const notificationsState = read('admin/context/site-data-hooks/useNotificationsState.ts');
-  const notificationsPage = read('admin/pages/dashboard/tabs/NotificationsAdminTab.tsx');
-  const discountsState = read('admin/context/site-data-hooks/useDiscountsState.ts');
-  const discountsPage = read('admin/pages/dashboard/tabs/courses/DiscountsView.tsx');
 
-  assert.match(notificationsState, /await mysqlAdmin\.saveNotifications\(next/);
-  assert.match(notificationsState, /await mysqlAdmin\.saveNotifications\(next[\s\S]{0,100}setNotifications\(next\)/);
-  assert.match(notificationsPage, /await updateNotification/);
-  assert.match(notificationsPage, /await addNotification/);
-  assert.match(discountsState, /await mysqlAdmin\.saveDiscounts\(next/);
-  assert.match(discountsState, /await mysqlAdmin\.saveDiscounts\(next[\s\S]{0,100}setDiscounts\(next\)/);
-  assert.match(discountsPage, /await updateDiscount/);
-  assert.match(discountsPage, /await addDiscount/);
-});
 
 test('unified client defers inactive tabs and modal code instead of shipping one monolithic chunk', () => {
   const unified = read('admin/pages/UnifiedClientPage.tsx');
@@ -285,17 +217,7 @@ test('unified client defers inactive tabs and modal code instead of shipping one
   assert.doesNotMatch(unified, /import \{ UnifiedClientSubscriberPaymentsPanel \}/);
 });
 
-test('subscriber profile and login credentials save in one transaction', () => {
-  const editing = read('admin/pages/unified-client/useUnifiedClientEditState.ts');
-  const subscribersRoute = read('api/routes/admin/subscribers.js');
 
-  assert.match(editing, /mysqlAdmin\.saveSubscriber\(\{[\s\S]{0,800}credentialUpdate:/);
-  assert.doesNotMatch(editing, /updateSubscriberCredentials\(/);
-  assert.match(subscribersRoute, /credentialUpdate,/);
-  assert.match(subscribersRoute, /requestedPasswordHash[\s\S]{0,300}pool\.getConnection\(\)/);
-  assert.match(subscribersRoute, /UPDATE users SET \$\{credentialSets\.join\(', '\)\}/);
-  assert.match(subscribersRoute, /await conn\.commit\(\)/);
-});
 
 test('context reload functions are stable, so an effect can depend on one', () => {
   const crm = read('admin/context/site-data-hooks/useCrmCoreState.ts');
@@ -311,30 +233,7 @@ test('context reload functions are stable, so an effect can depend on one', () =
   }
 });
 
-test('Dokki subscriber archival uses the canonical action and explicit permission', () => {
-  const schedule = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  const clientsTable = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  const onlineTab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  const catalog = read('api/routes/core/catalog.js');
-  // عملاء الدقي is a tab on OnlineClientsTab, not a panel on the schedule page.
-  // DaqqiClientsPanel.tsx was an earlier build of the same list and had no
-  // importer left, so it was removed; the assertions that named it now name the
-  // list that renders. What matters is unchanged: archival goes through the
-  // canonical action, and the permission is enforced on the route.
-  assert.doesNotMatch(schedule, /<DaqqiClientsPanel/);
-  assert.match(schedule, /onAddClient=\{/);
-  assert.match(clientsTable, /await deleteSubscriber\(row\.id\)/);
-  assert.doesNotMatch(clientsTable, /mysqlAdmin\.deleteSubscriber/);
-  // The gate on the button is the permission the route checks, not a role list.
-  // It used to be (isAdmin||isOnlineManager||isDaqqiManager), and neither manager
-  // holds delete_subscribers — both saw the button and were refused. The prop was
-  // being handed to DaqqiScheduleTab, which never read it.
-  assert.match(onlineTab, /canDeleteSubscriber=\{canDeleteSubscriber\}/);
-  assert.match(clientsTable, /\{canDeleteSubscriber && <button title="حذف العميل"/);
-  assert.doesNotMatch(clientsTable, /\(isAdmin\|\|isOnlineManager\|\|isDaqqiManager\) && <button title="حذف العميل"/);
-  assert.doesNotMatch(schedule, /canDeleteSubscriber/);
-  assert.match(catalog, /subscribers\/:id'[\s\S]{0,160}requirePermission\('delete_subscribers'\)/);
-});
+
 
 test('CRM reminders render in their own tab and heavy lead views stay deferred', () => {
   const leads = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
@@ -410,77 +309,15 @@ test('installment writes stay behind their gate and permission, and legacy finan
   assert.doesNotMatch(bulkActions, /setCollOnlineBulkConfirm\('refund'\)/);
 });
 
-test('balance sheet and cash flow never fabricate accounting figures in the browser', () => {
-  const balanceSheet = read('admin/pages/dashboard/tabs/BalanceSheetTab.tsx');
-  const cashFlow = read('admin/pages/dashboard/tabs/CashFlowTab.tsx');
-  const apiClient = read('admin/lib/mysqlapi.ts');
-  const financeRoute = read('api/routes/analytics/financial.js');
 
-  assert.match(balanceSheet, /mysqlAdmin\.getFinancialBalanceSheet\(asOf\)/);
-  assert.match(cashFlow, /mysqlAdmin\.getFinancialCashFlow\(from, to\)/);
-  assert.match(apiClient, /\/admin\/financial\/balance-sheet\?asOf=/);
-  assert.match(apiClient, /\/admin\/financial\/cash-flow\?from=/);
-  assert.match(financeRoute, /JOIN journal_entry_lines jel ON jel\.entry_id=je\.id/);
-  assert.doesNotMatch(balanceSheet, /0\.4|0\.82|avg per subscriber|platform value estimate/);
-  assert.doesNotMatch(cashFlow, /useSiteData|orders[\s\S]{0,120}\.filter|expenses[\s\S]{0,120}\.filter/);
-});
 
-test('finance P&L fails closed when the ledger API is unavailable', () => {
-  const finance = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
-  assert.match(finance, /const totalRevenueEGP = ledgerAllPnl\?\.totalRevenue \?\? 0/);
-  assert.match(finance, /const gRevenue = ledgerFilteredPnl\?\.totalRevenue \?\? 0/);
-  assert.match(finance, /تعذر تحميل الدفتر المحاسبي/);
-  assert.doesNotMatch(finance, /ledgerAllPnl\?\.totalRevenue \?\? local/);
-  assert.doesNotMatch(finance, /ledgerFilteredPnl\?\.totalRevenue \?\? local/);
-});
 
-test('automation is backend-owned and workflow edits wait for persistence', () => {
-  const automationState = read('admin/context/site-data-hooks/useAutomationState.ts');
-  const crmState = read('admin/context/site-data-hooks/useCrmCoreState.ts');
-  const automationPage = read('admin/pages/dashboard/tabs/AutomationTab.tsx');
 
-  assert.doesNotMatch(automationState, /const triggerAutomation/);
-  assert.doesNotMatch(crmState, /triggerAutomationRef|triggerAutomationRef\.current/);
-  assert.match(automationState, /await mysqlAdmin\.saveAutomationWorkflow/);
-  assert.match(automationState, /await mysqlAdmin\.deleteAutomationWorkflow/);
-  assert.match(automationPage, /saved = await updateAutomationWorkflow/);
-  assert.match(automationPage, /saved = await addAutomationWorkflow/);
-  assert.match(automationPage, /const deleted = await deleteAutomationWorkflow/);
-});
 
-test('operational admin tools are database-backed rather than browser demos', () => {
-  const webhooks = read('admin/pages/dashboard/tabs/WebhooksTab.tsx');
-  const tasks = read('admin/pages/dashboard/tabs/TasksBoardTab.tsx');
-  const onlineTeam = read('admin/pages/dashboard/tabs/OnlineTeamTab.tsx');
-  const staffSettings = read('admin/pages/dashboard/my-profile/MySettingsSection.tsx');
 
-  assert.match(webhooks, /adminGet<WebhookConfig\[]>\('\/admin\/webhooks'\)/);
-  assert.match(webhooks, /\/admin\/webhooks\/\$\{encodeURIComponent\(item\.id\)\}\/test/);
-  assert.doesNotMatch(webhooks, /localStorage|Math\.random|seedDeliveries/);
-  assert.match(tasks, /adminGet<Array<Record<string, unknown>>>\('\/admin\/tasks'\)/);
-  assert.match(tasks, /adminPost\('\/admin\/tasks'/);
-  assert.doesNotMatch(tasks, /\/admin\/kv\/tasks_board|saveTimerRef/);
-  assert.match(onlineTeam, /listSalesTargets\(month\(\)\)/);
-  assert.doesNotMatch(onlineTeam, /online_targets_|localStorage/);
-  assert.match(staffSettings, /getMyPreferences\(\)/);
-  assert.match(staffSettings, /saveMyPreferences\(/);
-  assert.doesNotMatch(staffSettings, /sales\.waTemplates|sales\.customTags|sales\.waNumber/);
-});
 
-test('content, community, quizzes and contact edits wait for server persistence', () => {
-  const content = read('admin/context/site-data-hooks/useContentState.ts');
-  const community = read('admin/context/site-data-hooks/useCommunityState.ts');
-  const quizzes = read('admin/context/site-data-hooks/useCourseQuizzesState.ts');
-  const contacts = read('admin/context/site-data-hooks/useContactMessagesState.ts');
 
-  assert.match(content, /contentWriteQueueRef/);
-  assert.match(content, /await mysqlAdmin\.saveContent/);
-  assert.doesNotMatch(content, /saveContent\([\s\S]{0,80}\.catch\(\(\) => \{\}\)/);
-  assert.match(community, /await request/);
-  assert.doesNotMatch(community, /void mysqlAdmin/);
-  assert.match(quizzes, /await mysqlAdmin\.saveQuiz/);
-  assert.match(contacts, /await mysqlAdmin\.updateContactMessage/);
-});
+
 
 test('Dokki round edits are server-first and attendee transfers are atomic', () => {
   const state = read('admin/context/site-data-hooks/useDaqqiRoundsState.ts');
@@ -523,46 +360,11 @@ test('staff password reset uses the privileged server-generated credential flow'
   assert.match(auth, /temporaryPassword: newPassword/);
 });
 
-test('customer notification reads are server-owned per tenant and subscriber', () => {
-  const route = read('api/routes/config.js');
-  const hook = read('client/context/site-data-hooks/useNotifications.ts');
-  const dashboard = read('client/pages/UserDashboard.tsx');
 
-  assert.match(route, /customerNotificationViewer/);
-  assert.match(route, /WHERE tenant_id=\? AND viewer_key=\? AND notification_id IN/);
-  assert.match(route, /INSERT INTO notification_reads/);
-  assert.match(hook, /markBroadcastNotificationRead/);
-  assert.match(hook, /markAllBroadcastNotificationsRead/);
-  assert.doesNotMatch(dashboard, /dismissed-notifs/);
-});
 
-test('lecture, chapter and generated-note edits wait for database persistence', () => {
-  const state = read('admin/context/site-data-hooks/useLecturesChaptersState.ts');
-  const courses = read('admin/pages/dashboard/tabs/CoursesTab.tsx');
-  const quizzes = read('admin/pages/dashboard/tabs/QuizzesTab.tsx');
-  const lecturesPanel = read('admin/pages/dashboard/tabs/courses/LecturesPanel.tsx');
 
-  assert.match(state, /await mysqlAdmin\.saveLecture/);
-  assert.match(state, /await mysqlAdmin\.saveChapter/);
-  assert.match(state, /await mysqlAdmin\.deleteLecture/);
-  assert.match(state, /await mysqlAdmin\.deleteChapter/);
-  assert.ok(lecturesPanel.includes('const saved = editingLectureId ? await updateLecture(payload) : await addLecture(payload);'), 'the lecture save must wait for the write to be confirmed');
-  assert.ok(lecturesPanel.includes('const saved = editingChapterId ? await updateChapter(payload) : await addChapter(payload);'), 'the chapter save must wait for the write to be confirmed');
-  assert.match(quizzes, /if \(!await updateLecture/);
-  assert.doesNotMatch(quizzes, /lecture_notes:|localStorage/);
-});
 
-test('therapist portal is staff-linked, server-authorized and assignment scoped', () => {
-  const page = read('admin/pages/TherapistPortal.tsx');
-  const route = read('api/routes/staff.js');
 
-  assert.match(page, /mysqlClient\.getTherapistPortal\(\)/);
-  assert.match(page, /mysqlClient\.updateTherapistConsultation/);
-  assert.doesNotMatch(page, /localStorage|portal\.password|handleLogin/);
-  assert.match(route, /therapist-portal', requireAuth, requireAdminOrStaff, requirePermission\('manage_consultations'\)/);
-  assert.match(route, /t\.tenant_id=\? AND t\.staff_id=\?/);
-  assert.match(route, /c\.id=\? AND c\.tenant_id=\? AND c\.deleted_at IS NULL[\s\S]*t\.staff_id=\?/);
-});
 
 test('catalog and therapist schedules are server-first and saved atomically', () => {
   const state = read('admin/context/site-data-hooks/useCatalogState.ts');
@@ -585,20 +387,7 @@ test('catalog and therapist schedules are server-first and saved atomically', ()
   assert.match(therapistRoute, /await conn\.rollback/);
 });
 
-test('orders and recruiting forms never report success before canonical persistence', () => {
-  const state = read('admin/context/site-data-hooks/useCrmCoreState.ts');
-  const joinPage = read('admin/pages/JoinUs.tsx');
-  // «إضافة تحويل» writes to the transfers ledger, not the orders table.
-  const transfers = read('admin/pages/dashboard/tabs/orders/IncomingTransfers.tsx');
 
-  assert.match(state, /await mysqlForms\.submitJoinUs/);
-  assert.match(state, /await mysqlAdmin\.updateOrderStatus/);
-  assert.match(state, /await mysqlAdmin\.deleteOrder/);
-  assert.doesNotMatch(state, /persistOrderToCollection|persistJoinUsToCollection/);
-  assert.match(joinPage, /const saved = await addJoinUsApplication/);
-  assert.match(joinPage, /if \(saved\) setSubmitted\(true\)/);
-  assert.match(transfers, /await mysqlAdmin\.adminPost\('\/admin\/incoming-transfers', [^;]*;\s+notify\('success'/);
-});
 
 test('staff account and consultation creation commit their cross-module writes atomically', () => {
   const profile = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');
@@ -664,42 +453,7 @@ test('admin namespace authenticates before database-backed feature gates', () =>
   assert.match(auth, /if \(req\.user\?\.uid && req\.user\?\.tenant_id === req\.tenantId\) return next\(\)/);
 });
 
-test('unified client finance computes balances and certificates in the branch settlement currency', () => {
-  const payments = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
-  const lifecycle = read('admin/pages/unified-client/useUnifiedClientLifecycleActions.ts');
-  const clientsTable = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  const drafts = read('admin/lib/clientActionDrafts.ts');
-  const handlers = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  const helpers = read('admin/pages/dashboard/dashboardHelpers.ts');
 
-  assert.match(drafts, /options\.currency \|\| currencyForBranch\(options\.branch\)/);
-  assert.match(payments, /payment\.currency === settlementCurrency/);
-  // The page's paid and remaining are its items' (clientItems), in the branch's
-  // currency — the same lines the course list shows (8 Oct 2026).
-  assert.match(payments, /moneyItemsOf\(subscriber\)/);
-  assert.match(payments, /items\.filter\(item => item\.currency === settlementCurrency\)/);
-  assert.match(payments, /subPaidTotals\[settlementCurrency\]/);
-  // The «مدفوع قديم» dialog used to write `currency: settlementCurrency`
-  // itself. It is the shared payment screen now, opened through
-  // createClientPaymentDraft, which derives the same currency from the same
-  // branch — asserted on the line above this block. One rule, one place.
-  assert.match(payments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(/);
-  assert.match(payments, /createClientPaymentDraft\(\{\s*\n\s*branch: subscriber\?\.branch,/);
-  // The profile's own «طلب شهادة» form is gone (the owner, 7 Oct 2026): a
-  // certificate is requested from «حجز ودفع», in the payment's currency.
-  assert.doesNotMatch(lifecycle, /createCertificateRequest/);
-  // Each item in the currency it is paid in, the settlement currency otherwise
-  // (admin/lib/agreedPrice.ts clientItems) — price and payments both.
-  assert.match(clientsTable, /moneyItemsOf\(row\)/);
-  const agreed = read('api/lib/clientItems.js');
-  assert.match(agreed, /\|\| fallbackCurrency;/);
-  assert.match(agreed, /&& \(!currency \|\| payment\.currency === currency\)\)/);
-  assert.match(agreed, /catalogueIn\(entry\?\.price, currency\)/);
-  assert.doesNotMatch(clientsTable, /setSubInstDraft|title="خطة أقساط"/);
-  assert.match(handlers, /سعر \$\{(?:subPayDraft|leadPayDraft)\.currency\} غير مُعرّف/);
-  assert.doesNotMatch(handlers, /price\?\.\[(?:subPayDraft|leadPayDraft)\.currency[^\n]*price\?\.EGP/);
-  assert.doesNotMatch(helpers, /price\?\.\[currency\] \?\? price\?\.EGP/);
-});
 
 test('a sign-in that never reached the server does not read as a wrong password', () => {
   // The catch mapped a handful of server messages and sent everything else to

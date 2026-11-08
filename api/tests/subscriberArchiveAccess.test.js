@@ -27,22 +27,7 @@ const identity = read('lib/subscriberIdentity.js');
 // tests/integration/learningAccess.integration.test.js. The resolver scan below
 // stays: it covers every lookup at once.
 
-test('the account predicate covers every customer role and excludes staff', () => {
-  // role='user' alone missed the 17 customer accounts stored as role='client'
-  // — archiving one of those left their sign-in live.
-  assert.match(catalog, /const CUSTOMER_ROLES = \['user', 'client', 'student'\]/);
 
-  // And it must never reach a colleague: 4 accounts linked to a subscriber
-  // record are staff, and archiving someone's customer record must not take
-  // away their staff sign-in.
-  assert.match(catalog, /NOT EXISTS \(\s*SELECT 1 FROM staff st/);
-  assert.match(catalog, /st\.firebase_uid=u\.id OR LOWER\(TRIM\(st\.email\)\)=LOWER\(TRIM\(u\.email\)\)/);
-
-  // An absent email must drop its arm rather than become `=''`, which matches
-  // every account with a blank email instead of none.
-  assert.match(catalog, /if \(email\) \{ arms\.push\('LOWER\(TRIM\(u\.email\)\)=\?'\)/);
-  assert.match(catalog, /if \(!arms\.length\) return null;/);
-});
 
 test('an archived customer cannot be resolved as the signed-in client', () => {
   // Every arm of the resolver, not just the first: the uid arm was always

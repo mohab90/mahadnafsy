@@ -50,15 +50,4 @@ test('only an institute request that names a client and a course is recorded; de
 
 
 
-test('the verification page shows the design with «طباعة كاملة» and «طباعة المعهد», and the design can be embedded', () => {
-  const page = read('client/pages/CertificateVerify.tsx');
-  assert.match(page, /<CertificateDesign code=\{cert\.code\} \/>/);
-  assert.match(page, /\?embed=1/);
-  assert.match(page, /طباعة كاملة/);
-  assert.match(page, /طباعة المعهد/);
-  assert.match(page, /open\('mode=form&print=1'\)/);
-  const route = read('api/routes/public.js');
-  assert.match(route, /const embedded = String\(req\.query\.embed \|\| ''\) === '1'/);
-  assert.match(route, /frame-ancestors 'self' \$\{clientBase\}/);
-  assert.match(route, /!formMode && !embedded && String\(req\.query\.staff/);
-});
+

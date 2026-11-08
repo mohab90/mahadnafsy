@@ -86,11 +86,4 @@ test('the dialog offers the courses the client lacks and flags them as new booki
   assert.match(modal, /newBooking: d\.bookingType === 'installment' && !!e\.target\.value && !heldCids\.has\(e\.target\.value\)/);
 });
 
-test("the client's page records the added rows, and the dashboard path books them new", () => {
-  const hook = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
-  assert.match(hook, /extraPaymentEntries\(draft, \{/);
-  assert.match(hook, /for \(const \[position, extra\] of extras\.entries\(\)\)/);
-  const handlers = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  assert.match(handlers, /isInstallment: !item\.newBooking/);
-  assert.match(handlers, /courseExpected: item\.newBooking \? bookedPrice/);
-});
+

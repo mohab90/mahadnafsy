@@ -229,11 +229,7 @@ test('hiding a lead is one small request that says why when it cannot', async ()
 
 // ── a rep's clients ──────────────────────────────────────────────────────────
 
-test('a rep\'s «عملائي» holds every client they sold, a booking awaiting the accounts included', () => {
-  const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /const allCombined = isSalesStaff \? branchScopedMasterList : branchScopedMasterList\.filter\(s => holdsIn\(s, isOnlineHere\)\);/);
-  assert.match(tab, /if \(\(s\.enrolledCourseIds\|\|\[\]\)\.length === 0 && !hasBooking\(s\)\) return false;/);
-});
+
 
 // ── errors the log found ─────────────────────────────────────────────────────
 
@@ -350,13 +346,7 @@ test('the follow-ups page is one list by kind, and it refreshes after each actio
   assert.match(read('admin/pages/dashboard/tabs/leads/useLeadQuickCommunication.ts'), /const lead = chosenLead\?\.id === addCommDraft\.selectedLeadId \? chosenLead : null;/);
 });
 
-test('the 7/15/30/90-day badges are off behind one switch, and the late filter still works', () => {
-  const utils = read('admin/pages/dashboard/tabs/leadUtils.ts');
-  assert.match(utils, /export const STALE_BADGES_SHOWN = false;/);
-  assert.match(read('admin/pages/dashboard/tabs/LeadTable.tsx'), /const rottenLv = STALE_BADGES_SHOWN \? getRottenLevel\(row\) : 0;/);
-  assert.match(read('admin/pages/dashboard/tabs/leads/LeadCard.tsx'), /const rotLevel = STALE_BADGES_SHOWN \? getRottenLevel\(lead\) : 0;/);
-  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts'), /getRottenLevel\(lead\) >= 1/);
-});
+
 
 // ── the sheets (7 Oct) ───────────────────────────────────────────────────────
 

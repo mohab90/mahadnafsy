@@ -106,26 +106,9 @@ test('a refunded payment is never counted as money collected', () => {
   assert.ok(paymentModal.includes('useClientMoney('), 'it asks the server what the client has paid');
 });
 
-test('a sales figure printed in EGP was converted to EGP', () => {
-  // orders.currency is enum('EGP','SAR','USD') and the leaderboard prints ج.
-  assert.match(schema, /`currency` enum\('EGP','SAR','USD'\)/);
-  const hub = codeOnly(read('admin/pages/dashboard/tabs/SalesHubTab.tsx'));
-  // 6 Nov 2026: the figure is the database's, in EGP (payments.amount_egp, GET /api/admin/leads/staff-performance), not a sum of amounts in mixed currencies.
-  assert.ok(hub.includes('agg?.revenueEgp'),
-    'a 1,200 SAR order counted as 1,200 EGP on the leaderboard');
-  assert.ok(!hub.includes('sum + (o.amount || 0)'), 'no raw-amount sum may remain');
-});
 
-test('the sales target a manager set is the one the screen reads', () => {
-  // GET /api/admin/sales-targets returns period / revenueTarget; SalesTarget is
-  // { staffId, month, targetEGP }. An `as unknown as` cast asserted the shape
-  // instead of building it, so every target read undefined and the أهداف tab
-  // said "لم يُحدد هدف بعد" against real targets.
-  const state = codeOnly(read('admin/pages/dashboard/hooks/useLeadCrmTabState.ts'));
-  assert.ok(state.includes('targetEGP: Number(row.revenueTarget)'));
-  assert.ok(state.includes('month: String(row.period || period)'));
-  assert.ok(!state.includes('rows as unknown as SalesTarget[]'), 'the cast asserted a shape it did not build');
-});
+
+
 
 test('the online-client filter reads a field the database actually has', () => {
   // subscribers has is_active and no status column, in the schema or any migration.

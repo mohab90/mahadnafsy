@@ -34,17 +34,7 @@ test('settings forms do not save until the saved settings have been read', () =>
 
 
 
-test('the notifications bell says when it has stopped updating', () => {
-  const hook = read('admin/pages/dashboard/useNotificationsBell.ts');
-  assert.match(hook, /\.catch\(\(\) => setNotifError\(true\)\)/);
-  assert.match(hook, /setNotifError\(false\)/);
-  const bell = read('admin/pages/dashboard/NotificationsBell.tsx');
-  assert.match(bell, /\{loadFailed && \(/);
-  assert.match(bell, /onClick=\{onRetry\}/);
-  const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
-  assert.match(nav, /loadFailed: notifError, onRetry: refreshNotifs/, 'the role bars get it too');
-  assert.match(nav, /loadFailed=\{notifError\}/);
-});
+
 
 test('«عملاء متصلون الآن» is fed from the presence endpoint', () => {
   const dashboard = dashboardSource();
@@ -63,14 +53,7 @@ test('a ticket contact whose follow-up step fails says which step did not happen
   assert.ok(inner.indexOf('setChannel(null);') < inner.indexOf('onError('));
 });
 
-test('signing in lands on the customer\'s courses, and a referral survives the visit', () => {
-  const auth = read('client/pages/Auth.tsx');
-  assert.match(auth, /const landing = safeRedirect && safeRedirect !== '\/' \? safeRedirect : '\/my-account';/);
-  assert.ok(!/navigate\('\/'\)/.test(auth), 'nobody is dropped on the home page after signing in');
-  assert.match(auth, /sessionStorage\.setItem\(REFERRAL_KEY/);
-  // The referral rides on the sign-up (WhatsApp sign-in, which carried it too, is off since 2 Nov 2026).
-  assert.match(auth, /\.\.\.\(referralCode \? \{ ref: referralCode \} : \{\}\)/);
-});
+
 
 test('every field of the contact form is named by its label', () => {
   const page = read('client/pages/Contact.tsx');

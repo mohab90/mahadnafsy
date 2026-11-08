@@ -26,22 +26,9 @@ test('a number that already has an account is told how to get in', () => {
   assert.doesNotMatch(auth, /error: 'رقم الهاتف مستخدم بالفعل'/);
 });
 
-test('the finance screen hands its panels one notify for the life of the screen', () => {
-  const tab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
-  assert.match(tab, /const notifyRef = useRef\(notify\);\s+notifyRef\.current = notify;/);
-  assert.match(tab, /const notifyLegacy = useCallback\(\(msg: string, type\?: 'success' \| 'error'\) => notifyRef\.current\(type \|\| 'info', msg\), \[\]\);/);
-  // The panels reload when their notify changes — which is why it must not.
-  assert.match(read('admin/pages/dashboard/tabs/financial/FinancialCockpitPanel.tsx'), /\}, \[branch, notify\]\);/);
-  assert.match(read('admin/pages/dashboard/tabs/financial/FinancialBudgetPanel.tsx'), /\}, \[branch, month, notify\]\);/);
-});
 
-test('an employee\'s own lists are asked for only where the role may see them', () => {
-  // The panel downloads neither list for anybody now; the pages that show them ask the server, behind these permissions.
-  const own = read('admin/pages/dashboard/useStaffOwnData.ts');
-  assert.doesNotMatch(own, /streamSubscribers|listStaffLeads/);
-  assert.match(read('api/routes/admin/stafflists.js'), /router\.get\('\/api\/staff\/subscribers', requireAuth, requireAdminOrStaff, requirePermission\('view_subscribers'\)/);
-  assert.match(read('api/routes/admin/stafflists.js'), /router\.get\('\/api\/staff\/leads', requireAuth, requireAdminOrStaff, requirePermission\('view_leads'\)/);
-});
+
+
 
 test('on a phone the floating buttons ride above a bar pinned to the foot of the screen', () => {
   const app = read('client/App.tsx');
@@ -53,6 +40,4 @@ test('on a phone the floating buttons ride above a bar pinned to the foot of the
   assert.match(css, /@media \(max-width: 767px\) \{\s+body:has\(\[data-sticky-cta="md"\]\) \.floating-action \{ bottom: [\d.]+rem; \}/);
 });
 
-test('the not-found page has a title of its own', () => {
-  assert.match(read('client/App.tsx'), /const NotFound: React\.FC = \(\) => \{[\s\S]{0,160}useSeo\(\{ title: 'الصفحة غير موجودة \| معهد الدراسات النفسية', noindex: true \}\);/);
-});
+

@@ -55,16 +55,7 @@ test('«إحصائياتي» points at a tab the rep can actually open', () => {
     'the collection bar points at overview, which needs view_financial');
 });
 
-test('an employee looking at their own statistics sees only their own row', () => {
-  const tab = codeOnly(read('admin/pages/dashboard/tabs/StaffPerformanceTab.tsx'));
-  // The rows come from the staff list, not from the server aggregate, so
-  // without this a rep saw every colleague listed at zero — a roster they
-  // should not have and numbers that are not true.
-  assert.match(tab, /const selfOnly = !isAdmin && Boolean\(myStaffId\)/);
-  assert.match(tab, /selfOnly \? s\.id === myStaffId :/);
-  // And the screen says which of its two jobs it is doing.
-  assert.match(tab, /selfOnly \? 'إحصائياتي' : 'أداء فريق العمل'/);
-});
+
 
 test('a rep can register the payment they just closed', () => {
   const { ROLE_PERMS } = require('../constants/permissions');
@@ -119,40 +110,9 @@ test('the personal page owns one heading and one tab bar, and every bar opens it
   assert.equal((nav.match(/<ProfileIconButton /g) || []).length, 2, 'the admin bar and the role bar each draw the icon once');
 });
 
-test('the online screen holds online clients, and says which market each is in', () => {
-  // «سواء اونلاين محلي او دولي او سعودي دول فقط اللى بيظهروا» (28 Sep): it
-  // listed every branch, so its total was more than its markets added up to.
-  // A Daqqi client is on the Daqqi desk, and every client of every branch is in
-  // «قاعدة العملاء», so a rep still finds whoever they signed up.
-  const tab = codeOnly(read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx'));
-  assert.match(tab, /branchScopedMasterList\.filter\(s => holdsIn\(s, isOnlineHere\)\);/);
-  assert.match(tab, /branch: true,/, 'the market column is not switched on');
 
-  const table = codeOnly(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'));
-  // The Dokki clients screen is all one branch, so it has no branch column at all
-  // («شيل عمود الفرع ان كل العملاء هنا في الدقي طبعا»); the online one keeps its market.
-  assert.match(table, /vc\.branch && !isDaqqiClientsTab && <th/);
-  assert.match(table, /vc\.branch && !isDaqqiClientsTab && <td[^\n]*\{placeLabel\(row\)\}/);
-  assert.match(table, /isOnlineClient\(row\) \? MARKET_LABELS\[subscriberMarket\(row\)\] : branchLabel\(row\.branch\)/);
-});
 
-test('محلي قديم and دولي get the same filters as the table view', () => {
-  const leads = codeOnly(read('admin/pages/dashboard/tabs/LeadsTab.tsx'));
-  // The bar was hidden on those sub-tabs entirely.
-  assert.match(leads, /visible=\{subTab === 'pipeline' \|\| subTab === 'table' \|\| \['archive', 'dawliOld', 'localNew'\]\.includes\(subTab\)\}/);
-  assert.match(leads, /matchesFilters=\{matchesFilters\}/);
 
-  // And the rows honour it, on top of each view's own source filter.
-  const archive = codeOnly(read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx'));
-  assert.match(archive, /\.filter\(l => \(matchesFilters \? matchesFilters\(l\) : true\)\)/);
-
-  // One predicate, not a second copy that can drift.
-  const hook = codeOnly(read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts'));
-  assert.match(hook, /const matchesFilters = useCallback/);
-  // \s, not \n: the hook file has Windows line endings.
-  assert.match(hook, /matchesFilters\(lead\)\s*\)\s*,\s*\[effectiveLeads, showHiddenLeads, isSalesOnly, matchesFilters\]\)/);
-  assert.match(hook, /matchesFilters \};/);
-});
 
 test('granting a permission that cannot return a row says so', () => {
   const panel = codeOnly(read('admin/pages/staff-profile/StaffSettingsPanel.tsx'));

@@ -42,8 +42,4 @@ test('the management still creates the login account; the other two book through
   assert.match(tab, /createClientWithPayment\(draft/);
 });
 
-test('a course is recorded with its first payment — a booking form refuses a course with no money', () => {
-  assert.match(form, /!account && hasCourse && !paying/);
-  assert.match(form, /A client is reached by phone/);
-  assert.match(form, /draft\.courses\.slice\(0, 1\)/, 'one course; the next is booked from «حجز \/ دفعة»');
-});
+

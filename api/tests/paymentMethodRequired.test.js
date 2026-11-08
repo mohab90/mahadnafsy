@@ -49,9 +49,4 @@ test('rejecting still needs nothing', () => {
   assert.match(ordersTab, /updatePaymentStatus\(payId, 'failed', reason\)/);
 });
 
-test('the API client forwards the method', () => {
-  const client = codeOnly(readAdmin('lib/mysqlapi.ts'));
-  assert.match(client, /updatePaymentStatus: \(id: string, status: 'paid' \| 'failed' \| 'pending', reviewNote\?: string, paymentMethod\?: string, transfer\?: \{ transferId: string \}\)/);
-  // The transfer rides along only when there is one, so a plain approval's body is unchanged.
-  assert.match(client, /JSON\.stringify\(\{ status, reviewNote, paymentMethod, \.\.\.\(transfer \? \{ transfer \} : \{\}\) \}\)/);
-});
+

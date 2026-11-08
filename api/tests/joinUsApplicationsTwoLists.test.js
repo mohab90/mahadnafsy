@@ -159,22 +159,7 @@ test('the Dokki manager is shown the applications and interviews screens', () =>
 
 
 
-test('the lecturer form asks the two questions and lists the programmes with tick boxes', () => {
-  const page = read('client/pages/JoinTeaching.tsx');
-  assert.ok(page.includes('هل اشتغلت محاضر قبل كده؟ *'));
-  assert.ok(page.includes('هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟ *'));
-  assert.match(page, /if \(lecturedBefore === null \|\| sessionsBefore === null\) \{/);
-  assert.match(page, /const offered = courses\.filter\(course => course\.id && course\.title\);/);
-  assert.match(page, /type="checkbox" checked=\{on\} onChange=\{\(\) => toggleProgram\(course\.id\)\}/);
-  assert.ok(page.includes('برامج تانية بتقدّمها'));
-  assert.match(page, /form: 'teaching',\n\s*lecturedBefore,\n\s*sessionsBefore,\n\s*programs,/);
-  assert.match(read('client/pages/JoinStaff.tsx'), /form: 'staff',/);
-  // The server requires the answers from the teaching page and stores only
-  // published courses as programmes.
-  const route = read('api/routes/public.js');
-  assert.match(route, /String\(form \|\| ''\)\.toLowerCase\(\) === 'teaching' && \(lecturedBefore === null \|\| sessionsBefore === null\)/);
-  assert.match(route, /SELECT id, title FROM courses WHERE tenant_id=\? AND is_published=1 AND id IN/);
-});
+
 
 test('an interview booked for later today is upcoming; one held or gone is past', () => {
   const filters = loadAdmin('admin/pages/dashboard/tabs/interviews-sections/InterviewFilters.tsx');

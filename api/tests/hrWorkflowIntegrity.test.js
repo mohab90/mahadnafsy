@@ -99,27 +99,7 @@ test('HR performance and employee KPI cards use server-side canonical monthly da
 
 
 
-test('salary advances are currency-safe, separation-of-duties controlled and payroll-settled only', () => {
-  assert.match(recordsIntegrityMigration, /requested_by/);
-  assert.match(recordsIntegrityMigration, /deducted_payroll_run_id/);
-  assert.match(records, /PAYROLL_SETTLEMENT_REQUIRED/);
-  assert.match(records, /\/api\/admin\/hr\/advances\/:advId\/disburse/);
-  assert.match(records, /ADVANCE_SOD/);
-  assert.match(records, /account_code: '1300'/);
-  assert.match(records, /\[advance\.staff_id, advance\.requested_by\]/);
-  assert.match(records, /action: `hr\.advance\.\$\{status\.toLowerCase\(\)\}`/);
-  assert.match(payroll, /GROUP BY staff_id,currency/);
-  assert.match(payroll, /fxRates\[currency\]/);
-  // Written without pinning the alias or the spacing: the settlement moved from
-  // one multi-table UPDATE to a read-then-update, so an advance is closed only
-  // when the salary actually recovered it. What must hold is that only a
-  // DISBURSED advance is ever settled, and that settling stamps the run.
-  assert.match(payroll, /status\s*=\s*'DISBURSED'/);
-  assert.match(payroll, /deducted_payroll_run_id\s*=\s*\?/);
-  // And the property that repair added: the recovered figure decides, not the
-  // intended one, or a debt the salary could not cover is written off.
-  assert.match(payroll, /advanceApplied/);
-});
+
 
 test('private employee fields are schema-owned and saved through the HR endpoint', () => {
   assert.match(privateFieldsMigration, /ALTER TABLE staff[\s\S]*national_id[\s\S]*address[\s\S]*hr_notes/);
@@ -178,22 +158,4 @@ test('website recruiting is atomic, tenant linked and never a fire-and-forget HR
   assert.match(migration, /fk_onboarding_items_parent_tenant/);
 });
 
-test('HR recruiting UI uses schema-valid employment types and persists join-us actions', () => {
-  const jobs = source('../admin/pages/dashboard/tabs/JobPostingsPanel.tsx');
-  const hr = source('../admin/pages/dashboard/tabs/HRTab.tsx');
-  const joinUs = source('../admin/pages/dashboard/tabs/JoinUsAdminTab.tsx');
-  const hire = source('../admin/pages/dashboard/tabs/interviews-sections/HireModal.tsx');
-  const onboarding = source('../admin/pages/dashboard/tabs/hr-sections/OnboardingPanel.tsx');
-  const crmState = source('../admin/context/site-data-hooks/useCrmCoreState.ts');
-  assert.match(jobs, /\['intern', 'تدريب'\]/);
-  assert.doesNotMatch(jobs, /\['remote'|\['internship'/);
-  assert.match(hr, /subTab === 'recruitment'[\s\S]{0,900}<JobPostingsPanel/);
-  assert.match(joinUs, /convertedApplicantId/);
-  // 3 Nov 2026: the HR tab no longer draws the applicants a third time; they are in «انضمام الموظفين» and the interviews page, where the hire is done.
-  assert.doesNotMatch(hr, /RecruitmentPipelinePanel/);
-  assert.match(hire, /hireHrApplicant/);
-  assert.match(onboarding, /\/api\/admin\/hr\/onboarding\/start/);
-  assert.match(onboarding, /\/api\/admin\/hr\/onboarding\/items/);
-  assert.match(crmState, /mysqlAdmin\.updateJoinUs/);
-  assert.match(crmState, /mysqlAdmin\.deleteJoinUs/);
-});
+

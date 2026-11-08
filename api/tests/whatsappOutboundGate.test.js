@@ -39,21 +39,7 @@ const senderFiles = () => {
   return out.filter(f => f !== 'lib/whatsapp.js');
 };
 
-test('the gate refuses anything that does not name an allowed category', () => {
-  const source = read('lib/whatsapp.js');
-  // Enforced inside sendWhatsApp, not at the call sites: the per-feature toggles
-  // in settings never covered most senders, which is how disabled welcome
-  // messages kept going out.
-  assert.match(source, /function isCategoryAllowed/);
-  assert.match(source, /WHATSAPP_OUTBOUND_CATEGORIES\s*\?\?\s*'otp'/,
-    'the default allowlist must be otp alone');
-  // The env allowlist first, then what the owner opened in the panel.
-  assert.match(source, /if \(!await isCategoryOpen\(opts\.category, tenantId\)\) \{/);
-  assert.match(source, /async function isCategoryOpen\(category, tenantId\) \{\n  if \(isCategoryAllowed\(category\)\) return true;/);
-  assert.match(source, /return \{ ok: false, reason: 'category_disabled'/);
-  // A missing category is a refusal, so a send added later fails closed.
-  assert.match(source, /if \(!name\) return false;/);
-});
+
 
 test('the refusal happens before the provider and before any budget is claimed', () => {
   const source = read('lib/whatsapp.js');

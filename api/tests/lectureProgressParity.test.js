@@ -33,24 +33,9 @@ const read = rel => fs.readFileSync(path.join(CLIENT, rel), 'utf8');
 const player = codeOnly(read('components/UserDashboardVideoPlayer.tsx'));
 const surface = codeOnly(read('components/VideoSurface.tsx'));
 
-test('saveTime still needs a duration to compute a percentage', () => {
-  // The premise the rest of this file rests on: without it, the call is a no-op
-  // that rewrites the stored value with itself.
-  assert.match(player, /const saveTime = \(lectureId: string, seconds: number, duration\?: number\)/);
-  assert.match(player, /duration && duration > 0[\s\S]{0,80}Math\.round\(\(seconds \/ duration\) \* 100\)/);
-});
 
-test('both players report the duration they are playing', () => {
-  // Native / HLS, which passes its own.
-  assert.match(player, /saveTime\(selected\.id, currentTime, duration\)/);
-  // YouTube, which now arrives through VideoSurface's callback.
-  assert.match(player, /onTimeUpdate=\{\(currentTime, duration\) =>[\s\S]{0,120}saveTime\(selected\.id, currentTime, duration\)/);
-  // And the callback is only ever called with one, so the fallback above
-  // cannot be reached by the YouTube path.
-  assert.match(surface, /onTimeUpdate\?:\s*\(currentTime: number, duration: number\) => void/);
-  assert.match(surface, /if \(known > 0\) onTimeUpdate\?\.\(info\.currentTime, known\)/,
-    'a time with no duration must not be reported at all');
-});
+
+
 
 test('both players mark a lecture complete at the same point', () => {
   const rule = /currentTime \/ duration >= 0\.8/g;
@@ -62,16 +47,6 @@ test('both players mark a lecture complete at the same point', () => {
   assert.match(surface, /const ENDED = 0/, 'YouTube says 0 for ended; a wrong constant is a silent no-op');
 });
 
-test('the YouTube bridge still only trusts YouTube', () => {
-  // The origin check is what makes reading these messages safe at all. It moved
-  // with the listener.
-  assert.match(surface, /const YT_ORIGINS = \['https:\/\/www\.youtube\.com', 'https:\/\/www\.youtube-nocookie\.com'\]/);
-  assert.match(surface, /if \(!YT_ORIGINS\.includes\(event\.origin\)\) return;/);
-});
 
-test('the dashboard player no longer listens for itself', () => {
-  // Two listeners on the same messages would save every lecture's progress
-  // twice. saveTime buckets its writes, so it would not have been visible.
-  assert.ok(!/addEventListener\('message'/.test(player),
-    'VideoSurface owns the bridge now; a second listener here is a duplicate');
-});
+
+

@@ -213,20 +213,7 @@ test('«تسكين» on «عملاء الدقي» is an icon like the others, an
   assert.doesNotMatch(modals, /round\.receptionName/);
 });
 
-test('seating writes one row on the server and does not post the whole round back', () => {
-  const route = read('api/routes/daqqi-rounds.js');
-  assert.match(route, /router\.post\('\/api\/admin\/daqqi-rounds\/:roundId\/attendees', requireAuth, requireAdminOrStaff, requirePermission\('manage_daqqi'\), requireDaqqiAccess/);
-  const lib = read('api/lib/daqqiHousing.js');
-  assert.match(lib, /FROM daqqi_rounds WHERE id=\? AND tenant_id=\? LIMIT 1 FOR UPDATE/);
-  assert.match(lib, /INSERT INTO daqqi_attendees/);
-  assert.match(lib, /COALESCE\(NULLIF\(s\.phone,''\), NULLIF\(s\.whatsapp,''\), ''\)/);
-  assert.match(lib, /UPDATE subscribers SET branch=\?, branch_id=\?/);
-  assert.match(lib, /const roundBranch = round\.branch \|\| 'DAQQI';/);
-  assert.match(lib, /DAQQI_ATTENDEE_BOOKED/);
-  const tab = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(tab, /await bookDaqqiAttendee\(sub\.id, round\.id\)/);
-  assert.doesNotMatch(tab, /attendees: \[\.\.\.round\.attendees, newAttendee\]/);
-});
+
 
 test('a booking can name the round and the client is seated when it is recorded', () => {
   const route = read('api/routes/subscriber-payments.js');

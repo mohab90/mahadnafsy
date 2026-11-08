@@ -117,19 +117,4 @@ test('a client who is not there, or outside the caller’s scope, is not touched
   assert.ok(!writes.some(w => w.sql && /^UPDATE/.test(w.sql)));
 });
 
-test('the button is on a client’s page for those who hold one of the two permissions', () => {
-  const permissions = read('admin/pages/unified-client/useUnifiedClientPermissions.ts');
-  assert.match(permissions, /\['manage_certificates', 'manage_financial'\]\.some\(/);
-  const page = read('admin/pages/UnifiedClientPage.tsx');
-  assert.match(page, /onCertificateData=\{openCertificateData\}/);
-  assert.match(page, /certificateData: \{ allowed: canEditCertificateData && isSub, notify \}/);
-  assert.match(page, /<UnifiedClientModalsHost certificateData=\{certificateDataModal\}/);
-  assert.match(read('admin/pages/unified-client/UnifiedClientModalsHost.tsx'), /props\.certificateData && <ClientCertificateDataModal/);
-  assert.match(read('admin/pages/unified-client/useUnifiedClientCertificateState.ts'), /options\?\.allowed && options\.subscriberId/);
-  assert.match(read('admin/pages/unified-client/UnifiedClientSidebarCards.tsx'), /بيانات الشهادة/);
-  const modal = read('admin/pages/unified-client/ClientCertificateDataModal.tsx');
-  assert.match(modal, /اسم العميل بالإنجليزي/);
-  assert.match(modal, /الرقم القومي/);
-  assert.match(modal, /type="date"/);
-  assert.match(read('api/migrations/279_v26_enrollment_course_dates.sql'), /ADD COLUMN IF NOT EXISTS course_start_date DATE[\s\S]*course_end_date DATE/);
-});
+

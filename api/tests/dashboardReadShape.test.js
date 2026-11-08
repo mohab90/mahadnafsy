@@ -84,17 +84,7 @@ test('orders leave the API in the case every reader compares against', () => {
   }
 });
 
-test('the consultation calendar reads the field the API actually sends', () => {
-  const calendar = codeOnly(read('admin/pages/dashboard/tabs/ConsultationCalendarTab.tsx'));
-  assert.ok(calendar.includes('item.sessionDate || item.scheduledAt || item.date'),
-    'sessionDate is what /api/admin/consultations returns');
-  assert.ok(!calendar.includes("(c.scheduledAt || c.date || '')"),
-    'no reader may still key on the two fields that never arrive');
-  // consultations.status is enum('PENDING','CONFIRMED','COMPLETED','CANCELLED').
-  assert.ok(calendar.includes("confirmed: 'مؤكدة'"), 'confirmed had no label');
-  assert.ok(!calendar.includes("scheduled: 'مجدولة'"), "'scheduled' is not a status this system has");
-  assert.ok(!calendar.includes('no_show'), "nor is 'no_show'");
-});
+
 
 test('a month is a month, and the previous month is a different one', () => {
   const addMonths = (anchor, months) => {

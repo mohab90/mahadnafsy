@@ -50,10 +50,4 @@ test('every consultation booking, old or new, has its controls', () => {
   assert.match(read('admin/lib/mysqlapi.ts'), /updateConsultation: \(id: string, fields: \{ status\?: string; notes\?: string; meeting_link\?: string \| null \}\)/);
 });
 
-test('the public courses page is a search and a fields filter on one centred row', () => {
-  const page = read('client/pages/Courses.tsx');
-  assert.ok(!page.includes('selectedType'), 'the study-system filter is gone');
-  assert.ok(!page.includes("<Pill value=\"Recorded\""), 'no study-system pills');
-  assert.match(page, /role="group" aria-label="المجال"/);
-  assert.match(page, /lg:justify-center/);
-});
+

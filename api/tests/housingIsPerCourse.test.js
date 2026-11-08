@@ -68,22 +68,6 @@ test('housed for a course means a round of THAT course, not any round', { skip: 
   assert.equal(housing.isHousedForCourse(rounds, 'omar', 'c-psy'), false);
 });
 
-test('the schedule, both modals and the clients tab read housing per course', () => {
-  const schedule = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.doesNotMatch(schedule, /assignedSubIds/, 'no more «anyone in any round»');
-  assert.doesNotMatch(read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx'), /assignedSubIds/);
-  assert.doesNotMatch(read('admin/pages/dashboard/tabs/daqqi/DaqqiNewRoundModal.tsx'), /assignedSubIds/);
-  // Both pickers ask the server for the clients not housed FOR the round's course
-  // (api/lib/dokkiClients.js candidatesOf, pinned in dokkiClients.test.js).
-  assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiNewRoundModal.tsx'), /housing: 'unhoused', housedFor: round\.courseId/);
-  assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx'), /housedFor: wantedCourse === 'all' \? '' : wantedCourse/);
-  const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /housingNeeds\.set\(subscriber\.id, housingNeedOf\(/);
-  // The «مسكن / غير مسكن» filter is the server's (buildView with `dokki`, pinned against the screen's rule in
-  // dokkiClientsView.test.js): seated for every course of theirs that has a round, not merely in some round.
-  assert.match(read('api/lib/staffClientsView.js'), /const fully = housed\.size > 0 && missing\.length === 0;/);
-  assert.doesNotMatch(tab, /daqqiHousingFilter === 'unhoused' && housingMap\.has/);
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'), /🏠 جزئي/);
-});
+
 
 

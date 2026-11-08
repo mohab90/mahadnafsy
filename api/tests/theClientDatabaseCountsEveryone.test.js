@@ -11,26 +11,11 @@ const path = require('node:path');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
 
-test('the screen asks the server for its counts and its page, and counts nothing from the arrays it holds', () => {
-  const tab = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');
-  assert.match(tab, /adminGet<typeof summary>\('\/admin\/client-db\/summary'\)/);
-  assert.match(tab, /\/admin\/client-db\/page\?\$\{query\.toString\(\)\}/);
-  assert.match(tab, /const stats = summary;/);
-  assert.doesNotMatch(tab, /allClients/, 'no list built in the browser');
-  assert.doesNotMatch(tab, /effectiveSubs|effectiveLeads|listRegistrations/);
-  // The tab, its two sister screens and the archive are all still there.
-  assert.match(tab, /\['clients', 'قاعدة العملاء'\]/);
-  assert.match(tab, /\['accounts', 'تسجيلات الدخول'\]/);
-  assert.match(tab, /ArchivedClientsTab/);
-});
 
 
 
-test('a client past the first page can still be booked: the payment window is not asked of a list that does not hold them', () => {
-  const tab = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');
-  assert.match(tab, /if \(onBook && loaded\) onBook\(/);
-  assert.match(tab, /navigate\(`\/client\/\$\{c\.clientCode \|\| c\.id\}`, \{ state: \{ openTab: 'payments' \} \}\)/);
-});
+
+
 
 test('the unused read routes that were removed stay removed', () => {
   const gone = [

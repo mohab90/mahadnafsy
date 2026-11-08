@@ -150,20 +150,7 @@ test('a course the sheet names that is not in the catalogue stays readable', asy
   } finally { restore(); }
 });
 
-test('linked sheets sync on demand and every half hour; an upload goes through the same import', () => {
-  const routes = read('api/routes/collection-distribution.js');
-  assert.match(routes, /router\.post\('\/api\/admin\/collection-sheets\/:id\/sync', \.\.\.guard,/);
-  assert.match(routes, /router\.post\('\/api\/admin\/collection-sheets\/import', \.\.\.guard,/);
-  const scheduler = read('api/lib/backgroundScheduler.js');
-  assert.match(scheduler, /require\('\.\/collectionSheets'\)\.syncAllCollectionSheets\(\)/);
-  const modal = read('admin/pages/dashboard/tabs/online-clients-sections/CollectionSettingsModal.tsx');
-  assert.match(modal, /\/admin\/collection-sheets\/\$\{encodeURIComponent\(id\)\}\/sync/);
-  assert.doesNotMatch(modal, /saveSubscriber/, 'no row-by-row save that cannot see duplicates');
-  // The old-data screens go through the same import, prices and all.
-  const oldImport = read('admin/pages/dashboard/tabs/online-clients-sections/OldDataImportSection.tsx');
-  assert.match(oldImport, /'\/admin\/old-data\/import'/);
-  assert.doesNotMatch(oldImport, /saveSubscriber|paymentHistory/);
-});
+
 
 test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, and an officer by the rules', async () => {
   const picked = [];

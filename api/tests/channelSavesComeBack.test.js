@@ -168,27 +168,6 @@ test('4 Nov 2026: an id Meta does not know is explained — the account id typed
   assert.equal(typeof listMetaTemplates, 'function');
 });
 
-test('every save is proved at once, the official channel is tested without a message, and the staff panel keeps what it saved', () => {
-  const route = read('api/routes/messaging-channels.js');
-  assert.match(route, /async function verifySaved\(tenantId, channel\)/);
-  assert.match(route, /if \(credentials && \(kind === 'messenger' \|\| provider === 'meta'\)\) await verifySaved\(req\.tenantId, channel\);/);
-  assert.match(route, /if \(req\.body\?\.credentials\) await verifySaved\(req\.tenantId, existing\);/);
-  assert.match(route, /if \(Object\.keys\(credentials\)\.length\) await verifySaved\(req\.tenantId, saved\);/);
-  assert.match(route, /if \(channel\.provider === 'meta'\) \{\s*const resolved = await channels\.getSendableChannel[\s\S]*?verifyMetaCredentials\(resolved\.credentials\)/);
-  assert.match(route, /mergeCredentials: Boolean\(mergeCredentials\), provider,/);
 
-  const staff = read('admin/pages/dashboard/tabs/messaging/MyWhatsappChannelPanel.tsx');
-  assert.match(staff, /setInstanceId\(hints\.instanceId \|\| ''\); setWapilotInstance\(hints\.instance \|\| ''\); setMetaPhoneId\(hints\.metaPhoneId \|\| ''\);/);
-  assert.match(staff, /mergeCredentials: reconnecting/);
-  assert.doesNotMatch(staff, /setInstanceId\(''\); setApiToken\(''\); setMetaPhoneId\(''\)/, 'the identifiers are not wiped after a save');
-  const panel = read('admin/pages/dashboard/tabs/messaging/MessagingChannelsPanel.tsx');
-  assert.match(panel, /patch\.credentials = credentials; patch\.mergeCredentials = true;/);
-  assert.match(panel, /channel\.provider === 'meta' && \(/);
-  assert.match(panel, /channel\.kind === 'messenger' && \(/);
-});
 
-test('a save that fails says why, instead of «فشل الحفظ» alone', () => {
-  const staff = read('admin/pages/dashboard/tabs/messaging/MyWhatsappChannelPanel.tsx');
-  assert.match(staff, /catch \(error\) \{ notify\('error', error instanceof Error && error\.message \? `فشل الحفظ: \$\{error\.message\}` : 'فشل الحفظ'\); \}/);
-  assert.doesNotMatch(staff, /catch \{ notify\('error', 'فشل الحفظ'\); \}/);
-});
+

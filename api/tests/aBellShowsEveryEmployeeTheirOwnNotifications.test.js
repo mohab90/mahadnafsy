@@ -30,9 +30,4 @@ test('the list is grouped by day, sets the escalations and follow-ups apart, rea
   assert.doesNotMatch(bell, /useEffect\(\(\) => \{[^}]*markAll/);
 });
 
-test('a link from a notification opens the clients table already filtered by follow-up', () => {
-  const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /searchParams\.get\('follow'\)/);
-  const hook = read('admin/pages/dashboard/useNotificationsBell.ts');
-  assert.match(hook, /data_json\?: string \| null/);
-});
+

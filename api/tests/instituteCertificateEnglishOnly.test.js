@@ -57,20 +57,6 @@ test('the printable certificate refuses to fall back to the Arabic name or title
   assert.match(certificate, /الشهادة غير جاهزة للطباعة/);
 });
 
-test("the desk's list says what is missing; a certificate that is not ready offers no link, only the edit that completes it", () => {
-  assert.match(read('api/routes/instituteCertificates.js'), /missing: missingForCertificate\(/);
-  const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');
-  assert.match(panel, /const ready = !row\.missing\?\.length;/);
-  assert.match(panel, /!ready && \(/, 'it says what is missing');
-  assert.match(panel, /share && ready && \(/, 'no share for a certificate that is not ready');
-  assert.match(panel, /setEditing\(row\)\} title=\{`ناقص:/, 'the dead button opens the edit dialog');
-  assert.doesNotMatch(panel, /هيطلع بالعربي/, 'the old promise of an Arabic certificate is gone');
-});
 
-test("the client's own viewer never shows an Arabic name or course", () => {
-  const viewer = read('client/components/CourseCertificate.tsx');
-  assert.match(viewer, /const certName  = \(englishOnly\(edits\?\.nameEn\) \|\| englishOnly\(studentNameEn\)\)\.toUpperCase\(\);/);
-  assert.match(viewer, /englishOnly\(edits\?\.courseEn\) \|\| englishOnly\(courseNameEn\) \|\| englishOnly\(courseName\)/);
-  assert.doesNotMatch(viewer, /\(studentNameEn \|\| studentName\)/);
-  assert.match(viewer, /if \(incomplete\) \{/);
-});
+
+

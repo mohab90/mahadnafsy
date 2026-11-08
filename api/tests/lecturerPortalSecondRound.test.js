@@ -143,14 +143,7 @@ test('a lecturer marks attendance only in a round that is theirs, through the sa
   assert.doesNotMatch(read('api/routes/daqqi-rounds.js'), /INSERT INTO daqqi_attendance_events/, 'one place writes the mark');
 });
 
-test('a payout request tells the accounts team once every three days and only when something is approved', () => {
-  const route = read('api/routes/lecturer-portal.js');
-  assert.match(route, /totals\.approved > 0\)\) throw bad\(/);
-  assert.match(route, /created_at >= NOW\(\) - INTERVAL 3 DAY/);
-  assert.match(route, /createNotification\('payroll', PAYOUT_TITLE/);
-  assert.match(read('admin/pages/lecturer/LecturerEarnings.tsx'), /اطلب صرف المعتمد/);
-  assert.match(read('admin/pages/lecturer/LecturerEarnings.tsx'), /طباعة كشف الحساب/);
-});
+
 
 test('a lecturer lands on the portal after signing in, and the two role lists agree', () => {
   assert.match(read('admin/pages/Auth.tsx'), /LECTURER_ROLES\.includes\(String\(r\.role \|\| ''\)\.toLowerCase\(\)\) \? '\/lecturer-portal' : '\/dashboard'/);

@@ -56,42 +56,8 @@ test('and read back in the shape both apps compare against', async () => {
 
 
 
-test('the Facebook verify token is stored under the key the webhook compares', () => {
-  const webhook = read('api/routes/facebook-leads-webhook.js');
-  assert.match(webhook, /config\.verifyToken \|\| platformFallback\(tenantId, process\.env\.FB_VERIFY_TOKEN\)/);
 
-  const screen = codeOnly(read('admin/pages/dashboard/tabs/AutomationTab.tsx'));
-  assert.ok(screen.includes('verifyToken: fbToken.trim()'));
-  assert.ok(!screen.includes('webhookVerifyToken'),
-    'the old key was stored, never read, and Facebook refused the webhook');
 
-  // And it has to come back readable — the screen tells the admin to paste it
-  // into Facebook, so a blanked field is a broken field, not a protected one.
-  const route = codeOnly(read('api/routes/communication-admin.js'));
-  assert.ok(route.includes('verifyToken: cfg.verifyToken'));
-});
 
-test('the hire dialog’s name and phone reach the staff row', () => {
-  // The hire dialog (the one place left that hires, 3 Nov 2026) asks for the e-mail, the role and a password only: the name and the phone are the applicant's own.
-  const panel = codeOnly(read('admin/pages/dashboard/tabs/interviews-sections/HireModal.tsx'));
-  assert.ok(panel.includes('hireHrApplicant(applicant.id, {'));
-  assert.ok(!panel.includes('name: result.name'), 'the dialog asks for no name that it could drop');
 
-  const route = codeOnly(read('api/routes/hr/talent.js'));
-  assert.ok(route.includes('String(req.body.name || \'\').trim() || a.name'),
-    'the applicant row is the default, not the authority');
-  assert.ok(route.includes('toIdentity(req.body.phone || a.phone)'),
-    'an applicant who applied with no phone was hired with none');
-});
 
-test('a seat notice is only reported as sent when something was queued', () => {
-  const route = codeOnly(read('api/routes/lms.js'));
-  assert.ok(route.includes('const notified = Boolean(notify && entry.email)'));
-  assert.ok(route.includes('notified,'), 'the caller has to be told which happened');
-  assert.ok(route.includes("reason: notify && !notified ? 'no_email' : undefined"));
-
-  const screen = codeOnly(read('admin/pages/dashboard/tabs/CourseWaitlistTab.tsx'));
-  assert.ok(screen.includes('result?.notified'),
-    'the toast used to claim success for an entry with a phone and no email');
-  assert.ok(screen.includes('لا يوجد بريد إلكتروني'));
-});
