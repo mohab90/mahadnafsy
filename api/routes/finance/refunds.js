@@ -22,6 +22,8 @@ const {
   logger,
 } = require('./_shared');
 
+const { tryJson } = require('../../lib/helpers');
+
 const router = Router();
 
 // ── Refund requests list & status update ──────────────────────────────────
@@ -121,8 +123,8 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
       ORDER BY rr.created_at DESC LIMIT 500
     `, [req.tenantId, ...scopeParams]);
     res.json(rows.map(row => {
-      let lastContact = null;
-      try { lastContact = row.last_contact ? JSON.parse(row.last_contact) : null; } catch { lastContact = null; }
+      // JSON_OBJECT comes back already parsed from MariaDB, as text elsewhere.
+      const lastContact = tryJson(row.last_contact, null);
       const { ticket_history: _history, ...rest } = row;
       return { ...rest, last_contact: lastContact, contacts_count: Number(row.contacts_count) || 0, has_ticket_history: Boolean(Number(row.has_ticket_history)) };
     }));
