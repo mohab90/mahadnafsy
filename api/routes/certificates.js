@@ -251,6 +251,9 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         status: String(row.status || 'PENDING').toLowerCase(),
         price,
         systemPrice: systemPrice || null,
+        // The price this certificate costs this client — the one the dialog and «المتبقي» use: the price agreed for it, else the list's, else its own.
+        // The page shows this; systemPrice alone showed the list's figure next to a remaining worked out from the agreed one.
+        due: due > 0 ? due : null,
         priceSource: certificateSource(pricing, { type: row.type, currency: row.currency, nationality: row.nationality, price }, agreed),
         paid,
         remaining: due > 0 ? Math.max(0, due - paid) : null,

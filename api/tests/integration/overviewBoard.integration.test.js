@@ -112,6 +112,15 @@ test('the live strip is for view_presence; the monitor for view_security; a tick
   assert.equal(other.alerts.slowEndpoints, null);
 });
 
+test('the one opening the board is counted in at once, before any beat of theirs, and the count is never the held board\'s', { skip }, async () => {
+  require('../../lib/staffPresence').resetPresenceForTests();
+  await pool.query('DELETE FROM staff_presence WHERE tenant_id=?', [T]);
+  assert.equal((await board(admin)).body.live.staffOnline, 1, 'the admin looking at it, with no beat sent');
+  // Another employee comes in: the next opening counts them, inside the 20 s the rest of the board is held for.
+  await require('../../lib/staffPresence').notePresence({ tenantId: T, staffKey: 'st-bd-other', name: 'موظف', role: 'SALES' }, { screen: 'leads' });
+  assert.equal((await board(admin)).body.live.staffOnline, 2);
+});
+
 test('who may read it: admin and an account with view_financial and the whole institute 200; sales 403; a branch manager 403; signed out 401', { skip }, async () => {
   assert.equal((await board(admin)).status, 200);
   assert.equal((await board(ticked)).status, 200);

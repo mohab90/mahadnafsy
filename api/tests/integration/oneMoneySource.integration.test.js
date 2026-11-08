@@ -176,6 +176,7 @@ test('an instalment or a booking without a branch tier: an old screen\'s figure 
   const onPurpose = await instalment({ courseExpected: 1800, customPrice: true, note: 'on-purpose' });
   assert.equal(onPurpose.statusCode, 200, JSON.stringify(onPurpose.body));
   assert.equal(await priceNow(), 1800);
-  const [[log]] = await pool.query("SELECT label FROM activity_logs WHERE tenant_id=? AND entity_id='sub-om-1' AND action='price_changed' ORDER BY `at` DESC, id DESC LIMIT 1", [TENANT]);
-  assert.match(log.label, /2,000 ← 1,800/);
+  // Looked for by its words: two changes inside one second share their `at`, and the order of their ids is not the order they were made.
+  const [logs] = await pool.query("SELECT label FROM activity_logs WHERE tenant_id=? AND entity_id='sub-om-1' AND action='price_changed'", [TENANT]);
+  assert.ok(logs.some(log => /2,000 ← 1,800/.test(log.label)), JSON.stringify(logs));
 });

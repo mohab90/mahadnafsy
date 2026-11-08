@@ -17,6 +17,7 @@ const { resolveFinancialScope, financialScopeClause } = require('../../lib/finan
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { hasPermission } = require('../../constants/permissions');
 const { cachedBoard } = require('../../lib/overviewBoard');
+const { whoIs } = require('../../lib/staffPresence');
 const { buildPerformance, rangeOf } = require('../../lib/performanceBoard');
 
 // Certificate money is not course money (every course-money query says so).
@@ -187,7 +188,7 @@ router.get('/api/admin/overview/board', requireAuth, requireAdminOrStaff, requir
   try {
     if (resolveFinancialScope(req).kind !== 'all') return res.status(403).json({ error: 'The overview board needs the whole institute\'s financial reach' });
     const can = permission => Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, permission);
-    res.json(await cachedBoard(req.tenantId, { canSeeMonitor: can('view_security'), canSeePresence: can('view_presence') }));
+    res.json(await cachedBoard(req.tenantId, { canSeeMonitor: can('view_security'), canSeePresence: can('view_presence') }, whoIs(req)));
   } catch (e) {
     if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code });
     logger.error('[overview-board]', e.message);

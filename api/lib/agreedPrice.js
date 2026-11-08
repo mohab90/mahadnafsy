@@ -169,11 +169,14 @@ function balanceFor(balances, item) {
  * list see it) and on the client (so the online table does). Run inside the
  * caller's transaction.
  */
-async function setAgreedPrice(db, { tenantId, subscriberId, courseId = null, bundleId = null, price, actor = null, explicit = false, currency = 'EGP' }) {
+async function setAgreedPrice(db, { tenantId, subscriberId, courseId = null, bundleId = null, price, actor = null, explicit = false, currency = 'EGP', followPlans = true }) {
   const value = Number(price);
   if (!Number.isFinite(value) || value <= 0) {
     const error = new Error('السعر لازم يكون رقم أكبر من صفر'); error.statusCode = 400; throw error;
   }
+  // The item's instalment plans follow the new price (lib/planFollowsMoney.js). A caller that writes a payment too says so and brings them along itself, once.
+  const plans = followPlans ? require('./planFollowsMoney') : null;
+  const before = plans ? await plans.itemRemaining(db, { tenantId, subscriberId, courseId, bundleId }) : null;
   // A change of price is in the client's history — who, the old price, the new one. It is logged when the client already had a price for the item
   // (their own or their booking's), or when someone set it on purpose (`explicit`); a first booking at the catalogue's figure is not a change.
   const was = actor ? await agreedPriceDetail(db, { tenantId, subscriberId, courseId, bundleId, currency }) : null;
@@ -189,15 +192,19 @@ async function setAgreedPrice(db, { tenantId, subscriberId, courseId = null, bun
       label: `سعر ${bundleId ? 'المسار' : 'الكورس'} (${itemKey({ courseId, bundleId })}): ${was.price == null ? 'بدون سعر' : Number(was.price).toLocaleString('en-US')} ← ${value.toLocaleString('en-US')} ${currency}`,
     });
   }
+  if (plans) await plans.planFollowsMoney(db, { tenantId, subscriberId, courseId, bundleId, before });
 }
 
-/** «مدفوع قبل السيستم» for one item. Zero clears it. */
+/** «مدفوع قبل السيستم» for one item. Zero clears it. The item's instalment plans follow, as they do a price. */
 async function setPriorPaid(db, { tenantId, subscriberId, courseId = null, bundleId = null, amount }) {
   const value = Number(amount);
   if (!Number.isFinite(value) || value < 0) {
     const error = new Error('المدفوع لازم يكون رقم'); error.statusCode = 400; throw error;
   }
+  const plans = require('./planFollowsMoney');
+  const before = await plans.itemRemaining(db, { tenantId, subscriberId, courseId, bundleId });
   await setItemMoney(db, { tenantId, subscriberId, itemKey: itemKey({ courseId, bundleId }), priorPaid: value });
+  await plans.planFollowsMoney(db, { tenantId, subscriberId, courseId, bundleId, before });
 }
 
 /**

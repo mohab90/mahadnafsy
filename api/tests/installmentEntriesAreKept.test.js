@@ -22,7 +22,7 @@ test('every statement that writes an installment plan is followed by the rewrite
     const syncs = (source.match(/syncPlanEntries\(/g) || []).length;
     assert.ok(syncs >= writes.length, `${path.relative(ROOT, file)} writes a plan ${writes.length} time(s) and rewrites its rows ${syncs} time(s)`);
   }
-  assert.deepEqual(writers.sort(), ['lib/planEntryPayment.js', 'routes/installments.js'], 'the places that write a plan: a new one has to rewrite the rows too');
+  assert.deepEqual(writers.sort(), ['lib/planEntryPayment.js', 'lib/planFollowsMoney.js', 'routes/installments.js'], 'the places that write a plan: a new one has to rewrite the rows too');
 });
 
 test('the overdue list reads the rows and falls back to the plans only while the table is empty', () => {

@@ -28,6 +28,7 @@ const { planRetake } = require('../lib/courseRetake');
 const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment, decideCertificatePrice, setCertificatePrice } = require('../lib/certificatePayments');
+const { itemRemaining, planFollowsMoney } = require('../lib/planFollowsMoney');
 const { FinancialScopeError, financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
@@ -123,6 +124,8 @@ router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, require
 async function recordSubscriberPayment(req, res) {
   let conn;
   let receiptNo = null;
+  let planItem = null;
+  let planBefore = null;
   try {
     let { subscriber_id } = req.body;
     const { payment } = req.body;
@@ -639,6 +642,10 @@ async function recordSubscriberPayment(req, res) {
         }
         await conn.beginTransaction();
         await assertWritable(resolvedDate, conn, paymentTenantId);
+        // What was left on the item before this payment: its instalment plans follow from it once the payment is written (lib/planFollowsMoney.js).
+        planItem = subscriber_id && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType) && !isRetake
+          ? { tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId } : null;
+        planBefore = planItem ? await itemRemaining(conn, planItem) : null;
 
         // ── Refuse a payment identical to one already recorded ───────────────
         //
@@ -954,7 +961,14 @@ async function recordSubscriberPayment(req, res) {
       && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType)) {
       await setAgreedPrice(conn, {
         tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, price: resolvedExpected,
-        actor: req.staffRecord?.name || req.user?.name || req.user?.email || null, explicit: priceChange, currency: paymentCurrency,
+        actor: req.staffRecord?.name || req.user?.name || req.user?.email || null, explicit: priceChange, currency: paymentCurrency, followPlans: false,
+      });
+    }
+    // The item's plans, once, for the price and the payment together: a paid payment pays their earliest open instalments.
+    if (planItem) {
+      await planFollowsMoney(conn, {
+        ...planItem, before: planBefore,
+        payment: isPaid ? { id, amount: paymentAmount, currency: paymentCurrency, day: resolvedDate } : null,
       });
     }
 

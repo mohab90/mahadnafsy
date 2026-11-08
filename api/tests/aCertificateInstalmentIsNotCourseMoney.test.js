@@ -64,8 +64,9 @@ test('a course payment that is taken back still looks for another payment of the
 test('every query that decides what a course is paid or costs asks for the course\'s own payments', () => {
   const needs = [
     ['lib/agreedPrice.js', /SELECT MAX\(course_expected\) AS price,[\s\S]*?payment_type IS NULL OR payment_type IN \('COURSE','BUNDLE','OTHER'\)/],
-    ['lib/planEntryPayment.js', /SELECT MAX\(course_expected\) AS expected FROM payments[\s\S]*?payment_type IS NULL OR payment_type IN \('COURSE','BUNDLE','OTHER'\)/],
-    ['routes/installments.js', /SELECT MAX\(course_expected\) AS expected FROM payments[\s\S]*?payment_type IS NULL OR payment_type IN \('COURSE','BUNDLE','OTHER'\)/],
+    // An instalment paid on the plan takes the client's price by the one rule (8 Nov 2026), whose own query is the first line here.
+    ['lib/planEntryPayment.js', /await agreedPrice\(conn, \{ tenantId, subscriberId: plan\.subscriber_id/],
+    ['routes/installments.js', /await agreedPrice\(conn, \{ tenantId: req\.tenantId, subscriberId: plan\.subscriber_id/],
     ['lib/autoCertificate.js', /p\.payment_type IS NULL OR p\.payment_type IN \('COURSE','BUNDLE','OTHER'\)\)\s+AND p\.deleted_at IS NULL\) AS paid_egp/],
     ['lib/paymentCorrections.js', /ORDER BY date DESC, created_at DESC LIMIT 1/],
     ['lib/refunds.js', /p\.payment_type IS NULL OR p\.payment_type IN \('COURSE','BUNDLE','OTHER'\)/],

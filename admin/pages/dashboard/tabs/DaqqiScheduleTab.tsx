@@ -389,13 +389,16 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
     })();
     const _customExp = Number(daqqiPayDraft.customExpected) || 0;
     const _discPct = Number(daqqiPayDraft.discountPct) || 0;
-    const _courseExpected = _customExp > 0 ? _customExp : (_discPct > 0 && _sysPx > 0 ? Math.round(_sysPx * (1 - _discPct / 100)) : _sysPx);
+    // A price is sent only when the desk set one on purpose (a final price or a discount), flagged as such: otherwise the server prices the item by the
+    // one rule — the client's own price, else their booking's, else the catalogue — and a catalogue figure sent from here was refused (409) for a client
+    // whose price had been changed on their page.
+    const _courseExpected = _customExp > 0 ? _customExp : (_discPct > 0 && _sysPx > 0 ? Math.round(_sysPx * (1 - _discPct / 100)) : 0);
     const _discNote = _discPct > 0 ? `خصم ${_discPct}%` : (_customExp > 0 && _sysPx > 0 ? `سعر نهائي: ${_customExp}` : '');
     const entries: PaymentHistoryEntry[] = [
       {
         id: `dq-pay-${Date.now()}`,
         amount,
-        courseExpected: _courseExpected > 0 ? _courseExpected : amount,
+        ...(_courseExpected > 0 ? { courseExpected: _courseExpected, customPrice: true } : {}),
         currency: daqqiPayDraft.currency,
         paymentType: daqqiPayDraft.paymentType,
         isInstallment: daqqiPayDraft.bookingType === 'installment',

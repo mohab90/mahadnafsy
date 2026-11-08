@@ -46,6 +46,8 @@ type CertRow = {
   courseStartDate: string | null; courseEndDate: string | null; suggestedStart: string | null; suggestedEnd: string | null;
   /** The price list's figure for this type and currency; «مكتمل» is against it. */
   systemPrice: number | null; complete: boolean;
+  /** What this certificate costs this client (the agreed price, else the list's, else its own): the figure shown, and the one «المتبقي» is worked out from. */
+  due?: number | null;
   /** The client's own name when it is three names or more and none was typed. */
   nameSuggested: string | null;
   currency: string; collectionParty: string | null; note: string | null; adminNote: string | null;
@@ -116,7 +118,7 @@ function certificateExportRow(row: CertRow, typeLabel: string): Record<string, u
     nameAr: row.nameAr || row.nameSuggested || '', nameEn: row.nameEn || '',
     nationality: row.nationality ? NATIONALITIES[row.nationality] || row.nationality : '',
     idNumber: row.idNumber || '', start: row.courseStartDate || row.suggestedStart || '', end: row.courseEndDate || row.suggestedEnd || '',
-    price: row.systemPrice ?? row.price ?? '', paid: row.paid, remaining: row.remaining ?? '', currency: row.currency,
+    price: row.due ?? row.systemPrice ?? row.price ?? '', paid: row.paid, remaining: row.remaining ?? '', currency: row.currency,
     party: row.collectionParty || '', status: (STATUS_META[row.status] || STATUS_META.pending).label,
     adminNote: row.adminNote || '', requestedAt: row.requestedAt ? cairoDay(row.requestedAt) : '', issuedAt: row.issuedAt ? cairoDay(row.issuedAt) : '',
     personalPhoto: row.personalPhotoUrl || '', idPhoto: row.idPhotoUrl || '',
@@ -350,7 +352,7 @@ export default function CertRequestsTab({
               const missing = missingCertData(row);
               const start = row.courseStartDate || row.suggestedStart;
               const end = row.courseEndDate || row.suggestedEnd;
-              const price = row.systemPrice ?? row.price;
+              const price = row.due ?? row.systemPrice ?? row.price;
               const share = price ? Math.min(100, Math.round((Number(row.paid) / Number(price)) * 100)) : 0;
               const chosen = picker.isSelected(row.id);
               return (
@@ -412,7 +414,7 @@ export default function CertRequestsTab({
                         <span className="text-gray-500">السعر</span>
                         <span className="font-extrabold text-primary-700">{num(price)} {price != null ? row.currency : ''}</span>
                       </div>
-                      {row.systemPrice != null && row.price != null && Number(row.price) !== Number(row.systemPrice) && (
+                      {price != null && row.price != null && Number(row.price) !== Number(price) && (
                         <div className="text-[10px] text-amber-700">مكتوب على الطلب {num(row.price)}</div>
                       )}
                       <div className="flex items-baseline justify-between gap-2">

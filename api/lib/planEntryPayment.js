@@ -91,14 +91,11 @@ async function settlePlanEntry(conn, { tenantId, planId, index, subscriberId, pa
   }
   // The agreed price, as the desk's instalment records it (routes/installments.js):
   // a booking's price when one is on file, else the plan's total.
-  const [[agreed]] = await conn.query(
-    `SELECT MAX(course_expected) AS expected FROM payments
-      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
-        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
-        AND course_id <=> ? AND bundle_id <=> ? AND course_expected > 0`,
-    [tenantId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null]
-  );
-  const courseExpected = Number(agreed?.expected) > 0 ? Number(agreed.expected) : Number(plan.total_amount);
+  const { agreedPrice } = require('./agreedPrice');
+  const agreed = plan.course_id || plan.bundle_id
+    ? await agreedPrice(conn, { tenantId, subscriberId: plan.subscriber_id, courseId: plan.course_id || null, bundleId: plan.bundle_id || null, currency: plan.currency || 'EGP' })
+    : null;
+  const courseExpected = Number(agreed) > 0 ? Number(agreed) : Number(plan.total_amount);
   const payType = plan.course_id ? 'COURSE' : (plan.bundle_id ? 'BUNDLE' : 'OTHER');
   const courseIds = plan.course_id ? [plan.course_id] : [];
   if (plan.bundle_id) {

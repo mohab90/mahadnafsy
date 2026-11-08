@@ -14,7 +14,7 @@ const { addDaysToDateOnly, cairoDayStartUtc, cairoToday } = require('./dates');
 const { FOLLOW_UP_OPEN } = require('./leadFollowUps');
 const perfMonitor = require('./performanceMonitor');
 const { listOnlineUsers } = require('./onlineUsers');
-const { listPresence, statusOf } = require('./staffPresence');
+const { listPresence, notePresence, statusOf } = require('./staffPresence');
 const { detectAnomalies } = require('./anomalies');
 
 const COURSE_MONEY = "(p.payment_type IS NULL OR UPPER(p.payment_type) <> 'CERTIFICATE')";
@@ -101,21 +101,28 @@ async function alertsOf(tenantId, today, { canSeeMonitor }) {
   };
 }
 
-async function liveOf(tenantId, now) {
+// Who is in now, read at every opening (never from the held board): the one asking is in by definition, so they are noted first — their own first beat can
+// reach the server after this request and the strip said «0 موظف أونلاين» to the one person looking at it.
+async function liveOf(tenantId, now, who = null) {
+  if (who) await notePresence(who, { screen: 'overview', now });
   const [presence, clients] = await Promise.all([listPresence(tenantId, { now }), listOnlineUsers(tenantId)]);
   return { staffOnline: presence.filter(row => statusOf(row.lastSeenAt, now) === 'online').length, clientsOnline: clients.length };
 }
 
 /** The whole board. `canSeeMonitor` and `canSeePresence` follow the caller's permissions (the answer leaves out what they may not read). */
-async function buildOverviewBoard(tenantId, { today = cairoToday(), now = Date.now(), canSeeMonitor = false, canSeePresence = false } = {}) {
+async function buildOverviewBoard(tenantId, { today = cairoToday(), now = Date.now(), canSeeMonitor = false, canSeePresence = false, withLive = true } = {}) {
   const [periodFigures, alerts, live, anomalies] = await Promise.all([
-    periods(tenantId, today), alertsOf(tenantId, today, { canSeeMonitor }), canSeePresence ? liveOf(tenantId, now) : null,
+    periods(tenantId, today), alertsOf(tenantId, today, { canSeeMonitor }), canSeePresence && withLive ? liveOf(tenantId, now) : null,
     detectAnomalies(tenantId, { today, now, canSeeMonitor, canSeePresence }),
   ]);
   return { asOf: new Date(now).toISOString(), today, periods: periodFigures, alerts, live, anomalies };
 }
 
-/** Held 20 s per tenant and flavour, dropped by the next write like every figure (lib/httpApp.js dropFiguresAfterWrites). */
-const cachedBoard = (tenantId, options) => cached(`figures:overview-board:${tenantId}:${cairoToday()}:${options.canSeeMonitor}:${options.canSeePresence}`, 20 * 1000, () => buildOverviewBoard(tenantId, options));
+/** The figures held 20 s per tenant and flavour, dropped by the next write like every figure (lib/httpApp.js dropFiguresAfterWrites); who is in, fresh. */
+async function cachedBoard(tenantId, options, who = null) {
+  const board = await cached(`figures:overview-board:${tenantId}:${cairoToday()}:${options.canSeeMonitor}:${options.canSeePresence}`, 20 * 1000,
+    () => buildOverviewBoard(tenantId, { ...options, withLive: false }));
+  return options.canSeePresence ? { ...board, live: await liveOf(tenantId, Date.now(), who) } : board;
+}
 
 module.exports = { buildOverviewBoard, cachedBoard, SLOW_P95_MS };

@@ -27,7 +27,7 @@ const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/inst
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { nextReceiptNo } = require('../lib/receiptNumbers');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
-const { itemBalances, balanceFor } = require('../lib/agreedPrice');
+const { agreedPrice, itemBalances, balanceFor } = require('../lib/agreedPrice');
 const { grantCourseEntitlement } = require('../lib/entitlements');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { isRealPhone } = require('../lib/phoneNumber');
@@ -178,14 +178,12 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     // often made for what is left, and its total then is not the course's
     // price. Recording the plan's total beside a booking's price made the next
     // payment on the course refuse with INSTALLMENT_EXPECTED_MISMATCH.
-    const [[agreed]] = await conn.query(
-      `SELECT MAX(course_expected) AS expected FROM payments
-        WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
-          AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
-          AND course_id <=> ? AND bundle_id <=> ? AND course_expected > 0`,
-      [req.tenantId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null]
-    );
-    const courseExpected = Number(agreed?.expected) > 0 ? Number(agreed.expected) : Number(plan.total_amount);
+    // The price is the client's, by the one rule (lib/agreedPrice.js: their own price, else their booking's, else the catalogue) — not the highest
+    // figure a payment row happened to keep.
+    const agreed = plan.course_id || plan.bundle_id
+      ? await agreedPrice(conn, { tenantId: req.tenantId, subscriberId: plan.subscriber_id, courseId: plan.course_id || null, bundleId: plan.bundle_id || null, currency: plan.currency || 'EGP' })
+      : null;
+    const courseExpected = Number(agreed) > 0 ? Number(agreed) : Number(plan.total_amount);
 
     const branch = plan.branch || 'ONLINE_EGYPT';
     const payType = plan.course_id ? 'COURSE' : (plan.bundle_id ? 'BUNDLE' : 'OTHER');
