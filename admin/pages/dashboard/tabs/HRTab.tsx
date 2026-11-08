@@ -3,7 +3,7 @@ import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Users, Briefcase, Search, BarChart3, UserPlus,
-  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint, GraduationCap,
+  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint, GraduationCap, Award,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -28,7 +28,7 @@ import { fmtMoney } from './hr-sections/hrFormat';
 // «خلي الاساسي لما افتح هو دليل الموظفين … الحضور مع كشف المرتبات في تاب واحدة
 // … الاجازات مع طلبات الموظفين». Six tabs; the old addresses still open the tab
 // that holds them now (/dashboard/hr/leaves → the requests, /payroll → attendance).
-const HR_SECTIONS = ['directory', 'requests', 'attendance', 'basics', 'performance', 'lecturers', 'recruitment'] as const;
+const HR_SECTIONS = ['directory', 'requests', 'attendance', 'basics', 'performance', 'bonuses', 'lecturers', 'recruitment'] as const;
 type HrSection = typeof HR_SECTIONS[number];
 const SECTION_ALIASES: Record<string, HrSection> = { leaves: 'requests', payroll: 'attendance' };
 const sectionFor = (param?: string): HrSection =>
@@ -36,6 +36,7 @@ const sectionFor = (param?: string): HrSection =>
 
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 const OnboardingPanel = React.lazy(() => import('./hr-sections/OnboardingPanel'));
+const HrBonusPlanPanel = React.lazy(() => import('./hr-sections/HrBonusPlanPanel'));
 
 const STAFF_PAGE = 50;
 
@@ -260,6 +261,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           ['attendance', 'الحضور والمرتبات', CalendarCheck],
           ['basics', 'الرواتب والبصمة والتارجت', Fingerprint],
           ['performance', 'الأداء والتارجت', BarChart3],
+          ['bonuses', 'نظام المكافآت', Award],
           ['lecturers', 'المحاضرون وأجورهم', GraduationCap],
           ['recruitment', 'التوظيف', Briefcase],
         ] as const).map(([key, label, Icon]) => (
@@ -419,6 +421,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
             </div>
           )}
         </div>
+      )}
+
+      {subTab === 'bonuses' && (
+        <React.Suspense fallback={<div className="p-6 text-center text-sm text-gray-400">جاري التحميل…</div>}>
+          <HrBonusPlanPanel notify={notify} canEditPlan={canManageFinance} />
+        </React.Suspense>
       )}
 
       {subTab === 'lecturers' && <HrInstructorPayPanel notify={notify} canManage={canManagePayroll} />}

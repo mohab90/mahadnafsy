@@ -311,6 +311,27 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
 
 type AR = Record<string, unknown>;
 
+/** «نظام المكافآت» (api/lib/bonusPlan.js): the institute's rules, kept as data. */
+export interface BonusPlan {
+  bookingWeights: { min: number; minIncluded: boolean; weight: number }[];
+  bookingLadder: { bookings: number; amount: number }[];
+  extraPerBooking: { from: number; to: number | null; amount: number }[];
+  courseSalesBonusEnabled: boolean;
+}
+/** A collector's level: from this much collected (EGP), a percentage of the month's whole or a fixed amount. */
+export interface BonusLevel { from: number; kind: 'percent' | 'fixed'; value: number }
+/** GET /admin/hr/monthly-bonuses — every employee on a scheme and how their month's bonus is made up (api/lib/monthlyBonuses.js). */
+export interface MonthlyBonuses {
+  year: number; month: number; from: string; to: string; total: number;
+  employees: {
+    staffId: string; name: string; role: string; scheme: string; schemeLabel: string; total: number; summary: string;
+    ladder: { bookings: number; amount: number; tier: { bookings: number; amount: number } | null; extraBookings: number; extraAmount: number; firstTarget: number | null } | null;
+    collection: { amount: number; collected: number; payments: number; level: BonusLevel | null } | null;
+    deskBonus: number | null;
+    bookings: { paymentId: string; client: string; clientCode: string; title: string; day: string; currency: string; price: number; priceEgp: number; weight?: number; deskBonus?: number }[];
+  }[];
+}
+
 /** GET /admin/finance/revenue-breakdown — the paid payments' own EGP by type, by course (top 30), by month (twelve) and, for the asked month, by box. */
 export interface RevenueBreakdown {
   month: string;
@@ -1077,12 +1098,20 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/documents/${docType}`,
       { method: 'PUT', body: JSON.stringify(o) }, A),
   getStaffPay: (staffId: string) =>
-    apiFetch<{ baseSalary: number | null; commissionType: string; commissionRate: number | null; monthlyTarget: number | null }>(
+    apiFetch<{ baseSalary: number | null; commissionType: string; commissionRate: number | null; monthlyTarget: number | null;
+      bonusScheme?: string; bookingFirstTarget?: number | null; collectionLevels?: BonusLevel[] }>(
       `/admin/hr/staff/${encodeURIComponent(staffId)}/pay`, {}, A),
-  setStaffPay: (staffId: string, o: { baseSalary?: number | null; commissionType: string; commissionRate?: number | null; monthlyTarget?: number | null }) =>
+  setStaffPay: (staffId: string, o: { baseSalary?: number | null; commissionType: string; commissionRate?: number | null; monthlyTarget?: number | null;
+    bonusScheme?: string; bookingFirstTarget?: number | null; collectionLevels?: BonusLevel[] }) =>
     apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/pay`,
       { method: 'PUT', body: JSON.stringify(o) }, A),
   listHrJobs:       ()             => apiFetch<AR[]>('/admin/hr/jobs', {}, A),
+  // «نظام المكافآت» (api/routes/hr/bonuses.js): the plan, each course's booking weight, and a month's bonuses (worked out; saved as bonuses awaiting approval).
+  getBonusPlan: () => apiFetch<{ plan: BonusPlan; items: { kind: 'course' | 'track'; id: string; title: string; priceEgp: number; weight: number }[] }>('/admin/hr/bonus-plan', {}, A),
+  saveBonusPlan: (plan: BonusPlan) => apiFetch<{ ok: boolean; plan: BonusPlan }>('/admin/hr/bonus-plan', { method: 'PUT', body: JSON.stringify({ plan }) }, A),
+  getMonthlyBonuses: (month: string) => apiFetch<MonthlyBonuses>(`/admin/hr/monthly-bonuses?month=${encodeURIComponent(month)}`, {}, A),
+  saveMonthlyBonuses: (month: string) => apiFetch<{ ok: boolean; written: { staffId: string; name: string; amount: number }[]; kept: { staffId: string; name: string; status: string; amount: number; now: number }[]; cleared: string[]; total: number }>(
+    '/admin/hr/monthly-bonuses', { method: 'POST', body: JSON.stringify({ month }) }, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),
 
   // ── Sales targets (per-staff, per-month — single source of truth) ──
