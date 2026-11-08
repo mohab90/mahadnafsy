@@ -34,7 +34,7 @@ async function call(router, method, path, { params = {}, body = {}, staff }) {
 }
 
 async function clean() {
-  for (const table of ['employee_bonuses', 'performance_appraisals', 'salary_advances', 'audit_events', 'financial_audit_log', 'journal_entries', 'staff']) {
+  for (const table of ['salary_structures', 'instructor_fees', 'employee_bonuses', 'performance_appraisals', 'salary_advances', 'audit_events', 'financial_audit_log', 'journal_entries', 'staff']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [T]).catch(() => {});
   }
 }
@@ -109,4 +109,41 @@ test('an advance is approved by someone else, paid out by someone other than the
   assert.equal(other.statusCode, 200, JSON.stringify(other.body));
   const [[paid]] = await pool.query("SELECT status, disbursed_by, journal_entry_id FROM salary_advances WHERE id='adv-sod-1'");
   assert.deepEqual([paid.status, paid.disbursed_by, !!paid.journal_entry_id], ['DISBURSED', TWO.id, true], 'paid out, with its journal entry');
+});
+
+test('a salary structure is approved by neither its owner nor its author; a new one waits and must follow the approved one', { skip }, async () => {
+  const attendance = require('../../routes/hr/attendance');
+  const next = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
+  const made = await call(attendance, 'post', '/api/admin/hr/salary', { body: { staff_id: EMP.id, base_salary: 4000, effective_from: next }, staff: ONE });
+  assert.equal(made.statusCode, 200, JSON.stringify(made.body));
+  assert.equal(made.body.status, 'PENDING');
+  assert.equal((await call(attendance, 'post', '/api/admin/hr/salary', { body: { staff_id: ONE.id, base_salary: 1 }, staff: ONE })).body.code, 'HR_SELF_MUTATION', 'nobody sets their own structure');
+  assert.equal((await call(attendance, 'post', '/api/admin/hr/salary', { body: { staff_id: EMP.id, base_salary: 4000, effective_from: '2020-01-01' }, staff: ONE })).statusCode, 400, 'not in the past');
+  const review = (staff, status = 'APPROVED') => call(attendance, 'put', '/api/admin/hr/salary/:id/status', { params: { id: made.body.id }, body: { status }, staff });
+  assert.equal((await review(ONE)).body.code, 'SALARY_SOD', 'the author');
+  assert.equal((await review(EMP)).body.code, 'SALARY_SOD', 'the owner');
+  assert.equal((await review(TWO)).statusCode, 200);
+  assert.equal((await review(TWO)).statusCode, 409, 'a reviewed one is not reviewed again');
+  const later = new Date(Date.now() + 80 * 86400000).toISOString().slice(0, 10);
+  const tooEarly = await call(attendance, 'post', '/api/admin/hr/salary', { body: { staff_id: EMP.id, base_salary: 5000, effective_from: next }, staff: ONE });
+  assert.equal(tooEarly.statusCode, 409, 'a structure must start after the approved one');
+  assert.equal((await call(attendance, 'post', '/api/admin/hr/salary', { body: { staff_id: EMP.id, base_salary: 5000, effective_from: later }, staff: ONE })).statusCode, 200);
+});
+
+test('an instructor fee is approved by neither the instructor nor whoever raised it, and is paid only by a payroll run', { skip }, async () => {
+  const made = await call(compensation, 'post', '/api/admin/hr/instructor-fees', { body: { staff_id: EMP.id, fee_type: 'fixed', fixed_amount: 300, period_month: 11, period_year: 2026 }, staff: ONE });
+  assert.equal(made.statusCode, 200, JSON.stringify(made.body));
+  assert.equal(made.body.status, 'pending');
+  assert.equal((await call(compensation, 'post', '/api/admin/hr/instructor-fees', { body: { staff_id: ONE.id, fixed_amount: 100 }, staff: ONE })).body.code, 'HR_SELF_MUTATION');
+  assert.equal((await call(compensation, 'post', '/api/admin/hr/instructor-fees', { body: { staff_id: EMP.id }, staff: ONE })).statusCode, 400, 'a positive total is required');
+  const patch = (staff, body) => call(compensation, 'patch', '/api/admin/hr/instructor-fees/:id', { params: { id: made.body.id }, body, staff });
+  const paid = await patch(TWO, { status: 'paid' });
+  assert.equal(paid.statusCode, 409);
+  assert.equal(paid.body.code, 'PAYROLL_SETTLEMENT_REQUIRED');
+  assert.equal((await patch(ONE, { status: 'approved' })).body.code, 'INSTRUCTOR_FEE_SOD', 'the one who raised it');
+  assert.equal((await patch(EMP, { status: 'approved' })).body.code, 'INSTRUCTOR_FEE_SOD', 'the instructor');
+  const approved = await patch(TWO, { status: 'approved' });
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  assert.equal(approved.body.status, 'approved');
+  assert.equal((await patch(TWO, { status: 'rejected' })).statusCode, 409, 'an approved fee does not become rejected');
 });

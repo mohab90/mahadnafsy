@@ -313,3 +313,8 @@ node api/tools/test-pin-report.cjs --dir=<نسخة قديمة من tests>   # م
 - `shared/siteDesigns.ts` — 1 (incidental, no behaviour)
 - `shared/staffDepartment.ts` — 1 (incidental, no behaviour)
 - `shared/ui/EmailCodeStep.tsx` — 1 (incidental, no behaviour)
+
+### بعد التصنيف: أول دفعة (b) فلوس/موارد
+- `integration/hrSeparationOfDuties` زاد عليه: هيكل الراتب (لا لنفسك، مش في الماضي، لازم يبدأ بعد المعتمد، SALARY_SOD، يتراجع مرة واحدة) وأجر المدرّب (HR_SELF_MUTATION، مجموع موجب، PAYROLL_SETTLEMENT_REQUIRED للدفع، INSTRUCTOR_FEE_SOD، ما بيتحولش من معتمد لمرفوض).
+- قواعد (b) اتشالت لأن اختبار سلوك موجود بيغطيها (مسمّى): `hrWorkflowIntegrity: payroll and sensitive HR adjustments…` ← `hrSeparationOfDuties` + `hrLeaveWorkflow` + `payrollRun`؛ `payrollIntegrity` (قاعدتين) ← `payrollRun` («no paying before approval…»، «paying posts one balanced entry…»، «recalculating rebuilds the same run…»، «a branch run cannot overlap…»)؛ `courseRetake` (قاعدتين) ← `integration/courseRetake`؛ `clientItemMoneyHasOneHome: the SQL that read a JSON path` ← `integration/clientItemMoney`.
+- الرقمين دلوقتي: اختبارات وحدة مثبّتة **٣٨٨ (١٤٫٧٪)**؛ قواعد نص في البوابة **(a) ١٥٣ معمارية، (b) ٩٣٣ دين غير محلول**. الإجمالي الصادق للمثبّت-على-نص: ٣٨٨ + ٩٣٣ = **١٣٢١**.

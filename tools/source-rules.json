@@ -2117,41 +2117,6 @@
   "class": "b"
  },
  {
-  "id": "clientItemMoneyHasOneHome: the SQL that read a JSON path now reads the table",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/daqqiAttendees.js",
-    "must": {
-     "source": "FROM client_item_money m\\s+WHERE m\\.tenant_id = da\\.tenant_id COLLATE utf8mb4_unicode_ci AND m\\.subscriber_id = da\\.subscriber_id COLLATE utf8mb4_unicode_ci AND m\\.item_key = dr\\.course_id COLLATE utf8mb4_unicode_ci",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/outstandingBalances.js",
-    "must": {
-     "source": "priorPaidTotalSql\\('s'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/weeklyBranchReport.js",
-    "must": {
-     "source": "priorPaidTotalSql\\('s'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/instituteCertificates.js",
-    "must": {
-     "source": "FROM client_item_money WHERE tenant_id=\\? AND prior_paid > 0",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "commissionDurability: a worker handler exists for the queued job",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -2364,48 +2329,6 @@
     "file": "api/routes/core/catalog.js",
     "mustNot": {
      "source": "'UPDATE consultations SET status=\\?, notes=\\?, meeting_link=\\? WHERE id=\\? AND tenant_id=\\?'",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "courseRetake: the payment route prices a retake from the catalogue, adds it to the agreed price and leaves the access alone",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "const isRetake = payment\\.retake === true && safeType === 'COURSE';",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "planRetake\\(pool, \\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "resolvedExpected = plan\\.expected;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "priceChange \\|\\| isRetake \\|\\| payment\\.isInstallment",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(isPaid && paysForItem && \\(courseId \\|\\| bundleId\\) && !isRetake\\)",
      "flags": ""
     }
    }
@@ -3120,69 +3043,6 @@
     "file": "api/middleware/auth.js",
     "must": {
      "source": "function invalidateIdentity",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "hrWorkflowIntegrity: payroll and sensitive HR adjustments prevent self approval or mutation",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "PAYROLL_SOD",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "HR_SELF_MUTATION",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/attendance.js",
-    "must": {
-     "source": "HR_SELF_MUTATION",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "HR_SELF_MUTATION",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/records.js",
-    "must": {
-     "source": "HR_SELF_APPROVAL",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "BONUS_SOD",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "INSTRUCTOR_FEE_SOD",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/attendance.js",
-    "must": {
-     "source": "SALARY_SOD",
      "flags": ""
     }
    }
@@ -4585,69 +4445,6 @@
     "file": "api/routes/installments.js",
     "must": {
      "source": "paidRatio: paidRatioOf\\(access\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "payrollIntegrity: payroll enforces approve then pay and journals the payment atomically",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "PAID:\\s+\\['APPROVED'\\]",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "SELECT id,month,year,status,total_amount,currency,calculated_by,approved_by[\\s\\S]*FOR UPDATE",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "postJournalEntry\\('payroll'[\\s\\S]*conn, tenantId",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "account_code: '1300'[\\s\\S]*advanceTotal",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "account_code: '2200'[\\s\\S]*statutoryTotal",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "UPDATE crm_commissions SET status='PAID' WHERE payroll_run_id=\\? AND tenant_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "status === 'CANCELLED'[\\s\\S]*status='PENDING',payroll_run_id=NULL",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "CALCULATED: \\['CANCELLED'\\]",
      "flags": ""
     }
    }
@@ -11841,125 +11638,6 @@
   "class": "b"
  },
  {
-  "id": "payrollIntegrity: monthly payroll calculation is scoped, serialized and a deterministic rebuild",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/migrations/065_v25_manual_checkout_integrity.sql",
-    "must": {
-     "source": "uniq_payroll_run_scope \\(tenant_id, branch_id, month, year\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "INSERT IGNORE INTO payroll_runs",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "SELECT id,status FROM payroll_runs[^\\n]+FOR UPDATE",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "!\\['DRAFT', 'CALCULATED'\\]\\.includes\\(run\\.status\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "DELETE FROM payroll_items WHERE payroll_run_id=\\? AND tenant_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "payroll_run_id=NULL WHERE payroll_run_id=\\? AND tenant_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/151_v25_payroll_scope_integrity.sql",
-    "must": {
-     "source": "CREATE TABLE IF NOT EXISTS payroll_period_locks",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "PAYROLL_SCOPE_OVERLAP",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "\\?='branch-all' OR s\\.branch_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "SUM\\(amount_egp\\).*total_sales",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "const fxRates = await getFxToEgp\\(tenantId\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "staff_id IN \\(\\?\\)[\\s\\S]*GROUP BY staff_id,type,currency",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "mustNot": {
-     "source": "FROM instructor_rates WHERE tenant_id=\\? AND staff_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "mustNot": {
-     "source": "FROM lecture_logs",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "instructorEarningsSource: 'approved_instructor_fees'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "mustNot": {
-     "source": "(?:attendance_logs|salary_advances|consultations|lecture_logs|employee_bonuses|instructor_fees)[\\s\\S]{0,500}\\.catch\\(\\(\\) => \\[\\[\\]\\]\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "penaltyLeaveBalanceAndAccountLinks: archiving a client says who did it, in their history and in the archive list",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -16176,20 +15854,6 @@
     "file": "admin/context/site-data-hooks/useContentState.ts",
     "must": {
      "source": "queueContentMutation\\(keys, 'update'",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "courseRetake: the lib refuses what would corrupt the books",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/courseRetake.js",
-    "must": {
-     "source": "RETAKE_PERCENT_OFF = 50;",
      "flags": ""
     }
    }
