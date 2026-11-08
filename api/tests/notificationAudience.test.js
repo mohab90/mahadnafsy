@@ -29,12 +29,7 @@ test('a broadcast reaches the people it is about, not everyone', () => {
   assert.equal(sees('manager', 'delivery_failed'), true);
 });
 
-test('the bell counts every unread it can show, over the last 30 days', () => {
-  const route = read('api/routes/notifications.js');
-  assert.match(route, /const WINDOW_SQL = ' AND n\.created_at >= NOW\(\) - INTERVAL 30 DAY';/);
-  assert.match(route, /SELECT COUNT\(\*\) AS unread/);
-  assert.ok(!route.includes('rows.filter(r => !r.read_at).length'), 'counted from the 100 rows sent');
-});
+
 
 test('a burst of the same notification is one line with a count', async () => {
   const calls = [];

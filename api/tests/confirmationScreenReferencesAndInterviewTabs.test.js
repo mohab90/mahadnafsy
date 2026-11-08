@@ -55,12 +55,7 @@ test('payments waiting for confirmation are in one place: the table — the new 
   assert.match(read('admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx'), /clientRequests.rows/);
 });
 
-test('editing a client is not refused for the number the client already holds', () => {
-  const route = read('api/routes/admin/subscribers.js');
-  assert.match(route, /const alreadyHeld = new Set\(\[storedNumbers\?\.phone, storedNumbers\?\.phone2\]/);
-  assert.match(route, /number && !alreadyHeld\.has\(String\(number\)\)/);
-  assert.match(route, /const heldBy = numbersToCheck\.length/);
-});
+
 
 test('the interviews page has «محضروش الانترفيو» and «المرفوضون», fed by «لم يحضر» and «رفض»', () => {
   const migration = read('api/migrations/297_v26_interview_no_show_and_rejected.sql');

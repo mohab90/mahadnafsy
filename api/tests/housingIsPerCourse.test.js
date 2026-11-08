@@ -86,10 +86,4 @@ test('the schedule, both modals and the clients tab read housing per course', ()
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'), /🏠 جزئي/);
 });
 
-test('the server seats one client in one round and moves one seat — never every round of the client', () => {
-  const lib = read('api/lib/daqqiHousing.js');
-  assert.match(lib, /WHERE tenant_id=\? AND round_id=\? AND subscriber_id=\? LIMIT 1 FOR UPDATE/);
-  const rounds = read('api/routes/daqqi-rounds.js');
-  assert.match(rounds, /DELETE FROM daqqi_attendees WHERE tenant_id=\? AND round_id=\? AND subscriber_id=\?/);
-  assert.doesNotMatch(rounds, /DELETE FROM daqqi_attendees WHERE tenant_id=\? AND subscriber_id=\?['"`]/, 'no delete across all of a client\'s rounds');
-});
+

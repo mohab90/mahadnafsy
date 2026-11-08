@@ -51,13 +51,7 @@ test('merging two records keeps the money, and does not invent any', () => {
   assert.ok(merge.includes('syncLeadDealValue'), 'the merge must re-derive the value it just merged');
 });
 
-test('a quiz with no passing score does not pass an empty attempt', () => {
-  const grading = read('api/lib/quizGrading.js');
-  assert.match(grading, /answeredCount|answers\.length|attempted/,
-    'grading must know whether anything was answered at all');
-  assert.ok(!/const passed = score >= \(Number\(passingScore\) \|\| 0\);/.test(grading),
-    'score 0 against a passing score of 0 must not read as passed');
-});
+
 
 test('nobody sets their own commission or bonus', () => {
   // POST /api/admin/staff writes commission_rate, monthly_bonus and the

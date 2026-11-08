@@ -146,15 +146,7 @@ test('the history names who did it for the desk, and keeps it from the client', 
   assert.match(read('api/routes/admin/subscribers.js'), /listCustomerTimeline\(req\.tenantId, subscriber\.id, pool, \{ staff: true \}\)/);
 });
 
-test('the routes: managers delete, managers and accounts transfer, with a reason on a deletion', () => {
-  const routes = read('api/routes/core/content.js');
-  assert.match(routes, /'\/api\/admin\/subscribers\/:id\/course-remove'[\s\S]{0,200}courseActionRoute\('remove'/);
-  assert.match(routes, /'\/api\/admin\/subscribers\/:id\/course-transfer'[\s\S]{0,200}courseActionRoute\('transfer'/);
-  assert.match(routes, /!isCourseManager\(req\) && !\(action === 'transfer' && role === 'accountant'\)/);
-  assert.match(routes, /action === 'remove' && !reason/);
-  assert.match(routes, /scopedSubscriber\(req, req\.params\.id, tenantId\)/, 'a branch manager acts on their own clients only');
-  assert.match(routes, /e\.status <> 'removed'/, 'a deleted course is off the client\'s file');
-});
+
 
 test('a refund names a course, and the payment behind it is optional', () => {
   const route = read('api/routes/admin-utils.js');

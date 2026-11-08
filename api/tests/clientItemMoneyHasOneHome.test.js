@@ -62,12 +62,7 @@ test('every list and every detail that sends a client with its prices fills them
   assert.match(read('lib/staffOverview.js'), /withItemMoney\(withInstallmentPlans\(/);
 });
 
-test('the SQL that read a JSON path now reads the table', () => {
-  assert.match(read('lib/daqqiAttendees.js'), /FROM client_item_money m\s+WHERE m\.tenant_id = da\.tenant_id COLLATE utf8mb4_unicode_ci AND m\.subscriber_id = da\.subscriber_id COLLATE utf8mb4_unicode_ci AND m\.item_key = dr\.course_id COLLATE utf8mb4_unicode_ci/);
-  assert.match(read('lib/outstandingBalances.js'), /priorPaidTotalSql\('s'\)/);
-  assert.match(read('lib/weeklyBranchReport.js'), /priorPaidTotalSql\('s'\)/);
-  assert.match(read('lib/instituteCertificates.js'), /FROM client_item_money WHERE tenant_id=\? AND prior_paid > 0/);
-});
+
 
 test('every comparison of the new table\'s columns with another table\'s names the collation (a production database mixes utf8mb4_unicode_ci and utf8mb4_general_ci)', () => {
   // The release's staging run stopped on «Illegal mix of collations» in migration 360, which the lab (one collation everywhere) cannot show.

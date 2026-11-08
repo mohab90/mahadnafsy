@@ -42,14 +42,7 @@ test('the emailed code is what makes a session MFA-verified, and the middleware 
   assert.doesNotMatch(read('routes', 'auth', 'refreshAndEmailCode.js'), /\bauthenticator\.|otplib|totp/i);
 });
 
-test('tenant policy enforces the emailed code on upper administration and configured sensitive permissions', () => {
-  assert.match(authMiddleware, /getMfaPolicy\(req\.tenantId\)/);
-  assert.match(authMiddleware, /policyRequiresStaff\(policy, staff, requestedPermissions\)/);
-  assert.match(authMiddleware, /MFA_REQUIRED/);
-  assert.doesNotMatch(authMiddleware, /MFA_ENROLLMENT_REQUIRED|enrolmentGraceEndsAt/);
-  assert.match(adminConfig, /\/api\/admin\/security\/mfa-policy/);
-  assert.match(adminConfig, /requirePermission\('manage_security'\)/);
-});
+
 
 test('security UI persists MFA policy and IP rules through server APIs, never local storage', () => {
   assert.match(securityUi, /\/api\/admin\/security\/mfa-policy/);

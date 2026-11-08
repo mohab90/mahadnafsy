@@ -94,10 +94,7 @@ test('the session time is read as written, not converted', () => {
   assert.match(tab, /const formatSession/);
 });
 
-test('the certificates tab was already correct and stays that way', () => {
-  const mappers = codeOnly(read('api/lib/mappers.js'));
-  assert.match(mappers, /status: String\(cr\.status \|\| 'pending'\)\.toLowerCase\(\)/);
-});
+
 
 test('a student sees the quiz they already passed', () => {
   // StudentQuizTab pairs an attempt to a quiz with

@@ -24,18 +24,7 @@ test('the screen asks the server for its counts and its page, and counts nothing
   assert.match(tab, /ArchivedClientsTab/);
 });
 
-test('the server counts clients, leads and sign-ups in the caller\'s reach, once each', () => {
-  const route = read('api/routes/misc/clientDbList.js');
-  assert.match(route, /router\.get\('\/api\/admin\/client-db\/summary', requireAuth, requireAdminOrStaff, requirePermission\('view_client_db'\)/);
-  assert.match(route, /router\.get\('\/api\/admin\/client-db\/page', requireAuth, requireAdminOrStaff, requirePermission\('view_client_db'\)/);
-  // The caller's own scope, as the search applies it; sign-ups and leads only for whoever holds view_leads.
-  assert.match(route, /financialScopeClause\(resolveFinancialScope\(req, \{ allowAssigned: true \}\)/);
-  assert.match(route, /leadScope\(req, 'l'\)/);
-  assert.match(route, /holds\('view_leads'\)/);
-  // A lead that is already a client by number is not counted twice.
-  assert.match(route, /s2\.phone_digits = l\.phone_digits/);
-  assert.match(read('api/routes/misc.js'), /router\.use\(require\('\.\/misc\/clientDbList'\)\)/);
-});
+
 
 test('a client past the first page can still be booked: the payment window is not asked of a list that does not hold them', () => {
   const tab = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');

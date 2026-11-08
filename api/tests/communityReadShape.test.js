@@ -94,8 +94,4 @@ test('both apps declare the camelCase names, which is why this is the right shap
   }
 });
 
-test('the posts route was already mapped and stays that way', () => {
-  // mapPost is why discussions worked while the three lists beside them did not.
-  assert.match(community, /const mapPost = \(r\) =>/);
-  assert.match(community, /authorName: r\.author/);
-});
+

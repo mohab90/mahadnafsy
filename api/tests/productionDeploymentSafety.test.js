@@ -37,22 +37,9 @@ test('SSH tooling supports key or agent authentication only', () => {
   }
 });
 
-test('admin monitoring never returns provider secrets or kills host processes', () => {
-  const source = readApi('routes/server-monitor.js');
-  assert.match(source, /configured: Boolean\(process\.env\.GEMINI_API_KEY\)/);
-  assert.match(source, /MANAGED_RESTART_REQUIRED/);
-  assert.doesNotMatch(source, /geminiKey:|child_process|spawn\(|kill -9|pkill|supervisor\.js/);
-});
 
-test('compatibility supervisor and watchdog never compete with the production process manager', () => {
-  const supervisor = readApi('supervisor.js');
-  const watchdog = readApi('watchdog.cjs');
-  const shellWatchdog = readApi('watchdog.sh');
-  assert.match(supervisor, /disabled in production/);
-  assert.doesNotMatch(supervisor, /SIGKILL|killStaleServer|execSync|setTimeout\(start/);
-  assert.doesNotMatch(watchdog, /require\('ssh2'\)|password\s*:|child_process|doRestart|\.connect\(/);
-  assert.doesNotMatch(shellWatchdog, /systemctl|supervisor|kill|Authorization/);
-});
+
+
 
 test('release preparation requires a clean commit and emits SHA-256 evidence', () => {
   const prepare = readRepo('tools/prepare-release.mjs');

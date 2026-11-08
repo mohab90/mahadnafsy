@@ -159,9 +159,4 @@ test('a lecturer lands on the portal after signing in, and the two role lists ag
   assert.equal(admin, api);
 });
 
-test('a lecturer takes down comments on their own posts and their own comments, nothing else', () => {
-  const route = read('api/routes/lecturer-portal.js');
-  assert.match(route, /WHERE c\.tenant_id=\? AND c\.id=\? AND \(c\.subscriber_id=\? OR p\.staff_id=\?\)/);
-  assert.match(route, /router\.post\('\/api\/staff\/lecturer\/media\/image', \.\.\.guard/);
-  assert.match(route, /me\.therapist\?\.image \|\| null/, 'their posts carry their own photo');
-});
+

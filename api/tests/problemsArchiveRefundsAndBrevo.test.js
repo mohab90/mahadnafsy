@@ -59,11 +59,7 @@ test('«تحويل لاسترداد» opens the refund through the refund code, 
   assert.match(migration, /refund_request_id/);
 });
 
-test('the refunds list says a history exists but does not ship it for every row', () => {
-  const route = read('api/routes/finance/refunds.js');
-  assert.match(route, /AS has_ticket_history/);
-  assert.match(route, /const \{ ticket_history: _history, \.\.\.rest \} = row/);
-});
+
 
 test('the refunds screen keeps its actions in view: small icons, a menu that is not clipped', () => {
   const panel = read('admin/pages/dashboard/tabs/financial/FinancialRefundsPanel.tsx');

@@ -344,11 +344,7 @@ test('the reports earn a track\'s money once, split across its courses, not whol
   assert.match(performance, /WHEN r\.status='ACTIVE'/);
 });
 
-test('privacy erasure blanks the attendee phone instead of nulling a NOT NULL column', () => {
-  const privacy = read('api/lib/privacyService.js');
-  assert.match(privacy, /UPDATE daqqi_attendees SET name=\?,phone='' WHERE tenant_id=\? AND subscriber_id=\?/);
-  assert.match(read('api/schema.sql'), /CREATE TABLE `daqqi_attendees` \([\s\S]{0,260}`phone` varchar\(50\) NOT NULL/);
-});
+
 
 test('taking a client off a round asks first, and refuses one who has attendance', () => {
   const route = read('api/routes/daqqi-rounds.js');

@@ -41,25 +41,7 @@ test('close checklist is tenant and period scoped and blocks every non-zero exce
   assert.ok(calls[0].params.filter(value => value === 'tenant-a').length >= 6);
 });
 
-test('accounts payable posts accrual and payment journals with three-way SOD', () => {
-  const route = read('routes/finance-operations.js');
-  assert.match(route, /AP_APPROVAL_SOD/);
-  assert.match(route, /AP_PAYMENT_SOD/);
-  assert.match(route, /accounts_payable_accrual/);
-  assert.match(route, /accounts_payable_payment/);
-  assert.match(route, /Only a draft payable can be voided/);
-  assert.match(route, /paymentAmount > remaining/);
-  assert.match(route, /tenant_id=\?/);
-});
 
-test('bank reconciliation and period close require zero difference and independent approval', () => {
-  const route = read('routes/finance-operations.js');
-  const accounting = read('routes/accounting.js');
-  assert.match(route, /BANK_RECONCILIATION_SOD/);
-  assert.match(route, /Math\.abs\(Number\(row\.difference_amount\)\) >= 0\.01/);
-  assert.match(route, /PERIOD_CLOSE_SOD/);
-  assert.match(accounting, /PERIOD_CLOSE_APPROVAL_REQUIRED/);
-  assert.match(accounting, /closeRequest\.reviewed_by/);
-  assert.match(accounting, /status='consumed',consumed_at=NOW\(\)/);
-});
+
+
 

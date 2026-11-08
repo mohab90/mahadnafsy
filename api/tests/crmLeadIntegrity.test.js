@@ -79,16 +79,7 @@ test('lead assignments validate tenant staff and persist audit in the same trans
   assert.match(automationEngine, /assign_staff[\s\S]*await assignLead\(/);
 });
 
-test('overdue CRM SLA alerts are tenant-owned, daily-deduped and use the retryable outbox', () => {
-  const sla = read('lib/crmSla.js');
-  const runtime = read('lib/backgroundScheduler.js');
-  assert.match(sla, /s\.tenant_id=l\.tenant_id/);
-  // Overdue means before Cairo's today, not the database's UTC date.
-  assert.match(sla, /l\.next_follow_up_date<\$\{sqlCairoToday\(\)\}/);
-  assert.match(sla, /tenantId: row\.tenant_id/);
-  assert.match(sla, /dedupeKey: `crm-sla:\$\{row\.tenant_id\}:\$\{row\.id\}:\$\{today\}/);
-  assert.match(runtime, /enqueueOverdueLeadAlerts\(\)/);
-});
+
 
 test('CRM interactions use one tenant-owned transactional service', () => {
   const service = read('lib/leadInteractions.js');
@@ -168,13 +159,7 @@ test('Daqqi import requires both CRM and financial authority', () => {
   );
 });
 
-test('scheduled and manual CRM automation share one engine', () => {
-  const runtime = read('lib/backgroundScheduler.js');
-  const manual = read('routes/automation.js');
-  assert.match(runtime, /automationEngine[\s\S]*runAutomationWorkflows/);
-  assert.match(manual, /runAutomationWorkflows/);
-  assert.doesNotMatch(runtime, /SELECT id, tenant_id, name, `trigger`, action[\s\S]*FROM automation_workflows/);
-});
+
 
 test('a lead cannot be marked converted without a customer behind it', () => {
   const state = read('lib/leadState.js');
@@ -266,16 +251,4 @@ test('the converted-lead check is defined once and used by both readers', async 
 // 34 leads and 155 subscribers carry a contact detail where a name belongs. The
 // legacy ones cannot be repaired without inventing names; what this stops is
 // the pile growing.
-test('imports never put a phone or email in the name column', () => {
-  // Comments out first. The comment explaining this fix necessarily quotes the
-  // expression it replaced, and an assertion a comment can satisfy — or defeat —
-  // is not an assertion about the code. Caught by this test failing on its own
-  // explanation.
-  const gsheets = read('routes/gsheets.js')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^\s*\/\/.*$/gm, ' ');
-  assert.doesNotMatch(gsheets, /name \|\| phone/,
-    'a blank name must stay blank, not become the phone number');
-  assert.match(gsheets, /name \|\| null/,
-    'the import should write NULL for a missing name');
-});
+

@@ -111,15 +111,7 @@ test('a collection account\'s new customer is a request until the manager approv
   assert.match(read('api/routes/registrations.js'), /code: 'COLLECTION_BOOKING_REQUIRED'/);
 });
 
-test('approving money: not by collection, not by whoever recorded it, and a collection booking needs its transfer', () => {
-  const status = read('api/routes/core/financepay.js');
-  assert.match(status, /approverRole === 'collection'/);
-  assert.match(status, /code: 'PAYMENT_SELF_APPROVAL'/);
-  assert.match(status, /String\(recorder\?\.role \|\| ''\)\.toLowerCase\(\) === 'collection' && !transfer && !isCashMethod\(settledMethod\)/);
-  const migration = read('api/migrations/224_v26_reviewed_bookings.sql');
-  assert.match(migration, /UNIQUE KEY uq_incoming_transfer_payment \(tenant_id, payment_id\)/);
-  assert.match(migration, /UNIQUE KEY uq_incoming_transfer_ref \(tenant_id, method, reference\)/);
-});
+
 
 test('a transfer confirms one payment, and a cash box needs none', async () => {
   const { isCashMethod, linkTransfer, cleanTransfer } = require('../lib/incomingTransfers');

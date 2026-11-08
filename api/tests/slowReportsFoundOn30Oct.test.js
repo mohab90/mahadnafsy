@@ -55,16 +55,7 @@ test('the online orders without a twin payment are found by two LEFT JOINs, not 
   assert.ok(created, 'idx_orders_tenant_status_created is created by no migration');
 });
 
-test('the reports that read the leads by assigned_at and by follow-up date have an index that holds both', () => {
-  const sql = read('api/migrations/348_v26_report_indexes.sql');
-  assert.ok(sql.includes('idx_leads_tenant_assigned_at (tenant_id, hidden, assigned_at, assigned_sales_id, created_at)'));
-  assert.ok(sql.includes('idx_leads_tenant_followup_open (tenant_id, next_follow_up_date, assigned_sales_id, status, hidden)'));
-  assert.ok(sql.includes('idx_leads_tenant_close_id (tenant_id, expected_close_date, id)'));
-  // The queries those indexes were made for still read these columns together.
-  assert.match(read('api/lib/teamReports.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
-  assert.match(read('api/lib/teamDailyReport.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
-  assert.match(read('api/lib/teamDailyReport.js'), /next_follow_up_date IS NOT NULL\s+AND assigned_sales_id IS NOT NULL AND status IN/);
-});
+
 
 test('the campaign report starts its five independent reads together', () => {
   const route = read('api/routes/analytics/campaigns.js');

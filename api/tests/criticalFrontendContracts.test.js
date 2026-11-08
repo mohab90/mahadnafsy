@@ -80,20 +80,7 @@ test('contact success is shown only after the public API persists the message', 
   assert.match(context, /const addContactMessage = async[\s\S]{0,250}await mysqlForms\.submitContact/);
 });
 
-test('push ownership and payment creation permission are tenant and finance safe', () => {
-  const push = read('api/routes/push.js');
-  const payments = read('api/routes/subscriber-payments.js');
-  const migration = read('api/migrations/104_v25_push_subscription_tenant_identity.sql');
-  // Ownership resolution moved to lib/subscriberIdentity.js so push, loyalty and
-  // every /api/me/* route resolve the client the same way — including clients
-  // who sign in by WhatsApp number and have no email at all.
-  assert.match(push, /require\('\.\.\/lib\/subscriberIdentity'\)/);
-  assert.match(push, /resolveSubscriberId\(/);
-  assert.match(push, /WHERE tenant_id = \? AND is_active = 1/);
-  assert.match(push, /SET is_active = 0 WHERE tenant_id = \? AND endpoint_hash = \?/);
-  assert.match(payments, /subscriber-payments'[\s\S]{0,160}requirePermission\('manage_payments'\)/);
-  assert.match(migration, /uq_push_tenant_endpoint \(tenant_id, endpoint_hash\)/);
-});
+
 
 test('subscriber status and certificate counts use server-owned truth', () => {
   const clients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');

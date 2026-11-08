@@ -79,15 +79,7 @@ test('the gaps are read per branch, from the payments that carry a number', asyn
   assert.equal(asked[0].params[0], 't1');
 });
 
-test('a recorded payment takes its number inside its transaction and answers with it', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /receiptNo = await nextReceiptNo\(conn, \{ tenantId: paymentTenantId, branch: paymentBranch \}\);/);
-  assert.match(route, /tenant_id, branch, branch_id, receipt_no\)/);
-  assert.match(route, /\.\.\.\(receiptNo \? \{ receiptNo, receiptBranch: receiptSeriesOf\(paymentBranch\) \} : \{\}\)/);
-  const installments = read('api/routes/installments.js');
-  assert.match(installments, /const receiptNo = await nextReceiptNo\(conn, \{ tenantId: req\.tenantId, branch \}\);/);
-  assert.match(installments, /tenant_id, staff_name, created_at, receipt_no\)/);
-});
+
 
 test('the receipt, the register and the managers see the number — and voiding one tells the managers', () => {
   assert.match(paymentModalSource(), /إيصال رقم \{data\.receiptNo\}/);

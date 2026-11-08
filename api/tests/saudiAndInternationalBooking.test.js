@@ -49,13 +49,7 @@ test('the international form of a Saudi mobile finds every way it was stored', (
   assert.ok(!identitySpellings('0501234567').includes('966501234567'));
 });
 
-test("the booking route looks the client up by every spelling and names the one it found", () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /identitySpellings\(safePhone\)/);
-  assert.match(route, /phone IN \(\?\) OR phone2 IN \(\?\) OR REGEXP_REPLACE\(COALESCE\(phone, ''\), '\[\^0-9\]', ''\) IN \(\?\)/, 'the client\'s second number is a number too');
-  assert.match(route, /const safePhone = toIdentity\(completeForBranch\(typedPhone, branch\)\)/, 'a booked client is stored as the identity, not as typed');
-  assert.match(route, /العميل مسجل من قبل بنفس/);
-});
+
 
 test('a Saudi or international client books with a passport or residence number and a full Arabic name', () => {
   const client = { nameAr: 'محمد عبدالله العتيبي', nameEn: 'Mohammed Alotaibi', nationalId: '1012345678', phoneConfirmed: true };
@@ -65,8 +59,4 @@ test('a Saudi or international client books with a passport or residence number 
   assert.equal(validateBookingIdentity(client, { egyptian: true }).ok, false);
 });
 
-test('a rate that cannot be had is refused with what to do about it, not as an internal error', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /FX_STALE|ensureFreshFx/);
-  assert.match(read('api/lib/fxRefresh.js'), /دوس «تحديث أسعار الصرف»/);
-});
+

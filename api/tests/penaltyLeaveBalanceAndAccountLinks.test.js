@@ -63,11 +63,7 @@ test('a site account is linked to its client by a member of the staff, never by 
   assert.match(read('admin/pages/dashboard/tabs/client-db/LinkAccount.tsx'), /ربطه بعميل/);
 });
 
-test('lifting a sharing lock starts the device count over, or the next sign-in locks the account again', () => {
-  assert.match(read('api/migrations/358_v26_sharing_unlock_resets_the_count.sql'), /ADD COLUMN IF NOT EXISTS sharing_reset_at DATETIME NULL/);
-  assert.match(read('api/lib/accountSharingGuard.js'), /u\.sharing_reset_at IS NULL OR h\.created_at >= u\.sharing_reset_at/);
-  assert.match(read('api/routes/misc/analytics.js'), /sharing_lock_reason=NULL, sharing_reset_at=NOW\(\)/);
-});
+
 
 test('archiving a client says who did it, in their history and in the archive list', () => {
   const catalog = read('api/routes/core/catalog.js');
@@ -91,8 +87,4 @@ test('an employee\'s or a client\'s page is drawn under the dashboard\'s menu ba
   assert.match(read('admin/pages/dashboard/shell/useDashboardModel.tsx'), /if \(onProfilePage\) return;/);
 });
 
-test('the contact history of a client includes the contacts made on every lead of the same number or e-mail', () => {
-  const route = read('api/routes/admin/subscribers.js');
-  assert.match(route, /phone_digits=\?/);
-  assert.match(route, /OR c\.lead_id IN \(\?\)/);
-});
+

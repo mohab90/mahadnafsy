@@ -64,9 +64,7 @@ test('4 Nov 2026: الحملات is the messaging hub alone, opening on the inbo
   assert.match(read('admin/pages/dashboard/tabs/MessagingHubTab.tsx'), /useState<View>\('inbox'\)/);
 });
 
-test('4 Nov 2026: the inbox readiness counts the official-API number as the company WhatsApp, not the default one the codes use', () => {
-  assert.match(read('api/routes/team-inbox.js'), /const receiving = list\.filter\(channel => channel\.kind === 'whatsapp'[^\n]*provider === 'meta'\);/);
-});
+
 
 test('4 Nov 2026: the merged performance page opens on an overview of the month — absence at its payroll cost, lateness, and the money — each half only for who may read it', () => {
   const hub = read('admin/pages/dashboard/tabs/StaffPerformanceHubTab.tsx');

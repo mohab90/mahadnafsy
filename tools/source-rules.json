@@ -1081,5 +1081,5206 @@
     }
    }
   ]
+ },
+ {
+  "id": "hrLeavesAndPayroll: no code reads or writes the dead leave_requests / staff_absences tables; leaves is the one table of leave",
+  "why": "moved from a unit test that matched source text; the leave behaviour is integration/hrLeaveWorkflow and integration/employeeSelfService",
+  "scan": {
+   "dirs": [
+    "api/routes",
+    "api/lib"
+   ],
+   "exts": [
+    ".js"
+   ],
+   "minFiles": 200,
+   "mustNot": [
+    {
+     "source": "leave_requests",
+     "reason": "leave_requests is the abandoned table: leave is `leaves`"
+    },
+    {
+     "source": "FROM staff_absences",
+     "reason": "staff_absences is gone: absences are attendance_logs"
+    }
+   ]
+  }
+ },
+ {
+  "id": "hrLeavesAndPayroll: staff fields are gated on isSuperAdmin / view_staff, payroll actors are staff ids, the register limiter reads no JWT role",
+  "why": "moved from a unit test that matched source text; separation of duties in payroll is integration/payrollRun",
+  "checks": [
+   {
+    "file": "api/routes/staff.js",
+    "mustNot": {
+     "source": "=\\s*req\\.isAdmin\\b",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "mustNot": {
+     "source": "req\\.user\\.id\\b",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "const actorId = req\\.staffRecord\\?\\.id \\|\\| req\\.user\\?\\.uid \\|\\| null",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/rateLimits.js",
+    "mustNot": {
+     "source": "payload\\.role",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/rateLimits.js",
+    "mustNot": {
+     "source": "require\\('jsonwebtoken'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aCarnetIsNotTheCoursesMoney: a paid carnet neither takes the course\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "const paysForItem = isItemPaymentType\\(safeType\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(priceTier && paysForItem && \\(courseId \\|\\| bundleId\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(resolvedExpected == null && paysForItem && \\(courseId \\|\\| bundleId\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(isPaid && paysForItem && \\(courseId \\|\\| bundleId\\) && !isRetake\\) \\{\\s*let enrollAccessType = 'full';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "const opensItem = isItemPaymentType\\(payment\\.payment_type\\);\\s*if \\(opensItem && payment\\.course_id\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "accountingTenantScope: expense writes and ledger postings share one transaction",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-operations.js",
+    "must": {
+     "source": "await conn\\.beginTransaction\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "must": {
+     "source": "postExpenseJournal\\([\\s\\S]*conn, tenantId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "must": {
+     "source": "if \\(!journalId\\) throw new Error\\('Expense journal posting failed'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "mustNot": {
+     "source": "postExpenseJournal\\([^;]+\\.catch\\(\\(\\) => \\{\\}\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aClientPriceIsTheManagersToSet: the server takes a booking\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "const canSetClientPrice = Boolean\\(req\\.isSuperAdmin \\|\\| hasPermission\\(req\\.staffRecord, 'set_client_price'\\)\\);\\s*\\n\\s*const clientPrice = payment\\.customPrice === true && courseExpected != null && canSetClientPrice;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(courseExpected != null && !clientPrice && !priceMatches\\(courseExpected, heldPrice \\?\\? tierPrice\\.price\\)\\) return priceChangedResponse\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "let resolvedExpected = clientPrice \\? courseExpected : heldPrice != null \\? heldPrice : tierPrice \\? tierPrice\\.price : courseExpected;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "activityLogTenantIntegrity: activity archive uses the real timestamp and one transaction",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/archiveJob.js",
+    "mustNot": {
+     "source": "created_at",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/archiveJob.js",
+    "must": {
+     "source": "beginTransaction\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/archiveJob.js",
+    "must": {
+     "source": "INSERT IGNORE INTO activity_logs_archive",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/archiveJob.js",
+    "must": {
+     "source": "WHERE at < \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/archiveJob.js",
+    "must": {
+     "source": "commit\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/archiveJob.js",
+    "must": {
+     "source": "rollback\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aDepositOpensTheFirstPaymentOnly: a booking whose price is unknown is not measured",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(payment\\.isInstallment \\|\\| Number\\(resolvedExpected\\) > 0\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "lenient: !payment\\.isInstallment,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aDepositOpensTheFirstPaymentOnly: approving a pending booking measures it the same way",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "if \\(Number\\(payment\\.course_expected\\) > 0\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "lenient: !payment\\.is_installment,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: its status and session type are lower-cased, because both enums are upper",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/staffacct.js",
+    "must": {
+     "source": "status: String\\(row\\.status \\|\\| 'PENDING'\\)\\.toLowerCase\\(\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/core/staffacct.js",
+    "must": {
+     "source": "sessionType: String\\(row\\.session_type \\|\\| 'INDIVIDUAL'\\)\\.toLowerCase\\(\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "`session_type` enum\\('INDIVIDUAL','COUPLE','FAMILY'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: approving a payment pays the same commission as recording one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "await recordPaymentCompensation\\(\\{",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "mustNot": {
+     "source": "INSERT INTO crm_commissions",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "mustNot": {
+     "source": "now\\.getMonth\\(\\) \\+ 1",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: the rule it now calls is the one that reads commission_rules",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/paymentCompensation.js",
+    "must": {
+     "source": "FROM commission_rules",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/paymentCompensation.js",
+    "must": {
+     "source": "const period = paymentPeriod\\(payment\\.date\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: overriding a deduction brings the statutory split with it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "const originalStatutory = originalSocial \\+ originalTax",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "if \\(originalStatutory > od\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "calculation_details=\\?",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: the payroll journal is dated in Cairo",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "postJournalEntry\\('payroll', runId, dateOnlyInTimeZone\\(\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "mustNot": {
+     "source": "postJournalEntry\\('payroll', runId, new Date\\(\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: payroll refuses a stale exchange rate instead of guessing one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "const currenciesInPlay = new Set\\(",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "if \\(!isFxSnapshotUsable\\(fxSnapshot, currency\\)\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "FX_SNAPSHOT_UNAVAILABLE",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: refunding a payment cancels the instructor fee as well as the commission",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/refunds.js",
+    "must": {
+     "source": "UPDATE crm_commissions SET status='CANCELLED'",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "must": {
+     "source": "UPDATE instructor_fees SET status='rejected'",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "must": {
+     "source": "source_payment_id=\\? AND tenant_id=\\?",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "must": {
+     "source": "status IN \\('pending','approved','included_in_payroll'\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "adminRowShapeAndMoney: and payroll really does pay the status this now clears",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "instructor_fees",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "approved_instructor_fees",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "aFailedLoadIsNotSavedOverTheRealSettings: the SMS route keeps a key the form did not send",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/messaging.js",
+    "must": {
+     "source": "api_key=COALESCE\\(\\?, api_key\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/messaging.js",
+    "must": {
+     "source": "api_secret=COALESCE\\(\\?, api_secret\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aFollowUpIsToldToItsOwner: the digest is scheduled, and made once a day then kept true",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/_shared.js",
+    "must": {
+     "source": "scheduleFollowUpDigest\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/followUpDigest.js",
+    "must": {
+     "source": "recipient_staff_id <=> \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/followUpDigest.js",
+    "must": {
+     "source": "DELETE FROM notification_reads",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aiAutopilot: the search fields reach the site, and the day\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/mappers.js",
+    "must": {
+     "source": "seo_title: r\\.seo_title \\|\\| undefined,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/seoPages.js",
+    "must": {
+     "source": "if \\(course\\.seo_title\\) return `\\$\\{course\\.seo_title\\} \\| \\$\\{SITE_NAME\\}`;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/seoPages.js",
+    "must": {
+     "source": "title: courseTitle\\(course\\),",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/aiAutopilot.js",
+    "must": {
+     "source": "dedupeKey: `ai_autopilot:\\$\\{clock\\.date\\}`",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "ai_autopilot: \\(\\{ tenantId, date, only \\}\\) =>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "anInstituteCertificateComesAtNinetyPercent: issued without an online enrolment or an email, by the same function as by hand",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/instituteCertificates.js",
+    "must": {
+     "source": "requireFullProgress: false,\\s*requireEnrollment: false, sendEmail: false",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/courseCompletion.js",
+    "must": {
+     "source": "\\$\\{requireEnrollment \\? 'JOIN' : 'LEFT JOIN'\\} enrollments e",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/courseCompletion.js",
+    "must": {
+     "source": "if \\(sendEmail && eligibility\\.email\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/_shared.js",
+    "must": {
+     "source": "runAutoCertificateSweep\\(tenantId\\)\\.then\\(\\(\\) => sweepInstituteCertificates\\(tenantId\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "arabicPaymentErrors: a duplicate booking names the client who already has the number",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "existingName: existing\\.name",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "المسئول عنه \\$\\{existing\\.owner_name\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditFindingsThatWereReal: a quiz with no passing score does not pass an empty attempt",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/quizGrading.js",
+    "must": {
+     "source": "answeredCount|answers\\.length|attempted",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/quizGrading.js",
+    "mustNot": {
+     "source": "const passed = score >= \\(Number\\(passingScore\\) \\|\\| 0\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditRegression: CRIT-04: a course is paid at one share everywhere (aCourseIsPaidAtTheSameShareEverywhere)",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/coursePaid.js",
+    "must": {
+     "source": "const PAID_SHARE = 0\\.9;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/autoCertificate.js",
+    "must": {
+     "source": "const PAID_THRESHOLD = PAID_SHARE;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditRegression: MED-12: cross-site writes are refused unless switched off explicitly",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "CSRF_ORIGIN_ENFORCE \\|\\| ''\\)\\.toLowerCase\\(\\) === 'false'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditRegression: MED-13: /api/staff writes reach the activity log (staffWritesReachTheActivityLog)",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "app\\.use\\('\\/api\\/staff', auditWrites\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditTamperResistance: writer serializes each tenant chain head inside the caller transaction",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/auditTrail.js",
+    "must": {
+     "source": "audit_chain_heads[\\s\\S]*FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/auditTrail.js",
+    "must": {
+     "source": "INSERT INTO audit_logs[\\s\\S]*previous_hash, event_hash, hash_version",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/auditTrail.js",
+    "must": {
+     "source": "event_count=event_count\\+1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/auditTrail.js",
+    "must": {
+     "source": "Audit chain head advance failed",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditTamperResistance: security export includes hot and archived rows with server-side chain verification",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "\\/api\\/admin\\/security\\/audit-export",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "FROM audit_logs_archive",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "verifyAuditRows\\(rows\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "requirePermission\\('view_security'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "Content-Disposition",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aYearOfAccessFromSubscription: the grant counts the duration the course names, else a year, from the subscription day",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "const DEFAULT_ACCESS_MONTHS = 12;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "Number\\(durationResult\\?\\.\\[0\\]\\?\\.\\[0\\]\\?\\.access_months\\) > 0\\s+\\? Number\\(durationResult\\[0\\]\\[0\\]\\.access_months\\) : DEFAULT_ACCESS_MONTHS;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "CASE WHEN \\? > 0 THEN DATE_ADD\\(COALESCE\\(\\?,NOW\\(\\)\\), INTERVAL \\? MONTH\\) ELSE NULL END",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "boxWithdrawalsAndMerges: the routes are the main books\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/admin\\/finance\\/boxes\\/withdraw', \\.\\.\\.mainBooks, boxChange",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/admin\\/finance\\/boxes\\/withdrawals\\/void', \\.\\.\\.mainBooks, boxChange",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/admin\\/finance\\/boxes\\/merge', \\.\\.\\.mainBooks, boxChange",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/finance\\/boxes\\/withdrawals', requireAuth, requireAdminOrStaff, requirePermission\\('view_financial'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "const \\{ box: method, currency \\} = boxOf\\(row\\.method, row\\.currency, catalog\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/309_v26_box_withdrawals_and_merges.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS box_withdrawals[\\s\\S]*CREATE TABLE IF NOT EXISTS box_aliases[\\s\\S]*'merge','void_withdrawal'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "CREATE TABLE `box_withdrawals`[\\s\\S]*CREATE TABLE `box_aliases`",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "certificatesPickAndExcel: the APIs hand the screens the links and the national id",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/certificates.js",
+    "must": {
+     "source": "s\\.personal_photo_url, s\\.id_photo_url",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/certificates.js",
+    "must": {
+     "source": "personalPhotoUrl: row\\.personal_photo_url \\|\\| null",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/instituteCertificates.js",
+    "must": {
+     "source": "s\\.national_id, s\\.personal_photo_url, s\\.id_photo_url",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/instituteCertificates.js",
+    "must": {
+     "source": "nationalId: row\\.national_id \\|\\| null, personalPhotoUrl",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCourseActionsAndDokkiBooks: the routes: managers delete, managers and accounts transfer, with a reason on a deletion",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/content.js",
+    "must": {
+     "source": "'\\/api\\/admin\\/subscribers\\/:id\\/course-remove'[\\s\\S]{0,200}courseActionRoute\\('remove'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/content.js",
+    "must": {
+     "source": "'\\/api\\/admin\\/subscribers\\/:id\\/course-transfer'[\\s\\S]{0,200}courseActionRoute\\('transfer'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/content.js",
+    "must": {
+     "source": "!isCourseManager\\(req\\) && !\\(action === 'transfer' && role === 'accountant'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/content.js",
+    "must": {
+     "source": "action === 'remove' && !reason",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/content.js",
+    "must": {
+     "source": "scopedSubscriber\\(req, req\\.params\\.id, tenantId\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/content.js",
+    "must": {
+     "source": "e\\.status <> 'removed'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientDashboardContracts: the community feed marks the viewer's own posts without poisoning the shared cache",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/community\\/posts', publicLimiter, optionalAuth",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "isOwner: true",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "res\\.set\\('Cache-Control', 'private, no-store'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "\\{ \\.\\.\\.post, isOwner: true \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientDashboardContracts: the customer subscriber payload carries the fields the dashboard reads",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/mappers.js",
+    "must": {
+     "source": "nameEn: r\\.name_en \\|\\| crm\\.nameEn \\|\\| null,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/mappers.js",
+    "must": {
+     "source": "installmentPlans: \\(r\\.installmentPlans \\|\\| \\[\\]\\)\\.map\\(mapInstallmentPlan\\),",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "FROM installment_plans ip",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "certRequests, installmentPlans \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "'created_at', 'updated_at', 'name_en',",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientItemMoneyHasOneHome: the SQL that read a JSON path now reads the table",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/daqqiAttendees.js",
+    "must": {
+     "source": "FROM client_item_money m\\s+WHERE m\\.tenant_id = da\\.tenant_id COLLATE utf8mb4_unicode_ci AND m\\.subscriber_id = da\\.subscriber_id COLLATE utf8mb4_unicode_ci AND m\\.item_key = dr\\.course_id COLLATE utf8mb4_unicode_ci",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/outstandingBalances.js",
+    "must": {
+     "source": "priorPaidTotalSql\\('s'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/weeklyBranchReport.js",
+    "must": {
+     "source": "priorPaidTotalSql\\('s'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/instituteCertificates.js",
+    "must": {
+     "source": "FROM client_item_money WHERE tenant_id=\\? AND prior_paid > 0",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "commissionDurability: a worker handler exists for the queued job",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "record_commission:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "commissionCalc\\.recordCommissionForPayment\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "require\\('\\.\\/commissionCalc'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "commissionDurability: the job runs the one compensation rule every payment path runs",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/commissionCalc.js",
+    "must": {
+     "source": "require\\('\\.\\/paymentCompensation'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/commissionCalc.js",
+    "must": {
+     "source": "await recordPaymentCompensation\\(\\{ paymentId, tenantId, actor: 'paymob' \\}, conn\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymentCompensation.js",
+    "must": {
+     "source": "INSERT INTO crm_commissions[\\s\\S]*?ON DUPLICATE KEY UPDATE commission_amount=VALUES\\(commission_amount\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymentCompensation.js",
+    "must": {
+     "source": "INSERT INTO instructor_fees[\\s\\S]*?ON DUPLICATE KEY UPDATE total_amount=VALUES\\(total_amount\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/commissionCalc.js",
+    "mustNot": {
+     "source": "INSERT INTO crm_commissions",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "commissionDurability: \"nothing to pay\" is a result, not a failure",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/commissionCalc.js",
+    "must": {
+     "source": "return \\{ written: false, reason: 'payment_not_paid' \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/commissionCalc.js",
+    "must": {
+     "source": "return \\{ written: false, reason: 'non_positive_amount' \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "communityReadShape: the posts route was already mapped and stays that way",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "const mapPost = \\(r\\) =>",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "authorName: r\\.author",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "confirmationScreenReferencesAndInterviewTabs: editing a client is not refused for the number the client already holds",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "const alreadyHeld = new Set\\(\\[storedNumbers\\?\\.phone, storedNumbers\\?\\.phone2\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "number && !alreadyHeld\\.has\\(String\\(number\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "const heldBy = numbersToCheck\\.length",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "consultationBookingGuards: a session date in the past is refused, on the Cairo day",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/consultationRequests.js",
+    "must": {
+     "source": "SESSION_DATE_INVALID",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/consultationRequests.js",
+    "must": {
+     "source": "SESSION_DATE_PAST",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/consultationRequests.js",
+    "must": {
+     "source": "const today = cairoToday\\(now\\);",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/consultationRequests.js",
+    "must": {
+     "source": "if \\(sessionDate < today\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "must": {
+     "source": "const refused = bookingRuleError\\(\\{ sessionDate, slot, settings: consultationSettings\\(content\\) \\}\\);",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "consultationBookingGuards: the date the customer picks still reaches the order untouched",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/consultationRequests.js",
+    "must": {
+     "source": "const start = slot\\?\\.start_time \\? String\\(slot\\.start_time\\)\\.slice\\(0, 5\\) : '00:00';",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/consultationRequests.js",
+    "must": {
+     "source": "const sessionAt = sessionDate \\? `\\$\\{sessionDate\\} \\$\\{start\\}:00` : null;",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "consultationRequests: changing a booking\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "if \\(notes !== undefined\\) \\{ sets\\.push\\('notes=\\?'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/catalog.js",
+    "mustNot": {
+     "source": "'UPDATE consultations SET status=\\?, notes=\\?, meeting_link=\\? WHERE id=\\? AND tenant_id=\\?'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseRetake: the payment route prices a retake from the catalogue, adds it to the agreed price and leaves the access alone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "const isRetake = payment\\.retake === true && safeType === 'COURSE';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "planRetake\\(pool, \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "resolvedExpected = plan\\.expected;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "priceChange \\|\\| isRetake \\|\\| payment\\.isInstallment",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(isPaid && paysForItem && \\(courseId \\|\\| bundleId\\) && !isRetake\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: push ownership and payment creation permission are tenant and finance safe",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/push.js",
+    "must": {
+     "source": "require\\('\\.\\.\\/lib\\/subscriberIdentity'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/push.js",
+    "must": {
+     "source": "resolveSubscriberId\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/push.js",
+    "must": {
+     "source": "WHERE tenant_id = \\? AND is_active = 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/push.js",
+    "must": {
+     "source": "SET is_active = 0 WHERE tenant_id = \\? AND endpoint_hash = \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "subscriber-payments'[\\s\\S]{0,160}requirePermission\\('manage_payments'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/104_v25_push_subscription_tenant_identity.sql",
+    "must": {
+     "source": "uq_push_tenant_endpoint \\(tenant_id, endpoint_hash\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: overdue CRM SLA alerts are tenant-owned, daily-deduped and use the retryable outbox",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/crmSla.js",
+    "must": {
+     "source": "s\\.tenant_id=l\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/crmSla.js",
+    "must": {
+     "source": "l\\.next_follow_up_date<\\$\\{sqlCairoToday\\(\\)\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/crmSla.js",
+    "must": {
+     "source": "tenantId: row\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/crmSla.js",
+    "must": {
+     "source": "dedupeKey: `crm-sla:\\$\\{row\\.tenant_id\\}:\\$\\{row\\.id\\}:\\$\\{today\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "enqueueOverdueLeadAlerts\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: scheduled and manual CRM automation share one engine",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "automationEngine[\\s\\S]*runAutomationWorkflows",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/automation.js",
+    "must": {
+     "source": "runAutomationWorkflows",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "mustNot": {
+     "source": "SELECT id, tenant_id, name, `trigger`, action[\\s\\S]*FROM automation_workflows",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: imports never put a phone or email in the name column",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/gsheets.js",
+    "mustNot": {
+     "source": "name \\|\\| phone",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/gsheets.js",
+    "must": {
+     "source": "name \\|\\| null",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "customerJourneyIntegrity: journey analytics keeps payment, learning and certificate stages on one lead cohort",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/funnel.js",
+    "must": {
+     "source": "JOIN subscribers s ON s\\.lead_id=l\\.id AND s\\.tenant_id=l\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/funnel.js",
+    "must": {
+     "source": "JOIN payments p ON p\\.subscriber_id=s\\.id AND p\\.tenant_id=s\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/funnel.js",
+    "must": {
+     "source": "JOIN lecture_completions lc ON lc\\.subscriber_id=s\\.id AND lc\\.tenant_id=s\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/funnel.js",
+    "must": {
+     "source": "JOIN course_completions cc ON cc\\.subscriber_id=s\\.id AND cc\\.tenant_id=s\\.tenant_id AND cc\\.status='active'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/funnel.js",
+    "mustNot": {
+     "source": "COUNT\\(DISTINCT subscriber_id\\) FROM payments",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "customerJourneyIntegrity: abandoned checkout honors suppression and provider acceptance before sent",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/abandonedCheckout.js",
+    "must": {
+     "source": "filterSuppressed",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/abandonedCheckout.js",
+    "must": {
+     "source": "if \\(!delivery\\?\\.ok\\) throw new Error",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/abandonedCheckout.js",
+    "must": {
+     "source": "markReminder\\(order, 'skipped', 'marketing suppressed'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiReminderRecipients: the reminder recipient filter does not leak into attendance history or counts",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/daqqiAttendees.js",
+    "mustNot": {
+     "source": "is_unsubscribed",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/daqqiAttendees.js",
+    "mustNot": {
+     "source": "s\\.is_active",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "is_unsubscribed",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "s\\.is_active",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/daqqiAttendanceMark.js",
+    "must": {
+     "source": "INSERT INTO daqqi_attendance_events",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/daqqiAttendanceMark.js",
+    "mustNot": {
+     "source": "is_unsubscribed|s\\.is_active",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dashboardReadShape: lead distribution hands out only the leads that are still open",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "must": {
+     "source": "\\[\\.\\.\\.LEAD_STATUSES\\]\\.filter\\(isOpenLeadStatus\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "mustNot": {
+     "source": "status NOT IN \\('converted','lost'\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "must": {
+     "source": "\\[tenantId, \\.\\.\\.openStatuses, \\.\\.\\.archive\\.params\\]",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "must": {
+     "source": "excludeArchiveSourcesSql\\('source'\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "discountExpiryDay: the public discounts route compares the Cairo day, not an instant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "const today = dateOnlyInTimeZone\\(\\);",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "String\\(rule\\.expiresAt\\)\\.slice\\(0, 10\\) >= today",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/config.js",
+    "mustNot": {
+     "source": "Date\\.parse\\(rule\\.expiresAt\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "dokkiPaidTracksHousingAndRoster: privacy erasure blanks the attendee phone instead of nulling a NOT NULL column",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "UPDATE daqqi_attendees SET name=\\?,phone='' WHERE tenant_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "CREATE TABLE `daqqi_attendees` \\([\\s\\S]{0,260}`phone` varchar\\(50\\) NOT NULL",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "emailCategories: WhatsApp already had this and is the model being matched",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/whatsapp.js",
+    "must": {
+     "source": "WHATSAPP_OUTBOUND_CATEGORIES",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/whatsapp.js",
+    "must": {
+     "source": "OUTBOUND_ALLOW_ALL",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "everyBoxShowsAndAnExpenseNamesItsBox: the boxes screen lists a box at zero, and a box that has not seen a payment lately",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance/budgets.js",
+    "mustNot": {
+     "source": "value\\.balance !== 0",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "for \\(const entry of catalog\\.entries\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "must": {
+     "source": "if \\(!scope\\.branchId\\) \\{\\s*const current = await currentBalances",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "featuresThatSavedNothing: every path that shows materials now loads them",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/catalog.js",
+    "must": {
+     "source": "saveCourseMaterials\\(pool, id, c\\.materials\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/admin/catalog.js",
+    "must": {
+     "source": "loadCourseMaterials\\(pool, rows\\.map\\(row => row\\.id\\)\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "materialsByCourse\\.get\\(row\\.id\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "financeOperations: accounts payable posts accrual and payment journals with three-way SOD",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "AP_APPROVAL_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "AP_PAYMENT_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "accounts_payable_accrual",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "accounts_payable_payment",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "Only a draft payable can be voided",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "paymentAmount > remaining",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "financeOperations: bank reconciliation and period close require zero difference and independent approval",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "BANK_RECONCILIATION_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "Math\\.abs\\(Number\\(row\\.difference_amount\\)\\) >= 0\\.01",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-operations.js",
+    "must": {
+     "source": "PERIOD_CLOSE_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/accounting.js",
+    "must": {
+     "source": "PERIOD_CLOSE_APPROVAL_REQUIRED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/accounting.js",
+    "must": {
+     "source": "closeRequest\\.reviewed_by",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/accounting.js",
+    "must": {
+     "source": "status='consumed',consumed_at=NOW\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "financeSafetyContracts: manual payment retries the complete transaction after transient MySQL deadlocks",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "TRANSIENT_TX_ERRORS = new Set\\(\\['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "for \\(let transactionAttempt = 1; ; transactionAttempt \\+= 1\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "await conn\\.rollback\\(\\)[\\s\\S]{0,350}transactionAttempt >= 3",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "SELECT GET_LOCK\\(\\?, 5\\) AS acquired",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "SELECT RELEASE_LOCK\\(\\?\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "retrying rolled-back transaction",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "fxSalesIntegrity: money rows freeze their EGP value and financial reports consume the snapshot",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/085_v25_money_fx_snapshot.sql",
+    "must": {
+     "source": "ALTER TABLE payments[\\s\\S]*amount_egp",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/085_v25_money_fx_snapshot.sql",
+    "must": {
+     "source": "ALTER TABLE expenses[\\s\\S]*amount_egp",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "UPDATE payments SET fx_rate_to_egp=\\?,amount_egp=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "source = 'static-fallback'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "fx\\.source, paymentId, tenantId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "sign < 0[\\s\\S]*snapshottedEgp",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/financial.js",
+    "must": {
+     "source": "SUM\\(amount_egp\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/dashboard.js",
+    "must": {
+     "source": "SUM\\(p\\.amount_egp\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "housingIsPerCourse: the server seats one client in one round and moves one seat — never every round of the client",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/daqqiHousing.js",
+    "must": {
+     "source": "WHERE tenant_id=\\? AND round_id=\\? AND subscriber_id=\\? LIMIT 1 FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "DELETE FROM daqqi_attendees WHERE tenant_id=\\? AND round_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "DELETE FROM daqqi_attendees WHERE tenant_id=\\? AND subscriber_id=\\?['\"`]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: disabled users are rejected by every authenticated request and cache can be invalidated immediately",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "async function activeIdentity",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "const columns = 'is_active,session_version,active_session_id,active_session_ip_hash,name,email_unverified'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "SELECT \\$\\{columns\\} FROM users WHERE tenant_id=\\? AND id=\\? LIMIT 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "Account disabled or unavailable",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "function invalidateIdentity",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: payroll and sensitive HR adjustments prevent self approval or mutation",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "PAYROLL_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "HR_SELF_MUTATION",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/attendance.js",
+    "must": {
+     "source": "HR_SELF_MUTATION",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "HR_SELF_MUTATION",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/records.js",
+    "must": {
+     "source": "HR_SELF_APPROVAL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "BONUS_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "INSTRUCTOR_FEE_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/attendance.js",
+    "must": {
+     "source": "SALARY_SOD",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: compensation changes are approval-owned and only approved values enter payroll",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/128_v25_hr_compensation_approval.sql",
+    "must": {
+     "source": "salary_structures[\\s\\S]*status ENUM",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/128_v25_hr_compensation_approval.sql",
+    "must": {
+     "source": "employee_bonuses[\\s\\S]*status ENUM",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "employee_bonuses[\\s\\S]*status='APPROVED'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "salary_structures ss[\\s\\S]*ss\\.status='APPROVED'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/129_v25_hr_instructor_fee_payroll_link.sql",
+    "must": {
+     "source": "payroll_run_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "included_in_payroll",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "UPDATE salary_advances[\\s\\S]*status\\s*=\\s*'DEDUCTED'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: HR audit retention is tenant-policy driven and bounded",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/hrAuditRetentionJob.js",
+    "must": {
+     "source": "runHrAuditRetention",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/hrAuditRetentionJob.js",
+    "must": {
+     "source": "audit_retention_days",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/hrAuditRetentionJob.js",
+    "must": {
+     "source": "LIMIT 5000",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "scheduleHrAuditRetention\\(\\{ pool, logger \\}\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: there is no self check-in: attendance is the device import and the HR screen (LOW-19)",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/attendance.js",
+    "mustNot": {
+     "source": "router\\.(get|post)\\('\\/api\\/me\\/hr\\/attendance",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/attendance.js",
+    "mustNot": {
+     "source": "HOUR\\(NOW\\(\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/attendance.js",
+    "mustNot": {
+     "source": "DATE_FORMAT\\(NOW\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: approved leave attendance cannot be overwritten by manual entry or import",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/attendance.js",
+    "must": {
+     "source": "LEAVE_ATTENDANCE_LOCKED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/attendance.js",
+    "mustNot": {
+     "source": "VALID_STATUSES = \\[[^\\]]*'LEAVE'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/attendance.js",
+    "must": {
+     "source": "leave\\.type === 'PERMISSION' \\? 'HALF_DAY' : 'LEAVE'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "req\\.body\\.csv \\?\\? req\\.body\\.csvText",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "approved leave attendance is locked",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "FROM work_schedules WHERE tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "date must be inside",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: employee identity changes are atomic, audited and keep auth email aligned",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "beginTransaction",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "UPDATE users[\\s\\S]*session_version=session_version\\+1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "hr\\.employee\\.updated",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "USE_OFFBOARDING_WORKFLOW",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "Employee cannot manage themselves",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: self-service leave balance is aggregated from all approved annual leaves",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/reports.js",
+    "must": {
+     "source": "SELECT COALESCE\\(SUM\\(total_days\\),0\\) AS used_days[\\s\\S]*type='ANNUAL' AND status='APPROVED'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/reports.js",
+    "mustNot": {
+     "source": "const usedDays = leaves\\s*\\.filter",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "hrWorkflowIntegrity: unpaid leave affects payroll and instructor fee settlement stays ledger-owned",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "l\\.type='UNPAID'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "unpaidLeaveDays",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "PAYROLL_SALARY_MISSING",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "PAYROLL_SETTLEMENT_REQUIRED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "INSTRUCTOR_FEE_IMMUTABLE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/152_v25_instructor_rate_approval.sql",
+    "must": {
+     "source": "instructor_rate_change_requests",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "RATE_CHANGE_PENDING",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "RATE_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/compensation.js",
+    "must": {
+     "source": "hr\\.instructor_rate\\.\\$\\{status\\.toLowerCase\\(\\)\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "instituteCertificateDesign: the page serves the form copy, the picture, and never counts the desk as a download",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "const formMode = String\\(req\\.query\\.mode \\|\\| ''\\) === 'form';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "if \\(!formMode && !embedded && String\\(req\\.query\\.staff \\|\\| ''\\) !== '1'\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/certificate-template\\.jpg'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "@page \\{ size: A4 portrait; margin: 0; \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "joinUsApplicationsTwoLists: a new application is written NEW and the arrival conversion does not review it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/talent.js",
+    "must": {
+     "source": "status, source_form, branch, lectured_before, sessions_before, programs_json, programs_other\\)\\n\\s*VALUES \\(\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?, 'NEW',",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/talent.js",
+    "must": {
+     "source": "convertJoinUs\\(data, \\{ jobId: data\\.job_id \\|\\| undefined, db: conn, review: false \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/276_v26_join_us_kind_branch_lecturer_answers.sql",
+    "must": {
+     "source": "ALTER COLUMN status SET DEFAULT 'NEW'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "`status` enum\\('NEW','REVIEWED','ACCEPTED','REJECTED','CONTACTED'\\) NOT NULL DEFAULT 'NEW'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "`source_form` enum\\('teaching','staff'\\) DEFAULT NULL",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerAccountPortalOnlyMeetingsAndPay: the students tab asks only for columns that exist (course_lectures has no tenant_id) — it answered 500 for every lecturer",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/lecturerPortal.js",
+    "mustNot": {
+     "source": "lc\\.tenant_id=cl\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/lecturerPortal.js",
+    "must": {
+     "source": "lc\\.lecture_id=cl\\.id AND lc\\.subscriber_id=s\\.id AND lc\\.tenant_id=c\\.tenant_id",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerAccountPortalOnlyMeetingsAndPay: a consultation status outside the enum is refused with 400, a long «education» is cut to its column",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "\\['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'\\]\\.includes\\(next\\)\\) return res\\.status\\(400\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/talent.js",
+    "must": {
+     "source": "j\\.education \\? String\\(j\\.education\\)\\.slice\\(0, 255\\) : null",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerPortalSecondRound: a lecturer takes down comments on their own posts and their own comments, nothing else",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lecturer-portal.js",
+    "must": {
+     "source": "WHERE c\\.tenant_id=\\? AND c\\.id=\\? AND \\(c\\.subscriber_id=\\? OR p\\.staff_id=\\?\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lecturer-portal.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/staff\\/lecturer\\/media\\/image', \\.\\.\\.guard",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lecturer-portal.js",
+    "must": {
+     "source": "me\\.therapist\\?\\.image \\|\\| null",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lmsAdvancedContracts: cohort membership is tenant-scoped, capacity checked and grants canonical entitlement",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/126_v25_lms_cohorts_instructor_scope.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS course_cohorts",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/126_v25_lms_cohorts_instructor_scope.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_cohort_member \\(tenant_id,cohort_id,subscriber_id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "assertLearningPrerequisites\\(\\{[\\s\\S]*subjectType: 'cohort'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "Cohort capacity reached",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "grantCourseEntitlement\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "source: `cohort:\\$\\{cohortId\\}`",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lmsAdvancedContracts: cohort removal preserves independent paid or other-cohort access",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "has_paid_source",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "has_other_cohort",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "!authority\\.has_paid_source && !authority\\.has_other_cohort",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/learningCohorts.js",
+    "must": {
+     "source": "revokeCourseEntitlement\\(\\{",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lmsAdvancedContracts: course analytics are scoped to the assigned instructor identity",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/catalog.js",
+    "must": {
+     "source": "AND instructor_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "Instructor analytics are limited to assigned courses",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "Instructor analytics are limited to assigned courses",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "requirePermission\\('view_courses'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lmsCompletionIntegrity: admin completion route requires manage_courses permission and passes tenantId through",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/admin\\/completions'[^\\n]+requirePermission\\('manage_courses'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "completeCourse\\(\\{[\\s\\S]*tenantId: req\\.tenantId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "completeCourses\\(\\{[\\s\\S]*tenantId: req\\.tenantId",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "loginAndSignupOn2Nov: the forgotten-password code finds a client by every spelling of the number and goes where it was asked for",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "const clientSpellings = matchingSpellings\\(rawIdentifier\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "phone_digits IN \\(\\$\\{clientSpellings\\.map\\(\\(\\) => '\\?'\\)\\.join\\(','\\)\\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "const userSpellings = identitySpellings\\(rawIdentifier\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "const verifySpellings = identitySpellings\\(rawIdentifier\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "const dialable = !identifierIsEmail && !isStaffAccount",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "loginAndSignupOn2Nov: the sign-up asks for both the email and the number, and finds an existing account by every spelling",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/auth/registration.js",
+    "must": {
+     "source": "email:\\s+v => isEmail\\(v\\) \\|\\| 'البريد الإلكتروني مطلوب وصحيح'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/registration.js",
+    "must": {
+     "source": "phone:\\s+v => isPlausibleNumber\\(normalizeWhatsAppNumber\\(v\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/registration.js",
+    "must": {
+     "source": "const takenSpellings = identitySpellings\\(phone\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/registration.js",
+    "must": {
+     "source": "نسيت كلمة المرور",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "loginAndSignupOn2Nov: a place a device has not used for a month is given to the new device",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/customerDevices.js",
+    "must": {
+     "source": "const STALE_DEVICE_DAYS = Math\\.max\\(1, Number\\(process\\.env\\.CUSTOMER_DEVICE_STALE_DAYS\\) \\|\\| 30\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/customerDevices.js",
+    "must": {
+     "source": "last_seen_at < \\? ORDER BY last_seen_at ASC LIMIT 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/customerDevices.js",
+    "must": {
+     "source": "if \\(!stale\\) throw deviceLimitError\\(\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "loginAndSignupOn2Nov: a track can name its own months of access, and the two a year and a half are set by migration",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/354_v26_bundle_access_months.sql",
+    "must": {
+     "source": "ALTER TABLE bundles ADD COLUMN IF NOT EXISTS access_months INT NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/354_v26_bundle_access_months.sql",
+    "must": {
+     "source": "id IN \\('b-1776608174758', 'b-1774353052042'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/354_v26_bundle_access_months.sql",
+    "must": {
+     "source": "SET access_months = 18",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "SELECT access_months FROM bundles WHERE id=\\? AND tenant_id=\\? LIMIT 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "if \\(Number\\(trackResult\\?\\.\\[0\\]\\?\\.\\[0\\]\\?\\.access_months\\) > 0\\) accessMonths = Number\\(trackResult\\[0\\]\\[0\\]\\.access_months\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "access_months=COALESCE\\(VALUES\\(access_months\\), access_months\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "marketingConsentOutbox: consent changes lock a tenant subject and audit suppression transactionally",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/marketingConsent.js",
+    "must": {
+     "source": "WHERE id=\\? AND tenant_id=\\? LIMIT 1 FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/marketingConsent.js",
+    "must": {
+     "source": "INSERT INTO marketing_suppressions",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/marketingConsent.js",
+    "must": {
+     "source": "INSERT INTO marketing_consent_audit",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/marketingConsent.js",
+    "must": {
+     "source": "await conn\\.rollback\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS marketing_suppressions",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
+    "must": {
+     "source": "PRIMARY KEY \\(tenant_id, channel, destination_hash\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS marketing_consent_audit",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "marketingConsentOutbox: campaigns are tenant scoped, consent filtered and use the durable outbox",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "api\\/public\\/marketing\\/unsubscribe",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "verifyUnsubscribeToken[\\s\\S]*consent\\.tenantId !== req\\.tenantId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "INSERT INTO email_campaigns \\(id,tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "FROM email_campaigns WHERE id=\\? AND tenant_id=\\? LIMIT 1 FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "FROM subscribers WHERE tenant_id=\\?[\\s\\S]*filterSuppressed\\(req\\.tenantId, 'email'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "outbox\\.enqueue\\([\\s\\S]*refType: 'email_campaign'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "INSERT INTO sms_campaigns \\(id,tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "FROM sms_campaigns WHERE id=\\? AND tenant_id=\\? LIMIT 1 FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "filterSuppressed\\(req\\.tenantId, 'sms'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "refType: 'sms_campaign'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/campaigns.js",
+    "mustNot": {
+     "source": "Mark as sent immediately",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "marketingConsentOutbox: message outbox claims concurrently, retries and scopes every completion by tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "LIMIT \\? FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "status='processing',locked_at=NOW\\(\\),locked_by=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "WHERE id=\\? AND tenant_id=\\? AND locked_by=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "dead \\? 'dead' : 'failed'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
+    "must": {
+     "source": "uq_message_outbox_tenant_dedupe \\(tenant_id, dedupe_key\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
+    "must": {
+     "source": "ENUM\\('email','whatsapp','sms','push'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "menuRestructure4Nov: 4 Nov 2026: the inbox readiness counts the official-API number as the company WhatsApp, not the default one the codes use",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/team-inbox.js",
+    "must": {
+     "source": "const receiving = list\\.filter\\(channel => channel\\.kind === 'whatsapp'[^\\n]*provider === 'meta'\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "mergeAndOtpCollisions: a number that cannot be dialled is the customer\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/whatsappOtp.js",
+    "must": {
+     "source": "const badNumber = reason === 'invalid_number';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/whatsappOtp.js",
+    "must": {
+     "source": "failure\\.statusCode = badNumber \\? 400 : 503;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "messagingPushTicketsLeads: a resend reaches back three days at most and skips what would only die again",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/messaging-channels.js",
+    "must": {
+     "source": "Math\\.min\\(168, Math\\.max\\(1, Number\\.parseInt\\(req\\.body\\?\\.hours \\|\\| '72', 10\\)\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/messaging-channels.js",
+    "must": {
+     "source": "skipped: candidates\\.length - ids\\.length",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/messaging-channels.js",
+    "must": {
+     "source": "if \\(!req\\.body\\?\\.confirm\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/messaging-channels.js",
+    "must": {
+     "source": "'AND created_at > DATE_SUB\\(NOW\\(\\), INTERVAL \\? HOUR\\)'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/messaging-channels.js",
+    "must": {
+     "source": "if \\(/invalid_number/\\.test\\(String\\(row\\.last_error \\|\\| ''\\)\\)\\) continue;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/messaging-channels.js",
+    "must": {
+     "source": "if \\(row\\.channel === 'whatsapp' && !await isCategoryOpen\\(row\\.category, req\\.tenantId\\)\\) continue;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "mfaPolicy: tenant policy enforces the emailed code on upper administration and configured sensitive permissions",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "getMfaPolicy\\(req\\.tenantId\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "policyRequiresStaff\\(policy, staff, requestedPermissions\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "MFA_REQUIRED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "mustNot": {
+     "source": "MFA_ENROLLMENT_REQUIRED|enrolmentGraceEndsAt",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/admincfg.js",
+    "must": {
+     "source": "\\/api\\/admin\\/security\\/mfa-policy",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/admincfg.js",
+    "must": {
+     "source": "requirePermission\\('manage_security'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "notificationAudience: the bell counts every unread it can show, over the last 30 days",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/notifications.js",
+    "must": {
+     "source": "const WINDOW_SQL = ' AND n\\.created_at >= NOW\\(\\) - INTERVAL 30 DAY';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/notifications.js",
+    "must": {
+     "source": "SELECT COUNT\\(\\*\\) AS unread",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/notifications.js",
+    "mustNot": {
+     "source": "rows\\.filter\\(r => !r\\.read_at\\)\\.length",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oldInstituteCertificatesOpenByCode: issuing by hand writes it, the migration backfills the ones already there, and the old codes are kept",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/certificates.js",
+    "must": {
+     "source": "recordIssuedInstituteCertificate\\(conn, \\{ \\.\\.\\.request, status: normalizedStatus",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/302_v26_old_institute_certificates_get_completions.sql",
+    "must": {
+     "source": "INSERT IGNORE INTO course_completions",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/302_v26_old_institute_certificates_get_completions.sql",
+    "must": {
+     "source": "cr\\.type = 'INSTITUTE'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/302_v26_old_institute_certificates_get_completions.sql",
+    "must": {
+     "source": "cr\\.status IN \\('ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/302_v26_old_institute_certificates_get_completions.sql",
+    "must": {
+     "source": "SELECT UUID\\(\\), cr\\.subscriber_id, cr\\.course_id, cr\\.certificate_code",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "onlyTheOwnerIsSuperAdmin: customer service reads the payments register as before (1 Nov 2026: the search-only limit was taken back)",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance-payments-register.js",
+    "mustNot": {
+     "source": "searchRequired",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-payments-register.js",
+    "mustNot": {
+     "source": "readsEverything",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "onlyTheOwnerIsSuperAdmin: an employee who forgot the password gets the code by email, at the address on their staff record, never on WhatsApp",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "FROM staff WHERE tenant_id=\\? AND LOWER\\(TRIM\\(email\\)\\)=\\? AND is_active=1 AND deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "const dialable = !identifierIsEmail && !isStaffAccount && \\(user\\.phone \\|\\| phoneIdentity\\) \\? toDialable\\(user\\.phone \\|\\| phoneIdentity\\) : '';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/passwordReset.js",
+    "must": {
+     "source": "sendEmail\\(user\\.email, 'رمز إعادة تعيين كلمة المرور'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "operationNumbersSortAndGaps: the register can be asked for its rows by number, and says each row\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance-payments-register.js",
+    "must": {
+     "source": "const byNumber = req\\.query\\.sort === 'number';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-payments-register.js",
+    "must": {
+     "source": "ORDER BY \\$\\{byNumber \\? 'CASE WHEN p\\.receipt_no IS NULL THEN 1 ELSE 0 END, p\\.branch ASC, COALESCE\\(p\\.receipt_no, p\\.payment_no\\) ASC' : 'p\\.date DESC, p\\.payment_no DESC'\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-payments-register.js",
+    "must": {
+     "source": "branch: r\\.branch \\|\\| null,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "opsWatchdog: the watchdog is hooked to every request, runs every five minutes under a lock, and is readable by the owner",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/performanceMonitor.js",
+    "must": {
+     "source": "require\\('\\.\\/opsWatchdog'\\)\\.noteRequest\\(\\{ route: key, status, ms \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "lockedJob\\('ops_watchdog', \\(\\) => require\\('\\.\\/opsWatchdog'\\)\\.runOpsWatchdog\\(\\{ pool, logger \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "repeat\\(watch, 5 \\* 60 \\* 1000\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/system\\/watchdog', requireAuth, requireAdmin",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentExpectedAmount: a stated expectation still wins",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "let resolvedExpected = clientPrice \\? courseExpected : heldPrice != null \\? heldPrice : tierPrice \\? tierPrice\\.price : courseExpected;",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(resolvedExpected == null && paysForItem && \\(courseId \\|\\| bundleId\\)\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "paymentExpectedAmount: an instalment records the course\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "mustNot": {
+     "source": "courseExpected != null \\? courseExpected : \\(payment\\.isInstallment \\? null : paymentAmount\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(resolvedExpected == null && !payment\\.isInstallment\\) resolvedExpected = paymentAmount;",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "paymentExpectedAmount: a course with no price anywhere falls back to the amount, not to zero",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "resolvedExpected = paymentAmount;",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "paymentExpectedAmount: a price the desk enters becomes the client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "await setAgreedPrice\\(conn, \\{",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/agreedPrice.js",
+    "must": {
+     "source": "UPDATE payments SET course_expected=\\?",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/agreedPrice.js",
+    "must": {
+     "source": "await setItemMoney\\(db, \\{ tenantId, subscriberId, itemKey: itemKey\\(\\{ courseId, bundleId \\}\\), price: value \\}\\);",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "expectedAmount: resolvedExpected,",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "paymentIntents: manual proof lifecycle binds order, intent, attempt, payment and journal transactionally",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payment-intents.js",
+    "must": {
+     "source": "provider !== 'manual'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-intents.js",
+    "must": {
+     "source": "PAYMOB_DISABLED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "getOrCreatePaymentIntent\\(conn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "createPaymentAttempt\\(conn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "settlePaymentAttempt\\(conn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "postPaymentJournal",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "grantCourseSelections",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentReceiptEveryPath: the template lists what was opened",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/lifecycle.js",
+    "must": {
+     "source": "مفتوح لك \\$\\{u\\.open\\} من \\$\\{u\\.total\\} محاضرة",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/lifecycle.js",
+    "must": {
+     "source": "<tr><td>المتبقي<\\/td>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentReceiptEveryPath: paying an instalment opens lectures like every other payment",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/installments.js",
+    "must": {
+     "source": "await grantCourseEntitlement\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/installments.js",
+    "must": {
+     "source": "paidRatio: paidRatioOf\\(access\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "payrollIntegrity: payroll enforces approve then pay and journals the payment atomically",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "PAID:\\s+\\['APPROVED'\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "SELECT id,month,year,status,total_amount,currency,calculated_by,approved_by[\\s\\S]*FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "postJournalEntry\\('payroll'[\\s\\S]*conn, tenantId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "account_code: '1300'[\\s\\S]*advanceTotal",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "account_code: '2200'[\\s\\S]*statutoryTotal",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "UPDATE crm_commissions SET status='PAID' WHERE payroll_run_id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "status === 'CANCELLED'[\\s\\S]*status='PENDING',payroll_run_id=NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "CALCULATED: \\['CANCELLED'\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "payrollIntegrity: payroll detail exposes persisted bonus and instructor earnings",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "pi\\.bonus AS bonus_amount",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "JSON_EXTRACT\\(pi\\.calculation_details, '\\$\\.instructorEarnings'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "mustNot": {
+     "source": "\\b0 AS bonus_amount\\b|\\b0 AS instructor_earnings\\b",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "penaltyLeaveBalanceAndAccountLinks: lifting a sharing lock starts the device count over, or the next sign-in locks the account again",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/358_v26_sharing_unlock_resets_the_count.sql",
+    "must": {
+     "source": "ADD COLUMN IF NOT EXISTS sharing_reset_at DATETIME NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/accountSharingGuard.js",
+    "must": {
+     "source": "u\\.sharing_reset_at IS NULL OR h\\.created_at >= u\\.sharing_reset_at",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "sharing_lock_reason=NULL, sharing_reset_at=NOW\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "penaltyLeaveBalanceAndAccountLinks: the contact history of a client includes the contacts made on every lead of the same number or e-mail",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "phone_digits=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "OR c\\.lead_id IN \\(\\?\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "piiTenantSafety: subscriber anonymization is tenant locked, transactional, verified and audited",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "WHERE tenant_id=\\? AND id=\\? LIMIT 1 FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "UPDATE subscribers[\\s\\S]*WHERE tenant_id=\\? AND id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "UPDATE support_tickets[\\s\\S]*WHERE tenant_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "Privacy erasure verification failed",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "privacy_erasure_completed",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "await conn\\.commit\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "await conn\\.rollback\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "must": {
+     "source": "PRIVACY_WORKFLOW_REQUIRED",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "privacySuppression: erasure only claims what it does",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "hashed marketing suppression",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "privacySuppression: campaigns consult the suppression list before sending",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/campaigns.js",
+    "must": {
+     "source": "filterSuppressed\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/marketingConsent.js",
+    "must": {
+     "source": "SELECT destination_hash FROM marketing_suppressions",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "privacySuppression: suppression is keyed on a hash, not the raw address",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/marketingConsent.js",
+    "must": {
+     "source": "destination_hash",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/marketingConsent.js",
+    "mustNot": {
+     "source": "INSERT INTO marketing_suppressions[\\s\\S]{0,200}destination[^_]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "privacyWorkflow: privacy export is self-service, tenant scoped, consistent and excludes auth secrets",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "\\/api\\/me\\/privacy\\/export[\\s\\S]{0,120}requireAuth[\\s\\S]{0,120}bulkOperationLimiter",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "excludedSecrets: \\['password_hash', 'totp_secret', 'session tokens'\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "FROM payments WHERE tenant_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "FROM enrollments WHERE tenant_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "must": {
+     "source": "JOIN support_tickets st[\\s\\S]{0,180}st\\.tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "mustNot": {
+     "source": "SELECT \\* FROM users",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "privacyWorkflow: residency declaration cannot be marked verified without deployment evidence",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "DATA_RESIDENCY_REGION must be configured on the deployment first",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "Declared region does not match the deployment region",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/privacy.js",
+    "must": {
+     "source": "residency_verified:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/138_v25_privacy_request_workflow.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS tenant_privacy_policies",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/138_v25_privacy_request_workflow.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS privacy_requests",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/138_v25_privacy_request_workflow.sql",
+    "must": {
+     "source": "evidence_hash CHAR\\(64\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "problemsArchiveRefundsAndBrevo: the refunds list says a history exists but does not ship it for every row",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance/refunds.js",
+    "must": {
+     "source": "AS has_ticket_history",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/refunds.js",
+    "must": {
+     "source": "const \\{ ticket_history: _history, \\.\\.\\.rest \\} = row",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: admin monitoring never returns provider secrets or kills host processes",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/server-monitor.js",
+    "must": {
+     "source": "configured: Boolean\\(process\\.env\\.GEMINI_API_KEY\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/server-monitor.js",
+    "must": {
+     "source": "MANAGED_RESTART_REQUIRED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/server-monitor.js",
+    "mustNot": {
+     "source": "geminiKey:|child_process|spawn\\(|kill -9|pkill|supervisor\\.js",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: compatibility supervisor and watchdog never compete with the production process manager",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/supervisor.js",
+    "must": {
+     "source": "disabled in production",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/supervisor.js",
+    "mustNot": {
+     "source": "SIGKILL|killStaleServer|execSync|setTimeout\\(start",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/watchdog.cjs",
+    "mustNot": {
+     "source": "require\\('ssh2'\\)|password\\s*:|child_process|doRestart|\\.connect\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/watchdog.sh",
+    "mustNot": {
+     "source": "systemctl|supervisor|kill|Authorization",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "publicLeadBranchChoice: the registrations route honours the choice and falls back to geo",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "must": {
+     "source": "const branchVal = normalizeBranch\\(pickedBranch, null\\) \\|\\| clientContext\\.branch;",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "mustNot": {
+     "source": "branch: _branch",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "purchaseWithoutEmail: an account with no client record yet is not answered with an error on every sign-in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "if \\(!sub\\) return res\\.json\\(\\[\\]\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "mustNot": {
+     "source": "new Error\\('Subscriber account not found'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "if \\(!subscriber\\) return `user:\\$\\{uid\\}`;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "rawRowResponses: the certificates tab was already correct and stays that way",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/mappers.js",
+    "must": {
+     "source": "status: String\\(cr\\.status \\|\\| 'pending'\\)\\.toLowerCase\\(\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "receiptsRunInSequence: a recorded payment takes its number inside its transaction and answers with it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "receiptNo = await nextReceiptNo\\(conn, \\{ tenantId: paymentTenantId, branch: paymentBranch \\}\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "tenant_id, branch, branch_id, receipt_no\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "\\.\\.\\.\\(receiptNo \\? \\{ receiptNo, receiptBranch: receiptSeriesOf\\(paymentBranch\\) \\} : \\{\\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/installments.js",
+    "must": {
+     "source": "const receiptNo = await nextReceiptNo\\(conn, \\{ tenantId: req\\.tenantId, branch \\}\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/installments.js",
+    "must": {
+     "source": "tenant_id, staff_name, created_at, receipt_no\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "recruitmentWorkflow: hiring is reachable from the interview stage but not from nothing",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/talent.js",
+    "must": {
+     "source": "a\\.stage !== 'offer' && a\\.stage !== 'interview'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/talent.js",
+    "must": {
+     "source": "OFFER_STAGE_REQUIRED",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "registrationTriage: the registrations queue does not treat an archived lead as unknown",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/registrations.js",
+    "mustNot": {
+     "source": "FROM leads[\\s\\S]{0,80}hidden\\s*=\\s*0",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/registrations.js",
+    "mustNot": {
+     "source": "hidden\\s*=\\s*0",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "saasEntitlements: plan feature switches are enforced by the API and tenant overrides win over global flags",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/tenantScope.js",
+    "must": {
+     "source": "planLimits\\.features",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/tenantScope.js",
+    "must": {
+     "source": "ORDER BY tenant_id IS NOT NULL ASC",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/tenantScope.js",
+    "must": {
+     "source": "code: 'PLAN_FEATURE_DISABLED'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/adminFeatureGate.js",
+    "must": {
+     "source": "requireTenantFeature\\(feature\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "adminFeatureGate",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/tenantScope.js",
+    "must": {
+     "source": "tenant\\?\\.status === 'active' && entitlementIsCurrent",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/tenantScope.js",
+    "mustNot": {
+     "source": "\\.catch\\(\\(\\) => \\[\\[null\\]\\]\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "saasEntitlements: quota checks are concurrency-safe and report machine-readable usage",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/tenantQuota.js",
+    "must": {
+     "source": "SELECT GET_LOCK\\(\\?, 5\\) AS acquired",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/tenantQuota.js",
+    "must": {
+     "source": "SELECT RELEASE_LOCK\\(\\?\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/tenantQuota.js",
+    "must": {
+     "source": "code: 'PLAN_QUOTA_EXCEEDED'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/tenantQuota.js",
+    "must": {
+     "source": "requested",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/tenantQuota.js",
+    "must": {
+     "source": "WHERE tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "saasEntitlements: platform plan API validates and persists limits plus module entitlements",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "router\\.patch\\('\\/api\\/admin\\/saas\\/plans\\/:id'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "allowedLimits = new Set\\(\\['branches', 'staff', 'courses', 'users'\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "DEFAULT_FEATURES",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "feature_limits_json=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "clearTenantContextCache\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "saasEntitlements: branch settings update the canonical branch catalog atomically and enforce the plan quota",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "saveContentAndBranchCatalog",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "context\\.planLimits\\?\\.branches",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "UPDATE branches SET is_active=0 WHERE tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "INSERT INTO branches[\\s\\S]*ON DUPLICATE KEY UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "db: conn",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "saasEntitlements: SaaS schema prevents duplicate global flags and concurrent effective subscriptions",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/146_v25_saas_control_plane_integrity.sql",
+    "must": {
+     "source": "uq_feature_flags_scope_key",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/146_v25_saas_control_plane_integrity.sql",
+    "must": {
+     "source": "uq_tenant_subscription_active",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/146_v25_saas_control_plane_integrity.sql",
+    "must": {
+     "source": "chk_feature_flags_scope",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/146_v25_saas_control_plane_integrity.sql",
+    "must": {
+     "source": "chk_tenant_subscription_active_scope",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/146_v25_saas_control_plane_integrity.sql",
+    "mustNot": {
+     "source": "GENERATED ALWAYS",
+     "flags": "i"
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "tenantId \\|\\| '__global__'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "active_tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "SELECT GET_LOCK\\(\\?, 5\\) AS acquired",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "salesDeskSixOctober: a reactivated account takes its courses and first payment even when its record has another address",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/auth/staffAccounts.js",
+    "must": {
+     "source": "if \\(!reSub && phoneVal\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/staffAccounts.js",
+    "must": {
+     "source": "'SELECT id, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=\\? AND id=\\? LIMIT 1',\\s*\\[tenantId, targetSubId\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/staffAccounts.js",
+    "mustNot": {
+     "source": "FROM subscribers WHERE tenant_id=\\? AND LOWER\\(TRIM\\(email\\)\\)=\\? LIMIT 1',\\s*\\[tenantId, normEmail\\]\\s*\\);\\s*if \\(!paySub\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "salesDeskSixOctober: the student assistant reads what a student studies from enrollments",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/student-ai.js",
+    "mustNot": {
+     "source": "'enrolled_courses'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/student-ai.js",
+    "must": {
+     "source": "SELECT course_id FROM enrollments WHERE tenant_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "saudiAndInternationalBooking: the booking route looks the client up by every spelling and names the one it found",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "identitySpellings\\(safePhone\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "phone IN \\(\\?\\) OR phone2 IN \\(\\?\\) OR REGEXP_REPLACE\\(COALESCE\\(phone, ''\\), '\\[\\^0-9\\]', ''\\) IN \\(\\?\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "const safePhone = toIdentity\\(completeForBranch\\(typedPhone, branch\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "العميل مسجل من قبل بنفس",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "saudiAndInternationalBooking: a rate that cannot be had is refused with what to do about it, not as an internal error",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "FX_STALE|ensureFreshFx",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/fxRefresh.js",
+    "must": {
+     "source": "دوس «تحديث أسعار الصرف»",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "schemaColumns: nothing filters subscribers on a status column",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/messaging.js",
+    "must": {
+     "source": "AND is_active=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/messaging.js",
+    "must": {
+     "source": "UNSUPPORTED_SUBSCRIBER_STATUS",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/messaging.js",
+    "must": {
+     "source": "FROM leads WHERE tenant_id=\\? AND phone IS NOT NULL AND phone != ''",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/messaging.js",
+    "mustNot": {
+     "source": "FROM subscribers[\\s\\S]{0,200}?AND status=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "schemaColumns: the branch migration names the column leads actually has",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payments.js",
+    "must": {
+     "source": "SELECT id, crm_json FROM leads",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payments.js",
+    "mustNot": {
+     "source": "crm_data",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "securityAutomation: production CORS, CSP and API cache policy remain fail-closed",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "NODE_ENV === 'production'[\\s\\S]{0,220}!origin\\.includes\\('localhost'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "allowed\\.includes\\(origin\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "scriptSrc:\\s+\\[\"'none'\"\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "objectSrc:\\s+\\[\"'none'\"\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "frameSrc:\\s+\\[\"'none'\"\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/sanitize.js",
+    "must": {
+     "source": "Permissions-Policy', 'camera=\\(\\), microphone=\\(\\), geolocation=\\(\\), payment=\\(\\)'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/sanitize.js",
+    "must": {
+     "source": "Cache-Control', 'no-store, no-cache, must-revalidate, private'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "securityHeadersAndSessionHygiene: the session cookie is HttpOnly and Secure",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/token.js",
+    "must": {
+     "source": "`authToken=\\$\\{token\\}; HttpOnly; Path=\\/; Max-Age=\\$\\{maxAge\\}; SameSite=None; Secure`",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "securityHeadersAndSessionHygiene: CSP reports are accepted and logged, and the route is rate limited",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/security\\/csp-report', publicLimiter, cspReportBody,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "type: \\['application\\/csp-report', 'application\\/reports\\+json', 'application\\/json'\\], limit: '16kb'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/monitoring.js",
+    "must": {
+     "source": "res\\.status\\(204\\)\\.end\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowQueriesFoundByTheLab: the panel counters are held for 15 s and dropped by the first successful write",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/leads/stats.js",
+    "must": {
+     "source": "const \\{ cached \\} = require\\('\\.\\./\\.\\./\\.\\./lib/db'\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/stats.js",
+    "must": {
+     "source": "const key = `figures:leads-stats:\\$\\{req\\.tenantId\\}:\\$\\{scopeClause\\}:\\$\\{JSON\\.stringify\\(params\\)\\}`;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/stats.js",
+    "must": {
+     "source": "await cached\\(key, 15 \\* 1000, async \\(\\) => \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/stats.js",
+    "must": {
+     "source": "res\\.json\\(payload\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/stats.js",
+    "must": {
+     "source": "cached\\(`figures:followups-due:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/dashboard.js",
+    "must": {
+     "source": "cached\\(`figures:revenue:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "cacheInvalidateLocal\\('figures:'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "res\\.statusCode < 400",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "req\\.method !== 'GET' && req\\.method !== 'HEAD' && req\\.method !== 'OPTIONS'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "app\\.use\\(timeRequests\\);\\n\\s*app\\.use\\(dropFiguresAfterWrites\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowReportsFoundOn30Oct: the reports that read the leads by assigned_at and by follow-up date have an index that holds both",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/teamReports.js",
+    "must": {
+     "source": "hidden=0 AND assigned_at >= \\? AND assigned_at < \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/teamDailyReport.js",
+    "must": {
+     "source": "hidden=0 AND assigned_at >= \\? AND assigned_at < \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/teamDailyReport.js",
+    "must": {
+     "source": "next_follow_up_date IS NOT NULL\\s+AND assigned_sales_id IS NOT NULL AND status IN",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/348_v26_report_indexes.sql",
+    "must": {
+     "source": "idx_leads_tenant_assigned_at \\(tenant_id, hidden, assigned_at, assigned_sales_id, created_at\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/348_v26_report_indexes.sql",
+    "must": {
+     "source": "idx_leads_tenant_followup_open \\(tenant_id, next_follow_up_date, assigned_sales_id, status, hidden\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/348_v26_report_indexes.sql",
+    "must": {
+     "source": "idx_leads_tenant_close_id \\(tenant_id, expected_close_date, id\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccessAudit: an employee is not a registration waiting to be triaged",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/registrations.js",
+    "must": {
+     "source": "FROM staff WHERE tenant_id=\\? AND deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/registrations.js",
+    "must": {
+     "source": "\\.\\.\\.staffRows\\.map\\(s => normEmail\\(s\\.email\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/registrations.js",
+    "must": {
+     "source": "\\.\\.\\.staffRows\\.map\\(s => normPhone\\(s\\.phone\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: approving money: not by collection, not by whoever recorded it, and a collection booking needs its transfer",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "approverRole === 'collection'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "code: 'PAYMENT_SELF_APPROVAL'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "String\\(recorder\\?\\.role \\|\\| ''\\)\\.toLowerCase\\(\\) === 'collection' && !transfer && !isCashMethod\\(settledMethod\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/224_v26_reviewed_bookings.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_incoming_transfer_payment \\(tenant_id, payment_id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/224_v26_reviewed_bookings.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_incoming_transfer_ref \\(tenant_id, method, reference\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountTakeover: staff.js will not let a non-owner rewrite a manager\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/staff.js",
+    "must": {
+     "source": "existingStaff && \\(!req\\.isSuperAdmin \\|\\| !isOwnerRequest\\(req\\)\\)[^\\n]*\\n\\s*&& PRIVILEGED_ROLES\\.includes",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/staff.js",
+    "must": {
+     "source": "!req\\.isSuperAdmin && dataScope !== null\\s*&& dataScope !== normalizeDataScope\\(existingStaff\\?\\.data_scope\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffEmailTakeover: why the guard matters: privilege still resolves by email alone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/authTenant.js",
+    "must": {
+     "source": "LOWER\\(TRIM\\(email\\)\\) COLLATE utf8mb4_unicode_ci = \\?",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/lib/authTenant.js",
+    "mustNot": {
+     "source": "firebase_uid",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "FULL_ACCESS_ROLES\\.includes",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "staticRulesKept: drip delivery goes through the outbox in the enrolment\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/dripCampaigns.js",
+    "must": {
+     "source": "outbox\\.enqueue\\([\\s\\S]*\\}, conn\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/dripCampaigns.js",
+    "must": {
+     "source": "const dedupeKey = `drip:\\$\\{enrollment\\.tenant_id\\}:\\$\\{enrollment\\.id\\}:\\$\\{enrollment\\.current_step\\}`",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/campaigns.js",
+    "mustNot": {
+     "source": "setInterval\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staticRulesKept: payments are never taken from a subscriber save: the CRM JSON carries no payment history",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "Payments are never accepted through subscriber CRM JSON",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "mustNot": {
+     "source": "\\[payment-sync\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "tenantDomains: only verified domains enter tenant routing and branding/email identity",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/tenantContext.js",
+    "must": {
+     "source": "FROM tenant_domains WHERE status='verified'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/tenantContext.js",
+    "must": {
+     "source": "index\\.byDomain",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/brandSettings.js",
+    "must": {
+     "source": "tenant_domains WHERE tenant_id=\\? AND status='verified'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/email.js",
+    "must": {
+     "source": "href=\"\\$\\{c\\.websiteUrl\\}\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "tenantDomains: sender identity cannot claim an unrelated unverified domain",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "UNVERIFIED_SENDER_DOMAIN",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "senderDomain !== smtpDomain && senderDomain !== verifiedDomain\\?\\.domain",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "tenantIsolationHardening: archived subscribers are excluded from canonical lists and client-code lookup",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "SET is_active=0, deleted_at=NOW\\(\\), updated_at=NOW\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "must": {
+     "source": "s\\.deleted_at IS NULL AND s\\.is_active=1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "deleted_at IS NULL AND is_active=1 AND \\(id=\\? OR client_code=\\?\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theClientDatabaseCountsEveryone: the server counts clients, leads and sign-ups in the caller\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/client-db\\/summary', requireAuth, requireAdminOrStaff, requirePermission\\('view_client_db'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/client-db\\/page', requireAuth, requireAdminOrStaff, requirePermission\\('view_client_db'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "must": {
+     "source": "financialScopeClause\\(resolveFinancialScope\\(req, \\{ allowAssigned: true \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "must": {
+     "source": "leadScope\\(req, 'l'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "must": {
+     "source": "holds\\('view_leads'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/clientDbList.js",
+    "must": {
+     "source": "s2\\.phone_digits = l\\.phone_digits",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc.js",
+    "must": {
+     "source": "router\\.use\\(require\\('\\.\\/misc\\/clientDbList'\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "therapistMeetingLinkPrivacy: the public route calls the mapper with one argument",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "therapists\\.map\\(row => mapTherapist\\(row\\)\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/public.js",
+    "mustNot": {
+     "source": "\\.map\\(mapTherapist\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "therapistMeetingLinkPrivacy: the two routes that legitimately need it ask for it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/therapists', requireAuth, requireAdmin",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "mapTherapist\\(row, true\\)",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/staff.js",
+    "must": {
+     "source": "mapTherapist\\(therapist, true\\)",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "theSignInAccountsAndTheirLogAreOnePage: the accounts endpoint answers the page: counts from the log, the last attempt, the 2FA step told apart",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "Math\\.max\\(Number\\(row\\.login_count\\) \\|\\| 0, Number\\(c\\.ok\\) \\|\\| 0\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "SELECT MAX\\(id\\) FROM login_history WHERE tenant_id = \\? AND user_id IN \\(\\?\\) GROUP BY user_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "last_ip: last\\?\\.ip",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "function attemptState\\(row, newerSameUser = \\[\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "'\\/api\\/admin\\/security\\/accounts\\/:id\\/logins'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "'\\/api\\/admin\\/security\\/accounts\\/:id\\/unlock'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "LEFT JOIN users u ON u\\.id = h\\.user_id",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "transferDetailsConsultationsAndCourses: a client being registered by the booking belongs to nobody, so the ownership rule cannot refuse it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "if \\(!createFromDraft && !bookAny && !financialRecordMatches\\(scope, subRow\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ultraMsgInboundReachesTheInbox: the UltraMsg address is public, limited, and answers nothing without the secret it was given",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/webhooks\\/whatsapp\\/ultramsg', whatsappWebhookLimiter,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "resolveSecret\\('WHATSAPP_ULTRAMSG_WEBHOOK_SECRET'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "if \\(!webhookSecret\\) return res\\.status\\(503\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "safeEqual\\(req\\.headers\\['x-webhook-token'\\] \\|\\| req\\.query\\.token, webhookSecret\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "configuredInstance !== received\\) \\{\\s+return res\\.status\\(401\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "extractUltraMsgMessage\\(req\\.body\\);\\s+const result = message \\? await recordInboundMessage\\(\\{ tenantId: req\\.tenantId, \\.\\.\\.message \\}\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "uploadSafety: video upload and playback are permissioned, audited and ticket-streamed",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/upload.js",
+    "must": {
+     "source": "requirePermission\\('manage_lectures'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/upload.js",
+    "must": {
+     "source": "uploadLimiter",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/upload.js",
+    "must": {
+     "source": "inspectMediaFile",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/upload.js",
+    "must": {
+     "source": "media\\.upload_requested",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/upload.js",
+    "must": {
+     "source": "\\/uploads\\/videos\\/\\$\\{tenant\\}\\/",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "verifyMediaTicket[\\s\\S]*streamTenantMedia",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/server.js",
+    "mustNot": {
+     "source": "express\\.static\\([^)]*uploads[\\\\/]videos",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

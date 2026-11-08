@@ -17,15 +17,5 @@ test('payment intent idempotency is tenant/provider/order scoped and irreversibl
   assert.doesNotMatch(first, /retry-key/);
 });
 
-test('manual proof lifecycle binds order, intent, attempt, payment and journal transactionally', () => {
-  const proof = read('routes/payment-proofs.js');
-  const intentRoute = read('routes/payment-intents.js');
-  assert.match(intentRoute, /provider !== 'manual'/);
-  assert.match(intentRoute, /PAYMOB_DISABLED/);
-  assert.match(proof, /getOrCreatePaymentIntent\(conn/);
-  assert.match(proof, /createPaymentAttempt\(conn/);
-  assert.match(proof, /settlePaymentAttempt\(conn/);
-  assert.match(proof, /postPaymentJournal/);
-  assert.match(proof, /grantCourseSelections/);
-});
+
 

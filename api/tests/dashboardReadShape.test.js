@@ -121,19 +121,7 @@ test('a month is a month, and the previous month is a different one', () => {
     'and the day the institute trades in is Cairo’s, not UTC’s');
 });
 
-test('lead distribution hands out only the leads that are still open', () => {
-  const distribute = codeOnly(read('api/routes/lead-capture-crm.js'));
-  assert.ok(distribute.includes('[...LEAD_STATUSES].filter(isOpenLeadStatus)'),
-    'ten statuses are terminal; this excluded two');
-  assert.ok(!distribute.includes("status NOT IN ('converted','lost')"),
-    'archived, wrong_number and the rest were being redistributed');
-  // Two filters now, so two sets of params: the open statuses, then the archive
-  // sources the "محلي قديم" pool is held back by. Both have to be bound.
-  assert.ok(distribute.includes('[tenantId, ...openStatuses, ...archive.params]'),
-    'and the placeholders must be bound');
-  assert.ok(distribute.includes("excludeArchiveSourcesSql('source')"),
-    'archive rows are distributed from their own tab, not by this button');
-});
+
 
 test('a Dokki round counts only the money paid for its own course', () => {
   const attendees = codeOnly(read('api/lib/daqqiAttendees.js'));

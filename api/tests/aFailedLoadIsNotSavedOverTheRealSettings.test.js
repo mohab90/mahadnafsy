@@ -32,11 +32,7 @@ test('settings forms do not save until the saved settings have been read', () =>
   assert.ok(ip.indexOf('{loadError ? (') < ip.indexOf('whitelist.length === 0 ? ('), 'a failed load is not shown as an empty list');
 });
 
-test('the SMS route keeps a key the form did not send', () => {
-  const route = read('api/routes/misc/messaging.js');
-  assert.match(route, /api_key=COALESCE\(\?, api_key\)/);
-  assert.match(route, /api_secret=COALESCE\(\?, api_secret\)/);
-});
+
 
 test('the notifications bell says when it has stopped updating', () => {
   const hook = read('admin/pages/dashboard/useNotificationsBell.ts');

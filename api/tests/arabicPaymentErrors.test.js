@@ -66,8 +66,4 @@ test('the booking route no longer answers a rep in English', () => {
   assert.deepEqual(plain.filter(text => text !== 'Internal server error'), []);
 });
 
-test('a duplicate booking names the client who already has the number', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /existingName: existing\.name/);
-  assert.match(route, /المسئول عنه \$\{existing\.owner_name\}/);
-});
+

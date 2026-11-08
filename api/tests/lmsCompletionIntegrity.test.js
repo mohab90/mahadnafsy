@@ -157,10 +157,5 @@ test('completeCourses: rejects out-of-bounds batch sizes (0 or >500) before touc
 // Static contract checks below: things that are cheap and legitimate to check
 // as source-text patterns because they're wiring/permission facts, not
 // business logic — the behavior itself is covered by the tests above.
-test('admin completion route requires manage_courses permission and passes tenantId through', () => {
-  const route = read('routes/lms.js');
-  assert.match(route, /router\.post\('\/api\/admin\/completions'[^\n]+requirePermission\('manage_courses'\)/);
-  assert.match(route, /completeCourse\(\{[\s\S]*tenantId: req\.tenantId/);
-  assert.match(route, /completeCourses\(\{[\s\S]*tenantId: req\.tenantId/);
-});
+
 

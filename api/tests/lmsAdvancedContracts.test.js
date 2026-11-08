@@ -31,16 +31,7 @@ function cohortDb({ maxStudents = null, memberCount = 0, status = 'active' } = {
   };
 }
 
-test('cohort membership is tenant-scoped, capacity checked and grants canonical entitlement', () => {
-  const service = read('api/lib/learningCohorts.js');
-  const migration = read('api/migrations/126_v25_lms_cohorts_instructor_scope.sql');
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS course_cohorts/);
-  assert.match(migration, /UNIQUE KEY uq_cohort_member \(tenant_id,cohort_id,subscriber_id\)/);
-  assert.match(service, /assertLearningPrerequisites\(\{[\s\S]*subjectType: 'cohort'/);
-  assert.match(service, /Cohort capacity reached/);
-  assert.match(service, /grantCourseEntitlement\(\{/);
-  assert.match(service, /source: `cohort:\$\{cohortId\}`/);
-});
+
 
 test('cohort enrollment executes membership and entitlement writes through one DB transaction handle', async () => {
   const db = cohortDb();
@@ -77,23 +68,9 @@ test('draft cohorts cannot grant course access', async () => {
   assert.equal(db.calls.some(call => call.sql.includes('INSERT INTO enrollments')), false);
 });
 
-test('cohort removal preserves independent paid or other-cohort access', () => {
-  const service = read('api/lib/learningCohorts.js');
-  assert.match(service, /has_paid_source/);
-  assert.match(service, /has_other_cohort/);
-  assert.match(service, /!authority\.has_paid_source && !authority\.has_other_cohort/);
-  assert.match(service, /revokeCourseEntitlement\(\{/);
-});
 
-test('course analytics are scoped to the assigned instructor identity', () => {
-  const adminCatalog = read('api/routes/admin/catalog.js');
-  const publicRoutes = read('api/routes/public.js');
-  const lmsRoutes = read('api/routes/lms.js');
-  assert.match(adminCatalog, /AND instructor_id=\?/);
-  assert.match(publicRoutes, /Instructor analytics are limited to assigned courses/);
-  assert.match(lmsRoutes, /Instructor analytics are limited to assigned courses/);
-  assert.match(publicRoutes, /requirePermission\('view_courses'\)/);
-});
+
+
 
 test('offline progress queue is user-stable, monotonic and refreshes canonical subscriber data', () => {
   const api = read('client/lib/mysqlapi.ts');

@@ -20,13 +20,4 @@ test('subscriber PII export scopes every business dataset to the request tenant 
   assert.match(route, /requirePermission\('export_subscribers'\)/);
 });
 
-test('subscriber anonymization is tenant locked, transactional, verified and audited', () => {
-  assert.match(service, /WHERE tenant_id=\? AND id=\? LIMIT 1 FOR UPDATE/);
-  assert.match(service, /UPDATE subscribers[\s\S]*WHERE tenant_id=\? AND id=\?/);
-  assert.match(service, /UPDATE support_tickets[\s\S]*WHERE tenant_id=\? AND subscriber_id=\?/);
-  assert.match(service, /Privacy erasure verification failed/);
-  assert.match(route, /privacy_erasure_completed/);
-  assert.match(route, /await conn\.commit\(\)/);
-  assert.match(route, /await conn\.rollback\(\)/);
-  assert.match(legacy, /PRIVACY_WORKFLOW_REQUIRED/);
-});
+

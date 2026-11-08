@@ -212,16 +212,7 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   assert.doesNotMatch(agreed.slice(agreed.indexOf('async function setPriorPaid')), /INSERT INTO payments/);
 });
 
-test('manual payment retries the complete transaction after transient MySQL deadlocks', () => {
-  const route = read('api/routes/subscriber-payments.js');
 
-  assert.match(route, /TRANSIENT_TX_ERRORS = new Set\(\['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'\]\)/);
-  assert.match(route, /for \(let transactionAttempt = 1; ; transactionAttempt \+= 1\)/);
-  assert.match(route, /await conn\.rollback\(\)[\s\S]{0,350}transactionAttempt >= 3/);
-  assert.match(route, /SELECT GET_LOCK\(\?, 5\) AS acquired/);
-  assert.match(route, /SELECT RELEASE_LOCK\(\?\)/);
-  assert.match(route, /retrying rolled-back transaction/);
-});
 
 test('certificate lifecycle and receipt rendering fail closed', () => {
   const certificates = read('api/routes/certificates.js');

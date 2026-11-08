@@ -45,17 +45,7 @@ test('the public route does not even select the column', () => {
     'the public therapist feed still reads meeting_link into a publicly cached response');
 });
 
-test('the public route calls the mapper with one argument', () => {
-  // `map` passes (element, index, array). Handing it mapTherapist directly gave
-  // includeMeetingLinks the index — 0 for the first therapist and truthy for
-  // every one after it — so the links came back on the public response for all
-  // but one of them. The unit test above passed throughout, because it calls
-  // the mapper directly rather than the way the route does.
-  const route = codeOnly(read('api/routes/public.js'));
-  assert.ok(!/\.map\(mapTherapist\)/.test(route),
-    'mapTherapist is passed straight to map, so the index becomes includeMeetingLinks');
-  assert.match(route, /therapists\.map\(row => mapTherapist\(row\)\)/);
-});
+
 
 test('mapping a list the way the route does withholds every link, not just the first', () => {
   const rows = [row(), { ...row(), id: 't2' }, { ...row(), id: 't3' }];
@@ -66,16 +56,7 @@ test('mapping a list the way the route does withholds every link, not just the f
   }
 });
 
-test('the two routes that legitimately need it ask for it', () => {
-  // The admin editor is where a meeting link is set, and a therapist's own
-  // portal shows their own sessions. Both are behind requireAuth.
-  const catalog = codeOnly(read('api/routes/core/catalog.js'));
-  assert.match(catalog, /router\.get\('\/api\/admin\/therapists', requireAuth, requireAdmin/);
-  assert.match(catalog, /mapTherapist\(row, true\)/);
 
-  const staff = codeOnly(read('api/routes/staff.js'));
-  assert.match(staff, /mapTherapist\(therapist, true\)/);
-});
 
 test('nothing builds a join link from the public feed any more', () => {
   for (const rel of ['client/lib/consultations.ts', 'admin/lib/consultations.ts']) {

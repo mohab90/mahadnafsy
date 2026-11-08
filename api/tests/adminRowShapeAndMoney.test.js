@@ -29,13 +29,7 @@ test('an admin consultation is sent in the shape every consultations screen read
   assert.doesNotMatch(source, /res\.json\(rows\)/, 'the raw rows must not go out');
 });
 
-test('its status and session type are lower-cased, because both enums are upper', () => {
-  const source = codeOnly(read('routes/core/staffacct.js'));
-  assert.match(source, /status: String\(row\.status \|\| 'PENDING'\)\.toLowerCase\(\)/);
-  assert.match(source, /sessionType: String\(row\.session_type \|\| 'INDIVIDUAL'\)\.toLowerCase\(\)/);
-  assert.match(read('schema.sql'), /`session_type` enum\('INDIVIDUAL','COUPLE','FAMILY'\)/,
-    'if this enum stops being upper case the mapping above needs revisiting');
-});
+
 
 // ── contact messages ───────────────────────────────────────────────────────
 test('a contact message carries its date, its note and a comparable status', () => {
@@ -115,46 +109,14 @@ test('a monthly charge on the 1st appears in the forecast', () => {
 });
 
 // ── one commission rule, not two ───────────────────────────────────────────
-test('approving a payment pays the same commission as recording one', () => {
-  // The approval path computed its own: staff.commission_rate read directly,
-  // commission_rules never consulted. A role on a 5% rule whose staff row said
-  // 10 earned double depending only on which path the payment took. It also
-  // stamped the row with the server clock's month, so a payment dated
-  // 30 September approved on 1 October landed in October and missed the
-  // September payroll run. And it wrote no instructor share at all.
-  const source = codeOnly(read('routes/core/financepay.js'));
-  assert.match(source, /await recordPaymentCompensation\(\{/);
-  assert.doesNotMatch(source, /INSERT INTO crm_commissions/,
-    'the second copy of the rule must be gone');
-  assert.doesNotMatch(source, /now\.getMonth\(\) \+ 1/,
-    'the period must come from the payment date, not the server clock');
-});
 
-test('the rule it now calls is the one that reads commission_rules', () => {
-  const helper = codeOnly(read('lib/paymentCompensation.js'));
-  assert.match(helper, /FROM commission_rules/);
-  assert.match(helper, /const period = paymentPeriod\(payment\.date\)/);
-});
+
+
 
 // ── payroll ────────────────────────────────────────────────────────────────
-test('overriding a deduction brings the statutory split with it', () => {
-  // The PAID journal takes net_salary from the row and dedSocial/dedTax out of
-  // calculation_details. This route rewrote the first and left the second, so
-  // overriding a 1,500 deduction to 0 produced: cash 10,000, statutory 1,500,
-  // salary expense 11,500 — the whole salary handed over while the ledger
-  // recorded a payable to the tax authority that will never be settled. The
-  // entry balances, so the unbalanced-journal check cannot catch it.
-  const source = codeOnly(read('routes/hr/payroll.js'));
-  assert.match(source, /const originalStatutory = originalSocial \+ originalTax/);
-  assert.match(source, /if \(originalStatutory > od\)/);
-  assert.match(source, /calculation_details=\?/, 'the override must write the details back');
-});
 
-test('the payroll journal is dated in Cairo', () => {
-  const source = codeOnly(read('routes/hr/payroll.js'));
-  assert.match(source, /postJournalEntry\('payroll', runId, dateOnlyInTimeZone\(\)/);
-  assert.doesNotMatch(source, /postJournalEntry\('payroll', runId, new Date\(\)/);
-});
+
+
 
 // ── refunds: the screen matches what the system can do ─────────────────────
 //
@@ -181,18 +143,7 @@ test('and both creation routes accept up to the payment, not exactly it', () => 
 });
 
 // ── payroll and the exchange rate ──────────────────────────────────────────
-test('payroll refuses a stale exchange rate instead of guessing one', () => {
-  // getFxToEgp hands over the rates without asking whether the snapshot is
-  // usable, unlike toEgp — which every inbound money path uses and which
-  // refuses a stale or fallback snapshot outright. So on a day when a 5,000 SAR
-  // payment would be rejected, a 5,000 SAR salary still posted to the ledger at
-  // the hardcoded fallback of 13. No foreign salary exists today, which is
-  // exactly when the trap is cheap to close.
-  const source = codeOnly(read('routes/hr/payroll.js'));
-  assert.match(source, /const currenciesInPlay = new Set\(/);
-  assert.match(source, /if \(!isFxSnapshotUsable\(fxSnapshot, currency\)\)/);
-  assert.match(source, /FX_SNAPSHOT_UNAVAILABLE/);
-});
+
 
 test('an all-EGP payroll never consults the exchange rate', () => {
   // The guard walks only the currencies actually present, and EGP is usable by
@@ -209,24 +160,6 @@ test('an all-EGP payroll never consults the exchange rate', () => {
 });
 
 // ── a refund takes both shares with it ─────────────────────────────────────
-test('refunding a payment cancels the instructor fee as well as the commission', () => {
-  // Only the salesperson's commission was cancelled. A payment whose instructor
-  // fee had been approved stayed approved through the refund, and payroll pays
-  // approved fees — so the money went back to the customer and out to the
-  // instructor for the same enrolment. There is no 'cancelled' in that enum;
-  // 'rejected' is its terminal state.
-  const source = codeOnly(read('lib/refunds.js'));
-  assert.match(source, /UPDATE crm_commissions SET status='CANCELLED'/);
-  assert.match(source, /UPDATE instructor_fees SET status='rejected'/);
-  assert.match(source, /source_payment_id=\? AND tenant_id=\?/);
-  // A fee already paid is left alone — reversing it is a payroll correction.
-  assert.match(source, /status IN \('pending','approved','included_in_payroll'\)/);
-});
 
-test('and payroll really does pay the status this now clears', () => {
-  // The two halves only matter together: if payroll stops consuming approved
-  // fees, this cancellation should be re-thought rather than kept by habit.
-  const payroll = codeOnly(read('routes/hr/payroll.js'));
-  assert.match(payroll, /instructor_fees/);
-  assert.match(payroll, /approved_instructor_fees/);
-});
+
+

@@ -157,16 +157,7 @@ test('the Dokki manager is shown the applications and interviews screens', () =>
   assert.equal(hasPermission({ role: 'daqqi_manager', permissions_json: '[]' }, 'branch_hr'), true);
 });
 
-test('a new application is written NEW and the arrival conversion does not review it', () => {
-  const talent = read('api/routes/hr/talent.js');
-  assert.match(talent, /status, source_form, branch, lectured_before, sessions_before, programs_json, programs_other\)\n\s*VALUES \(\?,\?,\?,\?,\?,\?,\?,\?,\?,\?,\?, 'NEW',/);
-  assert.match(talent, /convertJoinUs\(data, \{ jobId: data\.job_id \|\| undefined, db: conn, review: false \}\)/);
-  const migration = read('api/migrations/276_v26_join_us_kind_branch_lecturer_answers.sql');
-  assert.match(migration, /ALTER COLUMN status SET DEFAULT 'NEW'/);
-  const schema = read('api/schema.sql');
-  assert.match(schema, /`status` enum\('NEW','REVIEWED','ACCEPTED','REJECTED','CONTACTED'\) NOT NULL DEFAULT 'NEW'/);
-  assert.match(schema, /`source_form` enum\('teaching','staff'\) DEFAULT NULL/);
-});
+
 
 test('the lecturer form asks the two questions and lists the programmes with tick boxes', () => {
   const page = read('client/pages/JoinTeaching.tsx');

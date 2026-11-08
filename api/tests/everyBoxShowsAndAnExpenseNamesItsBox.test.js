@@ -29,13 +29,7 @@ test('the boxes the settings list names are boxes, written the way the boxes scr
   assert.equal(currencyOfName('فودافون كاش 7722'), 'EGP');
 });
 
-test('the boxes screen lists a box at zero, and a box that has not seen a payment lately', () => {
-  const route = read('routes', 'finance', 'budgets.js');
-  assert.doesNotMatch(route, /value\.balance !== 0/, 'a box was left off the screen when its balance was zero');
-  assert.match(route, /for \(const entry of catalog\.entries\)/, 'every listed box is on the screen (lib/boxCatalog.js)');
-  // A branch sees only its own clients' money, which has no boxes of its own.
-  assert.match(route, /if \(!scope\.branchId\) \{\s*const current = await currentBalances/);
-});
+
 
 test('an expense must name its box, and its amount comes out of that box', () => {
   const route = read('routes', 'admin-operations.js');

@@ -131,10 +131,7 @@ describe('the 7 Oct 2026 audit stays fixed', () => {
     assert.doesNotMatch(read('api', 'routes', 'payment-proofs.js'), /accessType:\s*'full'/);
   });
 
-  test('CRIT-04: a course is paid at one share everywhere (aCourseIsPaidAtTheSameShareEverywhere)', () => {
-    assert.match(read('api', 'lib', 'coursePaid.js'), /const PAID_SHARE = 0\.9;/);
-    assert.match(read('api', 'lib', 'autoCertificate.js'), /const PAID_THRESHOLD = PAID_SHARE;/);
-  });
+
 
   test('HIGH-05: checkout-intent never writes over an existing lead\'s crm_json', () => {
     const intent = region(read('api', 'routes', 'lead-capture-crm.js'), "router.post('/api/public/checkout-intent'", '\n});\n');
@@ -172,13 +169,9 @@ describe('the 7 Oct 2026 audit stays fixed', () => {
     assert.match(handler, /RETRYABLE\.has\(err\.code\) && _isRead\(sql\)/);
   });
 
-  test('MED-12: cross-site writes are refused unless switched off explicitly', () => {
-    assert.match(read('api', 'lib', 'httpApp.js'), /CSRF_ORIGIN_ENFORCE \|\| ''\)\.toLowerCase\(\) === 'false'/);
-  });
 
-  test('MED-13: /api/staff writes reach the activity log (staffWritesReachTheActivityLog)', () => {
-    assert.match(read('api', 'lib', 'httpApp.js'), /app\.use\('\/api\/staff', auditWrites\);/);
-  });
+
+
 
   test('MED-18: requireAdminOrStaff asks the owner for MFA (theOwnerAnswersTheMfaPolicyEverywhere)', () => {
     const src = read('api', 'middleware', 'auth.js');

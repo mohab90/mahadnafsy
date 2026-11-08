@@ -48,16 +48,7 @@ test('the log keeps who was tried and where from, and tells the truth about the 
   }
 });
 
-test('the accounts endpoint answers the page: counts from the log, the last attempt, the 2FA step told apart', () => {
-  const routes = read('api/routes/misc/analytics.js');
-  assert.match(routes, /Math\.max\(Number\(row\.login_count\) \|\| 0, Number\(c\.ok\) \|\| 0\)/, 'the count is not only the users column, which older sign-ins never reached');
-  assert.match(routes, /SELECT MAX\(id\) FROM login_history WHERE tenant_id = \? AND user_id IN \(\?\) GROUP BY user_id/);
-  assert.match(routes, /last_ip: last\?\.ip/);
-  assert.match(routes, /function attemptState\(row, newerSameUser = \[\]\)/);
-  assert.match(routes, /'\/api\/admin\/security\/accounts\/:id\/logins'/);
-  assert.match(routes, /'\/api\/admin\/security\/accounts\/:id\/unlock'/);
-  assert.match(routes, /LEFT JOIN users u ON u\.id = h\.user_id/, 'every attempt shows whose it was');
-});
+
 
 test('2FA: a password step the code completed is not left saying «waiting»', () => {
   const routes = read('api/routes/misc/analytics.js');

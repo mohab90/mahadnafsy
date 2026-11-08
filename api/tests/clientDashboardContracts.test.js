@@ -50,15 +50,7 @@ test('a certificate counted as earned includes every state after issuing', () =>
   }
 });
 
-test("the community feed marks the viewer's own posts without poisoning the shared cache", () => {
-  const route = read('api', 'routes', 'community.js');
-  assert.match(route, /router\.get\('\/api\/community\/posts', publicLimiter, optionalAuth/);
-  assert.ok(route.includes('isOwner: true'));
-  // The personalised body must not be handed to a shared cache, and the cached
-  // rows must be copied rather than marked in place.
-  assert.ok(route.includes("res.set('Cache-Control', 'private, no-store')"));
-  assert.ok(route.includes('{ ...post, isOwner: true }'));
-});
+
 
 test('a course with no original price shows neither a struck-out zero nor a discount badge', () => {
   for (const file of [
@@ -115,13 +107,4 @@ test('settings shows the reference support asks for, not a link that goes home',
   assert.ok(tab.includes('{subscriber.clientCode}'));
 });
 
-test('the customer subscriber payload carries the fields the dashboard reads', () => {
-  const mappers = read('api', 'lib', 'mappers.js');
-  assert.match(mappers, /nameEn: r\.name_en \|\| crm\.nameEn \|\| null,/);
-  assert.match(mappers, /installmentPlans: \(r\.installmentPlans \|\| \[\]\)\.map\(mapInstallmentPlan\),/);
-  // The route has to fetch what the mapper now maps, or the field is always [].
-  const route = read('api', 'routes', 'public.js');
-  assert.match(route, /FROM installment_plans ip/);
-  assert.match(route, /certRequests, installmentPlans \}\)/);
-  assert.ok(route.includes("'created_at', 'updated_at', 'name_en',"));
-});
+

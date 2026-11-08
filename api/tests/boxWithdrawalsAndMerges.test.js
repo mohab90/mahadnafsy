@@ -236,13 +236,4 @@ test('the partners\' table: what each took, in total and from each box, voided o
   assert.deepEqual(report.partners.map(partner => partner.name), ['مهاب', 'وليد']);
 });
 
-test('the routes are the main books\' and the manage_financial permission\'s, the screen has the buttons and the partners\' table', () => {
-  const route = read('api/routes/finance/budgets.js');
-  assert.match(route, /router\.post\('\/api\/admin\/finance\/boxes\/withdraw', \.\.\.mainBooks, boxChange/);
-  assert.match(route, /router\.post\('\/api\/admin\/finance\/boxes\/withdrawals\/void', \.\.\.mainBooks, boxChange/);
-  assert.match(route, /router\.post\('\/api\/admin\/finance\/boxes\/merge', \.\.\.mainBooks, boxChange/);
-  assert.match(route, /router\.get\('\/api\/admin\/finance\/boxes\/withdrawals', requireAuth, requireAdminOrStaff, requirePermission\('view_financial'\)/);
-  assert.match(route, /const \{ box: method, currency \} = boxOf\(row\.method, row\.currency, catalog\);/);
-  assert.match(read('api/migrations/309_v26_box_withdrawals_and_merges.sql'), /CREATE TABLE IF NOT EXISTS box_withdrawals[\s\S]*CREATE TABLE IF NOT EXISTS box_aliases[\s\S]*'merge','void_withdrawal'/);
-  assert.match(read('api/schema.sql'), /CREATE TABLE `box_withdrawals`[\s\S]*CREATE TABLE `box_aliases`/);
-});
+

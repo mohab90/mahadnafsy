@@ -34,14 +34,7 @@ test('every client with money in and no certificate is a candidate — a course 
     'a client who booked a track gets the track certificate only — never one per course inside it; a certificate already there, revoked or not, is left alone');
 });
 
-test('issued without an online enrolment or an email, by the same function as by hand', () => {
-  const sweep = read('api/lib/instituteCertificates.js');
-  assert.match(sweep, /requireFullProgress: false,\s*requireEnrollment: false, sendEmail: false/);
-  const completion = read('api/lib/courseCompletion.js');
-  assert.match(completion, /\$\{requireEnrollment \? 'JOIN' : 'LEFT JOIN'\} enrollments e/);
-  assert.match(completion, /if \(sendEmail && eligibility\.email\)/);
-  assert.match(read('api/routes/misc/_shared.js'), /runAutoCertificateSweep\(tenantId\)\.then\(\(\) => sweepInstituteCertificates\(tenantId\)\)/);
-});
+
 
 test('the client opening it from the site is recorded; the desk\'s own print is not', () => {
   const site = read('api/routes/public.js');

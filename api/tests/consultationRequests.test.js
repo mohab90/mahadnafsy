@@ -105,11 +105,7 @@ test('every way of paying goes through the same consultation', () => {
   assert.match(read('api/lib/notificationAudience.js'), /consultation: \{ perms: \['manage_consultations'\], roles: \['support'\] \}/);
 });
 
-test('changing a booking\'s status keeps its notes and meeting link', () => {
-  const route = read('api/routes/core/catalog.js');
-  assert.ok(!route.includes("'UPDATE consultations SET status=?, notes=?, meeting_link=? WHERE id=? AND tenant_id=?'"));
-  assert.match(route, /if \(notes !== undefined\) \{ sets\.push\('notes=\?'\)/);
-});
+
 
 test('the settings screen writes the keys the site reads', () => {
   const screen = read('admin/pages/dashboard/tabs/consultations/ConsultationSettingsTab.tsx');

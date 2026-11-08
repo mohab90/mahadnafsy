@@ -35,8 +35,4 @@ test('a verified number signs in to its own account, and a switched-off one says
   assert.match(otp, /if \(existing\) userId = existing\.id;/);
 });
 
-test('a number that cannot be dialled is the customer\'s to fix now, not «try later»', () => {
-  const otp = read('lib/whatsappOtp.js');
-  assert.match(otp, /const badNumber = reason === 'invalid_number';/);
-  assert.match(otp, /failure\.statusCode = badNumber \? 400 : 503;/);
-});
+

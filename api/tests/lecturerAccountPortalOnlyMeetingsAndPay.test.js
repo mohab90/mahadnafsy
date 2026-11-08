@@ -199,11 +199,7 @@ test('a consultation\'s meeting is made once, only when confirmed and timed, and
 });
 
 // Found by walking every staff role on the private lab (26 Oct 2026, synthetic data): three things only a real run shows.
-test('the students tab asks only for columns that exist (course_lectures has no tenant_id) — it answered 500 for every lecturer', () => {
-  const source = read('api/lib/lecturerPortal.js');
-  assert.doesNotMatch(source, /lc\.tenant_id=cl\.tenant_id/);
-  assert.match(source, /lc\.lecture_id=cl\.id AND lc\.subscriber_id=s\.id AND lc\.tenant_id=c\.tenant_id/);
-});
+
 
 test('a lecturer can cancel their own live, reopen a day, undo a tap and remove their own post — the owner\'s delete rule let none of it through', () => {
   const rights = require('../lib/deleteRights');
@@ -245,10 +241,7 @@ test('a unique-key collision is a 409 that says what collided, never «Internal 
   assert.match(read('api/routes/admin/subscribers.js'), /ER_DUP_ENTRY[\s\S]{0,200}duplicateEntryMessage/);
 });
 
-test('a consultation status outside the enum is refused with 400, a long «education» is cut to its column', () => {
-  assert.match(read('api/routes/core/catalog.js'), /\['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'\]\.includes\(next\)\) return res\.status\(400\)/);
-  assert.match(read('api/routes/hr/talent.js'), /j\.education \? String\(j\.education\)\.slice\(0, 255\) : null/);
-});
+
 
 test('the panel stops asking for what it was refused: /admin/content once, registrations without view_leads', () => {
   const api = read('admin/lib/mysqlapi.ts');

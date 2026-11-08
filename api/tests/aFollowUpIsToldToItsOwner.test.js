@@ -40,12 +40,7 @@ test('the managers get the team\'s figures, and what has no owner', () => {
   assert.ok(!visibleBroadcastTypes({ role: 'reception_daqqi', permissions: [] }).includes('followup_team'));
 });
 
-test('the digest is scheduled, and made once a day then kept true', () => {
-  assert.match(read('api/routes/misc/_shared.js'), /scheduleFollowUpDigest\(\)/);
-  const job = read('api/lib/followUpDigest.js');
-  assert.match(job, /recipient_staff_id <=> \?/);
-  assert.match(job, /DELETE FROM notification_reads/);
-});
+
 
 test('the online clients table filters by follow-up with the rule the row shows', () => {
   const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');

@@ -33,21 +33,6 @@ test('monthly payroll calculation is scoped, serialized and a deterministic rebu
   );
 });
 
-test('payroll enforces approve then pay and journals the payment atomically', () => {
-  const route = read('routes/hr/payroll.js');
-  assert.match(route, /PAID:\s+\['APPROVED'\]/);
-  assert.match(route, /SELECT id,month,year,status,total_amount,currency,calculated_by,approved_by[\s\S]*FOR UPDATE/);
-  assert.match(route, /postJournalEntry\('payroll'[\s\S]*conn, tenantId/);
-  assert.match(route, /account_code: '1300'[\s\S]*advanceTotal/);
-  assert.match(route, /account_code: '2200'[\s\S]*statutoryTotal/);
-  assert.match(route, /UPDATE crm_commissions SET status='PAID' WHERE payroll_run_id=\? AND tenant_id=\?/);
-  assert.match(route, /status === 'CANCELLED'[\s\S]*status='PENDING',payroll_run_id=NULL/);
-  assert.match(route, /CALCULATED: \['CANCELLED'\]/);
-});
 
-test('payroll detail exposes persisted bonus and instructor earnings', () => {
-  const route = read('routes/hr/payroll.js');
-  assert.match(route, /pi\.bonus AS bonus_amount/);
-  assert.match(route, /JSON_EXTRACT\(pi\.calculation_details, '\$\.instructorEarnings'\)/);
-  assert.doesNotMatch(route, /\b0 AS bonus_amount\b|\b0 AS instructor_earnings\b/);
-});
+
+

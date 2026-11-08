@@ -38,21 +38,9 @@ test('nothing asks courses for is_active — the column is is_published', () => 
   assert.ok(read('lib/sheets.js').includes(wanted), 'the automatic sync lost the corrected query');
 });
 
-test('nothing filters subscribers on a status column', () => {
-  const src = read('routes/misc/messaging.js');
-  assert.ok(!/FROM subscribers[\s\S]{0,200}?AND status=\?/.test(src),
-    'bulk SMS filters subscribers by status again — the column does not exist');
-  assert.match(src, /AND is_active=\?/);
-  assert.match(src, /UNSUPPORTED_SUBSCRIBER_STATUS/);
-  // Leads do have a status column; that branch is untouched.
-  assert.match(src, /FROM leads WHERE tenant_id=\? AND phone IS NOT NULL AND phone != ''/);
-});
 
-test('the branch migration names the column leads actually has', () => {
-  const src = read('routes/payments.js');
-  assert.ok(!src.includes('crm_data'), 'leads.crm_data is back — the column is crm_json, and every statement using it throws');
-  assert.match(src, /SELECT id, crm_json FROM leads/);
-});
+
+
 
 test('the daily report reads its mail settings from the environment', () => {
   const src = read('routes/misc/_shared.js');

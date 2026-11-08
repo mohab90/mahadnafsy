@@ -55,13 +55,7 @@ test('cairoDateOnly names the Cairo day, not the UTC one', () => {
   assert.equal(cairoDateOnly('2026-09-14T21:30:00.000Z'), dateOnlyInTimeZone(new Date('2026-09-14T21:30:00.000Z')));
 });
 
-test('the public discounts route compares the Cairo day, not an instant', () => {
-  const route = codeOnly(read('api/routes/config.js'));
-  assert.match(route, /const today = dateOnlyInTimeZone\(\);/);
-  assert.match(route, /String\(rule\.expiresAt\)\.slice\(0, 10\) >= today/);
-  assert.ok(!route.includes('Date.parse(rule.expiresAt)'),
-    'the route still drops an offer at midnight UTC');
-});
+
 
 test('all four screens judge the expiry the same way', () => {
   // The course page and the home page no longer judge a rule themselves: they

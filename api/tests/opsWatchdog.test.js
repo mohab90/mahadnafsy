@@ -150,13 +150,7 @@ test('the heartbeat pings an https address and nothing else', async () => {
   assert.equal(await watchdog.heartbeat({ env: { OPS_HEARTBEAT_URL: 'https://hc-ping.com/abc' }, fetchImpl: async () => { throw new Error('down'); } }), false);
 });
 
-test('the watchdog is hooked to every request, runs every five minutes under a lock, and is readable by the owner', () => {
-  assert.match(read('api/lib/performanceMonitor.js'), /require\('\.\/opsWatchdog'\)\.noteRequest\(\{ route: key, status, ms \}\)/);
-  const jobs = read('api/lib/backgroundScheduler.js');
-  assert.match(jobs, /lockedJob\('ops_watchdog', \(\) => require\('\.\/opsWatchdog'\)\.runOpsWatchdog\(\{ pool, logger \}\)/);
-  assert.match(jobs, /repeat\(watch, 5 \* 60 \* 1000\)/);
-  assert.match(read('api/routes/admin-utils.js'), /router\.get\('\/api\/admin\/system\/watchdog', requireAuth, requireAdmin/);
-});
+
 
 test('the off-site copies are pruned only after today\'s is proven at the destination, and only this job\'s own files', () => {
   const script = read('deploy/mahad-db-backup.sh');

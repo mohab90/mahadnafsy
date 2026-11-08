@@ -79,18 +79,6 @@ test('reconciliation makes every broken customer-journey projection critical', (
     'the hint has to point at the screen these accounts are waiting on');
 });
 
-test('journey analytics keeps payment, learning and certificate stages on one lead cohort', () => {
-  const funnel = read('routes/funnel.js');
-  assert.match(funnel, /JOIN subscribers s ON s\.lead_id=l\.id AND s\.tenant_id=l\.tenant_id/);
-  assert.match(funnel, /JOIN payments p ON p\.subscriber_id=s\.id AND p\.tenant_id=s\.tenant_id/);
-  assert.match(funnel, /JOIN lecture_completions lc ON lc\.subscriber_id=s\.id AND lc\.tenant_id=s\.tenant_id/);
-  assert.match(funnel, /JOIN course_completions cc ON cc\.subscriber_id=s\.id AND cc\.tenant_id=s\.tenant_id AND cc\.status='active'/);
-  assert.doesNotMatch(funnel, /COUNT\(DISTINCT subscriber_id\) FROM payments/);
-});
 
-test('abandoned checkout honors suppression and provider acceptance before sent', () => {
-  const source = read('lib/abandonedCheckout.js');
-  assert.match(source, /filterSuppressed/);
-  assert.match(source, /if \(!delivery\?\.ok\) throw new Error/);
-  assert.match(source, /markReminder\(order, 'skipped', 'marketing suppressed'/);
-});
+
+

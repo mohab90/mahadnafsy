@@ -79,12 +79,4 @@ test('creating a login does not move the employee to another branch', () => {
     'the branch is decided from the request alone again');
 });
 
-test('an employee is not a registration waiting to be triaged', () => {
-  // Every staff login is a users row, and «التسجيلات» listed users that no
-  // subscriber and no lead claimed — which is all fifteen employees, sitting
-  // beside the buttons that convert a registration into a client or delete it.
-  const src = read('routes/registrations.js');
-  assert.match(src, /FROM staff WHERE tenant_id=\? AND deleted_at IS NULL/);
-  assert.match(src, /\.\.\.staffRows\.map\(s => normEmail\(s\.email\)\)/);
-  assert.match(src, /\.\.\.staffRows\.map\(s => normPhone\(s\.phone\)\)/);
-});
+

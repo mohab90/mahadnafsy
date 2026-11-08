@@ -250,18 +250,9 @@ test('a course end date with a six-digit year is refused, not sent to the databa
   assert.equal(db.all(/UPDATE enrollments SET expiry_date/).length, 0);
 });
 
-test('a reactivated account takes its courses and first payment even when its record has another address', () => {
-  const route = read('api/routes/auth/staffAccounts.js');
-  assert.match(route, /if \(!reSub && phoneVal\) \{/);
-  assert.match(route, /'SELECT id, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=\? AND id=\? LIMIT 1',\s*\[tenantId, targetSubId\]/);
-  assert.doesNotMatch(route, /FROM subscribers WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\)=\? LIMIT 1',\s*\[tenantId, normEmail\]\s*\);\s*if \(!paySub\)/);
-});
 
-test('the student assistant reads what a student studies from enrollments', () => {
-  const route = read('api/routes/student-ai.js');
-  assert.doesNotMatch(route, /'enrolled_courses'/);
-  assert.match(route, /SELECT course_id FROM enrollments WHERE tenant_id=\? AND subscriber_id=\?/);
-});
+
+
 
 test('a carnet or a book is never a course instalment, and books beside its course', () => {
   const route = read('api/routes/subscriber-payments.js');

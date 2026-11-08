@@ -148,16 +148,7 @@ test('the switches are the owner\'s and managers\' to change, on screen and on t
   assert.match(read('admin/pages/dashboard/tabs/MessagingHubTab.tsx'), /MessagesHealthPanel/);
 });
 
-test('a resend reaches back three days at most and skips what would only die again', () => {
-  const routes = read('api/routes/messaging-channels.js');
-  assert.match(routes, /Math\.min\(168, Math\.max\(1, Number\.parseInt\(req\.body\?\.hours \|\| '72', 10\)\)\)/);
-  assert.ok(routes.includes("'AND created_at > DATE_SUB(NOW(), INTERVAL ? HOUR)'"));
-  assert.ok(routes.includes("if (/invalid_number/.test(String(row.last_error || ''))) continue;"));
-  assert.ok(routes.includes("if (row.channel === 'whatsapp' && !await isCategoryOpen(row.category, req.tenantId)) continue;"));
-  assert.match(routes, /skipped: candidates\.length - ids\.length/);
-  // Nothing goes out until the caller has seen the preview and said yes.
-  assert.match(routes, /if \(!req\.body\?\.confirm\) \{/);
-});
+
 
 // ── Staff phones ────────────────────────────────────────────────────────────
 

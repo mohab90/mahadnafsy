@@ -30,15 +30,7 @@ test('the slot lookup is scoped to the therapist on the order and to this tenant
   assert.match(lib, /if \(!slotId \|\| !therapistId\) return null;/);
 });
 
-test('a session date in the past is refused, on the Cairo day', () => {
-  const lib = codeOnly(read('api/lib/consultationRequests.js'));
-  assert.match(lib, /SESSION_DATE_INVALID/);
-  assert.match(lib, /SESSION_DATE_PAST/);
-  assert.match(lib, /const today = cairoToday\(now\);/);
-  assert.match(lib, /if \(sessionDate < today\)/);
-  // And the checkout asks.
-  assert.match(codeOnly(read('api/routes/lead-capture-crm.js')), /const refused = bookingRuleError\(\{ sessionDate, slot, settings: consultationSettings\(content\) \}\);/);
-});
+
 
 test('neither booking page offers a day that has already gone', () => {
   // Two entry points reach the same booking — the clinic list and an
@@ -49,10 +41,4 @@ test('neither booking page offers a day that has already gone', () => {
   }
 });
 
-test('the date the customer picks still reaches the order untouched', () => {
-  // The guard must not have changed what is stored: the desk and the customer
-  // both read the wall-clock the booking page showed.
-  const lib = codeOnly(read('api/lib/consultationRequests.js'));
-  assert.match(lib, /const start = slot\?\.start_time \? String\(slot\.start_time\)\.slice\(0, 5\) : '00:00';/);
-  assert.match(lib, /const sessionAt = sessionDate \? `\$\{sessionDate\} \$\{start\}:00` : null;/);
-});
+

@@ -54,17 +54,7 @@ test('and read back in the shape both apps compare against', async () => {
   assert.deepEqual(mapCourse({ id: 'C1', title: 'x' }, []).materials, []);
 });
 
-test('every path that shows materials now loads them', () => {
-  const catalog = codeOnly(read('api/routes/admin/catalog.js'));
-  assert.ok(catalog.includes('saveCourseMaterials(pool, id, c.materials)'),
-    'the editor saved into a field no route read');
-  assert.ok(catalog.includes('loadCourseMaterials(pool, rows.map(row => row.id))'),
-    'and reloaded from one nothing wrote');
 
-  const publicRoutes = codeOnly(read('api/routes/public.js'));
-  assert.ok(publicRoutes.includes('materialsByCourse.get(row.id)'),
-    "the student dashboard's المادة العلمية tab reads course.materials off these rows");
-});
 
 test('the Facebook verify token is stored under the key the webhook compares', () => {
   const webhook = read('api/routes/facebook-leads-webhook.js');

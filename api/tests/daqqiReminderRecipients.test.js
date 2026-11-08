@@ -102,17 +102,4 @@ test('archiving or erasing a client silences reminders without erasing them from
   assert.match(read('routes/core/catalog.js'), /UPDATE subscribers SET is_active=0, deleted_at=NOW\(\)/);
 });
 
-test('the reminder recipient filter does not leak into attendance history or counts', () => {
-  const attendees = read('lib/daqqiAttendees.js');
-  const route = read('routes/daqqi-rounds.js');
-  // getDaqqiAttendees feeds per-round listings and attendance counts; narrowing
-  // it by contactability would silently drop clients out of the history.
-  assert.doesNotMatch(attendees, /is_unsubscribed/);
-  assert.doesNotMatch(attendees, /s\.is_active/);
-  assert.doesNotMatch(route, /is_unsubscribed/);
-  assert.doesNotMatch(route, /s\.is_active/);
-  // The attendance event itself stays keyed on the round, never on the client's
-  // contactability.
-  assert.match(read('lib/daqqiAttendanceMark.js'), /INSERT INTO daqqi_attendance_events/);
-  assert.doesNotMatch(read('lib/daqqiAttendanceMark.js'), /is_unsubscribed|s\.is_active/);
-});
+

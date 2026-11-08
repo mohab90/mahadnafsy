@@ -25,13 +25,7 @@ test('accounting periods and snapshots are tenant scoped', () => {
   );
 });
 
-test('expense writes and ledger postings share one transaction', () => {
-  const route = read('routes/admin-operations.js');
-  assert.match(route, /await conn\.beginTransaction\(\)/);
-  assert.match(route, /postExpenseJournal\([\s\S]*conn, tenantId/);
-  assert.match(route, /if \(!journalId\) throw new Error\('Expense journal posting failed'\)/);
-  assert.doesNotMatch(route, /postExpenseJournal\([^;]+\.catch\(\(\) => \{\}\)/);
-});
+
 
 test('financial reports and reconciliation scope journal headers by tenant', () => {
   const financeRoute = financeRouteSource();

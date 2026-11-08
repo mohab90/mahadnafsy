@@ -39,10 +39,7 @@ test('the operation number, sender and number are optional — typed, they trave
   ]) assert.match(read(file), /senderName: \w+\.senderName \|\| undefined|senderName: txnFields\.senderName/, file);
 });
 
-test('a client being registered by the booking belongs to nobody, so the ownership rule cannot refuse it', () => {
-  const booking = read('api/routes/subscriber-payments.js');
-  assert.match(booking, /if \(!createFromDraft && !bookAny && !financialRecordMatches\(scope, subRow\)\)/);
-});
+
 
 test('every consultation booking, old or new, has its controls', () => {
   const tab = read('admin/pages/dashboard/tabs/consultations/ConsultationBookingsTab.tsx');

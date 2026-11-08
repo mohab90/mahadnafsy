@@ -92,20 +92,7 @@ test('«converted lead without a client» is NOT A AND NOT B AND NOT C, and the 
   assert.ok(payops.includes('/\\b(GROUP BY|HAVING|DISTINCT|UNION)\\b/i.test(population)'), 'a grouped check still goes through the wrapper');
 });
 
-test('the panel counters are held for 15 s and dropped by the first successful write', () => {
-  const stats = read('api/routes/admin/leads/stats.js');
-  assert.ok(stats.includes("const { cached } = require('../../../lib/db');"));
-  assert.ok(stats.includes('const key = `figures:leads-stats:${req.tenantId}:${scopeClause}:${JSON.stringify(params)}`;'), 'one entry per tenant and scope');
-  assert.ok(stats.includes('await cached(key, 15 * 1000, async () => {'));
-  assert.ok(stats.includes('res.json(payload);'));
-  assert.ok(stats.includes('cached(`figures:followups-due:'), 'the header bell, on every page, is held too');
-  assert.ok(read('api/routes/analytics/dashboard.js').includes('cached(`figures:revenue:'), 'the first figure of the landing screen is held too');
-  const app = read('api/lib/httpApp.js');
-  assert.ok(app.includes("cacheInvalidateLocal('figures:')"), 'this process only: fifteen seconds is not worth an insert per write');
-  assert.ok(app.includes('res.statusCode < 400'), 'a failed write changed nothing');
-  assert.ok(app.includes("req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'"));
-  assert.ok(/app\.use\(timeRequests\);\n\s*app\.use\(dropFiguresAfterWrites\);/.test(app), 'registered before any route can answer');
-});
+
 
 test('the synthetic-data tool refuses anything but a local mahad_perf database', () => {
   const run = env => spawnSync(process.execPath, [path.join(ROOT, 'tools', 'seed-synthetic-load.cjs')], { env: { ...process.env, ...env }, encoding: 'utf8', timeout: 20000 });

@@ -25,12 +25,4 @@ test('activity log schema, writes and reads are tenant owned', () => {
   assert.match(audit, /INSERT INTO activity_logs \(id, tenant_id/);
 });
 
-test('activity archive uses the real timestamp and one transaction', () => {
-  const archive = read('lib', 'archiveJob.js');
-  assert.doesNotMatch(archive, /created_at/);
-  assert.match(archive, /beginTransaction\(\)/);
-  assert.match(archive, /INSERT IGNORE INTO activity_logs_archive/);
-  assert.match(archive, /WHERE at < \?/);
-  assert.match(archive, /commit\(\)/);
-  assert.match(archive, /rollback\(\)/);
-});
+

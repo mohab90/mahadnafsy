@@ -97,14 +97,6 @@ test('a cross-site write with the session cookie and no Origin is refused on Sec
   }
 });
 
-test('the session cookie is HttpOnly and Secure', () => {
-  const token = read('api/lib/token.js');
-  assert.match(token, /`authToken=\$\{token\}; HttpOnly; Path=\/; Max-Age=\$\{maxAge\}; SameSite=None; Secure`/);
-});
 
-test('CSP reports are accepted and logged, and the route is rate limited', () => {
-  const source = read('api/routes/monitoring.js');
-  assert.match(source, /router\.post\('\/api\/security\/csp-report', publicLimiter, cspReportBody,/);
-  assert.match(source, /type: \['application\/csp-report', 'application\/reports\+json', 'application\/json'\], limit: '16kb'/);
-  assert.match(source, /res\.status\(204\)\.end\(\)/);
-});
+
+

@@ -48,14 +48,7 @@ test('only an institute request that names a client and a course is recorded; de
   assert.ok(db.calls[0].params.includes('AT_BRANCH'));
 });
 
-test('issuing by hand writes it, the migration backfills the ones already there, and the old codes are kept', () => {
-  assert.match(read('api/routes/certificates.js'), /recordIssuedInstituteCertificate\(conn, \{ \.\.\.request, status: normalizedStatus/);
-  const migration = read('api/migrations/302_v26_old_institute_certificates_get_completions.sql');
-  assert.match(migration, /INSERT IGNORE INTO course_completions/);
-  assert.match(migration, /cr\.type = 'INSTITUTE'/);
-  assert.match(migration, /cr\.status IN \('ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED'\)/);
-  assert.match(migration, /SELECT UUID\(\), cr\.subscriber_id, cr\.course_id, cr\.certificate_code/);
-});
+
 
 test('the verification page shows the design with «طباعة كاملة» and «طباعة المعهد», and the design can be embedded', () => {
   const page = read('client/pages/CertificateVerify.tsx');

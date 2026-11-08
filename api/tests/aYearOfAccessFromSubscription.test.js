@@ -10,12 +10,7 @@ const path = require('node:path');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-year-secret-0123456789-abcdefghijklmnopqr';
 const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
 
-test('the grant counts the duration the course names, else a year, from the subscription day', () => {
-  const source = read('lib/entitlements.js');
-  assert.match(source, /const DEFAULT_ACCESS_MONTHS = 12;/);
-  assert.match(source, /Number\(durationResult\?\.\[0\]\?\.\[0\]\?\.access_months\) > 0\s+\? Number\(durationResult\[0\]\[0\]\.access_months\) : DEFAULT_ACCESS_MONTHS;/);
-  assert.match(source, /CASE WHEN \? > 0 THEN DATE_ADD\(COALESCE\(\?,NOW\(\)\), INTERVAL \? MONTH\) ELSE NULL END/, 'a new enrollment: the subscription day plus the months');
-});
+
 
 test('a re-grant never shortens or restarts a live window, and leaves an open-ended one to the conversion tool', () => {
   const source = read('lib/entitlements.js');

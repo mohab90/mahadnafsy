@@ -33,13 +33,7 @@ const hrTab = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'HRTab.tsx');
 const staffProfile = read('..', 'admin', 'pages', 'staff-profile', 'StaffSettingsPanel.tsx');
 const hrLeavesPanel = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sections', 'HrLeavesPanel.tsx');
 
-test('disabled users are rejected by every authenticated request and cache can be invalidated immediately', () => {
-  assert.match(auth, /async function activeIdentity/);
-  assert.match(auth, /const columns = 'is_active,session_version,active_session_id,active_session_ip_hash,name,email_unverified'/);
-  assert.match(auth, /SELECT \$\{columns\} FROM users WHERE tenant_id=\? AND id=\? LIMIT 1/);
-  assert.match(auth, /Account disabled or unavailable/);
-  assert.match(auth, /function invalidateIdentity/);
-});
+
 
 test('offboarding is atomic, requires completed checklist, transfers open work, and revokes both staff and user access', () => {
   assert.match(offboarding, /beginTransaction/);
@@ -62,37 +56,11 @@ test('employee HR profile does not expose authentication secrets or permission p
   assert.doesNotMatch(profileSelect, /totp_secret|permissions_json|preferences_json/);
 });
 
-test('payroll and sensitive HR adjustments prevent self approval or mutation', () => {
-  assert.match(payroll, /PAYROLL_SOD/);
-  assert.match(payroll, /HR_SELF_MUTATION/);
-  assert.match(attendance, /HR_SELF_MUTATION/);
-  assert.match(compensation, /HR_SELF_MUTATION/);
-  assert.match(records, /HR_SELF_APPROVAL/);
-  assert.match(compensation, /BONUS_SOD/);
-  assert.match(compensation, /INSTRUCTOR_FEE_SOD/);
-  assert.match(attendance, /SALARY_SOD/);
-});
 
-test('compensation changes are approval-owned and only approved values enter payroll', () => {
-  assert.match(compensationMigration, /salary_structures[\s\S]*status ENUM/);
-  assert.match(compensationMigration, /employee_bonuses[\s\S]*status ENUM/);
-  assert.match(payroll, /employee_bonuses[\s\S]*status='APPROVED'/);
-  assert.match(payroll, /salary_structures ss[\s\S]*ss\.status='APPROVED'/);
-  assert.match(feeMigration, /payroll_run_id/);
-  assert.match(payroll, /included_in_payroll/);
-  // The alias is gone — settlement is now a read of what each salary recovered
-  // followed by an update of only the advances that were covered. The property
-  // is that paying a run is what marks an advance DEDUCTED, not the shape of
-  // the statement that does it.
-  assert.match(payroll, /UPDATE salary_advances[\s\S]*status\s*=\s*'DEDUCTED'/);
-});
 
-test('HR audit retention is tenant-policy driven and bounded', () => {
-  assert.match(cron, /runHrAuditRetention/);
-  assert.match(cron, /audit_retention_days/);
-  assert.match(cron, /LIMIT 5000/);
-  assert.match(read('lib/backgroundScheduler.js'), /scheduleHrAuditRetention\(\{ pool, logger \}\)/);
-});
+
+
+
 
 test('staff settings only calls least-privilege self-service HR endpoints', () => {
   for (const file of [myHr, myRequests]) assert.doesNotMatch(file, /\/api\/admin\/hr/);
@@ -111,37 +79,13 @@ test('admin leave UI consumes the actual API field name `type`', () => {
   assert.match(hrLeavesPanel, /leave.type/);
 });
 
-test('there is no self check-in: attendance is the device import and the HR screen (LOW-19)', () => {
-  // The self check-in and check-out let an employee mark themselves present and
-  // on time from anywhere; no screen called them. Removed 8 Oct 2026. The
-  // database's (UTC) hour must still never be the clock.
-  assert.doesNotMatch(attendance, /router\.(get|post)\('\/api\/me\/hr\/attendance/);
-  assert.doesNotMatch(attendance, /HOUR\(NOW\(\)\)/);
-  assert.doesNotMatch(attendance, /DATE_FORMAT\(NOW\(\)/);
-});
 
-test('approved leave attendance cannot be overwritten by manual entry or import', () => {
-  assert.match(attendance, /LEAVE_ATTENDANCE_LOCKED/);
-  assert.doesNotMatch(attendance, /VALID_STATUSES = \[[^\]]*'LEAVE'/);
-  assert.match(attendance, /leave\.type === 'PERMISSION' \? 'HALF_DAY' : 'LEAVE'/);
-  assert.match(payroll, /req\.body\.csv \?\? req\.body\.csvText/);
-  assert.match(payroll, /approved leave attendance is locked/);
-  assert.match(payroll, /FROM work_schedules WHERE tenant_id=\?/);
-  assert.match(payroll, /date must be inside/);
-});
 
-test('employee identity changes are atomic, audited and keep auth email aligned', () => {
-  assert.match(employees, /beginTransaction/);
-  assert.match(employees, /UPDATE users[\s\S]*session_version=session_version\+1/);
-  assert.match(employees, /hr\.employee\.updated/);
-  assert.match(employees, /USE_OFFBOARDING_WORKFLOW/);
-  assert.match(employees, /Employee cannot manage themselves/);
-});
 
-test('self-service leave balance is aggregated from all approved annual leaves', () => {
-  assert.match(reports, /SELECT COALESCE\(SUM\(total_days\),0\) AS used_days[\s\S]*type='ANNUAL' AND status='APPROVED'/);
-  assert.doesNotMatch(reports, /const usedDays = leaves\s*\.filter/);
-});
+
+
+
+
 
 test('HR performance and employee KPI cards use server-side canonical monthly data', () => {
   assert.match(reports, /\/api\/admin\/hr\/reports\/performance/);
@@ -153,17 +97,7 @@ test('HR performance and employee KPI cards use server-side canonical monthly da
   assert.doesNotMatch(hrTab, /is_active: updated\.status/);
 });
 
-test('unpaid leave affects payroll and instructor fee settlement stays ledger-owned', () => {
-  assert.match(payroll, /l\.type='UNPAID'/);
-  assert.match(payroll, /unpaidLeaveDays/);
-  assert.match(payroll, /PAYROLL_SALARY_MISSING/);
-  assert.match(compensation, /PAYROLL_SETTLEMENT_REQUIRED/);
-  assert.match(compensation, /INSTRUCTOR_FEE_IMMUTABLE/);
-  assert.match(instructorRateMigration, /instructor_rate_change_requests/);
-  assert.match(compensation, /RATE_CHANGE_PENDING/);
-  assert.match(compensation, /RATE_SOD/);
-  assert.match(compensation, /hr\.instructor_rate\.\$\{status\.toLowerCase\(\)\}/);
-});
+
 
 test('salary advances are currency-safe, separation-of-duties controlled and payroll-settled only', () => {
   assert.match(recordsIntegrityMigration, /requested_by/);

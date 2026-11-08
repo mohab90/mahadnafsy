@@ -10,14 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
 
-test('the payment route prices a retake from the catalogue, adds it to the agreed price and leaves the access alone', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /const isRetake = payment\.retake === true && safeType === 'COURSE';/);
-  assert.match(route, /planRetake\(pool, \{/);
-  assert.match(route, /resolvedExpected = plan\.expected;/);
-  assert.match(route, /priceChange \|\| isRetake \|\| payment\.isInstallment/, 'the course keeps one agreed price on every row');
-  assert.match(route, /if \(isPaid && paysForItem && \(courseId \|\| bundleId\) && !isRetake\)/, 'a retake never re-grants (or narrows) the access the client holds');
-});
+
 
 test('the lib refuses what would corrupt the books', () => {
   const lib = read('api/lib/courseRetake.js');

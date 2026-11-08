@@ -26,15 +26,7 @@ test('the course\'s instalments sum only its own money', async () => {
   assert.match(seen[0], /payment_type IS NULL OR payment_type IN \('COURSE','BUNDLE','OTHER'\)/, 'older untyped rows are course money; a carnet is not');
 });
 
-test('a paid carnet neither takes the course\'s price nor opens it', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /const paysForItem = isItemPaymentType\(safeType\);/);
-  assert.match(route, /if \(priceTier && paysForItem && \(courseId \|\| bundleId\)\)/);
-  assert.match(route, /if \(resolvedExpected == null && paysForItem && \(courseId \|\| bundleId\)\)/);
-  assert.match(route, /if \(isPaid && paysForItem && \(courseId \|\| bundleId\) && !isRetake\) \{\s*let enrollAccessType = 'full';/);
-  const approval = read('api/routes/core/financepay.js');
-  assert.match(approval, /const opensItem = isItemPaymentType\(payment\.payment_type\);\s*if \(opensItem && payment\.course_id\)/);
-});
+
 
 test('the desk is asked «أكبر من المتبقي» only for the course\'s own money', () => {
   assert.match(paymentModalSource(), /const left = d\.paymentType === 'course' && chosen && _effPx > 0/);
