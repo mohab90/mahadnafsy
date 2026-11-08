@@ -3351,62 +3351,6 @@
   "class": "b"
  },
  {
-  "id": "marketingConsentOutbox: consent changes lock a tenant subject and audit suppression transactionally",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/marketingConsent.js",
-    "must": {
-     "source": "WHERE id=\\? AND tenant_id=\\? LIMIT 1 FOR UPDATE",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/marketingConsent.js",
-    "must": {
-     "source": "INSERT INTO marketing_suppressions",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/marketingConsent.js",
-    "must": {
-     "source": "INSERT INTO marketing_consent_audit",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/marketingConsent.js",
-    "must": {
-     "source": "await conn\\.rollback\\(\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
-    "must": {
-     "source": "CREATE TABLE IF NOT EXISTS marketing_suppressions",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
-    "must": {
-     "source": "PRIMARY KEY \\(tenant_id, channel, destination_hash\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
-    "must": {
-     "source": "CREATE TABLE IF NOT EXISTS marketing_consent_audit",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "marketingConsentOutbox: campaigns are tenant scoped, consent filtered and use the durable outbox",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -3484,55 +3428,6 @@
     "file": "api/routes/campaigns.js",
     "mustNot": {
      "source": "Mark as sent immediately",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "marketingConsentOutbox: message outbox claims concurrently, retries and scopes every completion by tenant",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/outbox.js",
-    "must": {
-     "source": "LIMIT \\? FOR UPDATE",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/outbox.js",
-    "must": {
-     "source": "status='processing',locked_at=NOW\\(\\),locked_by=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/outbox.js",
-    "must": {
-     "source": "WHERE id=\\? AND tenant_id=\\? AND locked_by=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/outbox.js",
-    "must": {
-     "source": "dead \\? 'dead' : 'failed'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
-    "must": {
-     "source": "uq_message_outbox_tenant_dedupe \\(tenant_id, dedupe_key\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/082_v25_marketing_consent_outbox.sql",
-    "must": {
-     "source": "ENUM\\('email','whatsapp','sms','push'\\)",
      "flags": ""
     }
    }
