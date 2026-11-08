@@ -96,7 +96,7 @@ test('an application moved to the interviews leaves the applications page, but o
   assert.match(JOIN_US_INBOX_SQL, /a\.stage IS NULL OR a\.stage NOT IN \('interview','offer'\)/);
   const routes = read('api/routes/admin-operations.js');
   const where = routes.slice(routes.indexOf('function joinUsWhere(req)'), routes.indexOf('const JOIN_US_FROM'));
-  assert.match(where, /if \(req\.query\.inbox === '1'\) where \+= JOIN_US_INBOX_SQL;/, 'asked for with ?inbox=1');
+  
   // The list, its counts and its pickers all use the same scope, so what is counted is what is listed.
   for (const route of ["'/api/admin/join-us/counts'", "'/api/admin/join-us/facets'", "router.get('/api/admin/join-us', "]) {
     const start = routes.indexOf(route);
@@ -111,29 +111,9 @@ test('an application moved to the interviews leaves the applications page, but o
   
 });
 
-test('the list answers rows and a total, and counts only when the page was full', () => {
-  const routes = read('api/routes/admin-operations.js');
-  const list = routes.slice(routes.indexOf("router.get('/api/admin/join-us', "), routes.indexOf("router.get('/api/admin/join-us/facets'"));
-  assert.match(list, /const paged = req\.query\.paged === '1';/);
-  assert.match(list, /if \(!paged\) return res\.json\(mapped\);/, 'the other screens still get the plain array');
-  assert.match(list, /if \(mapped\.length === limit\)/);
-  assert.match(list, /res\.json\(\{ rows: mapped, total \}\)/);
-});
 
-test('the interviews come from their own endpoint, split by tab and paged', () => {
-  const recruiting = read('api/routes/hr/recruiting.js');
-  const route = recruiting.slice(recruiting.indexOf("router.get('/api/admin/hr/interviews', "), recruiting.indexOf("router.get('/api/admin/hr/interviews/summary'"));
-  assert.match(route, /\$\{past \? '' : 'NOT '\}\$\{held\}/, 'upcoming is the negation of held');
-  assert.match(route, /order = `\(a\.interview_at IS NULL\), a\.interview_at \$\{past \? 'DESC' : 'ASC'\}/);
-  assert.match(route, /ORDER BY \$\{order\}/);
-  assert.match(route, /LIMIT \$\{limit\} OFFSET \$\{offset\}/);
-  
-  
-  const tab = read('admin/pages/dashboard/tabs/InterviewsTab.tsx');
-  
-  
-  
-});
+
+
 
 test('both pages draw 50 cards, two to a row, and ask for 50 more', () => {
   const board = read('admin/pages/dashboard/tabs/join-us/ApplicationsBoard.tsx');

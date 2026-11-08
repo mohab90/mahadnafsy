@@ -70,13 +70,4 @@ test('the right answer is not the longest, or the shortest, of its choices more 
   assert.ok(shortest / total <= 0.45, `shortest in ${shortest} of ${total}`);
 });
 
-test('the seeder is a dry run unless told otherwise, never makes the quiz compulsory unless told to, and keeps a stable id per course', () => {
-  const tool = fs.readFileSync(path.join(__dirname, '..', 'tools', 'seed-course-quizzes.cjs'), 'utf8');
-  assert.match(tool, /const APPLY = process\.argv\.includes\('--apply'\);/);
-  assert.match(tool, /if \(!APPLY\) continue;/);
-  assert.match(tool, /REQUIRED \? 1 : 0/);
-  assert.match(tool, /course-quiz-bank:\$\{slug\}/);
-  // it only ever writes the quiz it made: the id is its own, a hand-written quiz of the course is left alone
-  assert.match(tool, /AND id<>\?/);
-  assert.doesNotMatch(tool, /DELETE/);
-});
+

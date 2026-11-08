@@ -71,12 +71,7 @@ test('the message is written to the staff inbox, addressed to one employee', asy
   await assert.rejects(() => sendStaffMessage({ query: async () => {} }, { tenantId: 't1', staffId: '', body: 'x' }));
 });
 
-test('a rejected new-client booking is also a message to the officer who sent it', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  const reject = route.slice(route.indexOf("'/api/admin/subscriber-requests/:id/reject'"), route.indexOf('router.recordSubscriberPayment'));
-  assert.match(reject, /sendStaffMessage\(pool/);
-  assert.doesNotMatch(reject, /createNotification\(/, 'no bell notification');
-});
+
 
 test('customer service and the Dokki desk — and no one else — book and open any client', () => {
   const { canBookAnyClient, OPEN_ROLES } = require('../lib/bookingAccess');

@@ -16,10 +16,4 @@ test('recurring-expenses cron only auto-posts frequency=monthly items (CFG-03)',
   assert.match(cronWindow, /WHERE id=\? AND tenant_id=\? AND deleted_at IS NULL AND is_active=1[\s\S]{0,100}frequency='monthly'/);
 });
 
-test('recurring-expenses CRUD routes are tenant-scoped', () => {
-  assert.match(route, /router\.get\s*\(\s*'\/api\/admin\/recurring-expenses'/);
-  assert.match(route, /FROM recurring_expenses[\s\S]{0,120}WHERE tenant_id=\? AND deleted_at IS NULL/);
-  assert.match(route, /INSERT INTO recurring_expenses[\s\S]{0,100}\(id,tenant_id/);
-  assert.match(route, /UPDATE recurring_expenses[\s\S]{0,300}tenant_id=\?/);
-  assert.match(route, /SET deleted_at=NOW\(\), is_active=0[\s\S]{0,100}tenant_id=\?/);
-});
+

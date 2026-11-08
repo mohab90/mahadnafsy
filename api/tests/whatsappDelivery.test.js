@@ -45,14 +45,4 @@ test('delivery receipt updates only a matching provider message and preserves mo
   assert.match(codes.sql, /used=IF\(\?='failed', 1, used\)/, 'a bounced code is spent');
 });
 
-test('outbox and signed webhook routes persist provider acceptance and receipts', () => {
-  const root = path.join(__dirname, '..');
-  const outbox = fs.readFileSync(path.join(root, 'lib', 'outbox.js'), 'utf8');
-  const route = fs.readFileSync(path.join(root, 'routes', 'whatsapp-webhook.js'), 'utf8');
-  const migration = fs.readFileSync(path.join(root, 'migrations', '147_v25_whatsapp_delivery_receipts.sql'), 'utf8');
-  assert.match(outbox, /delivery\?\.ok === false/);
-  assert.match(outbox, /provider_message_id/);
-  assert.match(route, /x-hub-signature-256/);
-  assert.match(route, /WHATSAPP_GREEN_WEBHOOK_SECRET/);
-  assert.match(migration, /uq_outbox_provider_message/);
-});
+

@@ -92,9 +92,4 @@ test('a tampered file is unusable, never an altered identity', async () => {
   assert.notDeepEqual(second.state.creds.noiseKey, first.state.creds.noiseKey, 'a fresh link, not the tampered one');
 });
 
-test('the per-rep daily cap is 250 unless set', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'whatsappWeb.js'), 'utf8');
-  assert.match(source, /Number\(process\.env\.WA_WEB_DAILY_LIMIT \|\| 250\)/);
-  assert.match(source, /useSealedAuthState\(dir, \{ BufferJSON, initAuthCreds, proto \}, \{ root: DATA_DIR \}\)/);
-  assert.doesNotMatch(source, /useMultiFileAuthState\(/, 'not Baileys\' plaintext adapter');
-});
+

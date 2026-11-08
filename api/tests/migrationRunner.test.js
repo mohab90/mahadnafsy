@@ -12,10 +12,7 @@ const migNum = (v) => parseInt(v, 10);
 const migFiles = fs.readdirSync(path.join(__dirname, '..', 'migrations')).filter(f => /^\d+.*\.sql$/.test(f));
 const historicalCount = migFiles.filter(f => migNum(f) <= BASELINE_THROUGH).length;
 
-test('standalone migration command fails closed when the database is unavailable', () => {
-  const cli = fs.readFileSync(path.join(__dirname, '..', 'tools', 'migrate.cjs'), 'utf8');
-  assert.match(cli, /r\.failed > 0 \|\| r\.unavailable \? 1 : 0/);
-});
+
 
 // Mock pool: records the status written per migration version, and counts any
 // statement that is NOT bookkeeping (i.e. an actual migration DDL/DML statement).

@@ -123,7 +123,9 @@ for (const entry of JSON.parse(readFileSync(join(ROOT, 'tools', 'source-rules.js
       const label = check.file || check.files.join(' + ');
       try { text = check.files ? check.files.map(read).join('\n') : read(check.file); } catch { return check.absent ? [] : [`${label} is missing`]; }
       if (check.absent) return [`${label} exists again`];
-      const body = check.code ? withoutComments(text) : text;
+      let body = check.code ? withoutComments(text) : text;
+      // a window of the source, the way the test cut it: from the first `from` to the first `to` (to the end when there is none)
+      if (check.from !== undefined) body = body.slice(body.indexOf(check.from), check.to !== undefined ? body.indexOf(check.to) : undefined);
       if (check.must && !new RegExp(check.must.source, check.must.flags).test(body)) return [`${label} no longer matches /${check.must.source}/`];
       if (check.mustNot && new RegExp(check.mustNot.source, check.mustNot.flags).test(body)) return [`${label} matches /${check.mustNot.source}/, which it must not`];
       return [];

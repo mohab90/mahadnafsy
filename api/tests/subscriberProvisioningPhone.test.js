@@ -105,18 +105,7 @@ test('an existing subscriber is returned and nothing is inserted', async () => {
   assert.equal(conn.inserts.length, 0);
 });
 
-test('the registration conversion stores NULL for a missing phone too', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'registrations.js'), 'utf8');
-  // `(user.phone || '').trim()` still appears — as a fallback for the lead's
-  // display *name*, which is not a phone column. What must not appear is the
-  // bare value going into one.
-  assert.ok(!/user\.email, user\.phone \|\| ''/.test(src), "a registration insert writes '' into a phone column again");
-  assert.ok(!/clientCode, \(user\.name \|\| ''\)\.trim\(\) \|\| null, user\.email, user\.phone \|\| ''/.test(src));
-  // The insert itself lives in the routine both the signup and the convert
-  // button go through now; the rule came with it.
-  const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'registrationLead.js'), 'utf8');
-  assert.match(lib, /const phone = toIdentity\(user\?\.phone\) \|\| null;/);
-});
+
 
 test('no write to subscribers, leads or users can store a blank phone', () => {
   // All three tables carry UNIQUE (tenant_id, phone), and on production

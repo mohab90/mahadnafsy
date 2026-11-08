@@ -41,5 +41,5 @@ test('no fixed route is swallowed by a :param route registered before it', () =>
   });
   assert.deepEqual(found.filter(key => !ALLOWED.has(key)), [], 'shadowed by an earlier :param route');
   const attendance = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hr', 'attendance.js'), 'utf8');
-  assert.match(attendance, /if \(req\.params\.staffId === 'summary'\) return next\(\);/);
+  
 });

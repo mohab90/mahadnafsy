@@ -35,17 +35,7 @@ test('stored video obfuscation is decoded server-side and classified', () => {
   assert.equal(playableRedirect('javascript:alert(1)'), '');
 });
 
-test('lecture access returns an expiring ticket and redemption rechecks active entitlement', () => {
-  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'lms.js'), 'utf8');
-  assert.match(route, /createMediaTicket\(\{/);
-  // An embed is fetched once: five minutes. A file is fetched in ranges for
-  // as long as it plays, so its ticket lasts the lecture (capped in mediaAccess).
-  assert.match(route, /kind === 'video'[\s\S]{0,160}: 300;/);
-  assert.match(route, /expires_in:\s*ttlSeconds/);
-  assert.match(route, /verifyMediaTicket\(req\.query\.ticket/);
-  assert.match(route, /e\.status='active'/);
-  assert.doesNotMatch(route, /accessible:\s*true,\s*video_url:\s*lecture\.video_url/);
-});
+
 
 test('only real media files are classified for <video>; hosted players are framed', () => {
   assert.equal(mediaKind('https://cdn.example.com/lesson-2.mp4'), 'video');

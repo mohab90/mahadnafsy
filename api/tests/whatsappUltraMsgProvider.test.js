@@ -20,11 +20,7 @@ const path = require('node:path');
 
 const SOURCE = fs.readFileSync(path.join(__dirname, '..', 'lib', 'whatsapp.js'), 'utf8');
 
-test('UltraMsg is one of the providers a send can go through', () => {
-  assert.ok(SOURCE.includes('_sendUltraMsg'), 'no UltraMsg sender');
-  assert.ok(SOURCE.includes('api.ultramsg.com'), 'the sender must call the provider');
-  assert.match(SOURCE, /messages\/chat/, 'UltraMsg sends text through messages/chat');
-});
+
 
 test('it is chosen when its credentials are the ones present', () => {
   const resolver = SOURCE.slice(SOURCE.indexOf('function resolveProvider'), SOURCE.indexOf('\n}', SOURCE.indexOf('function resolveProvider')));

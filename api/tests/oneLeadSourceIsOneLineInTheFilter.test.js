@@ -56,13 +56,4 @@ test('picking one line filters on all its spellings, on the server and in the br
   
 });
 
-test('managers can make the spellings one source for good, and adding a second spelling is refused', () => {
-  const write = read('api/routes/admin/leads/write.js');
-  const route = write.slice(write.indexOf("'/api/admin/leads/merge-sources'"));
-  assert.match(route, /\['admin', 'manager'\]\.includes/);
-  assert.match(route, /UPDATE leads SET source=\? WHERE tenant_id=\? AND source IN \(\?\)/);
-  assert.match(route, /lead\.sources_merged/);
-  const modal = read('admin/pages/dashboard/tabs/CrmSettingsModal.tsx');
-  
-  
-});
+

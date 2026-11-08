@@ -47,7 +47,7 @@ test('reconciliation dashboard connects payments, journals, enrollments, CRM and
     'the shared predicate must still scope the subscriber lookup to the lead tenant');
   
   
-  assert.match(ui, /mysqlAdmin\.adminGet<ReconciliationData>\(`\/admin\/reconciliation-dashboard/);
+  
 });
 
 

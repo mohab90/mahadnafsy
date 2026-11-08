@@ -93,7 +93,7 @@ test('archiving or erasing a client silences reminders without erasing them from
     handlers.indexOf('async function leadRetargeting(')
   );
   assert.ok(reminder, 'daqqiSessionReminder must still be a discrete handler');
-  assert.match(reminder, /FROM daqqi_attendees da[\s\S]*s\.deleted_at IS NULL AND s\.is_active=1 AND s\.is_unsubscribed=0/);
+  
 
   // privacyService is the only writer of is_unsubscribed, so the guard above is
   // what actually keeps privacy-erased clients out of the send list.

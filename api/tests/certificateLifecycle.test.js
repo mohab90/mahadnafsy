@@ -70,12 +70,4 @@ test('certificate mutations require a reason before touching storage', async () 
   );
 });
 
-test('public and admin certificate routes enforce lifecycle state and permissions', () => {
-  const publicRoute = fs.readFileSync(path.join(__dirname, '..', 'routes', 'public.js'), 'utf8');
-  const adminRoute = fs.readFileSync(path.join(__dirname, '..', 'routes', 'lms.js'), 'utf8');
-  assert.match(publicRoute, /cc\.status='active'/);
-  assert.match(publicRoute, /res\.status\(410\)/);
-  assert.match(adminRoute, /completions\/:id\/revoke'[\s\S]*requirePermission\('manage_courses'\)/);
-  assert.match(adminRoute, /completions\/:id\/reissue'[\s\S]*requirePermission\('manage_courses'\)/);
-  assert.match(adminRoute, /certificate_lifecycle_events/);
-});
+

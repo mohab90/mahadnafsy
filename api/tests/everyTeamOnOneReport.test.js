@@ -44,8 +44,4 @@ test('«الكل»: a line per team, then every employee ranked by money', { ski
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'the employees, most money first');
 });
 
-test('it is the first choice beside the teams', () => {
-  const tab = fs.readFileSync(path.join(ROOT, 'admin/pages/dashboard/tabs/ManagementReportsTab.tsx'), 'utf8');
-  assert.match(tab, /useState<TeamKey \| 'all'>\('all'\)/);
-  assert.match(tab, /\? <AllTeamsReport teams=\{report\.teams\} \/>/);
-});
+

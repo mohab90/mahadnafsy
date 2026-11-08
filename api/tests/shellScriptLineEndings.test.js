@@ -63,20 +63,9 @@ test('the shebang is the very first byte, with nothing before it', () => {
   }
 });
 
-test('.gitattributes pins shell scripts to LF explicitly', () => {
-  const attrs = fs.readFileSync(path.join(ROOT, '.gitattributes'), 'utf8');
-  assert.match(attrs, /^\*\.sh\s+text eol=lf$/m);
-});
 
-test('the api subtree carries its own rule, because the release archives it alone', () => {
-  // tools/prepare-release.mjs builds the API bundle with `git archive
-  // <commit>:api`. Git resolves .gitattributes relative to the tree being
-  // archived, so the root file is invisible to a subtree archive and
-  // core.autocrlf converts on the way out. That is exactly how watchdog.sh
-  // reached production with CRLF while the working tree had LF.
-  const attrs = fs.readFileSync(path.join(ROOT, 'api', '.gitattributes'), 'utf8');
-  assert.match(attrs, /^\*\.sh\s+text eol=lf$/m);
-});
+
+
 
 test('the bundle the release actually ships has LF, not just the working tree', () => {
   // The check that matters. The working tree was already LF when watchdog.sh

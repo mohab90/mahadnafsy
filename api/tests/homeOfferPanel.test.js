@@ -11,15 +11,7 @@ const path = require('path');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 
-test('the page the menu opens is the one with the course and the timer', () => {
-  const hub = read('admin/pages/dashboard/DashboardContentHubRoutes.tsx');
-  const route = hub.slice(hub.indexOf("contentHubSubTab === 'home_offer') && ("), hub.indexOf("contentHubSubTab === 'about_page'"));
-  assert.match(route, /<DashboardHomeOfferPanel fields=\{homeOfferFields\} notify=\{notify\} \/>/);
-  const panel = read('admin/pages/dashboard/DashboardHomeOfferPanel.tsx');
-  
-  
-  
-});
+
 
 test('the selected course is the panel\'s own state, not the dashboard\'s', () => {
   for (const file of ['admin/pages/Dashboard.tsx', 'admin/pages/dashboard/hooks/useContentEditorDrafts.ts', 'admin/pages/dashboard/DashboardDirectContentRoutes.tsx']) {

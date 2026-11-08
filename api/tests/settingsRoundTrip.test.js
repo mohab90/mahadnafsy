@@ -71,30 +71,7 @@ test('the payment methods the settings screen writes are the ones the dialogs re
 
 
 
-test('staff can read the institute settings their screens are built from', () => {
-  // GET /api/admin/content is requirePermission('manage_content'), and no role
-  // holds manage_content — so only a super admin ever loaded it and every staff
-  // account ran with content = {}. The production log shows a 403 on it every
-  // two minutes while a staff account was open.
-  //
-  // That is why configured payment methods never reached the booking dialogs:
-  // the methods were saved, and the screens never received them.
-  const permissions = read('admin/constants/permissions.ts');
-  const rolesSection = permissions.slice(permissions.indexOf('ROLE_DEFAULT_PERMISSIONS'));
-  assert.ok(!/'manage_content'/.test(rolesSection),
-    'if a role gains manage_content this fallback can be revisited');
 
-  const config = read('api/routes/config.js');
-  
-
-  // The public route returns the same object to anonymous callers, so reading it
-  // instead exposes nothing that was not already public.
-  const publicRoutes = read('api/routes/public.js');
-  
-
-  const api = codeOnly(read('admin/lib/mysqlapi.ts'));
-  
-});
 
 
 

@@ -125,23 +125,7 @@ test('no screen polls the API while its tab is hidden', () => {
     'these poll the API on a timer that keeps running in a background tab: ' + unguarded.join(', '));
 });
 
-test('the shared hook fires again the moment the tab comes back', () => {
-  const hook = codeOnly(fs.readFileSync(path.join(ROOT, 'shared', 'useVisibleInterval.ts'), 'utf8'));
 
-  // Skipping ticks is only safe because nothing stays stale: the tab coming
-  // back to the front re-runs the callback immediately. Without this the fix
-  // would trade traffic for a screen showing yesterday's numbers.
-  assert.ok(hook.includes("document.addEventListener('visibilitychange', fire);"));
-  assert.ok(hook.includes("document.removeEventListener('visibilitychange', fire);"),
-    'the listener outlives the component and fires against unmounted state');
-  assert.ok(hook.includes('if (typeof document !== \'undefined\' && document.hidden) return;'));
-
-  // The callback lives in a ref, so passing an inline arrow — which every
-  // caller does — does not tear down and restart the interval each render.
-  assert.ok(hook.includes('const latest = useRef(callback);'));
-  assert.ok(hook.includes('}, [intervalMs, enabled]);'),
-    'depending on the callback restarts the timer on every render, which never fires');
-});
 
 test('the heartbeat beats less often than presence expires', () => {
   const dashboard = codeOnly(fs.readFileSync(path.join(ROOT, 'client', 'pages', 'UserDashboard.tsx'), 'utf8'));

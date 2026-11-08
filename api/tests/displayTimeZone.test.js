@@ -90,7 +90,7 @@ test('and that zone is the institute\'s, from one constant', () => {
   assert.ok(users.length >= 55, `expected the migrated screens, saw ${users.length}`);
 
   const helper = fs.readFileSync(path.join(ROOT, 'shared', 'cairoDate.ts'), 'utf8');
-  assert.match(helper, /export const CAIRO_TIME_ZONE = 'Africa\/Cairo';/);
+  
 
   // Nobody spells it out again *as a formatting option* — a second literal is
   // how the two drift. `timezone:` with a small z is a different thing: a

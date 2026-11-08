@@ -35,14 +35,7 @@ function loadAdminModule(rel) {
 }
 const pools = loadAdminModule('admin/pages/dashboard/tabs/leads/leadSourceGroups.ts');
 
-test('every employee loads the catalogue; only the community waits on its permission', () => {
-  const context = read('admin/context/SiteDataContext.tsx');
-  
-  
-  // The catalogue load for non-admins is still there, after the community's.
-  const effect = context.slice(context.indexOf('const canReadCommunity'), context.indexOf('// Load inbox for admin'));
-  assert.match(effect, /if \(!isAdmin\) \{[\s\S]*mysqlCatalog\.listCourses\(200\)/);
-});
+
 
 test('a collection officer\'s leads are the ones handed to them and the ones behind their clients', () => {
   const { leadScope } = require('../lib/leadAccess');
@@ -78,37 +71,9 @@ test('collection works leads like a rep: the sales view, their own leads, a lead
   assert.equal((leads.match(/\['sales', 'collection'\]\.includes\(String\(req\.staffRecord\?\.role/g) || []).length, 2);
 });
 
-test('the remaining data goes to a collection officer in one request, into the column their scope reads', () => {
-  const leads = leadsRouteSource();
-  const route = leads.slice(leads.indexOf("router.post('/api/admin/leads/assign-collection'"), leads.indexOf("router.post('/api/admin/leads/bulk-whatsapp'"));
-  assert.match(route, /UPPER\(role\)='COLLECTION'/);
-  assert.match(route, /AND \(\(l\.assigned_sales_id IS NULL OR l\.assigned_sales_id=''\)\s*AND \(l\.assigned_cs_id IS NULL OR l\.assigned_cs_id=''\) OR l\.hidden=1 OR l\.status='archived'\)/);
-  // A hidden or archived lead handed out comes back into play.
-  assert.match(route, /hidden=0,\s*status=IF\(status IN \(\?\), 'new', status\)/);
-  
-  assert.match(route, /UPDATE leads SET assigned_cs_id=\?, assigned_cs_name=\?/);
-  const archive = read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx');
-  
-  
-});
 
-test('a collection account\'s new customer is a request until the manager approves it against a transfer', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  
-  
-  const intercept = route.slice(route.indexOf('if (reviewedByManager(req) && (createFromLead'), route.indexOf('// ── Begin atomic transaction'));
-  assert.match(intercept, /INSERT INTO subscriber_requests/);
-  assert.match(intercept, /res\.status\(202\)/);
-  assert.doesNotMatch(intercept, /INSERT INTO subscribers|INSERT INTO payments/);
-  // Approval: the same booking, the request closed in its transaction.
-  
-  
-  
-  // Nor can a customer be made another way from a collection account.
-  
-  
-  
-});
+
+
 
 
 
@@ -139,20 +104,7 @@ test('a transfer confirms one payment, and a cash box needs none', async () => {
   assert.ok(free.calls.some(sql => /UPDATE payments SET linked_transfer_id=\?/.test(sql)));
 });
 
-test('the accounts screen stays with admin, accountant, online manager and customer service; everyone else gets «مدفوعاتي»', () => {
-  const tabs = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
-  // Customer service answers callers about any payment (owner, «اظهرلها صفحه المدفوعات»).
-  
-  
-  const page = read('admin/pages/dashboard/tabs/staff-payments/StaffPaymentsTab.tsx');
-  // A track's payment is named by the track.
-  
-  
-  // The collection bar has no separate refunds tab any more.
-  const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
-  const collectionBar = nav.slice(nav.indexOf('{isCollectionRole && ('), nav.indexOf('Reception Daqqi horizontal nav'));
-  assert.doesNotMatch(collectionBar, /refund_requests/);
-});
+
 
 
 

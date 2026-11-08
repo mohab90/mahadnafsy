@@ -44,17 +44,4 @@ test('toEgp: invalid/empty amount coerces to 0 (never NaN)', async () => {
 });
 
 
-test('a journal entry cannot be posted with a date that is not a date', () => {
-  // The shape check accepted '0000-00-00' — four digits, two, two — so the
-  // entry went into the ledger and then fell outside every dated report: in
-  // the books, in no period. Two entries on production carry one.
-  assert.ok(financeSrc.includes('const isRealDate ='),
-    'the ledger needs a real-date check, not a shape check');
-  assert.ok(financeSrc.includes("!String(v).startsWith('0000-00-00')"),
-    'a zero date must be refused');
-  assert.ok(financeSrc.includes('!isRealDate(date)'),
-    'the entry date must go through it');
-  // The manual-entry route wrote whatever string it was given.
-  assert.ok(erpRoute.includes("error: 'تاريخ القيد غير صحيح'"),
-    'a manual entry with an unreadable date must be refused');
-});
+

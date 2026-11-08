@@ -52,16 +52,4 @@ test('the sheet a row came from is read off its note', () => {
   assert.equal(sheetOf(null), '');
 });
 
-test('the merge is the managers\', audited, remembered, and applied to what is entered later', () => {
-  const routes = read('api/routes/core/financepay.js');
-  
-  const merge = routes.slice(routes.indexOf("'/api/admin/incoming-transfers/merge-accounts'"));
-  assert.match(merge, /managesTransfers\(req\)/);
-  assert.match(merge, /incoming_transfer\.accounts_merged/);
-  assert.match(merge, /setTenantSetting\('transfer_account_aliases'/);
-  
-  
-  const lib = read('api/lib/transferAccounts.js');
-  
-  
-});
+

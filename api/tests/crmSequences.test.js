@@ -41,21 +41,4 @@ test('reply exit is tenant-scoped and only closes sequences configured to exit',
   assert.deepEqual(call.params, ['reply_received', 'tenant-a', 'lead-a']);
 });
 
-test('CRM sequence route preserves history, freezes versions and enforces scope', () => {
-  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'crm-sequences.js'), 'utf8');
-  const migration = fs.readFileSync(path.join(__dirname, '..', 'migrations', '161_v25_crm_sequence_lifecycle.sql'), 'utf8');
-  const worker = fs.readFileSync(path.join(__dirname, '..', 'lib', 'dripCampaigns.js'), 'utf8');
-  const outbox = fs.readFileSync(path.join(__dirname, '..', 'lib', 'outbox.js'), 'utf8');
-  assert.match(route, /requirePermission\('view_leads'\)/);
-  assert.match(route, /requirePermission\('manage_leads'\)/);
-  assert.match(route, /leadScope\(req, 'l'\)/);
-  assert.match(route, /steps_snapshot/);
-  assert.match(route, /version=version\+\?/);
-  assert.match(route, /archived_at=NOW\(\)/);
-  assert.doesNotMatch(route, /DELETE FROM drip_sequences/);
-  assert.match(route, /pause', 'resume', 'unenroll/);
-  assert.match(worker, /crm_sequence_step_executions/);
-  assert.match(worker, /refType: 'crm_sequence_step'/);
-  assert.match(outbox, /row\.ref_type === 'crm_sequence_step'/);
-  assert.match(migration, /UNIQUE KEY uq_crm_sequence_step/);
-});
+

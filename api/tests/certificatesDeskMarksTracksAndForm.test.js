@@ -30,16 +30,7 @@ test('the migration adds the print marks, the soft delete and the track hours', 
   
 });
 
-test('a wrong certificate is deleted softly — revoked first — and the client\'s lists leave it out', () => {
-  const lms = read('api/routes/lms.js');
-  const route = lms.slice(lms.indexOf("router.delete('/api/admin/completions/:id'"));
-  assert.match(route, /requirePermission\('manage_courses'\)/);
-  assert.match(route, /row\.status === 'active'\) return res\.status\(409\)/, 'a valid certificate is revoked before it can be deleted');
-  assert.match(route, /UPDATE course_completions SET deleted_at=NOW\(\), deleted_by=\? WHERE id=\? AND tenant_id=\?/);
-  // the profile and the lists read their completions from one place (lib/clientView.js)
-  
-  
-});
+
 
 
 

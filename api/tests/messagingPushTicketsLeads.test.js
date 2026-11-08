@@ -195,15 +195,7 @@ test('customer service sees the tickets no queue held, and its own once escalate
   assert.equal(support.ticketScope({ staffRecord: { role: 'manager' } }).sql, '1=1');
 });
 
-test('a late ticket the sweep escalates keeps its department; «رفع للإدارة» hands it over', () => {
-  const routes = read('api/routes/support.js');
-  const sweep = routes.slice(routes.indexOf('async function slaSweep'), routes.indexOf('async function autoResolveSweep'));
-  assert.match(sweep, /UPDATE support_tickets SET priority='high', escalated_at=NOW\(\), updated_at=NOW\(\)/);
-  assert.doesNotMatch(sweep, /department='management'/);
-  const manual = routes.slice(routes.indexOf("router.post('/api/admin/tickets/:id/escalate'"));
-  assert.match(manual, /SET department='management', priority=\?, escalation_kind=\?/);
-  assert.match(manual, /KINDS\.critical|ESCALATION_KINDS\[kind\]\.priority/);
-});
+
 
 test('a ticket the team answered and the client left for a week is resolved, on its timeline', async () => {
   db.reset([

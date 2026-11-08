@@ -100,12 +100,6 @@ test('stored methods are labelled everywhere they are shown, in both vocabularie
   assert.deepEqual(sanitizePaymentMethods('cash'), []);
 });
 
-test('the gateway default uses the key the settings screen actually writes', () => {
-  const settings = codeOnly(read('api/lib/saasSettings.js'));
-  const declared = settings.slice(settings.indexOf('DEFAULT_PAYMENT_GATEWAY'), settings.indexOf('DEFAULT_LEAD_SOURCE_CONNECTORS'));
-  assert.match(declared, /supported_methods:/);
-  assert.ok(!/\bmethods: \[/.test(declared),
-    'the default still seeds manual.methods, which the settings screen never updates');
-});
+
 
 

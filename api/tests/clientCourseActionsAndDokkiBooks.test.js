@@ -148,43 +148,9 @@ test('the history names who did it for the desk, and keeps it from the client', 
 
 
 
-test('a refund names a course, and the payment behind it is optional', () => {
-  const route = read('api/routes/admin-utils.js');
-  // The handler is a named function (the customer-service «تحويل لاسترداد» calls it too).
-  const byAdmin = route.slice(route.indexOf('async function createRefundByAdmin'), route.indexOf('router.createRefundByAdmin = createRefundByAdmin;'));
-  assert.match(byAdmin, /if \(!payment_id && !course_item\)/);
-  assert.match(byAdmin, /if \(payment_id\) \{/, 'the payment checks run only when there is one');
-  assert.match(byAdmin, /paidForItem > 0 && requestedAmount - paidForItem > 0\.01/, 'held to what was paid for the course');
-  assert.match(byAdmin, /subInTenant\.branch_id/, 'filed under the client\'s branch, which the refunds screen is scoped by');
-  assert.match(byAdmin, /action: 'refund_requested'/);
-  assert.match(byAdmin, /!refund_method \|\| refund_method === 'same_as_payment'/, 'with no payment, a named box');
 
-  const finance = financeRouteSource();
-  
-  
-  
 
-  const refunds = read('api/lib/refunds.js');
-  const unlinked = refunds.slice(refunds.indexOf('async function applyUnlinkedRefund'), refunds.indexOf('async function applyRefundReversal'));
-  assert.match(unlinked, /assertWritable/, 'a closed period stays closed');
-  assert.match(unlinked, /insertRefundRow\(conn/);
-  assert.match(unlinked, /method,/, 'out of the box named on the request');
-  assert.match(unlinked, /subscriber\.branch_id/);
 
-  const migration = read('api/migrations/228_v26_refund_course_item.sql');
-  
-  
-});
-
-test('a branch\'s money is its own clients\' money, box by box', () => {
-  const finance = financeRouteSource();
-  const boxes = finance.slice(finance.indexOf("'/api/admin/finance/boxes'"), finance.indexOf("'/api/admin/finance/refunds', requireAuth"));
-  assert.match(boxes, /requirePermission\('view_financial'\)/);
-  assert.match(boxes, /p\.deleted_at IS NULL/);
-  assert.match(boxes, /p\.branch_id = \? AND \(s\.id IS NULL OR s\.branch_id = p\.branch_id\)/);
-  
-  
-});
 
 test('«حسابات الدقي»: its boxes first, its own payments, no riyal, no company screens', () => {
   const tab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');

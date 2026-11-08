@@ -122,26 +122,6 @@ test('only the codes are tagged otp — nothing else rides the exemption', () =>
     + 'only the sign-in code, the password-reset code and the email-verification code may carry it');
 });
 
-test('the welcome message the desk switched off is actually gated now', () => {
-  const auth = authRouteSource();
-  // It was fired on every signup with no check of any kind, which is why turning
-  // "رسائل الترحيب" off in the admin panel changed nothing.
-  // Both sign-up addresses share one handler now, and it welcomes through the
-  // lifecycle journey, whose lead_created messages go out as 'welcome'.
-  
-  
-  const lifecycle = fs.readFileSync(path.join(root, 'lib/lifecycle.js'), 'utf8');
-  assert.match(lifecycle, /lead_created: 'welcome'/);
-});
 
-test('the WhatsApp key is entered where the codes are sent from', () => {
-  // «OTP والقنوات» offered a WhatsApp token that nothing read, and a test that
-  // always went to Green-API: on 29 September the Wapilot token went in there,
-  // the test refused it, and the real channel stayed broken. The page now
-  // sends the admin to «قنوات المراسلة», where the Wapilot key is checked.
-  const page = fs.readFileSync(path.join(root, '..', 'admin/pages/dashboard/tabs/OtpSettingsTab.tsx'), 'utf8');
-  assert.ok(!page.includes('whatsapp.api_token'), 'no WhatsApp token field on the OTP page');
-  assert.ok(!page.includes("channel: 'whatsapp'"), 'no WhatsApp test that goes to Green-API');
-  assert.ok(page.includes('to="/dashboard/messaging_hub"'), 'a way to the real channel');
-  
-});
+
+

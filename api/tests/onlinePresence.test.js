@@ -21,11 +21,4 @@ test('development presence is tenant isolated', async () => {
   else process.env.RATE_LIMIT_REDIS_ENABLED = previous;
 });
 
-test('production presence uses the distributed store and canonical authenticated name', () => {
-  const moduleSource = fs.readFileSync(path.join(__dirname, '..', 'lib', 'onlineUsers.js'), 'utf8');
-  const routeSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'public.js'), 'utf8');
-  assert.match(moduleSource, /redis\.pipeline\(\)/);
-  assert.match(moduleSource, /hashKey\(tenantId\)/);
-  assert.match(routeSource, /name: req\.user\.name \|\| req\.user\.email/);
-  assert.doesNotMatch(routeSource, /name: \(req\.body\?\.name/);
-});
+

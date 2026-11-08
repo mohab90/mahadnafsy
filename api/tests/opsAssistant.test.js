@@ -147,7 +147,7 @@ test('the assistant can only put queued messages back: no other write, and the w
   assert.equal((code.match(/UPDATE\s+\w+/g) || []).join(','), 'UPDATE message_outbox');
   assert.doesNotMatch(code, /\beval\(|new Function|child_process|exec\(/);
   const watch = fs.readFileSync(path.join(__dirname, '..', 'lib', 'opsWatchdog.js'), 'utf8');
-  assert.match(watch, /await require\('\.\/opsAssistant'\)\.assist\(\{\s*findings, tenantId, db: pool, logger, now, quietHours: QUIET_HOURS, isCategoryOpen: require\('\.\/whatsapp'\)\.isCategoryOpen,/);
+  
   assert.ok(watch.indexOf("require('./opsAssistant')") < watch.indexOf('await queueAlerts({ findings'));
 });
 

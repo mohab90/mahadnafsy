@@ -62,8 +62,4 @@ test('restoring the client converts the lead again', async () => {
   assert.equal(lead.status, 'converted');
 });
 
-test('archive and restore both move the lead, inside their own transaction', () => {
-  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'core', 'catalog.js'), 'utf8');
-  assert.match(route, /deleted_at=NOW\(\), updated_at=NOW\(\) WHERE id=\? AND tenant_id=\?',\s+\[req\.params\.id, req\.tenantId\]\s+\);\s+await reopenLeadOfArchivedClient\(\{[^}]*db: conn \}\);/);
-  assert.match(route, /deleted_at=NULL, updated_at=NOW\(\) WHERE id=\? AND tenant_id=\?',\s+\[req\.params\.id, req\.tenantId\]\s+\);\s+await reconvertLeadOfRestoredClient\(\{[^}]*db: conn \}\);/);
-});
+

@@ -62,5 +62,5 @@ test('tenant feature scope ignores an unvalidated raw tenant header', () => {
 test('auth middleware contains no direct unscoped staff lookup', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'middleware', 'auth.js'), 'utf8');
   assert.equal(/FROM\s+staff/i.test(source), false);
-  assert.match(source, /findActiveStaff\(req, email/);
+  
 });

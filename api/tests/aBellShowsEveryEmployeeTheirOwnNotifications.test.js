@@ -10,13 +10,7 @@ const path = require('node:path');
 
 const read = file => fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
 
-test('every role bar carries the real notifications bell, with the follow-up drawer beside it', () => {
-  const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
-  const roleNav = nav.slice(nav.indexOf('function CompactRoleNav'), nav.indexOf('export function DashboardNavigation'));
-  assert.match(roleNav, /<RoleBell \/>/, 'the role bars drew a Bell that opened the sales drawer instead');
-  assert.match(roleNav, /setSalesNotifOpen\(true\)[\s\S]*AlarmClock/);
-  
-});
+
 
 test('the list is grouped by day, sets the escalations and follow-ups apart, reads in full and opens the page', () => {
   const bell = read('admin/pages/dashboard/NotificationsBell.tsx');

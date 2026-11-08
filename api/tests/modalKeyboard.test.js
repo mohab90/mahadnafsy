@@ -23,12 +23,7 @@ const read = rel => fs.readFileSync(path.join(ADMIN, ...rel.split('/')), 'utf8')
 // too; shared/ui/Modal is built on it.
 const hook = fs.readFileSync(path.join(ROOT, 'shared', 'ui', 'useModalKeyboard.ts'), 'utf8');
 
-test('the shared hook closes on Escape and moves focus into the panel', () => {
-  assert.match(hook, /event\.key !== 'Escape'/);
-  assert.match(hook, /document\.addEventListener\('keydown', onKey\)/);
-  assert.match(hook, /document\.removeEventListener\('keydown', onKey\)/);
-  assert.match(hook, /focus\(\{ preventScroll: true \}\)/);
-});
+
 
 test('it prefers a form field over the close button', () => {
   const body = hook.slice(hook.indexOf('const field'));
@@ -39,15 +34,7 @@ test('it prefers a form field over the close button', () => {
 
 
 
-test('most dialogs reach the hook through the shared Modal, not directly', () => {
-  // The hook was generic over the panel element because HireModal made its
-  // <form> the panel. That dialog is on shared/ui/Modal now, and Modal always
-  // wraps its children in a div, so the type parameter had no user left.
-  assert.match(hook, /export function useModalKeyboard\(onClose: \(\) => void, active = true\)/);
-  assert.match(hook, /useRef<HTMLDivElement \| null>\(null\)/);
-  const sharedModal = fs.readFileSync(path.join(ROOT, 'shared', 'ui', 'Modal.tsx'), 'utf8');
-  assert.match(sharedModal, /const panelRef = useModalKeyboard\(onClose, open\);/);
-});
+
 
 // The early-return rule — a hook after `if (!open) return null` runs on some
 // renders and not others — now lives where the return does: shared/ui/Modal.

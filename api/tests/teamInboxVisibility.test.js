@@ -138,7 +138,7 @@ test('the inbox routes and the screen follow the setting, and only the people wh
   
   const put = route.slice(route.indexOf("router.put('/api/admin/team-inbox/settings'"));
   assert.match(put.slice(0, 400), /if \(!seesAll\(req\)\) throw refuse\(403, 'إعدادات الصندوق للإدارة بس', 'MANAGERS_ONLY'\);/);
-  assert.match(put, /distributeWaiting\(pool, req\.tenantId\)/);
+  
 
   const screen = read('admin/pages/dashboard/tabs/whatsapp/TeamInboxTab.tsx');
   

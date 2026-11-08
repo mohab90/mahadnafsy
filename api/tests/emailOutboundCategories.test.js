@@ -64,8 +64,4 @@ test('the gate runs before the transport is built', () => {
   assert.ok(gate < transport, 'the check must come before the connection');
 });
 
-test('the variable is read per call, not captured at import', () => {
-  // Captured at import, turning it off would need a deploy rather than a
-  // restart — which is the wrong lever in the middle of an incident.
-  assert.match(source, /const raw = process\.env\.EMAIL_OUTBOUND_CATEGORIES;/);
-});
+

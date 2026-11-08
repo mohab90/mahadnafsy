@@ -29440,5 +29440,5087 @@
     }
    }
   ]
+ },
+ {
+  "id": "aBellShowsEveryEmployeeTheirOwnNotifications: every role bar carries the real notifications bell, with the follow-up drawer beside it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "function CompactRoleNav",
+    "to": "export function DashboardNavigation",
+    "must": {
+     "source": "<RoleBell \\/>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "function CompactRoleNav",
+    "to": "export function DashboardNavigation",
+    "must": {
+     "source": "setSalesNotifOpen\\(true\\)[\\s\\S]*AlarmClock",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "accountingTenantScope: reconciliation dashboard connects payments, journals, enrollments, CRM and orders per tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/financial/ReconciliationPanel.tsx",
+    "must": {
+     "source": "mysqlAdmin\\.adminGet<ReconciliationData>\\(`\\/admin\\/reconciliation-dashboard",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aChatIsOpenOnlyWhileTheClientIsThere: staff can write in the chat only when it is open, and the drawer offers call and WhatsApp instead",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "router.post('/api/admin/tickets/:id/reply'",
+    "must": {
+     "source": "CLIENT_NOT_IN_CHAT",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CustomerInboxTab.tsx",
+    "must": {
+     "source": "chatOpen \\? \\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CustomerInboxTab.tsx",
+    "must": {
+     "source": "الشات مقفول",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aClientMessageRingsAndTheChatKnowsTheClientIsThere: the client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "router.get('/api/me/tickets/:id'",
+    "to": "router.post('/api/me/tickets/:id/reply'",
+    "must": {
+     "source": "req\\.query\\.live === '1'[\\s\\S]{0,120}markConversationOpen",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "adminAuthority: the permission grid is gated on that flag, not on a role string",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "sentAccessFields && !req\\.isSuperAdmin",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/employees.js",
+    "must": {
+     "source": "PERMISSIONS_REQUIRE_SUPERADMIN",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "adminAuthority: the personal tabs are open to every staff member, and only those",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardTabContainer.tsx",
+    "must": {
+     "source": "const allowed = canOpenTab\\(activeTab\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/access.ts",
+    "must": {
+     "source": "if \\(required === null\\) return true;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/access.ts",
+    "must": {
+     "source": "return required !== undefined && can\\(viewer, required\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "adminAuthority: the Dokki team screen gets its figures from the server, not from the rounds",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-performance'",
+    "to": "router.get('/api/admin/daqqi-rounds'",
+    "must": {
+     "source": "COUNT\\(DISTINCT r\\.id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-performance'",
+    "to": "router.get('/api/admin/daqqi-rounds'",
+    "must": {
+     "source": "canSeeDetail",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-performance'",
+    "to": "router.get('/api/admin/daqqi-rounds'",
+    "must": {
+     "source": "String\\(row\\.status \\|\\| ''\\)\\.toLowerCase\\(\\) === status",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-performance'",
+    "to": "router.get('/api/admin/daqqi-rounds'",
+    "must": {
+     "source": "WHEN r\\.status='ACTIVE'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiTeamTab.tsx",
+    "must": {
+     "source": "getDaqqiPerformance\\(physicalBranch\\.key\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiTeamTab.tsx",
+    "must": {
+     "source": "const detailAvailable = perf \\? perf\\.canSeeDetail : daqqiRounds\\.length > 0;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiTeamTab.tsx",
+    "must": {
+     "source": "perf \\? perf\\.rounds\\.active : activeRounds\\.length",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiTeamTab.tsx",
+    "must": {
+     "source": "perf \\? perf\\.students : totalAttendees",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-performance'",
+    "to": "router.get('/api/admin/daqqi-rounds'",
+    "mustNot": {
+     "source": "a\\.name|a\\.phone|SELECT \\*",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-performance'",
+    "to": "router.get('/api/admin/daqqi-rounds'",
+    "mustNot": {
+     "source": "UPPER\\(r\\.status\\)|WHEN r\\.status='active'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiTeamTab.tsx",
+    "mustNot": {
+     "source": "\\{rounds\\.length\\}<\\/div><div className=\"text-gray-400\">روندات",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "adminAuthority: each team screen has a figures-only source, and خدمة العملاء has a screen at all",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/cx-performance'",
+    "to": "router.get('/api/admin/cs/inbox'",
+    "must": {
+     "source": "csat_score",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/cx-performance'",
+    "to": "router.get('/api/admin/cs/inbox'",
+    "must": {
+     "source": "TIMESTAMPDIFF\\(MINUTE, t\\.created_at, t\\.first_response_at\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/dashboardShared.tsx",
+    "must": {
+     "source": "cx_team:\\s*\\['manage_inbox', 'view_perf_cx'\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/GeneralDashboardTabs.tsx",
+    "must": {
+     "source": "key: 'cx_team', Component: CxTeamWithReport",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/GeneralDashboardTabs.tsx",
+    "must": {
+     "source": "function CxTeamWithReport[\\s\\S]{0,300}<CxTeamTab notify=\\{notify\\} \\/>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/cx-performance'",
+    "to": "router.get('/api/admin/cs/inbox'",
+    "mustNot": {
+     "source": "t\\.subject|t\\.body|subscriber_name|subscriber_email",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aFailedLoadIsNotSavedOverTheRealSettings: a ticket contact whose follow-up step fails says which step did not happen",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "from": "const save = async",
+    "to": "const base = ",
+    "must": {
+     "source": "اتسجل التواصل، لكن «\\$\\{NEXT_LABEL\\[effectiveNext\\]\\}» ما اتنفذش",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aHousedClientRatesTheirRound: who may: the administration, customer service and the branch desks; deleting is the administration\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/clientRatings.js",
+    "must": {
+     "source": "router\\.delete\\('\\/api\\/admin\\/client-ratings\\/:id', requireAuth, requireAdmin,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aManagerCorrectsAWrongTransfer: the managers\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "const managesTransfers = req => req\\.isSuperAdmin \\|\\| \\['admin', 'manager'\\]\\.includes",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "action: 'incoming_transfer\\.updated'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "action: 'incoming_transfer\\.deleted'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx",
+    "must": {
+     "source": "canManage=\\{canManageFinancial && canAcceptDirectly\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "analyticsSummary: the endpoint counts what the person may see and leaves the rest null",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "orders: may\\('view_orders'\\) \\? await ordersSection\\(req, days, months\\) : null,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "leads: may\\('view_leads'\\) \\? await leadsSection\\(req, days\\) : null,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "subscribers: may\\('view_subscribers'\\) \\? await clientsSection\\(req, days, months\\) : null,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "leadScope\\(req, 'l'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "resolveFinancialScope\\(req, \\{ requestedBranch: null, allowAssigned: true \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "staffClientTools\\.activeClientsBase\\(req\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/analyticssummary.js",
+    "must": {
+     "source": "l\\.hidden = 0",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "analyticsSummary: the screen asks the server and holds no orders, leads or clients",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/AnalyticsTab.tsx",
+    "must": {
+     "source": "useAnalyticsSummary\\(timeRange\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/AnalyticsTab.tsx",
+    "must": {
+     "source": "useEnsureSiteLists\\(\\['discounts', 'contactMessages'\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/AnalyticsTab.tsx",
+    "mustNot": {
+     "source": "\\n\\s+orders, leads,|subscribers\\.filter|leads\\.filter|orders\\.filter",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "anEscalationIsEitherVeryImportantOrRepeated: escalating writes both the broadcast and the kind on the ticket; the page asks which kind",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "router.post('/api/admin/tickets/:id/escalate'",
+    "must": {
+     "source": "escalation_kind=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "router.post('/api/admin/tickets/:id/escalate'",
+    "must": {
+     "source": "insertNotification\\(conn, note\\.type, note\\.title, note\\.message, data, req\\.tenantId, null\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "anOwnerPreviewsAnEmployeesAccount: the tab sends the header on /api calls only, and the server lets the header through CORS",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/lib/previewMode.ts",
+    "must": {
+     "source": "headers\\.set\\('X-Preview-Staff', preview\\.id\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/previewMode.ts",
+    "must": {
+     "source": "const toApi = url\\.startsWith\\('\\/api'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aPaidLecturePlaysLikeAFreeOne: the media route passes them through from the request",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "playableRedirect\\(lecture\\?\\.video_url, \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "start: Number\\(req\\.query\\.start\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "autoplay: req\\.query\\.autoplay === '1'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aPaidLecturePlaysLikeAFreeOne: and the browser asks for them on the ticket URL",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/VideoSurface.tsx",
+    "must": {
+     "source": "kind=embed",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aPaidLecturePlaysLikeAFreeOne: the lecture frames name the players, so the permission survives the ticket redirect",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/lib/lectureVideo.ts",
+    "must": {
+     "source": "YOUTUBE_ORIGINS = \"'src' https:\\/\\/www\\.youtube-nocookie\\.com https:\\/\\/www\\.youtube\\.com\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/lectureVideo.ts",
+    "must": {
+     "source": "YOUTUBE_FRAME_ALLOW = `autoplay \\$\\{YOUTUBE_ORIGINS\\}; encrypted-media \\$\\{YOUTUBE_ORIGINS\\}`",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/lectureVideo.ts",
+    "must": {
+     "source": "HOSTED_ORIGINS = \"'src' https:\\/\\/player\\.vimeo\\.com https:\\/\\/drive\\.google\\.com\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/VideoSurface.tsx",
+    "must": {
+     "source": "allow=\\{YOUTUBE_FRAME_ALLOW\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aPaidLecturePlaysLikeAFreeOne: a YouTube ticket is still a ticket",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/VideoSurface.tsx",
+    "must": {
+     "source": "const ticket = isLectureTicket\\(url \\|\\| ''\\) && \\/\\[\\?&\\]kind=embed\\\\b\\/\\.test\\(url \\|\\| ''\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/VideoSurface.tsx",
+    "mustNot": {
+     "source": "!\\/youtu\\/\\.test\\(url",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aProblemTicketLandsOnTheClientsFile: the transfer menu offers it, Dokki and online alike",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/OnlineClientConvertModal.tsx",
+    "must": {
+     "source": "key: 'ticket' as const, label: '🎫 مشكلة أو شكوى",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/OnlineClientConvertModal.tsx",
+    "must": {
+     "source": "<ProblemTicketForm subscriberId=\\{row\\.id\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ProblemTicketForm.tsx",
+    "must": {
+     "source": "category: to === 'management' \\? 'complaint' : 'client_problem'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aProblemTicketLandsOnTheClientsFile: a problem passed on from a client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/ProblemTicketForm.tsx",
+    "must": {
+     "source": "priority,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ProblemTicketForm.tsx",
+    "must": {
+     "source": "disabled=\\{sending \\|\\| !body\\.trim\\(\\) \\|\\| !priority\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aProblemTicketLandsOnTheClientsFile: the contact form offers the four next steps and each is carried out",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "must": {
+     "source": "status`, \\{ status: 'resolved', closed_reason: summary \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "must": {
+     "source": "escalate`, \\{ reason: summary, kind \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "must": {
+     "source": "route`, \\{ category: 'refund' \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "must": {
+     "source": "ضيف رقم العميل",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "must": {
+     "source": "mailto:",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "archivedClientReopensItsLead: archive and restore both move the lead, inside their own transaction",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "deleted_at=NOW\\(\\), updated_at=NOW\\(\\) WHERE id=\\? AND tenant_id=\\?',\\s+\\[req\\.params\\.id, req\\.tenantId\\]\\s+\\);\\s+await reopenLeadOfArchivedClient\\(\\{[^}]*db: conn \\}\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/catalog.js",
+    "must": {
+     "source": "deleted_at=NULL, updated_at=NOW\\(\\) WHERE id=\\? AND tenant_id=\\?',\\s+\\[req\\.params\\.id, req\\.tenantId\\]\\s+\\);\\s+await reconvertLeadOfRestoredClient\\(\\{[^}]*db: conn \\}\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aRepsWhatsappKeysAreSealedAtRest: the per-rep daily cap is 250 unless set",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/whatsappWeb.js",
+    "must": {
+     "source": "Number\\(process\\.env\\.WA_WEB_DAILY_LIMIT \\|\\| 250\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/whatsappWeb.js",
+    "must": {
+     "source": "useSealedAuthState\\(dir, \\{ BufferJSON, initAuthCreds, proto \\}, \\{ root: DATA_DIR \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/whatsappWeb.js",
+    "mustNot": {
+     "source": "useMultiFileAuthState\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aRoleBarFoldsItsManyTabsIntoMenus: a role bar can hold named menus, on the desktop bar and in the phone menu",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "type CompactGroup = \\{ group: string; label: string;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "function BarGroup\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "<BarGroup key=\\{tab\\.group\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "tab\\.items\\.map\\(item =>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aTicketCommentOnACall: an e-mail that was sent is a contact that was reached, here as on the server",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/TicketContact.tsx",
+    "must": {
+     "source": "const reached = outcome === 'answered' \\|\\| outcome === 'sent';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "const reached = outcome === 'answered' \\|\\| outcome === 'read' \\|\\| outcome === 'sent';",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "auditFindingsThatWereReal: the claims that were already handled stay handled",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/learningCohorts.js",
+    "from": "async function addCohortMember",
+    "to": "INSERT INTO cohort_members",
+    "must": {
+     "source": "FROM course_cohorts WHERE tenant_id=\\? AND id=\\? FOR UPDATE",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "authMeAdminIsTheServersAdmin: auth/me decides admin with the list the server enforces",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "from": "router.get('/api/auth/me'",
+    "to": "res.json({ uid: u.id",
+    "must": {
+     "source": "FULL_ACCESS_ROLES\\.includes\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "authTenantIsolation: auth middleware contains no direct unscoped staff lookup",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "findActiveStaff\\(req, email",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aWriteShowsWithoutARefresh: both reloads announce the change, and the staff lists are refetched on it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/site-data-hooks/useCrmCoreState.ts",
+    "from": "const reloadLeads = useCallback",
+    "to": "const reloadSubscribers = useCallback",
+    "must": {
+     "source": "announceCrmChanged\\(\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useCrmCoreState.ts",
+    "from": "const reloadSubscribers = useCallback",
+    "to": "const recordSubscriberPayment",
+    "must": {
+     "source": "announceCrmChanged\\(\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "backgroundTabPolling: the shared hook fires again the moment the tab comes back",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/useVisibleInterval.ts",
+    "code": true,
+    "must": {
+     "source": "document\\.addEventListener\\('visibilitychange', fire\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/useVisibleInterval.ts",
+    "code": true,
+    "must": {
+     "source": "document\\.removeEventListener\\('visibilitychange', fire\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/useVisibleInterval.ts",
+    "code": true,
+    "must": {
+     "source": "if \\(typeof document !== 'undefined' && document\\.hidden\\) return;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/useVisibleInterval.ts",
+    "code": true,
+    "must": {
+     "source": "const latest = useRef\\(callback\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/useVisibleInterval.ts",
+    "code": true,
+    "must": {
+     "source": "\\}, \\[intervalMs, enabled\\]\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "cairoToday: a date range starts where the institute\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/lib/rangeStart.ts",
+    "code": true,
+    "must": {
+     "source": "case '7d':\\s*\\n\\s*case 'week': return cairoDaysAgo\\(7\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/rangeStart.ts",
+    "code": true,
+    "must": {
+     "source": "case 'month': return `\\$\\{cairoMonthOnly\\(\\)\\}-01`;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/cairoDate.ts",
+    "code": true,
+    "must": {
+     "source": "Date\\.UTC\\(year, month - 1, day - days\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/cairoDate.ts",
+    "code": true,
+    "mustNot": {
+     "source": "86400000",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "certificateLifecycle: public and admin certificate routes enforce lifecycle state and permissions",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "cc\\.status='active'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "res\\.status\\(410\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "completions\\/:id\\/revoke'[\\s\\S]*requirePermission\\('manage_courses'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "completions\\/:id\\/reissue'[\\s\\S]*requirePermission\\('manage_courses'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "certificate_lifecycle_events",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "certificatesDeskMarksTracksAndForm: a wrong certificate is deleted softly — revoked first — and the client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lms.js",
+    "from": "router.delete('/api/admin/completions/:id'",
+    "must": {
+     "source": "requirePermission\\('manage_courses'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "from": "router.delete('/api/admin/completions/:id'",
+    "must": {
+     "source": "row\\.status === 'active'\\) return res\\.status\\(409\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "from": "router.delete('/api/admin/completions/:id'",
+    "must": {
+     "source": "UPDATE course_completions SET deleted_at=NOW\\(\\), deleted_by=\\? WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCourseActionsAndDokkiBooks: a refund names a course, and the payment behind it is optional",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-utils.js",
+    "from": "async function createRefundByAdmin",
+    "to": "router.createRefundByAdmin = createRefundByAdmin;",
+    "must": {
+     "source": "if \\(!payment_id && !course_item\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "from": "async function createRefundByAdmin",
+    "to": "router.createRefundByAdmin = createRefundByAdmin;",
+    "must": {
+     "source": "if \\(payment_id\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "from": "async function createRefundByAdmin",
+    "to": "router.createRefundByAdmin = createRefundByAdmin;",
+    "must": {
+     "source": "paidForItem > 0 && requestedAmount - paidForItem > 0\\.01",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "from": "async function createRefundByAdmin",
+    "to": "router.createRefundByAdmin = createRefundByAdmin;",
+    "must": {
+     "source": "subInTenant\\.branch_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "from": "async function createRefundByAdmin",
+    "to": "router.createRefundByAdmin = createRefundByAdmin;",
+    "must": {
+     "source": "action: 'refund_requested'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-utils.js",
+    "from": "async function createRefundByAdmin",
+    "to": "router.createRefundByAdmin = createRefundByAdmin;",
+    "must": {
+     "source": "!refund_method \\|\\| refund_method === 'same_as_payment'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "from": "async function applyUnlinkedRefund",
+    "to": "async function applyRefundReversal",
+    "must": {
+     "source": "assertWritable",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "from": "async function applyUnlinkedRefund",
+    "to": "async function applyRefundReversal",
+    "must": {
+     "source": "insertRefundRow\\(conn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "from": "async function applyUnlinkedRefund",
+    "to": "async function applyRefundReversal",
+    "must": {
+     "source": "method,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "from": "async function applyUnlinkedRefund",
+    "to": "async function applyRefundReversal",
+    "must": {
+     "source": "subscriber\\.branch_id",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCourseActionsAndDokkiBooks: a branch\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "from": "'/api/admin/finance/boxes'",
+    "to": "'/api/admin/finance/refunds', requireAuth",
+    "must": {
+     "source": "requirePermission\\('view_financial'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "from": "'/api/admin/finance/boxes'",
+    "to": "'/api/admin/finance/refunds', requireAuth",
+    "must": {
+     "source": "p\\.deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/finance.js",
+     "api/routes/finance/_shared.js",
+     "api/routes/finance/documents.js",
+     "api/routes/finance/reports.js",
+     "api/routes/finance/paymentLinks.js",
+     "api/routes/finance/cockpit.js",
+     "api/routes/finance/budgets.js",
+     "api/routes/finance/refunds.js"
+    ],
+    "from": "'/api/admin/finance/boxes'",
+    "to": "'/api/admin/finance/refunds', requireAuth",
+    "must": {
+     "source": "p\\.branch_id = \\? AND \\(s\\.id IS NULL OR s\\.branch_id = p\\.branch_id\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCurrencyChange: the panel offers it only to online clients, and asks before it writes",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx",
+    "must": {
+     "source": "!inBranch && role !== 'collection' \\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientCurrencyChange: imports into «سعودي قديم» create Saudi-market clients",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/collection-distribution.js",
+    "must": {
+     "source": "old_intl: \\{ saudi: 'ONLINE_SAUDI', intl: 'ONLINE_ABROAD' \\},",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/collection-distribution.js",
+    "must": {
+     "source": "old_intl: \\{ kind: 'old_intl', branch: 'ONLINE_SAUDI' \\},",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/collectionSheets.js",
+    "mustNot": {
+     "source": "old_intl' \\? 'ONLINE_ABROAD'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "clientPortalPayments: self-service subscriber query loads expected amount and branch from payments",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "p\\.certificate_request_id, p\\.course_expected, p\\.branch, p\\.created_at[\\s\\S]{0,400}FROM payments p[\\s\\S]{0,300}p\\.subscriber_id = \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "fd\\.document_number",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "connectorEvents: Facebook lead field mapping is deterministic and connector route persists before acknowledgement",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/facebook-leads-webhook.js",
+    "must": {
+     "source": "enqueueConnectorEvent",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/facebook-leads-webhook.js",
+    "from": "async function enqueueLeadPayload",
+    "must": {
+     "source": "await enqueueConnectorEvent\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/facebook-leads-webhook.js",
+    "must": {
+     "source": "x-hub-signature-256",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/connector-diagnostics.js",
+    "must": {
+     "source": "connectors\\/events\\/:id\\/replay",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/connector-diagnostics.js",
+    "must": {
+     "source": "status IN \\('failed','dead'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseQuizBank: the seeder is a dry run unless told otherwise, never makes the quiz compulsory unless told to, and keeps a stable id per course",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/seed-course-quizzes.cjs",
+    "must": {
+     "source": "const APPLY = process\\.argv\\.includes\\('--apply'\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/seed-course-quizzes.cjs",
+    "must": {
+     "source": "if \\(!APPLY\\) continue;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/seed-course-quizzes.cjs",
+    "must": {
+     "source": "REQUIRED \\? 1 : 0",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/seed-course-quizzes.cjs",
+    "must": {
+     "source": "course-quiz-bank:\\$\\{slug\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/seed-course-quizzes.cjs",
+    "must": {
+     "source": "AND id<>\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/seed-course-quizzes.cjs",
+    "mustNot": {
+     "source": "DELETE",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseWaitlistAutoNotify: notifyWaitlistForFreedSeats only fires when the course actually has spare capacity",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/courseWaitlist.js",
+    "must": {
+     "source": "if \\(!course \\|\\| !course\\.max_students\\) return 0;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/courseWaitlist.js",
+    "must": {
+     "source": "if \\(availableSpots <= 0\\) return 0;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/courseWaitlist.js",
+    "must": {
+     "source": "ORDER BY position ASC LIMIT \\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseWaitlistAutoNotify: a refund that revokes a course entitlement auto-notifies the waitlist (SUB-02)",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/refunds.js",
+    "must": {
+     "source": "require\\('\\.\\/entitlements'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/refunds.js",
+    "must": {
+     "source": "revokeCourseEntitlement\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "notifyWaitlistForFreedSeats\\(tenantId, courseId, conn\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseWaitlistAutoNotify: an admin unenrolling a subscriber auto-notifies the waitlist for each freed course (SUB-02)",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "require\\('\\.\\.\\/\\.\\.\\/lib\\/entitlements'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "syncCourseEntitlements\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/entitlements.js",
+    "must": {
+     "source": "revokeCourseEntitlement\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: admin conversion uses one server transaction and the UI waits for persistence",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/leads/useLeadActions.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.convertLead\\(lead\\.id, \\{ courseId, accessMode \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/useLeadActions.ts",
+    "must": {
+     "source": "await Promise\\.all\\(\\[reloadLeads\\(\\{ only: \\[lead\\.id\\] \\}\\), reloadSubscribers\\(\\)\\]\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmLeadIntegrity: CRM writes, bulk messaging and interaction deletion preserve role data scope",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "must": {
+     "source": "const canManageLeads = access\\.can\\('manage_leads'\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/LeadTable.tsx",
+    "must": {
+     "source": "canManageLeads && selectedIds\\.length",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/LeadTable.tsx",
+    "must": {
+     "source": "mysqlAdmin\\.addLeadInteraction",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/QuickLogContactPanel.tsx",
+    "must": {
+     "source": "canManageLeads && showAddComm",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/QuickLogContactPanel.tsx",
+    "must": {
+     "source": "setShowAddComm\\(false\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmQuotes: CRM quote lifecycle is scoped, transactional, SOD protected and ledger-safe",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "requirePermission\\('manage_leads'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "beginTransaction\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "QUOTE_APPROVAL_SOD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "QUOTE_APPROVAL_LEVEL_REQUIRED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "approval_policy_snapshot",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "catalog_snapshot",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "status='converted'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "'PENDING'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "mustNot": {
+     "source": "'PAID'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-quotes.js",
+    "must": {
+     "source": "logLeadEventStrict",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/162_v25_crm_quotes_cpq.sql",
+    "must": {
+     "source": "crm_quote_approvals",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/162_v25_crm_quotes_cpq.sql",
+    "must": {
+     "source": "crm_quote_orders",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmSequences: CRM sequence route preserves history, freezes versions and enforces scope",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "requirePermission\\('view_leads'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "requirePermission\\('manage_leads'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "leadScope\\(req, 'l'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "steps_snapshot",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "version=version\\+\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "archived_at=NOW\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "mustNot": {
+     "source": "DELETE FROM drip_sequences",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/crm-sequences.js",
+    "must": {
+     "source": "pause', 'resume', 'unenroll",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/dripCampaigns.js",
+    "must": {
+     "source": "crm_sequence_step_executions",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/dripCampaigns.js",
+    "must": {
+     "source": "refType: 'crm_sequence_step'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "row\\.ref_type === 'crm_sequence_step'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/161_v25_crm_sequence_lifecycle.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_crm_sequence_step",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "customerJourneyIntegrity: customer timeline is shared by client and scoped staff without leaking money",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/unified-client/UnifiedClientOverviewTab.tsx",
+    "must": {
+     "source": "getCustomerTimeline\\(subscriber\\.id\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "customerPaymentMethods: the gateway default uses the key the settings screen actually writes",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/saasSettings.js",
+    "code": true,
+    "from": "DEFAULT_PAYMENT_GATEWAY",
+    "to": "DEFAULT_LEAD_SOURCE_CONNECTORS",
+    "must": {
+     "source": "supported_methods:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/saasSettings.js",
+    "code": true,
+    "from": "DEFAULT_PAYMENT_GATEWAY",
+    "to": "DEFAULT_LEAD_SOURCE_CONNECTORS",
+    "mustNot": {
+     "source": "\\bmethods: \\[",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiAttendanceIntegrity: Dokki attendance is an immutable session event, not a client-side counter update",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/158_v25_daqqi_attendance_events.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_daqqi_attendance_event[\\s\\S]*tenant_id, round_id, subscriber_id, session_number",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx",
+    "must": {
+     "source": "\\/api\\/admin\\/daqqi-rounds\\/\\$\\{encodeURIComponent\\(roundId\\)\\}\\/attendance",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiAttendanceIntegrity: the UI labels archived attendees rather than hiding them",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx",
+    "must": {
+     "source": "a\\.archived &&[\\s\\S]{0,240}مؤرشف",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiAttendanceTab.tsx",
+    "must": {
+     "source": "att\\.archived &&[\\s\\S]{0,240}مؤرشف",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiAttendanceTab.tsx",
+    "must": {
+     "source": "archivedAttendeeCount",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiAttendanceIntegrity: removing a client from a round does not re-save the round",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "router\\.delete\\('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "DELETE FROM daqqi_attendees WHERE tenant_id=\\? AND round_id=\\? AND subscriber_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx",
+    "must": {
+     "source": "mysqlAdmin\\.removeDaqqiAttendee\\(roundId, subscriberId\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiAttendanceIntegrity: a refused round save names the field that is missing",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "Valid course, start date, lecture count and postponed weeks are required",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "missing\\.push\\('تاريخ البدء'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiAttendanceIntegrity: a zero date cannot pass as a date",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "if \\(v != null && String\\(v\\)\\.startsWith\\('0000-00-00'\\)\\) return null;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "function isRealDate\\(v\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "if \\(!isRealDate\\(startDate\\)\\) missing\\.push\\('تاريخ البدء'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiAttendanceIntegrity: deleting a round is admin-only, and history does not block it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "Only an empty NEW round can be deleted",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "router\\.delete\\('/api/admin/daqqi-rounds/:id', requireAuth, requireSuperAdmin",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx",
+    "must": {
+     "source": "\\{isAdmin && <button",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiReminderRecipients: archiving or erasing a client silences reminders without erasing them from the round",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "from": "async function daqqiSessionReminder(",
+    "to": "async function leadRetargeting(",
+    "must": {
+     "source": "FROM daqqi_attendees da[\\s\\S]*s\\.deleted_at IS NULL AND s\\.is_active=1 AND s\\.is_unsubscribed=0",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiRoundDates: the route uses the shared helper rather than its own copy",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "require\\('\\.\\./lib/helpers'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "function ymd\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiRoundDates: the pool leaves DATETIME as a JS Date, so the route must not stringify one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/db.js",
+    "must": {
+     "source": "dateStrings:\\s*\\['DATE'\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "daqqiRoundDates: every Dokki date column is serialized through the helpers",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "String\\(r\\.start_date",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "String\\(a\\.booked_at",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "mustNot": {
+     "source": "String\\(r\\.created_at",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "startDate: ymd\\(r\\.start_date\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "bookedAt: ymd\\(a\\.booked_at\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "createdAt: isoDt\\(r\\.created_at\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "must": {
+     "source": "ymd\\(r\\.start_date\\)\\.slice\\(0, 7\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dbDateContract: database keeps MySQL DATE values as date-only strings without timezone drift",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/db.js",
+    "must": {
+     "source": "dateStrings:\\s*\\['DATE'\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "displayTimeZone: and that zone is the institute\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/cairoDate.ts",
+    "must": {
+     "source": "export const CAIRO_TIME_ZONE = 'Africa\\/Cairo';",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dokkiClients: the endpoints are the schedule\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/dokkiclients.js",
+    "must": {
+     "source": "requirePermission\\('manage_daqqi'\\), requireDaqqiAccess\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/dokkiclients.js",
+    "must": {
+     "source": "requestedBranch\\(req\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/dokkiclients.js",
+    "must": {
+     "source": "staffClientTools\\.activeClientsBase\\(req\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/dokkiclients.js",
+    "must": {
+     "source": "figures:dokki-facts:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin.js",
+    "must": {
+     "source": "require\\('\\.\\/admin\\/dokkiclients'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "emailOutboundCategories: the variable is read per call, not captured at import",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/email.js",
+    "must": {
+     "source": "const raw = process\\.env\\.EMAIL_OUTBOUND_CATEGORIES;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "everyBoxShowsAndAnExpenseNamesItsBox: an expense must name its box, and its amount comes out of that box",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/financial/ExpenseForm.tsx",
+    "must": {
+     "source": "\\/api\\/admin\\/finance\\/box-options",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/financial/ExpenseForm.tsx",
+    "must": {
+     "source": "\\(!needsBox \\|\\| !!expenseDraft\\.boxMethod\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "everyBoxShowsAndAnExpenseNamesItsBox: «واتسابي» is open to the Dokki desk and its manager, customer service and HR, and to nobody else by this rule",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "{isReceptionDaqqi && !isDaqqiManager",
+    "to": "Customer service horizontal nav",
+    "must": {
+     "source": "key: 'whatsapp_web'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "{isDaqqiManager && !isAdmin",
+    "to": "Sales & Collection Manager horizontal nav",
+    "must": {
+     "source": "key: 'whatsapp_web'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "everyBoxShowsAndAnExpenseNamesItsBox: the box list names every box for whoever records an expense but shows balances only to the main books",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance/budgets.js",
+    "from": "router.get('/api/admin/finance/box-options'",
+    "to": "// ── The balances: reset a box",
+    "must": {
+     "source": "seesBalances = scope\\.kind === 'all' && !scope\\.branchId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "from": "router.get('/api/admin/finance/box-options'",
+    "to": "// ── The balances: reset a box",
+    "must": {
+     "source": "let seesBalances = false;\\s+try \\{\\s+const scope = resolveFinancialScope\\(req, \\{ requestedBranch: null \\}\\);[\\s\\S]*?\\} catch \\{ seesBalances = false; \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "from": "router.get('/api/admin/finance/box-options'",
+    "to": "// ── The balances: reset a box",
+    "must": {
+     "source": "balance: seesBalances \\? value\\.balance : null",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance/budgets.js",
+    "from": "router.get('/api/admin/finance/box-options'",
+    "to": "// ── The balances: reset a box",
+    "must": {
+     "source": "balance: seesBalances \\? 0 : null",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "everyRoleSeesWhatItMayOpen: each role bar lists what it listed and shows only what the role may open",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "const \\{ canOpenTab \\} = useAccess\\(\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "\\.filter\\(item => access\\.canOpenTab\\(item\\.key\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "everyTeamOnOneReport: it is the first choice beside the teams",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/ManagementReportsTab.tsx",
+    "must": {
+     "source": "useState<TeamKey \\| 'all'>\\('all'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ManagementReportsTab.tsx",
+    "must": {
+     "source": "\\? <AllTeamsReport teams=\\{report\\.teams\\} \\/>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "finance: a journal entry cannot be posted with a date that is not a date",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "const isRealDate =",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "!String\\(v\\)\\.startsWith\\('0000-00-00'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "!isRealDate\\(date\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/accounting-erp.js",
+    "must": {
+     "source": "error: 'تاريخ القيد غير صحيح'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "financialScopeCallers: the shared clause is not quietly widened to match",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/financialScope.js",
+    "mustNot": {
+     "source": "staff_id",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "fingerprintXlsSheet: the upload offers .xls",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrFingerprintUpload.tsx",
+    "must": {
+     "source": "accept=\"[^\"]*\\.xls,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "heroImageLoading: the hero photos come in a phone size and a desktop size, and say how wide they are drawn",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "must": {
+     "source": "widths=\\{\\[360, 640\\]\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "must": {
+     "source": "sizes=\"\\(min-width: 1024px\\) 210px, 31vw\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/Picture.tsx",
+    "must": {
+     "source": "<source type=\"image\\/webp\" sizes=\\{sizes\\} srcSet=",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "heroImageLoading: the hero photos are the first screen, so they are not lazy",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "must": {
+     "source": "<Picture[\\s\\S]*?priority[\\s\\S]*?\\/>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/Picture.tsx",
+    "must": {
+     "source": "loading=\\{priority \\? undefined : 'lazy'\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/Picture.tsx",
+    "must": {
+     "source": "fetchPriority=\\{priority \\? 'high' : undefined\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "heroImageLoading: the site photos and the font are built into /assets/, which the server caches for a year",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/Picture.tsx",
+    "must": {
+     "source": "import\\.meta\\.glob\\('\\.\\.\\/assets\\/photos\\/\\*\\.\\{webp,jpg\\}'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.css",
+    "must": {
+     "source": "font-family: 'Tajawal';[\\s\\S]*?font-display: swap;[\\s\\S]*?src: url\\('\\.\\/assets\\/fonts\\/tajawal-400-arabic\\.woff2'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "homeOfferPanel: the page the menu opens is the one with the course and the timer",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardContentHubRoutes.tsx",
+    "from": "contentHubSubTab === 'home_offer') && (",
+    "to": "contentHubSubTab === 'about_page'",
+    "must": {
+     "source": "<DashboardHomeOfferPanel fields=\\{homeOfferFields\\} notify=\\{notify\\} \\/>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "htmlEscaping: the public certificate escapes every value a customer controls",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/certificateHtml.js",
+    "from": "function certificateHtml",
+    "must": {
+     "source": "\\$\\{escapeHtml\\(studentName\\)\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/certificateHtml.js",
+    "from": "function certificateHtml",
+    "must": {
+     "source": "\\$\\{escapeHtml\\(courseName\\)\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/certificateHtml.js",
+    "from": "function certificateHtml",
+    "must": {
+     "source": "\\$\\{escapeHtml\\(certCode\\)\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/certificateHtml.js",
+    "from": "function certificateHtml",
+    "must": {
+     "source": "\\$\\{escapeHtml\\(trainer\\)\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "imageProxySafety: image proxy validates every redirect target and rejects arbitrary redirect origins",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/imageProxy.js",
+    "must": {
+     "source": "function allowedSource",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/imageProxy.js",
+    "must": {
+     "source": "url\\.protocol === 'https:'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/imageProxy.js",
+    "must": {
+     "source": "fetchBuffer\\(target, redirects \\+ 1\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/imageProxy.js",
+    "must": {
+     "source": "if \\(!u\\) return res\\.status\\(400\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/imageProxy.js",
+    "mustNot": {
+     "source": "const lib = url\\.startsWith",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/imageProxy.js",
+    "mustNot": {
+     "source": "if \\(!sharp \\|\\| !ALLOWED_HOST_RE",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "imageProxySafety: production image cache is outside the immutable release directory",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/imageProxy.js",
+    "must": {
+     "source": "\\/var\\/cache\\/mahad\\/images",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "installmentEntriesAreKept: the overdue list reads the rows and falls back to the plans only while the table is empty",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "must": {
+     "source": "dueFromEntries\\(pool",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "must": {
+     "source": "entriesHeld\\.held\\) \\? dueFromEntries",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "must": {
+     "source": "dueFromPlans\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "joinUsApplicationsTwoLists: the Dokki manager is shown the applications and interviews screens",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "Daqqi Manager horizontal nav",
+    "to": "Sales & Collection Manager horizontal nav",
+    "must": {
+     "source": "\\{ key: 'join_us', label: 'انضمام الموظفين'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "Daqqi Manager horizontal nav",
+    "to": "Sales & Collection Manager horizontal nav",
+    "must": {
+     "source": "\\{ key: 'lecturer_applications', label: 'انضمام المحاضرين'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "Daqqi Manager horizontal nav",
+    "to": "Sales & Collection Manager horizontal nav",
+    "must": {
+     "source": "\\{ key: 'interviews', label: 'انترفيوهات الموظفين'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "journalDate: both journal builders use it, and the review route stopped pre-slicing",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "const entryDate = journalDate\\(date\\) \\|\\| dateOnlyInTimeZone\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/finance.js",
+    "must": {
+     "source": "const dateStr = journalDate\\(expense\\.date\\) \\|\\| dateOnlyInTimeZone\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadAggregateRoutes: the orders list resolves the lead source instead of the browser doing it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/orders.js",
+    "must": {
+     "source": "LEFT JOIN leads ol ON ol\\.id=s\\.lead_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/orders.js",
+    "must": {
+     "source": "COALESCE\\(NULLIF\\(ol\\.source, ''\\), ''\\) AS lead_source",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadAggregateRoutes: the stored score is read only where the refresh keeps it current",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/leadScoreRefresh.js",
+    "must": {
+     "source": "\\$\\{LEAD_SCORE_SQL\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "leadAggregates: leads.score is aggregated only because the refresh keeps it equal to the formula",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/leadScoreRefresh.js",
+    "must": {
+     "source": "hidden = 0 AND deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadScoreRefresh.js",
+    "must": {
+     "source": "SET l\\.score = \\$\\{LEAD_SCORE_SQL\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadScoreRefresh.js",
+    "mustNot": {
+     "source": "status NOT IN",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerAccountPortalOnlyMeetingsAndPay: a lecturer\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/staffacct.js",
+    "from": "router.get('/api/admin/consultations'",
+    "must": {
+     "source": "const lecturerJob = LECTURER_JOB_ROLES\\.has\\(String\\(req\\.staffRecord\\?\\.role",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/staffacct.js",
+    "from": "router.get('/api/admin/consultations'",
+    "must": {
+     "source": "AND c\\.therapist_id IN \\(SELECT id FROM therapists WHERE tenant_id=c\\.tenant_id AND staff_id=\\?\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/staffacct.js",
+    "from": "router.get('/api/admin/consultations'",
+    "must": {
+     "source": "const \\[waiting\\] = lecturerJob \\? \\[\\[\\]\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "loginCodeReadiness: the tool reads the policy the way the server stores it and is read-only",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/login-code-readiness.cjs",
+    "must": {
+     "source": "FROM tenant_settings WHERE tenant_id=\\? AND section='security_mfa_policy'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/login-code-readiness.cjs",
+    "must": {
+     "source": "SET SESSION TRANSACTION READ ONLY",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/login-code-readiness.cjs",
+    "mustNot": {
+     "source": "\\b(INSERT|UPDATE|DELETE)\\b",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/login-code-readiness.cjs",
+    "must": {
+     "source": "--send-test",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "loginConcurrencySafety: production template reserves a bounded native bcrypt worker pool",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/.env.example",
+    "must": {
+     "source": "^UV_THREADPOOL_SIZE=8$",
+     "flags": "m"
+    }
+   }
+  ]
+ },
+ {
+  "id": "mediaAccess: lecture access returns an expiring ticket and redemption rechecks active entitlement",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "createMediaTicket\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "kind === 'video'[\\s\\S]{0,160}: 300;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "expires_in:\\s*ttlSeconds",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "verifyMediaTicket\\(req\\.query\\.ticket",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "must": {
+     "source": "e\\.status='active'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "mustNot": {
+     "source": "accessible:\\s*true,\\s*video_url:\\s*lecture\\.video_url",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "mergeAndOtpCollisions: merge frees the sources\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/leadMerge.js",
+    "from": "async function unmergeLead",
+    "must": {
+     "source": "for \\(const field of \\['phone', 'client_code'\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadMerge.js",
+    "from": "async function unmergeLead",
+    "must": {
+     "source": "SELECT id FROM leads WHERE tenant_id=\\? AND \\$\\{field\\}=\\? AND id<>\\? LIMIT 1",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "messagingPushTicketsLeads: a late ticket the sweep escalates keeps its department; «رفع للإدارة» hands it over",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "async function slaSweep",
+    "to": "async function autoResolveSweep",
+    "must": {
+     "source": "UPDATE support_tickets SET priority='high', escalated_at=NOW\\(\\), updated_at=NOW\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "async function slaSweep",
+    "to": "async function autoResolveSweep",
+    "mustNot": {
+     "source": "department='management'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "router.post('/api/admin/tickets/:id/escalate'",
+    "must": {
+     "source": "SET department='management', priority=\\?, escalation_kind=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "router.post('/api/admin/tickets/:id/escalate'",
+    "must": {
+     "source": "KINDS\\.critical|ESCALATION_KINDS\\[kind\\]\\.priority",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "metaTemplates: a marketing template carries the way to stop it, one a person already uses",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/whatsappInbound.js",
+    "must": {
+     "source": "ستوب",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "metaTemplates: the panel\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/whatsapp-campaigns.js",
+    "must": {
+     "source": "router\\.post\\('\\/api\\/admin\\/whatsapp-campaigns\\/templates', \\.\\.\\.manage, bulkOperationLimiter,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-campaigns.js",
+    "must": {
+     "source": "router\\.delete\\('\\/api\\/admin\\/whatsapp-campaigns\\/templates\\/:name', \\.\\.\\.manage, bulkOperationLimiter,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-campaigns.js",
+    "must": {
+     "source": "const manage = \\[requireAuth, requireAdminOrStaff, requirePermission\\('manage_settings'\\)\\];",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/whatsapp.js",
+    "must": {
+     "source": "async function listMetaTemplates\\(tenantId\\) \\{\\s*const access = await metaTemplateAccess\\(tenantId\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "migrationRunner: standalone migration command fails closed when the database is unavailable",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/migrate.cjs",
+    "must": {
+     "source": "r\\.failed > 0 \\|\\| r\\.unavailable \\? 1 : 0",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "modalKeyboard: the shared hook closes on Escape and moves focus into the panel",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/ui/useModalKeyboard.ts",
+    "must": {
+     "source": "event\\.key !== 'Escape'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/ui/useModalKeyboard.ts",
+    "must": {
+     "source": "document\\.addEventListener\\('keydown', onKey\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/ui/useModalKeyboard.ts",
+    "must": {
+     "source": "document\\.removeEventListener\\('keydown', onKey\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/ui/useModalKeyboard.ts",
+    "must": {
+     "source": "focus\\(\\{ preventScroll: true \\}\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "modalKeyboard: most dialogs reach the hook through the shared Modal, not directly",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/ui/useModalKeyboard.ts",
+    "must": {
+     "source": "export function useModalKeyboard\\(onClose: \\(\\) => void, active = true\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/ui/useModalKeyboard.ts",
+    "must": {
+     "source": "useRef<HTMLDivElement \\| null>\\(null\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/ui/Modal.tsx",
+    "must": {
+     "source": "const panelRef = useModalKeyboard\\(onClose, open\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "moneyFlowConcurrency: checkout sends one idempotency key per attempt, kept across a retry",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Checkout.tsx",
+    "must": {
+     "source": "Idempotency-Key': idempotencyKey",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Checkout.tsx",
+    "must": {
+     "source": "sessionStorage\\.getItem\\(idempotencyStorageKey\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "multiInstanceProcess: the route timers start once, from the process that owns the jobs — not on require",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/server.js",
+    "from": "if (role === 'all') {",
+    "to": "} else logger.info",
+    "must": {
+     "source": "startRouteJobs\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneBarPerAccount: an account with a bar of its own sees that bar and not the management one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "const hasRoleBar = isSalesOnly \\|\\| isCollectionRole \\|\\| \\(isReceptionDaqqi && !isDaqqiManager\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "\\|\\| \\(\\(isDaqqiManager \\|\\| isSalesCollectionManager \\|\\| isOnlineManager\\) && !isAdmin\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "\\{!hasRoleBar && \\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneBarPerAccount: every bar is drawn one way",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "must": {
+     "source": "className=\\{barButtonClass\\(hasActive \\|\\| isOpen\\)\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneLeadSourceIsOneLineInTheFilter: managers can make the spellings one source for good, and adding a second spelling is refused",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/leads/write.js",
+    "from": "'/api/admin/leads/merge-sources'",
+    "must": {
+     "source": "\\['admin', 'manager'\\]\\.includes",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/write.js",
+    "from": "'/api/admin/leads/merge-sources'",
+    "must": {
+     "source": "UPDATE leads SET source=\\? WHERE tenant_id=\\? AND source IN \\(\\?\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/write.js",
+    "from": "'/api/admin/leads/merge-sources'",
+    "must": {
+     "source": "lead\\.sources_merged",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneSearchBoxForTheSystem: the route: staff only, private, and the public catalogue untouched",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "const SYSTEM_SEARCH_GUARD = \\[requireAuth, requireAdminOrStaff, requireAnyPermission\\(\\.\\.\\.SYSTEM_SEARCH_PERMISSIONS\\)\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "if \\(req\\.query\\.scope === 'system'\\) return runGuards\\(SYSTEM_SEARCH_GUARD",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "res\\.set\\('Cache-Control', 'private, no-store'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/GlobalSearch.tsx",
+    "must": {
+     "source": "\\/search\\?scope=system&q=",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/GlobalSearch.tsx",
+    "must": {
+     "source": "event\\.ctrlKey \\|\\| event\\.metaKey\\) && event\\.key\\.toLowerCase\\(\\) === 'k'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/GlobalSearch.tsx",
+    "must": {
+     "source": "q\\.length < SEARCH_MIN_CHARS",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "onlinePresence: production presence uses the distributed store and canonical authenticated name",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/onlineUsers.js",
+    "must": {
+     "source": "redis\\.pipeline\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/onlineUsers.js",
+    "must": {
+     "source": "hashKey\\(tenantId\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "name: req\\.user\\.name \\|\\| req\\.user\\.email",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "mustNot": {
+     "source": "name: \\(req\\.body\\?\\.name",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "onlyTheOwnersListDeletes: the panel hides every delete_ permission from someone off the list",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/auth/session.js",
+    "must": {
+     "source": "permissions: isAdmin \\? '\\*' : staffPermissions, canDelete, canManageDeleteRights",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "opsAssistant: the assistant can only put queued messages back: no other write, and the watchdog hands it every finding",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/opsWatchdog.js",
+    "must": {
+     "source": "await require\\('\\.\\/opsAssistant'\\)\\.assist\\(\\{\\s*findings, tenantId, db: pool, logger, now, quietHours: QUIET_HOURS, isCategoryOpen: require\\('\\.\\/whatsapp'\\)\\.isCategoryOpen,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "otpSecurity: the browser login helper stops at the emailed-code step instead of waiting for a code, and runs one session at a time",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "e2e/helpers/adminLogin.ts",
+    "must": {
+     "source": "input\\[autocomplete=\"one-time-code\"\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "e2e/helpers/adminLogin.ts",
+    "must": {
+     "source": "is asked for an emailed code",
+     "flags": ""
+    }
+   },
+   {
+    "file": "e2e/helpers/adminLogin.ts",
+    "mustNot": {
+     "source": "otplib|UAT_TOTP_SECRET",
+     "flags": ""
+    }
+   },
+   {
+    "file": "e2e/playwright.config.ts",
+    "must": {
+     "source": "workers:\\s*1",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentBoxes: the dialog offers the boxes that have money in them",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/admin\\/payment-boxes'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "requirePermission\\('manage_payments'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "GROUP BY payment_method\\s*\\n\\s*ORDER BY egp DESC",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "status = 'paid'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/paymentMethods.ts",
+    "must": {
+     "source": "export function mergePaymentBoxes",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/paymentMethods.ts",
+    "must": {
+     "source": "export function usePaymentBoxes",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentBoxes: one request per session, not one per dialog",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/lib/paymentMethods.ts",
+    "must": {
+     "source": "let boxesInUse: string\\[\\] \\| null = null;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/paymentMethods.ts",
+    "must": {
+     "source": "if \\(boxesInUse\\) return boxesInUse;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/paymentMethods.ts",
+    "must": {
+     "source": "if \\(!boxesPending\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/paymentMethods.ts",
+    "must": {
+     "source": "\\.catch\\(\\(\\) => \\[\\]\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentExecutor: every screen that lists payments reads the resolved name, not the column",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance-payments-register.js",
+    "must": {
+     "source": "recordedBy: r\\.staff_name",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentIntegrity: course access is granted from the database, never from the order body",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/public-orders.js",
+     "api/lib/orderFields.js",
+     "api/lib/paymobGateway.js",
+     "api/lib/paymobFinalise.js"
+    ],
+    "from": "if (orderType === 'bundle')",
+    "to": "for (const cid of courseIds)",
+    "mustNot": {
+     "source": "extra\\.bundleCourseIds",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentsAdminTenantScope: commissions/monthly is tenant-scoped (previously leaked every tenant\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payments-admin.js",
+    "must": {
+     "source": "WHERE c\\.tenant_id = \\? AND c\\.status <> 'CANCELLED' AND CONCAT",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payments-admin.js",
+    "must": {
+     "source": "const params = \\[req\\.tenantId, from\\];",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentsAdminTenantScope: the broken, unscoped, zero-caller export/orders route was removed rather than patched over",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payments-admin.js",
+    "mustNot": {
+     "source": "router\\.get\\('\\/api\\/admin\\/export\\/orders'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payments-admin.js",
+    "mustNot": {
+     "source": "o\\.order_number",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payments-admin.js",
+    "mustNot": {
+     "source": "o\\.user_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payments-admin.js",
+    "mustNot": {
+     "source": "s\\.enrolled_course_ids",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "permissionGrant: \"no override\" and \"none\" are told apart on the way out, not only on the way in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/staff.js",
+    "must": {
+     "source": "tryJson\\(r\\.permissions_json, \\[\\]\\) : null",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/constants/permissions.ts",
+    "must": {
+     "source": "if \\(Array\\.isArray\\(staff\\.permissions\\)\\) return staff\\.permissions;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/staff-profile/StaffSettingsPanel.tsx",
+    "must": {
+     "source": "permsChanged \\? \\{ permissions: payload\\.permissions \\|\\| \\[\\] \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/staff-profile/StaffSettingsPanel.tsx",
+    "must": {
+     "source": "scopeChanged \\? \\{ data_scope: payload\\.dataScope \\|\\| null \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/staff-profile/StaffSettingsPanel.tsx",
+    "must": {
+     "source": "staff\\.permissions \\?\\? ROLE_DEFAULT_PERMISSIONS\\[staff\\.role\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/constants/permissions.ts",
+    "mustNot": {
+     "source": "staff\\.permissions\\.length > 0",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "platformAdminIsolation: SaaS control plane never accepts tenant super-admin middleware",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/saas-admin.js",
+    "must": {
+     "source": "requirePlatformAdmin",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/saas-admin.js",
+    "mustNot": {
+     "source": "requireSuperAdmin",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "platformAdminIsolation: platform access is fail-closed when its audit trail is unavailable",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "platform_access_granted",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "PLATFORM_AUDIT_REQUIRED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "await writeAuditEvent",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "problemsArchiveRefundsAndBrevo: «تحويل لاسترداد» opens the refund through the refund code, carries the history and closes the problem",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/tickets/:id/convert-to-refund'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "requirePermission\\('manage_inbox'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/tickets/:id/convert-to-refund'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "createRefundByAdmin",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/tickets/:id/convert-to-refund'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "buildTicketHistory",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/tickets/:id/convert-to-refund'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "UPDATE refund_requests SET ticket_id=\\?, ticket_code=\\?, ticket_history=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/tickets/:id/convert-to-refund'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "UPDATE support_tickets SET status='closed'[\\s\\S]*refund_request_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "'/api/admin/tickets/:id/convert-to-refund'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "ALREADY_REFUND",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "problemsFoundInTheProductionLog: «نقل للأرشيف» on the local tab takes the local tab\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/move-to-archive'",
+    "must": {
+     "source": "const openStatuses = \\[\\.\\.\\.LEAD_STATUSES\\]\\.filter\\(isOpenLeadStatus\\);",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/move-to-archive'",
+    "must": {
+     "source": "COALESCE\\(branch,''\\) NOT IN \\('ONLINE_ABROAD','ONLINE_SAUDI'\\) AND COALESCE\\(source,''\\) NOT LIKE 'دولي%'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/move-to-archive'",
+    "must": {
+     "source": "params\\.push\\(cairoDayStartUtc\\(createdBefore\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "publicSearchTenant: public search scopes every searchable catalogue source to the resolved tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/search'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "FROM courses[\\s\\S]*WHERE tenant_id=\\? AND is_published=1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "FROM bundles[\\s\\S]*WHERE tenant_id=\\? AND is_published=1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "\\[req\\.tenantId, like, like, like\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "\\[req\\.tenantId, like, like\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "publicSearchTenant: student AI context cannot resolve subscriber or courses globally",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/student-ai.js",
+    "must": {
+     "source": "resolveSubscriberRow\\(req, \\[",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/student-ai.js",
+    "must": {
+     "source": "const context = await loadContext\\(req\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/student-ai.js",
+    "must": {
+     "source": "FROM courses WHERE tenant_id=\\? AND is_published=1 AND deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/student-ai.js",
+    "must": {
+     "source": "LIMIT 60`,\\s+\\[req\\.tenantId\\]\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/student-ai.js",
+    "mustNot": {
+     "source": "loadContext\\(req\\.user",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "publicSearchTenant: certificate QR is generated locally without leaking certificate data to an external service",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/qr'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "QRCode\\.toString",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "must": {
+     "source": "const qrUrl\\s+= `\\/api\\/qr\\?size=90&data=\\$\\{qrData\\}`",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public.js",
+    "mustNot": {
+     "source": "api\\.qrserver\\.com",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "rateLimitIsolation: production readiness requires the distributed Redis store",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/rateLimitStore.js",
+    "must": {
+     "source": "RATE_LIMIT_REDIS_ENABLED",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/rateLimitStore.js",
+    "must": {
+     "source": "new RedisStore",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/rateLimitStore.js",
+    "must": {
+     "source": "passOnStoreError|REDIS_URL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/production-readiness.cjs",
+    "must": {
+     "source": "distributed-rate-limit",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/intake.js",
+    "must": {
+     "source": "redisHealth",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/intake.js",
+    "must": {
+     "source": "status\\(ready \\? 200 : 503\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/.env.example",
+    "must": {
+     "source": "RATE_LIMIT_REDIS_ENABLED=true",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "rateLimitIsolation: successful staff logins do not exhaust a shared branch IP limit",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/middleware/rateLimits.js",
+    "from": "const loginLimiter",
+    "to": "const resetPasswordLimiter",
+    "must": {
+     "source": "login-ip",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/rateLimits.js",
+    "from": "const loginLimiter",
+    "to": "const resetPasswordLimiter",
+    "must": {
+     "source": "login-account",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "recruitmentScreensPagedInTheDatabase: an application moved to the interviews leaves the applications page, but only that page",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "function joinUsWhere(req)",
+    "to": "const JOIN_US_FROM",
+    "must": {
+     "source": "if \\(req\\.query\\.inbox === '1'\\) where \\+= JOIN_US_INBOX_SQL;",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "recruitmentScreensPagedInTheDatabase: the list answers rows and a total, and counts only when the page was full",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us', ",
+    "to": "router.get('/api/admin/join-us/facets'",
+    "must": {
+     "source": "const paged = req\\.query\\.paged === '1';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us', ",
+    "to": "router.get('/api/admin/join-us/facets'",
+    "must": {
+     "source": "if \\(!paged\\) return res\\.json\\(mapped\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us', ",
+    "to": "router.get('/api/admin/join-us/facets'",
+    "must": {
+     "source": "if \\(mapped\\.length === limit\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us', ",
+    "to": "router.get('/api/admin/join-us/facets'",
+    "must": {
+     "source": "res\\.json\\(\\{ rows: mapped, total \\}\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "recruitmentScreensPagedInTheDatabase: the interviews come from their own endpoint, split by tab and paged",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/recruiting.js",
+    "from": "router.get('/api/admin/hr/interviews', ",
+    "to": "router.get('/api/admin/hr/interviews/summary'",
+    "must": {
+     "source": "\\$\\{past \\? '' : 'NOT '\\}\\$\\{held\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/recruiting.js",
+    "from": "router.get('/api/admin/hr/interviews', ",
+    "to": "router.get('/api/admin/hr/interviews/summary'",
+    "must": {
+     "source": "order = `\\(a\\.interview_at IS NULL\\), a\\.interview_at \\$\\{past \\? 'DESC' : 'ASC'\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/recruiting.js",
+    "from": "router.get('/api/admin/hr/interviews', ",
+    "to": "router.get('/api/admin/hr/interviews/summary'",
+    "must": {
+     "source": "ORDER BY \\$\\{order\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/recruiting.js",
+    "from": "router.get('/api/admin/hr/interviews', ",
+    "to": "router.get('/api/admin/hr/interviews/summary'",
+    "must": {
+     "source": "LIMIT \\$\\{limit\\} OFFSET \\$\\{offset\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "recurringExpensesCadence: recurring-expenses CRUD routes are tenant-scoped",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/analytics/financial.js",
+    "must": {
+     "source": "router\\.get\\s*\\(\\s*'\\/api\\/admin\\/recurring-expenses'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/financial.js",
+    "must": {
+     "source": "FROM recurring_expenses[\\s\\S]{0,120}WHERE tenant_id=\\? AND deleted_at IS NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/financial.js",
+    "must": {
+     "source": "INSERT INTO recurring_expenses[\\s\\S]{0,100}\\(id,tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/financial.js",
+    "must": {
+     "source": "UPDATE recurring_expenses[\\s\\S]{0,300}tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/financial.js",
+    "must": {
+     "source": "SET deleted_at=NOW\\(\\), is_active=0[\\s\\S]{0,100}tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "rejectedPaymentSaysWhy: a rejected new-client booking is also a message to the officer who sent it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "from": "'/api/admin/subscriber-requests/:id/reject'",
+    "to": "router.recordSubscriberPayment",
+    "must": {
+     "source": "sendStaffMessage\\(pool",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "from": "'/api/admin/subscriber-requests/:id/reject'",
+    "to": "router.recordSubscriberPayment",
+    "mustNot": {
+     "source": "createNotification\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "releaseArtifacts: the release script checks the packed client archive before recording it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "import \\{ describeMissing, findMissingPages \\} from '\\.\\/verifyPrerender\\.mjs'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/prepare-release.mjs",
+    "must": {
+     "source": "throw new Error\\(`client archive is incomplete — not releasing",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "releaseArtifacts: the welcome message escapes for HTML only",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "const safeTitle = escapeHtml\\(courseLabel\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "const safeName = escapeHtml\\(personName\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "subject: `تم تسجيلك في \\$\\{courseLabel\\} — معهد الدراسات النفسية`",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "<strong>\\$\\{safeName\\}<\\/strong>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "🎓 \\$\\{safeTitle\\}<\\/span>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "releaseArtifacts: the shell references its icons and manifest by absolute path, and only files that exist",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<link rel=\"apple-touch-icon\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "releaseArtifacts: two queries MariaDB refused, found by EXPLAIN-ing the release against the real schema",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/analytics.js",
+    "must": {
+     "source": "ORDER BY pending_count DESC, pay\\.last_payment ASC",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "mustNot": {
+     "source": "ORDER BY days_since_payment IS NULL",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "routeShadowing: no fixed route is swallowed by a :param route registered before it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/attendance.js",
+    "must": {
+     "source": "if \\(req\\.params\\.staffId === 'summary'\\) return next\\(\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "scheduledJobsArchitecture: server bootstrap delegates scheduled business work to one handler module",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/server.js",
+    "must": {
+     "source": "startBackgroundScheduler\\(\\{ pool, logger, port: PORT \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "must": {
+     "source": "createScheduledJobHandlers\\(\\{ pool, logger \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/server.js",
+    "mustNot": {
+     "source": "FROM daqqi_rounds|INSERT IGNORE INTO retargeting_log|FROM course_waitlist",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/server.js",
+    "mustNot": {
+     "source": "crm_json LIKE '%installmentPlans%'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "scheduledJobsArchitecture: scheduled job storage reads and mutations retain tenant identity",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "must": {
+     "source": "FROM subscribers s\\s+LEFT JOIN installment_plans ip ON ip\\.subscriber_id=s\\.id AND ip\\.tenant_id=s\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "must": {
+     "source": "JOIN subscribers s ON s\\.id=p\\.subscriber_id AND s\\.tenant_id=p\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "must": {
+     "source": "c\\.tenant_id=dr\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "must": {
+     "source": "WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "must": {
+     "source": "notifyWaitlistForFreedSeats\\(row\\.tenant_id, row\\.course_id, conn\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/scheduledJobHandlers.js",
+    "must": {
+     "source": "JOIN courses c ON c\\.id=cw\\.course_id AND c\\.tenant_id=cw\\.tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/courseWaitlist.js",
+    "must": {
+     "source": "max_students FROM courses WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "screensShowWhatWasWritten: the client page lists every recorded payment, marks the ones awaiting approval, and shows the transaction number",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
+    "from": "Transaction History",
+    "to": "Payment Proofs",
+    "must": {
+     "source": "subHistory\\.length > 0",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
+    "from": "Transaction History",
+    "to": "Payment Proofs",
+    "must": {
+     "source": "\\[\\.\\.\\.subHistory\\]\\.sort\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
+    "from": "Transaction History",
+    "to": "Payment Proofs",
+    "must": {
+     "source": "بانتظار الاعتماد",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
+    "from": "Transaction History",
+    "to": "Payment Proofs",
+    "must": {
+     "source": "رقم العملية: #\\{p\\.transactionId\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
+    "from": "Transaction History",
+    "to": "Payment Proofs",
+    "must": {
+     "source": "isConfirmed\\(p\\) && <button",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
+    "from": "Transaction History",
+    "to": "Payment Proofs",
+    "mustNot": {
+     "source": "confirmedHistory",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "screensShowWhatWasWritten: the transaction number typed in the payment dialog is sent as the payment\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
+    "from": "const entry: PaymentHistoryEntry = {",
+    "to": "// The branch tier and the client",
+    "must": {
+     "source": "transactionId: draft\\.transactionId \\|\\| undefined,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
+    "from": "const entry: PaymentHistoryEntry = {",
+    "to": "// The branch tier and the client",
+    "mustNot": {
+     "source": "draft\\.transactionId \\|\\| undefined,\\n\\s*bundle \\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "settingsRoundTrip: staff can read the institute settings their screens are built from",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/constants/permissions.ts",
+    "from": "ROLE_DEFAULT_PERMISSIONS",
+    "mustNot": {
+     "source": "'manage_content'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "sharingGuardCountsDevicesNotNetworks: the guard no longer reads addresses, and the log keeps the device",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/accountSharingGuard.js",
+    "mustNot": {
+     "source": "DISTINCT ip|ACCOUNT_MAX_DISTINCT_IPS|distinctIps",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "shellScriptLineEndings: .gitattributes pins shell scripts to LF explicitly",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/.gitattributes",
+    "must": {
+     "source": "^\\*\\.sh\\s+text eol=lf$",
+     "flags": "m"
+    }
+   }
+  ]
+ },
+ {
+  "id": "shellScriptLineEndings: the api subtree carries its own rule, because the release archives it alone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/.gitattributes",
+    "must": {
+     "source": "^\\*\\.sh\\s+text eol=lf$",
+     "flags": "m"
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowReportsFoundOn30Oct: the campaign report starts its five independent reads together",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/analytics/campaigns.js",
+    "from": "router.get('/api/admin/reports/campaign'",
+    "to": "router.patch('/api/admin/leads/:id/utm'",
+    "must": {
+     "source": "await Promise\\.all\\(\\[",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowReportsFoundOn30Oct: churn risk reads each client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/misc/analytics.js",
+    "from": "router.get('/api/admin/analytics/churn-risk'",
+    "must": {
+     "source": "FROM payments WHERE tenant_id=\\? GROUP BY subscriber_id\\) pay ON pay\\.subscriber_id = s\\.id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/misc/analytics.js",
+    "from": "router.get('/api/admin/analytics/churn-risk'",
+    "mustNot": {
+     "source": "\\(SELECT MAX\\(p\\.created_at\\) FROM payments p",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "softDeletedMoney: the interpolated WHERE fragments carry the guard themselves",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payments.js",
+    "must": {
+     "source": "let where = 'p\\.tenant_id = \\? AND p\\.deleted_at IS NULL'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "must": {
+     "source": "'WHERE subscriber_id = \\? AND amount > 0 AND deleted_at IS NULL'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: every employee loads the catalogue; only the community waits on its permission",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/SiteDataContext.tsx",
+    "from": "const canReadCommunity",
+    "to": "// Load inbox for admin",
+    "must": {
+     "source": "if \\(!isAdmin\\) \\{[\\s\\S]*mysqlCatalog\\.listCourses\\(200\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: the remaining data goes to a collection officer in one request, into the column their scope reads",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/assign-collection'",
+    "to": "router.post('/api/admin/leads/bulk-whatsapp'",
+    "must": {
+     "source": "UPPER\\(role\\)='COLLECTION'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/assign-collection'",
+    "to": "router.post('/api/admin/leads/bulk-whatsapp'",
+    "must": {
+     "source": "AND \\(\\(l\\.assigned_sales_id IS NULL OR l\\.assigned_sales_id=''\\)\\s*AND \\(l\\.assigned_cs_id IS NULL OR l\\.assigned_cs_id=''\\) OR l\\.hidden=1 OR l\\.status='archived'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/assign-collection'",
+    "to": "router.post('/api/admin/leads/bulk-whatsapp'",
+    "must": {
+     "source": "hidden=0,\\s*status=IF\\(status IN \\(\\?\\), 'new', status\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "from": "router.post('/api/admin/leads/assign-collection'",
+    "to": "router.post('/api/admin/leads/bulk-whatsapp'",
+    "must": {
+     "source": "UPDATE leads SET assigned_cs_id=\\?, assigned_cs_name=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: a collection account\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "from": "if (reviewedByManager(req) && (createFromLead",
+    "to": "// ── Begin atomic transaction",
+    "must": {
+     "source": "INSERT INTO subscriber_requests",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "from": "if (reviewedByManager(req) && (createFromLead",
+    "to": "// ── Begin atomic transaction",
+    "must": {
+     "source": "res\\.status\\(202\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "from": "if (reviewedByManager(req) && (createFromLead",
+    "to": "// ── Begin atomic transaction",
+    "mustNot": {
+     "source": "INSERT INTO subscribers|INSERT INTO payments",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAccountsReview: the accounts screen stays with admin, accountant, online manager and customer service; everyone else gets «مدفوعاتي»",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "from": "{isCollectionRole && (",
+    "to": "Reception Daqqi horizontal nav",
+    "mustNot": {
+     "source": "refund_requests",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffAnnouncementsPopupVideoAndBranchRequests: deleting a request that exists only as an order hides the order instead of answering «not found»",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/catalog.js",
+    "from": "router.delete('/api/admin/consultations/:id'",
+    "must": {
+     "source": "\\/\\^order:\\(\\.\\+\\)\\$\\/\\.exec\\(String\\(req\\.params\\.id\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/catalog.js",
+    "from": "router.delete('/api/admin/consultations/:id'",
+    "must": {
+     "source": "UPDATE orders SET deleted_at=NOW\\(\\) WHERE id=\\? AND tenant_id=\\? AND type='CONSULTATION' AND status='pending'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffManagementPermission: the sales rep can open their own clients tab",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/dashboardShared.tsx",
+    "must": {
+     "source": "online_clients:\\s*'view_subscribers'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staffWritesReachTheActivityLog: the server puts the staff routes behind it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "app\\.use\\('\\/api\\/staff', auditWrites\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "staticAssetCompression: both sites compress their JavaScript and CSS",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy/nginx/mahad-web.conf.example",
+    "code": true,
+    "must": {
+     "source": "max-age=31536000, immutable",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "studentAssistantRouting: the widget asks first, and the inbox holds only the site\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "from": "router.get('/api/admin/cs/inbox'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "const queues = \\['support', 'management', \\.\\.\\.Object\\.keys\\(DEPARTMENT_BRANCH\\)\\];",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "router.get('/api/admin/cs/inbox'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "where\\.push\\(`\\(t\\.department IN \\(\\$\\{queues\\.map\\(\\(\\) => '\\?'\\)\\.join\\(','\\)\\}\\) OR t\\.escalated_at IS NOT NULL OR t\\.channel IN \\(\\$\\{WEBSITE_CHANNELS",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "from": "router.get('/api/admin/cs/inbox'",
+    "to": "// ── STATS + AGENT WORKLOAD",
+    "must": {
+     "source": "WHERE tenant_id = \\? AND converted_ticket_id IS NULL\\s+AND LOWER",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "subscriberContactGuard: the lead matcher no longer matches on a blank identifier",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/leadMatching.js",
+    "must": {
+     "source": "if \\(!match\\.length\\) return null;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadMatching.js",
+    "must": {
+     "source": "if \\(cleanEmail\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadMatching.js",
+    "must": {
+     "source": "if \\(spellings\\.length\\) \\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadMatching.js",
+    "mustNot": {
+     "source": "email\\s*\\|\\|\\s*''\\s*\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "subscriberContactGuard: the phone term is an exact set membership, not a trailing wildcard",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/leadMatching.js",
+    "must": {
+     "source": "phone_digits IN \\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadMatching.js",
+    "must": {
+     "source": "REGEXP_REPLACE\\(\\$\\{column\\},'\\[\\^0-9\\]',''\\) IN \\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/leadMatching.js",
+    "mustNot": {
+     "source": "LIKE\\s+CONCAT\\('%'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "subscriberProvisioningPhone: the registration conversion stores NULL for a missing phone too",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/registrationLead.js",
+    "must": {
+     "source": "const phone = toIdentity\\(user\\?\\.phone\\) \\|\\| null;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/registrations.js",
+    "mustNot": {
+     "source": "user\\.email, user\\.phone \\|\\| ''",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/registrations.js",
+    "mustNot": {
+     "source": "clientCode, \\(user\\.name \\|\\| ''\\)\\.trim\\(\\) \\|\\| null, user\\.email, user\\.phone \\|\\| ''",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "teamInboxVisibility: the inbox routes and the screen follow the setting, and only the people who see everything change it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/team-inbox.js",
+    "from": "router.put('/api/admin/team-inbox/settings'",
+    "must": {
+     "source": "distributeWaiting\\(pool, req\\.tenantId\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theActivityLogCutsItsPageBeforeJoiningStaff: the log\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/activity-logs'",
+    "to": "router.post('/api/admin/activity-logs'",
+    "must": {
+     "source": "FROM \\(SELECT \\* FROM activity_logs a WHERE a\\.tenant_id=\\?\\$\\{filters\\} ORDER BY a\\.at DESC LIMIT \\? OFFSET \\?\\) a",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/activity-logs'",
+    "to": "router.post('/api/admin/activity-logs'",
+    "must": {
+     "source": "const searchesStaff = Boolean\\(actor\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/activity-logs'",
+    "to": "router.post('/api/admin/activity-logs'",
+    "must": {
+     "source": "SELECT id, email FROM staff WHERE tenant_id=\\? AND name LIKE \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/activity-logs'",
+    "to": "router.post('/api/admin/activity-logs'",
+    "mustNot": {
+     "source": "OR st\\.name LIKE \\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/activity-logs'",
+    "to": "router.post('/api/admin/activity-logs'",
+    "must": {
+     "source": "searchesStaff\\s*\\? `SELECT[\\s\\S]*?FROM activity_logs a\\s+\\$\\{joins\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theAdminBootDoesNotWaitOnItself: a retry backoff is still allowed to wait",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/lib/mysqlapi.ts",
+    "must": {
+     "source": "setTimeout\\(r, RETRY_BACKOFF_MS\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theJobsCanRunInTheirOwnProcess: server.js starts the jobs only when it is not the web half",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/server.js",
+    "from": "app.listen(",
+    "must": {
+     "source": "if \\(role === 'all'\\) \\{\\s*startBackgroundScheduler\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theNextStepCardKnowsTheNextSession: the card sits at the top of the portal, in its own file, and pays through the existing flow",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/UserDashboard.tsx",
+    "from": "activeTab === 'overview'",
+    "must": {
+     "source": "onPay=\\{setInstallModal\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/student-dashboard/StudentNextStepCard.tsx",
+    "must": {
+     "source": "ادفع الباقي",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/student-dashboard/StudentNextStepCard.tsx",
+    "must": {
+     "source": "كمّل",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/student-dashboard/StudentNextStepCard.tsx",
+    "must": {
+     "source": "mysqlClient\\.getMyNextStep\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "thePaymentIsFiledUnderTheBranchChosen: the branch the desk is asked for is the one that reaches the API",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/lib/createClientWithPayment.ts",
+    "must": {
+     "source": "branch,\\s*\\n\\s*\\},\\s*\\}\\);",
+     "flags": "s"
+    }
+   },
+   {
+    "file": "admin/lib/createClientWithPayment.ts",
+    "must": {
+     "source": "const branch =",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theSalesScheduleHasTheDesksDesign: nothing about who is in a course or any money reaches the sales schedule",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-rounds/sales-schedule'",
+    "to": "router.get('/api/admin/daqqi-rounds',",
+    "mustNot": {
+     "source": "attendee|payments",
+     "flags": "i"
+    }
+   },
+   {
+    "file": "api/routes/daqqi-rounds.js",
+    "from": "'/api/admin/daqqi-rounds/sales-schedule'",
+    "to": "router.get('/api/admin/daqqi-rounds',",
+    "must": {
+     "source": "\\.filter\\(round => round\\.lecture <= 2\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theSameAccountIsOneAccountOnTheLedger: the merge is the managers\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/financepay.js",
+    "from": "'/api/admin/incoming-transfers/merge-accounts'",
+    "must": {
+     "source": "managesTransfers\\(req\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "from": "'/api/admin/incoming-transfers/merge-accounts'",
+    "must": {
+     "source": "incoming_transfer\\.accounts_merged",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "from": "'/api/admin/incoming-transfers/merge-accounts'",
+    "must": {
+     "source": "setTenantSetting\\('transfer_account_aliases'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theWorkerTicksDoNotOverlap: the scheduler runs messages, money and jobs as separate guarded ticks",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/backgroundScheduler.js",
+    "mustNot": {
+     "source": "const worker = async \\(\\) =>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ticketRouting: a reopened ticket is a new wait: resolved and answered cleared, the SLA restarted",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "reopening \\? `\\$\\{reopenTicketSql\\('TRUE'\\)\\}, ` : ''",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ticketRouting: support ticket details, replies and linked finance records are tenant scoped",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/084_v25_support_reply_tenant_scope.sql",
+    "must": {
+     "source": "ALTER TABLE ticket_replies[\\s\\S]*tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "support_tickets WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "ticket_replies WHERE ticket_id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "payments WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "subscribers WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ticketRouting: staff and client replies persist timeline and outbox atomically",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "INSERT INTO ticket_replies \\(id, tenant_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "outbox\\.enqueue\\([\\s\\S]*ticket-reply:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "await conn\\.beginTransaction\\(\\)[\\s\\S]*logTicketEvent\\(conn[\\s\\S]*await conn\\.commit\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "contact_messages WHERE id=\\? AND tenant_id=\\?[^\\n]+FOR UPDATE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "UPDATE contact_messages SET[^\\n]+WHERE id=\\? AND tenant_id=\\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "ticketRouting: support queues are department scoped and customer ownership follows canonical subscriber identity",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "const ticketScope =",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "canAccessTicket\\(req,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "findSubscriberForIdentity\\(req\\.tenantId, req\\.user",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/support.js",
+    "must": {
+     "source": "Staff role is not compatible with the ticket department",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CustomerInboxTab.tsx",
+    "must": {
+     "source": "item\\.sla \\? item\\.sla === 'overdue'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CustomerInboxTab.tsx",
+    "must": {
+     "source": "closed_reason: reason",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "trafficAndRightsCleanup: the join-us list is downloaded again only when its fingerprint changed — it was 13% of the API\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us/fingerprint'",
+    "to": "router.get('/api/admin/join-us', requireAuth,",
+    "must": {
+     "source": "requireAnyPermission\\('view_join_us', 'branch_hr'\\), requireRecruiting\\('view_join_us'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us/fingerprint'",
+    "to": "router.get('/api/admin/join-us', requireAuth,",
+    "must": {
+     "source": "const \\{ where, params \\} = joinUsWhere\\(req\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us/fingerprint'",
+    "to": "router.get('/api/admin/join-us', requireAuth,",
+    "must": {
+     "source": "\\$\\{JOIN_US_FROM\\} \\$\\{where\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin-operations.js",
+    "from": "router.get('/api/admin/join-us/fingerprint'",
+    "to": "router.get('/api/admin/join-us', requireAuth,",
+    "must": {
+     "source": "CRC32\\(CONCAT_WS",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "watchdogRuntimeSafety: runtime restart ownership is delegated without mutating host process-manager state",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/server.js",
+    "must": {
+     "source": "startProductionRuntimeGuard\\(\\{ logger \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/productionRuntimeGuard.js",
+    "must": {
+     "source": "process\\.env\\.NODE_ENV !== 'production'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/productionRuntimeGuard.js",
+    "must": {
+     "source": "interval\\.unref",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/productionRuntimeGuard.js",
+    "mustNot": {
+     "source": "writeFileSync|appendFileSync|crontab|dump\\.pm2|supervisor\\.js",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/server.js",
+    "mustNot": {
+     "source": "writeFileSync|crontab|dump\\.pm2",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "whatsappDelivery: outbox and signed webhook routes persist provider acceptance and receipts",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "delivery\\?\\.ok === false",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/outbox.js",
+    "must": {
+     "source": "provider_message_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "x-hub-signature-256",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/whatsapp-webhook.js",
+    "must": {
+     "source": "WHATSAPP_GREEN_WEBHOOK_SECRET",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/migrations/147_v25_whatsapp_delivery_receipts.sql",
+    "must": {
+     "source": "uq_outbox_provider_message",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "whatsappOutboundGate: the welcome message the desk switched off is actually gated now",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/lifecycle.js",
+    "must": {
+     "source": "lead_created: 'welcome'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "whatsappOutboundGate: the WhatsApp key is entered where the codes are sent from",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/OtpSettingsTab.tsx",
+    "mustNot": {
+     "source": "whatsapp\\.api_token",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/OtpSettingsTab.tsx",
+    "mustNot": {
+     "source": "channel: 'whatsapp'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/OtpSettingsTab.tsx",
+    "must": {
+     "source": "to=\"/dashboard/messaging_hub\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "whatsappUltraMsgProvider: UltraMsg is one of the providers a send can go through",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/whatsapp.js",
+    "must": {
+     "source": "messages\\/chat",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/whatsapp.js",
+    "must": {
+     "source": "_sendUltraMsg",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/whatsapp.js",
+    "must": {
+     "source": "api\\.ultramsg\\.com",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "writeErrors: hrError keeps the log line and delegates the response",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/hr/_shared.js",
+    "must": {
+     "source": "logger\\.error\\(message, error\\?\\.message \\|\\| error\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/_shared.js",
+    "must": {
+     "source": "return sendWriteError\\(res, error\\)",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

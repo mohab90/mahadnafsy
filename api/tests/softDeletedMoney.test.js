@@ -147,17 +147,7 @@ test('the scan can actually see a breach', () => {
   }
 });
 
-test('the interpolated WHERE fragments carry the guard themselves', () => {
-  // A scan cannot see into `${where}`. These two build their filter in JS, so
-  // the initialiser is the thing to pin.
-  const payments = fs.readFileSync(path.join(API, 'routes', 'payments.js'), 'utf8');
-  assert.ok(payments.includes("let where = 'p.tenant_id = ? AND p.deleted_at IS NULL'"),
-    'the payments list built its WHERE without the soft-delete guard');
 
-  const orders = fs.readFileSync(path.join(API, 'lib', 'paymobFinalise.js'), 'utf8');
-  assert.ok(orders.includes("'WHERE subscriber_id = ? AND amount > 0 AND deleted_at IS NULL'"),
-    "the customer's paid-total counts deleted payments again");
-});
 
 test('on a LEFT JOIN the guard sits in ON, never in WHERE', () => {
   // In WHERE it drops every unmatched row and quietly makes the join inner —

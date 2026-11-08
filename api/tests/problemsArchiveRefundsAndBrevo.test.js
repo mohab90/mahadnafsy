@@ -33,20 +33,7 @@ test('a problem handed to the refunds desk takes its whole story with it', () =>
 
 
 
-test('«تحويل لاسترداد» opens the refund through the refund code, carries the history and closes the problem', () => {
-  const server = read('api/routes/support.js');
-  const route = server.slice(server.indexOf("'/api/admin/tickets/:id/convert-to-refund'"), server.indexOf('// ── STATS + AGENT WORKLOAD'));
-  assert.match(route, /requirePermission\('manage_inbox'\)/, 'customer service can hand a problem over without being able to decide refunds');
-  assert.match(route, /createRefundByAdmin/);
-  assert.match(route, /buildTicketHistory/);
-  assert.match(route, /UPDATE refund_requests SET ticket_id=\?, ticket_code=\?, ticket_history=\?/);
-  assert.match(route, /UPDATE support_tickets SET status='closed'[\s\S]*refund_request_id=\?/);
-  assert.match(route, /ALREADY_REFUND/);
 
-  const migration = read('api/migrations/295_v26_ticket_to_refund_link.sql');
-  
-  
-});
 
 
 

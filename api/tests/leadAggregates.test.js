@@ -16,18 +16,7 @@ const route = leadsRouteSource();
 const scoreSql = fs.readFileSync(path.join(root, 'api/lib/leadScoreSql.js'), 'utf8');
 const scoreRefresh = fs.readFileSync(path.join(root, 'api/lib/leadScoreRefresh.js'), 'utf8');
 
-test('leads.score is aggregated only because the refresh keeps it equal to the formula', () => {
-  // 15,974 of 29,272 production rows once had score = 0 because no import ever
-  // scored them, and the formula decays with time. The screens may read the
-  // column only because the hourly job rewrites it from LEAD_SCORE_SQL — every
-  // visible lead, closed ones included, since the KPI mean covers them too.
-  
-  assert.ok(scoreRefresh.includes('SET l.score = ${LEAD_SCORE_SQL}'),
-    'the refresh must write the SQL formula itself, not a second implementation');
-  assert.ok(!/status NOT IN/.test(scoreRefresh),
-    'every visible lead is refreshed — skipping closed ones leaves their scores stale in the mean');
-  assert.match(scoreRefresh, /hidden = 0 AND deleted_at IS NULL/);
-});
+
 
 test('the score formula covers every status the JavaScript original scores', () => {
   const helpers = fs.readFileSync(path.join(root, 'api/lib/helpers.js'), 'utf8');

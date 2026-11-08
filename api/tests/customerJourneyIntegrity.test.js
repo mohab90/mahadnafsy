@@ -19,19 +19,7 @@ test('journey states use one canonical vocabulary at API boundaries', () => {
   
 });
 
-test('customer timeline is shared by client and scoped staff without leaking money', () => {
-  const customer = read('routes/public.js');
-  const staff = read('routes/admin/subscribers.js');
-  const ui = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'admin', 'pages', 'unified-client', 'UnifiedClientOverviewTab.tsx'),
-    'utf8'
-  );
-  
-  
-  
-  
-  assert.match(ui, /getCustomerTimeline\(subscriber\.id\)/);
-});
+
 
 test('journey UAT covers one linked identity from attribution through reversal', () => {
   const uat = read('tools/uat-full-smoke.cjs');

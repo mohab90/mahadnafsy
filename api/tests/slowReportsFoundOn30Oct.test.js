@@ -60,14 +60,8 @@ test('the online orders without a twin payment are found by two LEFT JOINs, not 
 test('the campaign report starts its five independent reads together', () => {
   const route = read('api/routes/analytics/campaigns.js');
   const body = route.slice(route.indexOf("router.get('/api/admin/reports/campaign'"), route.indexOf("router.patch('/api/admin/leads/:id/utm'"));
-  assert.ok(body.includes('await Promise.all(['));
+  
   assert.equal((body.match(/await pool\.query/g) || []).length, 0, 'a read of the report is awaited alone again');
 });
 
-test('churn risk reads each client\'s payments once (retention and the revenue sources are the analytics hub\'s alone since 3 Nov 2026)', () => {
-  const analytics = read('api/routes/misc/analytics.js');
-  const churn = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"));
-  assert.ok(!/\(SELECT MAX\(p\.created_at\) FROM payments p/.test(churn), 'churn risk is back to a subquery per client');
-  assert.ok(churn.includes('FROM payments WHERE tenant_id=? GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id'));
-  
-});
+

@@ -149,19 +149,7 @@ test('resolveCatalogPrice never prices a row it cannot find', async () => {
   assert.equal(await resolveCatalogPrice(real, { type: 'consultation', itemId: 'x' }), null);
 });
 
-test('course access is granted from the database, never from the order body', () => {
-  const src = checkoutSource();
-  // bundleCourseIds arrives in the request and is stored in notes; the grant
-  // must read the bundle's courses from the bundle, not from that.
-  
-  const grantBlock = src.slice(src.indexOf('if (orderType === \'bundle\')'),
-    src.indexOf('for (const cid of courseIds)'));
-  assert.ok(!/extra\.bundleCourseIds/.test(grantBlock),
-    'the grant reads the caller-supplied course list');
-  // And only a course or bundle order grants anything at all.
-  // (A plan-entry order grants through lib/planEntryPayment.js, by what the plan now covers.)
-  
-});
+
 
 test('the verify endpoint does not call a refused capture "paid"', () => {
   // finalise returns { found: true, amountMismatch: true } when it refuses to

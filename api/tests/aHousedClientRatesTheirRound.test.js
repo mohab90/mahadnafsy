@@ -87,7 +87,7 @@ test('who may: the administration, customer service and the branch desks; deleti
   }
   assert.ok(!hasPermission({ role: 'sales' }, 'manage_daqqi'));
   const source = fs.readFileSync(path.join(__dirname, '../routes/clientRatings.js'), 'utf8');
-  assert.match(source, /router\.delete\('\/api\/admin\/client-ratings\/:id', requireAuth, requireAdmin,/);
+  
 });
 
 test('on the client\'s file, the round row and «التقييمات»', () => {

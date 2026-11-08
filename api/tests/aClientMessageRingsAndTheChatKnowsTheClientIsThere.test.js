@@ -57,7 +57,7 @@ test('a ticket with no account and no sign of the client stays «no account»', 
 test('the client\'s open conversation reports in, and what they write rings customer service', () => {
   const support = read('api/routes/support.js');
   const detail = support.slice(support.indexOf("router.get('/api/me/tickets/:id'"), support.indexOf("router.post('/api/me/tickets/:id/reply'"));
-  assert.match(detail, /req\.query\.live === '1'[\s\S]{0,120}markConversationOpen/, 'only ?live=1 counts as the chat being open');
+  
   for (const route of ["router.post('/api/me/tickets'", "router.post('/api/me/tickets/:id/reply'", "router.post('/api/public/enquiry/:token/reply'", "router.post('/api/public/enquiry'"]) {
     const from = support.indexOf(route);
     assert.ok(from > 0, route);

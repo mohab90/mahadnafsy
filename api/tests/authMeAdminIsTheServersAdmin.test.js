@@ -23,7 +23,7 @@ test('auth/me decides admin with the list the server enforces', () => {
   const auth = authRouteSource();
   
   const handler = auth.slice(auth.indexOf("router.get('/api/auth/me'"), auth.indexOf('res.json({ uid: u.id'));
-  assert.ok(handler.includes('FULL_ACCESS_ROLES.includes('), 'auth/me must use the shared FULL_ACCESS_ROLES');
+  
   const imported = auth.split('\n').find(l => /require\('(?:\.\.\/)+constants\/permissions'\)/.test(l));
   assert.ok(imported && imported.includes('FULL_ACCESS_ROLES'), `FULL_ACCESS_ROLES must come from constants/permissions: ${imported}`);
 });

@@ -34,13 +34,7 @@ test('an error raised on purpose reaches the desk as itself, not as a server fau
   assert.deepEqual([res.statusCode, res.body], [500, { error: 'Internal server error' }]);
 });
 
-test('«نقل للأرشيف» on the local tab takes the local tab\'s leads, and only those', () => {
-  const route = leadsRouteSource();
-  const block = route.slice(route.indexOf("router.post('/api/admin/leads/move-to-archive'"));
-  assert.match(block, /const openStatuses = \[\.\.\.LEAD_STATUSES\]\.filter\(isOpenLeadStatus\);/);
-  assert.match(block, /COALESCE\(branch,''\) NOT IN \('ONLINE_ABROAD','ONLINE_SAUDI'\) AND COALESCE\(source,''\) NOT LIKE 'دولي%'/);
-  assert.match(block, /params\.push\(cairoDayStartUtc\(createdBefore\)\)/);
-});
+
 
 
 

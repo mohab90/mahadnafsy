@@ -38,13 +38,7 @@ test('the boot never sleeps between its waves', () => {
     'each one of these is dead time on every admin page load, and the server it was pacing is idle');
 });
 
-test('a retry backoff is still allowed to wait', () => {
-  // The distinction that matters: waiting because a request failed is a reason;
-  // waiting because the next request has not been made yet is not.
-  const api = fs.readFileSync(path.join(ROOT, 'admin/lib/mysqlapi.ts'), 'utf8');
-  assert.match(api, /setTimeout\(r, RETRY_BACKOFF_MS\)/,
-    'the retry path is not what this rule is about');
-});
+
 
 test('the waves themselves are kept', () => {
   // Staged, each awaited, so the screen paints on the first one. There were
