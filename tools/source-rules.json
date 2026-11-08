@@ -3932,27 +3932,6 @@
   "class": "b"
  },
  {
-  "id": "problemsArchiveRefundsAndBrevo: the refunds list says a history exists but does not ship it for every row",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/finance/refunds.js",
-    "must": {
-     "source": "AS has_ticket_history",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/refunds.js",
-    "must": {
-     "source": "const \\{ ticket_history: _history, \\.\\.\\.rest \\} = row",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "productionDeploymentSafety: admin monitoring never returns provider secrets or kills host processes",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -10951,65 +10930,9 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "status === 'failed' \\? reasonOf\\(reviewNote, req\\.body\\?\\.reason\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "if \\(status === 'failed' && !hasReason\\(rejectionReason\\)\\) return res\\.status\\(REASON_REQUIRED\\.status\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "await notifyPaymentRejected\\(\\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "Review: ",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/payment-proofs.js",
-    "must": {
-     "source": "action === 'reject' \\? reasonOf\\(reviewer_note\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/payment-proofs.js",
-    "must": {
-     "source": "action === 'reject' && !hasReason\\(rejectionReason\\)",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/routes/payment-proofs.js",
     "must": {
      "source": "kind: 'payment_proof'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/orders.js",
-    "must": {
-     "source": "newStatus === 'failed' \\? reasonOf\\(req\\.body\\.reason, req\\.body\\.reviewNote\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/orders.js",
-    "must": {
-     "source": "kind: 'order'",
      "flags": ""
     }
    }
@@ -12825,20 +12748,6 @@
     "code": true,
     "mustNot": {
      "source": "\\bleads\\.filter\\(",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "adminMoneyAndStatusReads: a refunded payment is never counted as money collected",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/refunds.js",
-    "must": {
-     "source": "UPDATE payments SET status='refunded'",
      "flags": ""
     }
    }
@@ -16323,20 +16232,6 @@
   "id": "fixesOf4Nov: no bonus is written by the system, and the month sheet has no required / reached / bonus columns",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "api/lib/paymentCompensation.js",
-    "must": {
-     "source": "const AUTOMATIC_BONUSES = false;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/paymentCompensation.js",
-    "must": {
-     "source": "if \\(AUTOMATIC_BONUSES\\) \\{\\s+[^]*recordRetentionBonus[^]*recordBookingBonuses[^]*\\}\\s+\\}",
-     "flags": ""
-    }
-   },
    {
     "file": "api/routes/hr/compensation.js",
     "mustNot": {

@@ -62,8 +62,8 @@ before(async () => {
        ('st-mp-rep', ?, 'مندوب', 'rep-mp@example.test', '1019100001', 'SALES', 1, '2025-01-01', 10),
        ('st-mp-mgr', ?, 'المدير', 'mgr-mp@example.test', '1019100002', 'MANAGER', 1, '2025-01-01', 0)`, [T, T]);
   await pool.query(
-    `INSERT INTO courses (id, tenant_id, title, description, short_description, instructor, thumbnail, category, type, price_egp)
-     VALUES ('co-mp-1', ?, 'كورس', '', '', '', '', 'GENERAL', 'RECORDED', 1000)`, [T]);
+    `INSERT INTO courses (id, tenant_id, title, description, short_description, instructor, thumbnail, category, type, price_egp, booking_bonuses_json)
+     VALUES ('co-mp-1', ?, 'كورس', '', '', '', '', 'GENERAL', 'RECORDED', 1000, '{"sales":{"type":"fixed","value":50},"service":{"type":"fixed","value":30}}')`, [T]);
   await pool.query(
     `INSERT INTO subscribers (id, tenant_id, name, phone, branch, branch_id, assigned_sales_id)
      VALUES ('sub-mp-1', ?, 'عميل', '1019100003', 'ONLINE_EGYPT', 'branch-online-egypt', 'st-mp-rep')`, [T]);
@@ -88,8 +88,8 @@ test('a rep\'s «paid» is recorded as pending and moves nothing until a finance
   assert.equal(paid.status, 'paid');
   assert.equal(await cash(), 1000, 'the journal is posted on approval');
   assert.equal(await enrolled(), 1, 'and the course opens');
-  const [commissions] = await pool.query('SELECT commission_amount, status FROM crm_commissions WHERE tenant_id=? AND payment_id=?', [T, made.body.id]);
-  assert.deepEqual(commissions.map(row => [Number(row.commission_amount), row.status]), [[100, 'PENDING']], 'approving pays the rep 10% of it, the same commission as recording it paid would have');
+  const [commissions] = await pool.query('SELECT commission_amount, status FROM crm_commissions WHERE tenant_id=?', [T]);
+  assert.deepEqual(commissions.map(row => [Number(row.commission_amount), row.status]), [[100, 'PENDING']], 'approving pays the rep 10% of it and nothing more: booking bonuses are set, and no bonus is written by the system (HR types them)');
 
   const again = await call(approval, 'patch', '/api/admin/payments/:id/status', { params: { id: made.body.id }, body: { status: 'paid' }, staff: MANAGER });
   assert.equal(again.statusCode, 200);
