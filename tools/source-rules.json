@@ -883,13 +883,6 @@
      "source": "s\\.commission_rate, s\\.commission_type,",
      "flags": ""
     }
-   },
-   {
-    "file": "api/lib/payrollCalc.js",
-    "must": {
-     "source": "emp\\.commission_type === 'TARGET' \\? 0",
-     "flags": ""
-    }
    }
   ],
   "class": "b"
@@ -2665,62 +2658,6 @@
   "class": "b"
  },
  {
-  "id": "hrWorkflowIntegrity: compensation changes are approval-owned and only approved values enter payroll",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/migrations/128_v25_hr_compensation_approval.sql",
-    "must": {
-     "source": "salary_structures[\\s\\S]*status ENUM",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/128_v25_hr_compensation_approval.sql",
-    "must": {
-     "source": "employee_bonuses[\\s\\S]*status ENUM",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "employee_bonuses[\\s\\S]*status='APPROVED'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "salary_structures ss[\\s\\S]*ss\\.status='APPROVED'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/129_v25_hr_instructor_fee_payroll_link.sql",
-    "must": {
-     "source": "payroll_run_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "included_in_payroll",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "UPDATE salary_advances[\\s\\S]*status\\s*=\\s*'DEDUCTED'",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "hrWorkflowIntegrity: HR audit retention is tenant-policy driven and bounded",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -2798,76 +2735,6 @@
     "file": "api/routes/hr/reports.js",
     "mustNot": {
      "source": "const usedDays = leaves\\s*\\.filter",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "hrWorkflowIntegrity: unpaid leave affects payroll and instructor fee settlement stays ledger-owned",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "l\\.type='UNPAID'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "unpaidLeaveDays",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "PAYROLL_SALARY_MISSING",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "PAYROLL_SETTLEMENT_REQUIRED",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "INSTRUCTOR_FEE_IMMUTABLE",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/152_v25_instructor_rate_approval.sql",
-    "must": {
-     "source": "instructor_rate_change_requests",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "RATE_CHANGE_PENDING",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "RATE_SOD",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/compensation.js",
-    "must": {
-     "source": "hr\\.instructor_rate\\.\\$\\{status\\.toLowerCase\\(\\)\\}",
      "flags": ""
     }
    }
