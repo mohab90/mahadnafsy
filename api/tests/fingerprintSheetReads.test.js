@@ -48,6 +48,16 @@ test('the standard layout reads', () => {
   assert.deepEqual(tabs[0].rows, [['رقم البصمة', 7]]);
 });
 
+test('text saved the way Excel and Google Sheets save it — shared strings, rich runs included — reads, whatever the part name\'s capitals', () => {
+  const shared = '<sst><si><t>اسم الموظف</t></si><si><r><t>ريم </t></r><r><t>حماده</t></r></si></sst>';
+  const sheet = '<worksheet><sheetData><row r="1"><c r="A1" s="50" t="s"><v>0</v></c><c r="B1"><v>7</v></c></row>'
+    + '<row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><v>8</v></c></row></sheetData></worksheet>';
+  for (const name of ['xl/sharedStrings.xml', 'xl/sharedstrings.xml', 'xl\\SharedStrings.xml']) {
+    const tabs = readXlsx(zip([['xl/workbook.xml', WORKBOOK], ['xl/_rels/workbook.xml.rels', RELS], [name, shared], ['xl/worksheets/sheet1.xml', sheet]]));
+    assert.deepEqual(tabs[0].rows, [['اسم الموظف', 7], ['ريم حماده', 8]], name);
+  }
+});
+
 test('backslashes, a leading slash and other capitals in the part names read too', () => {
   for (const [workbook, rels, sheet] of [
     ['xl\\workbook.xml', 'xl\\_rels\\workbook.xml.rels', 'xl\\worksheets\\sheet1.xml'],

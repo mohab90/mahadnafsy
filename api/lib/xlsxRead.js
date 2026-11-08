@@ -50,10 +50,12 @@ const columnIndex = ref => [...((ref.match(/^[A-Z]+/) || ['A'])[0])].reduce((n, 
 
 /** @returns {{name: string, rows: (string|number|null)[][]}[]} */
 function readXlsx(buffer) {
-  const parts = unzip(buffer, name => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(name));
+  // unzip() spells every part name in lower case: «sharedStrings.xml» is asked for as «sharedstrings.xml». Asked for with its capital S, it was never
+  // found, and every cell Excel or Google Sheets saves as a shared string — every name and header — read as empty (2 Nov to 8 Nov 2026).
+  const parts = unzip(buffer, name => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedstrings\.xml|worksheets\/[^/]+\.xml)$/.test(name));
   const workbook = parts.get('xl/workbook.xml');
   if (!workbook) throw notAWorkbook();
-  const shared = [...(parts.get('xl/sharedStrings.xml') || '').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m => runsText(m[1]));
+  const shared = [...(parts.get('xl/sharedstrings.xml') || '').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m => runsText(m[1]));
   const targets = new Map([...(parts.get('xl/_rels/workbook.xml.rels') || '').matchAll(/<Relationship\b[^>]*>/g)]
     .map(m => [attr(m[0], 'Id') || '', (attr(m[0], 'Target') || '').replace(/\\/g, '/').replace(/^\/?(xl\/)?/i, 'xl/').toLowerCase()]));
   const tabs = [];
