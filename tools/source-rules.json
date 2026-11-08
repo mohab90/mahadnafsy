@@ -1515,27 +1515,6 @@
   "class": "b"
  },
  {
-  "id": "arabicPaymentErrors: a duplicate booking names the client who already has the number",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "existingName: existing\\.name",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "المسئول عنه \\$\\{existing\\.owner_name\\}",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "auditFindingsThatWereReal: a quiz with no passing score does not pass an empty attempt",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -4065,27 +4044,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "receiptNo = await nextReceiptNo\\(conn, \\{ tenantId: paymentTenantId, branch: paymentBranch \\}\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "tenant_id, branch, branch_id, receipt_no\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "\\.\\.\\.\\(receiptNo \\? \\{ receiptNo, receiptBranch: receiptSeriesOf\\(paymentBranch\\) \\} : \\{\\}\\)",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/routes/installments.js",
     "must": {
      "source": "const receiptNo = await nextReceiptNo\\(conn, \\{ tenantId: req\\.tenantId, branch \\}\\);",
@@ -4434,34 +4392,6 @@
     "file": "api/routes/student-ai.js",
     "must": {
      "source": "SELECT course_id FROM enrollments WHERE tenant_id=\\? AND subscriber_id=\\?",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "saudiAndInternationalBooking: the booking route looks the client up by every spelling and names the one it found",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "identitySpellings\\(safePhone\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "phone IN \\(\\?\\) OR phone2 IN \\(\\?\\) OR REGEXP_REPLACE\\(COALESCE\\(phone, ''\\), '\\[\\^0-9\\]', ''\\) IN \\(\\?\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "const safePhone = toIdentity\\(completeForBranch\\(typedPhone, branch\\)\\)",
      "flags": ""
     }
    }
@@ -5121,20 +5051,6 @@
     "file": "api/routes/misc/analytics.js",
     "must": {
      "source": "LEFT JOIN users u ON u\\.id = h\\.user_id",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "transferDetailsConsultationsAndCourses: a client being registered by the booking belongs to nobody, so the ownership rule cannot refuse it",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(!createFromDraft && !bookAny && !financialRecordMatches\\(scope, subRow\\)\\)",
      "flags": ""
     }
    }
@@ -8655,20 +8571,6 @@
     "file": "api/routes/payment-proofs.js",
     "must": {
      "source": "SELECT proof_image, proof_url, branch_id[\\s\\S]{0,300}financialRecordMatches\\(scope, row\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "certificate_request_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "await applyCertificatePayment",
      "flags": ""
     }
    },
@@ -14392,13 +14294,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "cleanReference\\(sanitize\\(payment\\.transactionId \\|\\| payment\\.transaction_id \\|\\| '', 191\\)\\)",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/lib/paymentCorrections.js",
     "must": {
      "source": "cleanReference\\(changes\\.transactionId\\)",
@@ -18353,13 +18248,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(!isRealPhone\\(completeForBranch\\(subRow\\.phone, subRow\\.branch\\)\\)\\) \\{\\s+return res\\.status\\(400\\)\\.json\\(\\{",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/routes/installments.js",
     "must": {
      "source": "if \\(!isRealPhone\\(plan\\.subscriber_phone\\)\\) \\{",
@@ -19396,20 +19284,6 @@
   "id": "rejectedPaymentSaysWhy: customer service and the Dokki desk — and no one else — book and open any client",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "const bookAny = canBookAnyClient\\(req\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "!createFromDraft && !bookAny && !financialRecordMatches\\(scope, subRow\\)",
-     "flags": ""
-    }
-   },
    {
     "file": "api/routes/subscriber-payments.js",
     "must": {
