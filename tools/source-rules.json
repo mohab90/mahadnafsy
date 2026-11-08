@@ -34522,5 +34522,2000 @@
     }
    }
   ]
+ },
+ {
+  "id": "adminAuthority: each team screen has a figures-only source, and خدمة العملاء has a screen at all",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/dashboardTabGroups.ts",
+    "must": {
+     "source": "'cx_team'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/navigation.tsx",
+    "must": {
+     "source": "key: 'cx_team', label: 'أداء فريق خدمة العملاء'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/online-team/OnlineLoadSection.tsx",
+    "must": {
+     "source": "getOnlinePerformance\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/SalesTeamTab.tsx",
+    "must": {
+     "source": "getSalesTeamPerformance\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: client and admin code forms verify the pending session before refreshing auth",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/lib/mysqlapi.ts",
+    "must": {
+     "source": "\\/auth\\/login\\/email-code\\/verify",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/mysqlapi.ts",
+    "must": {
+     "source": "\\/auth\\/login\\/email-code\\/verify",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: the sign-in page has no WhatsApp-code way in, and every step of the forgotten-password flow reports its own outcome",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Auth.tsx",
+    "mustNot": {
+     "source": "requestWaOtp|verifyWaOtp|waMode|الدخول برقم الواتساب",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/mysqlapi.ts",
+    "mustNot": {
+     "source": "whatsapp\\/request-otp|whatsapp\\/verify-otp",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: CRM assignment and success feedback are server-authoritative",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/site-data-hooks/useCrmCoreState.ts",
+    "must": {
+     "source": "const updateLead = useCallback\\(async[\\s\\S]{0,500}await mysqlAdmin\\.saveLead",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useCrmCoreState.ts",
+    "must": {
+     "source": "catch[\\s\\S]{0,300}return false[\\s\\S]{0,300}return true",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientEditState.ts",
+    "must": {
+     "source": "if \\(await updateLead\\(leadDraft\\)\\) setEditing\\(false\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/admin/leads.js",
+     "api/routes/admin/leads/_shared.js",
+     "api/routes/admin/leads/write.js",
+     "api/routes/admin/leads/importDaqqi.js",
+     "api/routes/admin/leads/assignment.js",
+     "api/routes/admin/leads/dedup.js",
+     "api/routes/admin/leads/convert.js",
+     "api/routes/admin/leads/insights.js",
+     "api/routes/admin/leads/stats.js",
+     "api/routes/admin/leads/lists.js"
+    ],
+    "must": {
+     "source": "isNew && !salesId[\\s\\S]{0,150}getNextSalesRep",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: unified client mutations wait for canonical persistence before reporting success",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientEditState.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.saveSubscriber\\(\\{[\\s\\S]{0,800}credentialUpdate:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientEditState.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.saveSubscriber[\\s\\S]{0,1000}await reloadSubscribers\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientEditState.ts",
+    "must": {
+     "source": "else if \\(!await updateSubscriber\\(nextSubscriber\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientCommunications.ts",
+    "must": {
+     "source": "communications: \\[\\.\\.\\.\\(subscriber\\.communications \\|\\| \\[\\]\\), record\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientCommunications.ts",
+    "must": {
+     "source": "if \\(await persistCommunication\\(draft, updateStatus\\)\\) onSuccess\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientCourseAccess.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.updateEnrollmentAccess",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientCourseAccess.ts",
+    "must": {
+     "source": "await reloadSubscribers\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientCourseAccess.ts",
+    "mustNot": {
+     "source": "updateSubscriber\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: customer profile names persist through the self-service API before success feedback",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/UserDashboard.tsx",
+    "must": {
+     "source": "await mysqlAuth\\.updateProfile\\(undefined, value\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/UserDashboard.tsx",
+    "must": {
+     "source": "await refreshMySubscriber\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/UserDashboard.tsx",
+    "mustNot": {
+     "source": "updateSubscriber\\(\\{ \\.\\.\\.sub, nameEn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/mysqlapi.ts",
+    "must": {
+     "source": "JSON\\.stringify\\(\\{ name, nameEn \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "JSON_SET\\([\\s\\S]{0,220}'\\$\\.nameEn'",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "await conn\\.beginTransaction\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: customer avatar and support actions do not depend on browser-only operational state",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/UserDashboard.tsx",
+    "mustNot": {
+     "source": "StudentSupportTab token=|localStorage\\.getItem\\('mahad-token'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/student-dashboard/StudentSupportTab.tsx",
+    "must": {
+     "source": "credentials: 'include'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/student-dashboard/StudentSupportTab.tsx",
+    "mustNot": {
+     "source": "Authorization: `Bearer",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: site-data browser caches contain public catalog only, never customer or operational truth",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/siteDataCache.ts",
+    "must": {
+     "source": "_dataVersion !== version",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/siteDataCache.ts",
+    "must": {
+     "source": "stripLargeInlineAssets",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/siteDataCache.ts",
+    "mustNot": {
+     "source": "subscribers|leads|staffMembers|payments",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: site-data contexts delegate server runtime orchestration to focused hooks",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/SiteDataContext.tsx",
+    "must": {
+     "source": "useAdminDataRuntime\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/SiteDataContext.tsx",
+    "mustNot": {
+     "source": "listSubscribersPage|listAllOrders|listAllExpenses",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useAdminDataRuntime.ts",
+    "must": {
+     "source": "Promise\\.allSettled",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useAdminDataRuntime.ts",
+    "must": {
+     "source": "disposed",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useAdminDataRuntime.ts",
+    "must": {
+     "source": "lastCRMWriteRef\\.current < 180_000",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/SiteDataContext.tsx",
+    "must": {
+     "source": "useClientAccountRuntime\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/SiteDataContext.tsx",
+    "mustNot": {
+     "source": "getMySubscriber|checkIsStaff|getMyConsultations",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/SiteDataContext.tsx",
+    "mustNot": {
+     "source": "mysqlAdmin",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/site-data-hooks/useClientAccountRuntime.ts",
+    "must": {
+     "source": "mahad-progress-synced",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/site-data-hooks/useClientAccountRuntime.ts",
+    "must": {
+     "source": "cancelled",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: customer discounts, broadcasts, quizzes and live sessions hydrate from canonical APIs",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/discounts',\\s*publicLimiter",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "router\\.get\\('\\/api\\/notifications\\/broadcasts',\\s*requireAuth",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/SiteDataContext.tsx",
+    "mustNot": {
+     "source": "useDiscounts|listDiscounts",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/mysqlapi.ts",
+    "mustNot": {
+     "source": "listDiscounts",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/site-data-hooks/useNotifications.ts",
+    "must": {
+     "source": "mysqlClient\\.getBroadcastNotifications\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/site-data-hooks/useQuizzes.ts",
+    "must": {
+     "source": "mysqlCatalog\\.listQuizzes\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/site-data-hooks/useLiveStreams.ts",
+    "must": {
+     "source": "mysqlCatalog\\.listLiveStreams\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useAdminDataRuntime.ts",
+    "must": {
+     "source": "mysqlAdmin\\.getNotificationSettings\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/context/site-data-hooks/useCatalogData.ts",
+    "mustNot": {
+     "source": "mysqlAdmin|saveCourse|deleteCourse|saveBundle",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: unified client defers inactive tabs and modal code instead of shipping one monolithic chunk",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/UnifiedClientPage.tsx",
+    "must": {
+     "source": "React\\.Suspense",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/UnifiedClientPage.tsx",
+    "must": {
+     "source": "useUnifiedClientPayments",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/UnifiedClientPage.tsx",
+    "must": {
+     "source": "useUnifiedClientLifecycleActions",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/UnifiedClientModalsHost.tsx",
+    "must": {
+     "source": "React\\.Suspense",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/UnifiedClientPage.tsx",
+    "mustNot": {
+     "source": "import \\{ UnifiedClientOverviewTab \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/UnifiedClientPage.tsx",
+    "mustNot": {
+     "source": "import \\{ UnifiedClientSubscriberPaymentsPanel \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: CRM reminders render in their own tab and heavy lead views stay deferred",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "mustNot": {
+     "source": "LeadCommunicationsTimeline",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "mustNot": {
+     "source": "followupView",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "must": {
+     "source": "<QuickLogContactPanel",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/LeadSubTabs.tsx",
+    "mustNot": {
+     "source": "\\['communications', 'الاتصالات'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/LeadSubTabs.tsx",
+    "must": {
+     "source": "\\['reminders', 'المتابعات'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "must": {
+     "source": "const LeadTable = React\\.lazy",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/LeadsTab.tsx",
+    "must": {
+     "source": "const QuickEditPanel = React\\.lazy",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/LeadsTabHeader.tsx",
+    "mustNot": {
+     "source": "LeadSubcomponents",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts",
+    "must": {
+     "source": "from '\\.\\/leadBranchUtils'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: dashboard never performs browser-side customer or lead data migrations",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "lead-mig-",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "clientStatus\\s*===\\s*['\"]leads['\"]",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "admin/pages/Dashboard.tsx",
+     "admin/pages/dashboard/shell/useDashboardModel.tsx",
+     "admin/pages/dashboard/shell/useSaveFailureToasts.ts"
+    ],
+    "mustNot": {
+     "source": "markLeadsConverted\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: subscriber to lead conversion uses the atomic server workflow",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/lib/mysqlapi.ts",
+    "must": {
+     "source": "convertSubscriberToLead:[\\s\\S]*convert-to-lead",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: installment writes stay behind their gate and permission, and legacy finance UI is read-only",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/installments.js",
+    "must": {
+     "source": "INSTALLMENT_WRITES_ENABLED !== 'false'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/FinancialTab.tsx",
+    "mustNot": {
+     "source": "saveSubscriberPayment|addEnrollment|handleSaveInstallmentPlan",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
+    "mustNot": {
+     "source": "installment-plans\\/.*\\/pay|handleCreateInstallmentPlan",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/online-clients-sections/BulkActionBar.tsx",
+    "mustNot": {
+     "source": "setCollOnlineBulkConfirm\\('refund'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: Dokki round edits are server-first and attendee transfers are atomic",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/site-data-hooks/useDaqqiRoundsState.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.saveDaqqiRound",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useDaqqiRoundsState.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.transferDaqqiAttendee",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useDaqqiRoundsState.ts",
+    "mustNot": {
+     "source": "persistOrRevert\\(\\s*mysqlAdmin\\.saveDaqqiRound",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx",
+    "must": {
+     "source": "await transferDaqqiAttendee",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx",
+    "must": {
+     "source": "if \\(!await doUpdateRound",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useDaqqiRoundsState.ts",
+    "must": {
+     "source": "await mysqlAdmin\\.addDaqqiAttendee",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiHousingModal.tsx",
+    "must": {
+     "source": "transferDaqqiAttendee\\(subscriber\\.id, decision\\.from\\.id, round\\.id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiHousingModal.tsx",
+    "must": {
+     "source": "bookDaqqiAttendee\\(subscriber\\.id, round\\.id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/DaqqiHousingModal.tsx",
+    "must": {
+     "source": "if \\(!saved\\) \\{[\\s\\S]{0,120}لم يتم تغيير الروندات",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: staff password reset uses the privileged server-generated credential flow",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/staff-profile/StaffSettingsPanel.tsx",
+    "must": {
+     "source": "mysqlAuth\\.forceResetPassword\\(staff\\.email\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/staff-profile/StaffSettingsPanel.tsx",
+    "mustNot": {
+     "source": "Math\\.random\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/mysqlapi.ts",
+    "must": {
+     "source": "forceResetPassword:[\\s\\S]{0,200}\\/admin\\/force-reset-password",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "const newPassword = generateTemporaryPassword\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "files": [
+     "api/routes/auth.js",
+     "api/routes/auth/_shared.js",
+     "api/routes/auth/registration.js",
+     "api/routes/auth/staffAccounts.js",
+     "api/routes/auth/session.js",
+     "api/routes/auth/whatsappLogin.js",
+     "api/routes/auth/passwordReset.js",
+     "api/routes/auth/profile.js",
+     "api/routes/auth/adminCredentials.js",
+     "api/routes/auth/refreshAndEmailCode.js",
+     "api/routes/auth/sessions.js"
+    ],
+    "must": {
+     "source": "temporaryPassword: newPassword",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: catalog and therapist schedules are server-first and saved atomically",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/site-data-hooks/useCatalogState.ts",
+    "must": {
+     "source": "await persist\\(mysqlAdmin\\.saveCourse",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useCatalogState.ts",
+    "must": {
+     "source": "await persist\\(mysqlAdmin\\.saveTherapist",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useCatalogState.ts",
+    "must": {
+     "source": "await persist\\(mysqlAdmin\\.saveBundle",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/site-data-hooks/useCatalogState.ts",
+    "mustNot": {
+     "source": "persistOrRevert|setTimeout",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CoursesTab.tsx",
+    "must": {
+     "source": "const saved = editingCourseId \\? await updateCourse",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms-admin.js",
+    "from": "router.post('/api/admin/therapists'",
+    "to": "// POST /api/admin/testimonials",
+    "must": {
+     "source": "await conn\\.beginTransaction\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms-admin.js",
+    "from": "router.post('/api/admin/therapists'",
+    "to": "// POST /api/admin/testimonials",
+    "must": {
+     "source": "DELETE FROM therapist_slots",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms-admin.js",
+    "from": "router.post('/api/admin/therapists'",
+    "to": "// POST /api/admin/testimonials",
+    "must": {
+     "source": "INSERT INTO therapist_slots",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms-admin.js",
+    "from": "router.post('/api/admin/therapists'",
+    "to": "// POST /api/admin/testimonials",
+    "must": {
+     "source": "UPDATE courses SET instructor",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms-admin.js",
+    "from": "router.post('/api/admin/therapists'",
+    "to": "// POST /api/admin/testimonials",
+    "must": {
+     "source": "await conn\\.commit\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms-admin.js",
+    "from": "router.post('/api/admin/therapists'",
+    "to": "// POST /api/admin/testimonials",
+    "must": {
+     "source": "await conn\\.rollback",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/CourseInstructorsPanel.tsx",
+    "must": {
+     "source": "const saved = editingTherapistId \\? await updateTherapist\\(payload\\) : await addTherapist\\(payload\\);",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: staff account and consultation creation commit their cross-module writes atomically",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/staff-profile/StaffSettingsPanel.tsx",
+    "must": {
+     "source": "await createStaffAccount\\(payload, password\\.trim\\(\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: AI provider secrets stay behind the authenticated server proxy",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "\\/api\\/admin\\/ai\\/generate'[\\s\\S]{0,200}requirePermission\\('ask_ai'\\)[\\s\\S]{0,100}aiLimiter",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "generateAdminAi\\(settings\\.adminAiConfig",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "admin_ai\\.generate",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: admin namespace authenticates before database-backed feature gates",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/httpApp.js",
+    "must": {
+     "source": "isPublicAdminPath\\(pathname\\) \\? next\\(\\) : requireAuth\\(req, res, next\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/middleware/auth.js",
+    "must": {
+     "source": "if \\(req\\.user\\?\\.uid && req\\.user\\?\\.tenant_id === req\\.tenantId\\) return next\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "csvExports: a field only gets quotes when it needs them, and its own quotes get doubled",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/csv.ts",
+    "must": {
+     "source": "if \\(!\\/\\[\",\\\\n\\\\r\\]\\/\\.test\\(text\\) && text\\.trim\\(\\) === text\\) return text;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/csv.ts",
+    "must": {
+     "source": "return `\"\\$\\{text\\.replace\\(\\/\"\\/g, '\"\"'\\)\\}\"`;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/csv.ts",
+    "must": {
+     "source": "\\.join\\('\\\\r\\\\n'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "csvExports: what the writer writes, the leads import reads back",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/csv.ts",
+    "must": {
+     "source": "export function parseCsvRows",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "csvExports: the delimiter is read off the header, and only outside quotes",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "shared/csv.ts",
+    "must": {
+     "source": "export function detectCsvDelimiter",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dashboardReadShape: a month is a month, and the previous month is a different one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/finance-planning.js",
+    "code": true,
+    "must": {
+     "source": "addMonths\\(anchor, step\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/finance-planning.js",
+    "code": true,
+    "mustNot": {
+     "source": "cadence === 'weekly' \\? 7 : 30",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/dashboard.js",
+    "code": true,
+    "mustNot": {
+     "source": "setMonth\\(d\\.getMonth\\(\\) - 1\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/analytics/dashboard.js",
+    "code": true,
+    "must": {
+     "source": "const today = dateOnlyInTimeZone\\(\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dashboardReadShape: a Dokki round counts only the money paid for its own course",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/daqqiAttendees.js",
+    "code": true,
+    "must": {
+     "source": "bc\\.course_id=dr\\.course_id",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "dashboardReadShape: one payment is one payment, however many lists it appears in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/hooks/useOverviewDerived.ts",
+    "code": true,
+    "must": {
+     "source": "!countedOrderIds\\.has\\(p\\.id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/hooks/useOverviewDerived.ts",
+    "code": true,
+    "must": {
+     "source": "\\(!p\\.status \\|\\| p\\.status === 'paid'\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: the resize helper is shared, and every admin list thumbnail goes through it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/lib/img.ts",
+    "must": {
+     "source": "export \\{ cdnImg, cdnSrcSet \\} from '\\.\\.\\/\\.\\.\\/shared\\/img'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrStaffCard.tsx",
+    "must": {
+     "source": "loading=\"lazy\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: the logo is the resized one, from our own address, and a breadcrumb link can be pressed",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/Header.tsx",
+    "must": {
+     "source": "<img src=\\{cdnImg\\(logoUrl, 320\\)\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/Footer.tsx",
+    "must": {
+     "source": "<img src=\\{cdnImg\\(logoUrl, 320\\)\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: the inline-picture tool writes nothing unless told to, and keeps what it replaces",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/externalize-inline-images.cjs",
+    "must": {
+     "source": "process\\.argv\\.includes\\('--apply'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/externalize-inline-images.cjs",
+    "must": {
+     "source": "if \\(!found\\.length \\|\\| !APPLY\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/externalize-inline-images.cjs",
+    "must": {
+     "source": "WHERE id = \\? AND \\\\`\\$\\{f\\.column\\}\\\\` = \\?",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: on a phone a row action, an interview card control and a filter pill are finger-sized",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/index.css",
+    "must": {
+     "source": "table\\.rt-stack td button, table\\.rt-stack td a\\[href\\] \\{ min-width: 36px; min-height: 36px;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/index.css",
+    "must": {
+     "source": "\\[data-touch\\] button, \\[data-touch\\] a\\[href\\], \\[data-touch\\] select \\{ min-height: 36px; \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: the client database is a stack of small cards on a phone and the same table elsewhere",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/ClientDbTab.tsx",
+    "must": {
+     "source": "const isMobile = useIsMobile\\(\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ClientDbTab.tsx",
+    "must": {
+     "source": "\\{isMobile \\? \\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ClientDbTab.tsx",
+    "must": {
+     "source": "<ClientDbCard key=\\{rowKey\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/ClientDbTab.tsx",
+    "must": {
+     "source": "<table className=\"w-full text-sm\" dir=\"rtl\">",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/client-db/ClientDbCard.tsx",
+    "must": {
+     "source": "href=\\{`tel:\\$\\{row\\.phone\\}`\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "firstScreenWeight: the inline-picture tool can delete what it finds, after saving it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/externalize-inline-images.cjs",
+    "must": {
+     "source": "process\\.argv\\.includes\\('--clear'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/externalize-inline-images.cjs",
+    "must": {
+     "source": "CLEAR \\? \\{ url: '', size: 0 \\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerAccountSection: the lecturers screen makes the login and sets the pay in one place",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx",
+    "must": {
+     "source": "createStaffAccount\\(\\{ name: draft\\.name\\.trim\\(\\), email: email\\.trim\\(\\), phone: phone\\.trim\\(\\), password, role: realRole\\(role\\) \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx",
+    "must": {
+     "source": "setDraft\\(\\{ \\.\\.\\.draft, staffId: result\\.staffId,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx",
+    "must": {
+     "source": "password\\.length < 8",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx",
+    "must": {
+     "source": "instructors\\/\\$\\{draft\\.staffId\\}\\/rates",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/LecturerAccountSection.tsx",
+    "must": {
+     "source": "isAdmin && proposal\\.id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/CourseInstructorsPanel.tsx",
+    "must": {
+     "source": "<LecturerAccountSection draft=\\{therapistDraft\\} setDraft=\\{setTherapistDraft\\} notify=\\{notify\\} \\/>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerPortalScreens: it has a tab for lives, weekly hours, consultations, ratings, students, earnings, the community, notifications and the profile",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/LecturerPortal.tsx",
+    "must": {
+     "source": "item\\.needs !== 'consultant' \\|\\| consultant",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/LecturerPortal.tsx",
+    "must": {
+     "source": "const consultant = overview\\.capabilities\\.consultant \\|\\| Boolean\\(overview\\.profile\\.consultation\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "opsWatchdog: the off-site copies are pruned only after today\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy/mahad-db-backup.sh",
+    "must": {
+     "source": "REMOTE_KEEP_DAYS=\"\\$\\{MAHAD_BACKUP_REMOTE_KEEP_DAYS:-30\\}\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/mahad-db-backup.sh",
+    "must": {
+     "source": "--drive-use-trash=false --min-age \"\\$\\{REMOTE_KEEP_DAYS\\}d\" --include \"\\$\\{DB\\}_\\*\\.sql\\.gz\\.age\" --include \"\\$\\{DB\\}_\\*\\.sql\\.gz\\.gpg\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/mahad-db-backup.sh",
+    "must": {
+     "source": "\\[ \"\\$\\{REMOTE_KEEP_DAYS:-0\\}\" -ge 7 \\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/mahad-db-backup.sh",
+    "must": {
+     "source": "WARNING off-site retention failed \\(the new copy is safe\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "opsWatchdog: the watchdog asks both questions, and tells the owner in the same way as the others",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/opsWatchdog.js",
+    "must": {
+     "source": "\\.\\.\\.await otpFindings\\(pool, tenantId, now\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/opsWatchdog.js",
+    "must": {
+     "source": "emailFindings\\(\\{ tenantId, now \\}\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/opsWatchdog.js",
+    "mustNot": {
+     "source": "login codes and password resets are among them",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "seoWholeSite: the listing pages carry the links to what they list, and the FAQ page its questions as data",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/generate-seo.mjs",
+    "must": {
+     "source": "'\\/courses': courses\\.map\\(c => \\[`\\/c\\/\\$\\{c\\.slug \\|\\| c\\.id\\}`, c\\.title\\]\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/generate-seo.mjs",
+    "must": {
+     "source": "getJson\\('\\/api\\/therapists\\?limit=200'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/generate-seo.mjs",
+    "must": {
+     "source": "instructorPage\\(t, SITE\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "tools/generate-seo.mjs",
+    "must": {
+     "source": "writeFileSync\\(join\\(DIST, 'robots\\.txt'\\), robotsTxt\\(SITE\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "seoWholeSite: the sitemap has a date only when it knows one",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/seo-pages.js",
+    "must": {
+     "source": "FROM therapists WHERE is_active=1 AND tenant_id=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/seo-pages.js",
+    "must": {
+     "source": "loc: `\\/instructor\\/\\$\\{instructor\\.id\\}`",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "seoWholeSite: the app keeps the tags right from page to page: description, image and robots are set on every page",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/lib/useSeo.ts",
+    "must": {
+     "source": "const text = description \\|\\| DEFAULT_DESCRIPTION;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/useSeo.ts",
+    "must": {
+     "source": "setMeta\\('meta\\[name=\"robots\"\\]', 'content', noindex \\? 'noindex, nofollow' : 'index, follow'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/useSeo.ts",
+    "must": {
+     "source": "export function setCanonical\\(pathname: string, noindex = false\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/lib/useSeo.ts",
+    "must": {
+     "source": "script\\[data-page-ld\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "seoWholeSite: an instructor\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/InstructorDetails.tsx",
+    "mustNot": {
+     "source": "setCanonical\\('\\/instructors'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Faq.tsx",
+    "must": {
+     "source": "useSeo\\(\\{ title: 'الأسئلة الشائعة \\| معهد الدراسات النفسية', path: '\\/faq', description:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "\"@type\": \"WebSite\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/InstructorDetails.tsx",
+    "must": {
+     "source": "path: instructor \\? `/instructor/\\$\\{instructor\\.id\\}` : '/instructors'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<title>معهد الدراسات النفسية \\| دبلومات معتمدة في الصحة النفسية والعلاج النفسي</title>",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "seoWholeSite: a course page has one h1: the long description\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/CourseDetails.tsx",
+    "must": {
+     "source": "useSeo\\(\\{\\s*title: course \\? courseSeoTitle\\(course as any\\) : '',",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/CourseDetails.tsx",
+    "must": {
+     "source": "path: course \\? `\\/c\\/\\$\\{course\\.slug \\|\\| course\\.id\\}` : undefined,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/course-details-sections/PainPointsAndAboutSection.tsx",
+    "must": {
+     "source": "<SafeHtml html=\\{description \\|\\| ''\\} demoteHeadings />",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "siteDataSlices: a slice cannot drift from the value the provider actually supplies",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/context/siteDataSlices.tsx",
+    "code": true,
+    "must": {
+     "source": "import type \\{ SiteDataShape \\} from '\\./SiteDataContext'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/context/SiteDataContext.tsx",
+    "code": true,
+    "must": {
+     "source": "export interface SiteDataShape",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowQueriesFoundByTheLab: /auth/me looks the phone up by the column, not by LOWER(TRIM()) of it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/auth/session.js",
+    "from": "router.get('/api/auth/me'",
+    "must": {
+     "source": "FROM subscribers WHERE tenant_id=\\? AND email=\\? AND phone IS NOT NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/session.js",
+    "from": "router.get('/api/auth/me'",
+    "must": {
+     "source": "FROM leads WHERE tenant_id=\\? AND email=\\? AND phone IS NOT NULL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/session.js",
+    "from": "router.get('/api/auth/me'",
+    "mustNot": {
+     "source": "FROM (subscribers|leads) WHERE tenant_id=\\? AND LOWER\\(TRIM\\(email\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowQueriesFoundByTheLab: the lookups a client makes for their own data are indexed and split, not ORed through a function",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/orders.js",
+    "from": "router.get('/api/me/orders'",
+    "must": {
+     "source": "UNION ALL",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/orders.js",
+    "from": "router.get('/api/me/orders'",
+    "must": {
+     "source": "o\\.subscriber_id IS NULL AND o\\.customer_email=\\?",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/orders.js",
+    "from": "router.get('/api/me/orders'",
+    "mustNot": {
+     "source": "LOWER\\(TRIM\\(o\\.customer_email\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/privacyService.js",
+    "from": "async function findSubscriberForIdentity",
+    "to": "async function buildSubscriberExport",
+    "mustNot": {
+     "source": "LOWER\\(TRIM\\(email\\)\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "slowQueriesFoundByTheLab: «converted lead without a client» is NOT A AND NOT B AND NOT C, and the count is not a derived table",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/reconcileChecks.js",
+    "from": "const LIVE_SUBSCRIBER_FOR_LEAD",
+    "to": "const CHECKS",
+    "must": {
+     "source": "\\(NOT \\(NOT EXISTS \\(SELECT 1 FROM subscribers s",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/payops.js",
+    "must": {
+     "source": "population\\.replace\\(/\\^\\\\s\\*SELECT\\[\\\\s\\\\S\\]\\*\\?\\\\sFROM\\\\s/i, 'SELECT COUNT\\(\\*\\) AS n FROM '\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/payops.js",
+    "must": {
+     "source": "/\\\\b\\(GROUP BY\\|HAVING\\|DISTINCT\\|UNION\\)\\\\b/i\\.test\\(population\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/reconcileChecks.js",
+    "from": "const LIVE_SUBSCRIBER_FOR_LEAD",
+    "to": "const CHECKS",
+    "mustNot": {
+     "source": "\\)\\s*\\n\\s*OR \\(l\\.",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: the home page leads with booking and keeps the consultation slide",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Home.tsx",
+    "mustNot": {
+     "source": "احجز استشارة",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "<Link to=\"\\/enroll\"[^>]*>[\\s\\S]{0,80}احجز مكانك الآن",
+     "flags": ""
+    }
+   },
+   {
+    "file": "shared/siteDesigns.ts",
+    "must": {
+     "source": "title: 'ابدأ مسارك المهني في الصحة النفسية بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة',\\s*highlight: 'الصحة النفسية',",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "must": {
+     "source": "<Link to=\"\\/enroll\"[^>]*>\\s*<span>\\{text\\.primaryCta\\}<\\/span>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "offerIsShown\\(content\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "<a href=\"#offer\"[^>]*>احجز الآن<\\/a>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "content\\['consultation\\.show_on_home'\\] !== 'false' && <ConsultationSection",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/ConsultationSection.tsx",
+    "must": {
+     "source": "متاح الآن — جلسة فورية",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/ConsultationSection.tsx",
+    "must": {
+     "source": "احجز جلستك الآن",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/ConsultationSection.tsx",
+    "must": {
+     "source": "expressPrice\\(content, currency\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/ConsultationSection.tsx",
+    "must": {
+     "source": "content\\['express\\.therapistId'\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: «مش عارف تبدأ منين؟» sits at the end, right above one closing slide for booking and joining",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "mustNot": {
+     "source": "<GoalFinder",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "mustNot": {
+     "source": "تواصل معنا|\\/contact",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "mustNot": {
+     "source": "هل لديك استفسار",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "mustNot": {
+     "source": "<Link to=\"\\/contact\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: the payment calculator reads the marketing rates",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/PaymentPlanner.tsx",
+    "must": {
+     "source": "<section id=\"pay\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/PaymentPlanner.tsx",
+    "must": {
+     "source": "enrollmentRates\\(content\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/PaymentPlanner.tsx",
+    "must": {
+     "source": "amountDueNow\\(base, 'cash', rates\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/PaymentPlanner.tsx",
+    "must": {
+     "source": "installmentTotal\\(base, rates\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/PaymentPlanner.tsx",
+    "must": {
+     "source": "\\/enroll\\?course=\\$\\{encodeURIComponent\\(course\\.id\\)\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: the home page shows three paths, never the long integrated programme",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/PathsSection.tsx",
+    "must": {
+     "source": "bundlesForHome\\(bundles\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: the home page shows the design chosen in the panel; the old /new address leads to it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/App.tsx",
+    "must": {
+     "source": "<Route path=\"\\/\" element=\\{<HomeByDesign \\/>\\} \\/>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/App.tsx",
+    "must": {
+     "source": "import Home from '\\.\\/pages\\/Home';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/App.tsx",
+    "must": {
+     "source": "const HomeClassic = React\\.lazy\\(\\(\\) => import\\('\\.\\/pages\\/HomeClassic'\\)\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/App.tsx",
+    "must": {
+     "source": "const design = remoteReady \\? siteDesign\\(content\\) : remembered;",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/App.tsx",
+    "must": {
+     "source": "<Route path=\"\\/new\" element=\\{<Navigate to=\"\\/\" replace \\/>\\} \\/>",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "mustNot": {
+     "source": "noindex",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "useSeo\\(\\{[^}]*path: '\\/'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: three heroes, a different one on each visit, never the one just seen",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "nextHero\\(choices, last\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "localStorage\\.setItem\\(LAST_HERO, variant\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: the hero shows three real graduates, larger, as light WebP, with nothing written over them",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/HeroSection.tsx",
+    "must": {
+     "source": "<Picture[\\s\\S]*?photo=\\{`hero-\\$\\{g\\.name\\}`\\}",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theHomePageSellsTheBookingGoal: the graduation photos ship with the site and open in the one lightbox",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "className=\"fixed inset-0 z-\\[80\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "GRADUATION_PHOTOS\\[lightbox\\.index\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theSignInAccountsAndTheirLogAreOnePage: the log keeps who was tried and where from, and tells the truth about the status",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/loginAudit.js",
+    "must": {
+     "source": "getClientIp\\(req\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/loginAudit.js",
+    "mustNot": {
+     "source": "x-forwarded-for",
+     "flags": "i"
+    }
+   },
+   {
+    "file": "api/lib/loginAudit.js",
+    "must": {
+     "source": "\\(tenant_id,user_id,email,phone,ip,device_hash,user_agent,status,failure_reason\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/session.js",
+    "must": {
+     "source": "const tried = identifierIsEmail \\? \\{ email: logIdentifier \\} : \\{ phone: logIdentifier \\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/session.js",
+    "mustNot": {
+     "source": "logLoginAttempt\\(\\{ email: logIdentifier",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/whatsappLogin.js",
+    "must": {
+     "source": "phone: req\\.body\\?\\.phone, req, status: 'failed', failureReason",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/refreshAndEmailCode.js",
+    "must": {
+     "source": "'email_code_expired'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/refreshAndEmailCode.js",
+    "must": {
+     "source": "'email_code_wrong'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/session.js",
+    "must": {
+     "source": "failureReason: 'sharing_limit_locked'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/auth/whatsappLogin.js",
+    "must": {
+     "source": "failureReason: 'sharing_limit_locked'",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]
