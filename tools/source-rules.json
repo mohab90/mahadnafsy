@@ -36517,5 +36517,1489 @@
     }
    }
   ]
+ },
+ {
+  "id": "aCertificatesFigureComesFromThePayments: the clients lists read that figure, voiding a certificate payment takes its money off, and the review exists",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "must": {
+     "source": "loadCertificateRequests\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "loadCertificateRequests\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aNewSubscriberIsOneFormForEveryAccount: the collection and Dokki forms have the management\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "الاسم الكامل",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "رقم الهاتف",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "سعر مخصص",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "خصم %",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "دفعة أولى",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "طريقة الدفع",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "تاريخ الدفع",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "رقم الإيصال",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "رقم المحوِّل",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/NewSubscriberModal.tsx",
+    "must": {
+     "source": "ملاحظات",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "anInstalmentIsNotAFullPayment: the checkout writes the plan, and the card and receipt paths read it too",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "must": {
+     "source": "orderPlan\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "must": {
+     "source": "planAccess\\(conn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "mustNot": {
+     "source": "'paid',NOW\\(\\)\\)`,[\\s\\S]{0,40}accessType: 'full'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "orderPlan\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "planAccess\\(conn",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "mustNot": {
+     "source": "'paid',NOW\\(\\)\\)`,[\\s\\S]{0,40}accessType: 'full'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aPaidLecturePlaysLikeAFreeOne: the lecture frames name the players, so the permission survives the ticket redirect",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/UserDashboardVideoPlayer.tsx",
+    "must": {
+     "source": "allow=\\{HOSTED_FRAME_ALLOW\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/UserDashboardVideoPlayer.tsx",
+    "mustNot": {
+     "source": "allow=\"autoplay",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/course-details-sections/LecturePlayerSection.tsx",
+    "must": {
+     "source": "allow=\\{HOSTED_FRAME_ALLOW\\}",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/course-details-sections/LecturePlayerSection.tsx",
+    "mustNot": {
+     "source": "allow=\"autoplay",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aPaymentIsNeverRefusedForItsLead: every payment path converts through it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/core/financepay.js",
+    "must": {
+     "source": "convertLeadOfPayment\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/core/financepay.js",
+    "mustNot": {
+     "source": "transitionLead\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "convertLeadOfPayment\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "mustNot": {
+     "source": "transitionLead\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "convertLeadOfPayment\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "mustNot": {
+     "source": "transitionLead\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/orderPaymentConfirmation.js",
+    "must": {
+     "source": "convertLeadOfPayment\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/orderPaymentConfirmation.js",
+    "mustNot": {
+     "source": "transitionLead\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "must": {
+     "source": "convertLeadOfPayment\\(\\{",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "mustNot": {
+     "source": "transitionLead\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "arabicPaymentErrors: the payment hooks send the reason under the key the toast reads, and the dialog translates",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
+    "must": {
+     "source": "reason: arabicReason\\(error\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientLifecycleActions.ts",
+    "must": {
+     "source": "reason: arabicReason\\(error\\)",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aSecondPhoneAndOneForm: every save that takes a number asks who already holds it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "clientHoldingPhone",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "clientHoldingPhone",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/convert.js",
+    "must": {
+     "source": "clientHoldingPhone",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "assetNamesAreContentHashes: index.html is never cached and hashed assets are immutable",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy/nginx/mahad-web.conf.example",
+    "must": {
+     "source": "location \\/assets\\/ \\{[^}]*max-age=31536000, immutable",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/nginx/mahad-web.conf.example",
+    "must": {
+     "source": "location \\/ \\{[^}]*Cache-Control \"no-store\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/docker/nginx-spa.conf.template",
+    "must": {
+     "source": "location \\/assets\\/ \\{[^}]*max-age=31536000, immutable",
+     "flags": ""
+    }
+   },
+   {
+    "file": "deploy/docker/nginx-spa.conf.template",
+    "must": {
+     "source": "location \\/ \\{[^}]*Cache-Control \"no-store\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "aWriteShowsWithoutARefresh: both reloads announce the change, and the staff lists are refetched on it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/useStaffClientsPage.ts",
+    "must": {
+     "source": "window\\.addEventListener\\(CRM_CHANGED_EVENT, onChanged\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/useStaffClientsPage.ts",
+    "must": {
+     "source": "clearTimeout\\(timer\\); timer = setTimeout\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts",
+    "must": {
+     "source": "window\\.addEventListener\\(CRM_CHANGED_EVENT, onChanged\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts",
+    "must": {
+     "source": "clearTimeout\\(timer\\); timer = setTimeout\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useStaffOrders.ts",
+    "must": {
+     "source": "window\\.addEventListener\\(CRM_CHANGED_EVENT, onChanged\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useStaffOrders.ts",
+    "must": {
+     "source": "clearTimeout\\(timer\\); timer = setTimeout\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useStaffOverview.ts",
+    "must": {
+     "source": "window\\.addEventListener\\(CRM_CHANGED_EVENT, onChanged\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useStaffOverview.ts",
+    "must": {
+     "source": "clearTimeout\\(timer\\); timer = setTimeout\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useOnlineManagerSummary.ts",
+    "must": {
+     "source": "window\\.addEventListener\\(CRM_CHANGED_EVENT, onChanged\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useOnlineManagerSummary.ts",
+    "must": {
+     "source": "clearTimeout\\(timer\\); timer = setTimeout\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useStaffHomeSummary.ts",
+    "must": {
+     "source": "window\\.addEventListener\\(CRM_CHANGED_EVENT, onChanged\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/useStaffHomeSummary.ts",
+    "must": {
+     "source": "clearTimeout\\(timer\\); timer = setTimeout\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "certificateCodesAreMahadPlusSix: every place that issues a code uses the helper, and nothing issues the long formats any more",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/lib/certificatePayments.js",
+    "must": {
+     "source": "require\\('\\.\\.?\\/(?:lib\\/)?certificateCodes'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/certificatePayments.js",
+    "must": {
+     "source": "INSERT INTO certificate_requests\\s*\\(id, certificate_code,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/certificates.js",
+    "must": {
+     "source": "require\\('\\.\\.?\\/(?:lib\\/)?certificateCodes'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/certificates.js",
+    "must": {
+     "source": "INSERT INTO certificate_requests\\s*\\(id, certificate_code,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "consultationBookingGuards: the slot lookup is scoped to the therapist on the order and to this tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payment-proofs.js",
+    "code": true,
+    "mustNot": {
+     "source": "FROM therapist_slots WHERE id=\\? LIMIT 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lead-capture-crm.js",
+    "code": true,
+    "mustNot": {
+     "source": "FROM therapist_slots WHERE id=\\? LIMIT 1",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/public-orders.js",
+    "code": true,
+    "mustNot": {
+     "source": "FROM therapist_slots WHERE id=\\? LIMIT 1",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "courseTypeCategoryCase: the spellings the mapper emits are the ones the screens compare",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/types.ts",
+    "must": {
+     "source": "type: 'Recorded' \\| 'Live' \\| 'Mix';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/types.ts",
+    "must": {
+     "source": "category: 'Therapy' \\| 'Diagnosis' \\| 'Child' \\| 'General';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/types.ts",
+    "must": {
+     "source": "type: 'Recorded' \\| 'Live' \\| 'Mix';",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/types.ts",
+    "must": {
+     "source": "category: 'Therapy' \\| 'Diagnosis' \\| 'Child' \\| 'General';",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: client and admin registration wait for the real auth API before reporting success",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "else\\s*\\{[\\s\\S]{0,900}await mysqlAuth\\.register\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "await mysqlAuth\\.register\\([\\s\\S]{0,700}setNotice\\(\\{ type: 'success'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "else\\s*\\{[\\s\\S]{0,900}await mysqlAuth\\.register\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "await mysqlAuth\\.register\\([\\s\\S]{0,700}setNotice\\(\\{ type: 'success'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: client and admin code forms verify the pending session before refreshing auth",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "await mysqlAuth\\.verifyLoginEmailCode\\(codeStep\\.pendingToken,\\s*code\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "verifyLoginEmailCode\\([\\s\\S]{0,400}?refreshAuth\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "mustNot": {
+     "source": "localStorage\\.setItem\\(\\s*'mahad-token'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "await mysqlAuth\\.verifyLoginEmailCode\\(codeStep\\.pendingToken,\\s*code\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "verifyLoginEmailCode\\([\\s\\S]{0,400}?refreshAuth\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "mustNot": {
+     "source": "localStorage\\.setItem\\(\\s*'mahad-token'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "criticalFrontendContracts: a sign-in that never reached the server does not read as a wrong password",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "error instanceof DOMException && error\\.name === 'AbortError'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "error instanceof TypeError \\|\\| msg\\.includes\\('Failed to fetch'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "HTTP 5\\d\\d",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "تحقق من الاتصال",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/Auth.tsx",
+    "must": {
+     "source": "تحقق من اتصالك بالإنترنت",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "error instanceof DOMException && error\\.name === 'AbortError'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "error instanceof TypeError \\|\\| msg\\.includes\\('Failed to fetch'\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "HTTP 5\\d\\d",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "تحقق من الاتصال",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Auth.tsx",
+    "must": {
+     "source": "تحقق من اتصالك بالإنترنت",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "crmColumns: every writer of a client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "client_status",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/registrations.js",
+    "must": {
+     "source": "client_status",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/collectionSheets.js",
+    "must": {
+     "source": "client_status",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/clientCurrency.js",
+    "must": {
+     "source": "client_status",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/restore-paused-clients.cjs",
+    "must": {
+     "source": "client_status",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "discountExpiryDay: all four screens judge the expiry the same way",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/courses/DiscountsView.tsx",
+    "code": true,
+    "must": {
+     "source": "isExpiryActive\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/DiscountsView.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "new Date\\(d\\.expiresAt\\) >= now",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/DiscountsView.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "expiresAt >= new Date\\(\\)\\.toISOString\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/courses/DiscountsView.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "expiresAt < new Date\\(\\)\\.toISOString\\(\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/CourseDetails.tsx",
+    "code": true,
+    "must": {
+     "source": "effectivePrice\\(priceList, 'course'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/CourseDetails.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "discounts\\.find\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "code": true,
+    "must": {
+     "source": "effectivePrice\\(priceList, 'course'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "discounts\\.find\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "enrollmentPricing: the page, the checkout, the server and the admin all use the same rates",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Enrollment.tsx",
+    "must": {
+     "source": "enrollmentRates\\(content\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Enrollment.tsx",
+    "mustNot": {
+     "source": "\\b(15|7)\\s*%",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Checkout.tsx",
+    "must": {
+     "source": "enrollmentRates\\(content\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Checkout.tsx",
+    "mustNot": {
+     "source": "\\b(15|7)\\s*%",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "homeOfferPanel: the selected course is the panel\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/Dashboard.tsx",
+    "mustNot": {
+     "source": "offerSelectedCourseId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/hooks/useContentEditorDrafts.ts",
+    "mustNot": {
+     "source": "offerSelectedCourseId",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardDirectContentRoutes.tsx",
+    "mustNot": {
+     "source": "offerSelectedCourseId",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "lecturerPortalBackend: a booking on a closed day is refused and the booking page greys it out",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/lib/consultations.ts",
+    "must": {
+     "source": "blockedDates\\?\\.includes\\(dateValue\\)\\) return \\[\\]",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/consultations.ts",
+    "must": {
+     "source": "blockedDates\\?\\.includes\\(dateValue\\)\\) return \\[\\]",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "oneBarPerAccount: every bar is drawn one way",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "mustNot": {
+     "source": "activeButtonClass",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "mustNot": {
+     "source": "avatarClass",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "mustNot": {
+     "source": "roleBadge",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "mustNot": {
+     "source": "bg-purple-600",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "mustNot": {
+     "source": "shadow-emerald-200",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/DashboardNavigation.tsx",
+    "mustNot": {
+     "source": "shadow-indigo-200",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "onePriceEverywhere: every screen that shows a course or path price reads the server price, and checkout sends the code",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/CourseCard.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/CourseDetails.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/HomeClassic.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/SpecialOffer.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/OfferSpotlight.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/PathsSection.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Bundles.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/BundleDetails.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Enrollment.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/Checkout.tsx",
+    "must": {
+     "source": "from '(\\.\\.\\/)+lib\\/usePrices'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "orderPaymentConfirmation: the receipt and card approvals file the payment on its Cairo day too",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payment-proofs.js",
+    "mustNot": {
+     "source": "NOW\\(\\),'paid'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "const paidDay = (cairoToday|dateOnlyInTimeZone)\\(\\);\\s+await assertWritable\\(paidDay, conn, tenantId\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payment-proofs.js",
+    "must": {
+     "source": "date: paidDay,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "mustNot": {
+     "source": "NOW\\(\\),'paid'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "must": {
+     "source": "const paidDay = (cairoToday|dateOnlyInTimeZone)\\(\\);\\s+await assertWritable\\(paidDay, conn, tenantId\\);",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/paymobFinalise.js",
+    "must": {
+     "source": "date: paidDay,",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "pageSeo: the shell still carries the tags the generator rewrites",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta property=\"og:url\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta property=\"og:title\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta property=\"og:description\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta property=\"og:type\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta property=\"og:image\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta name=\"description\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<meta name=\"twitter:description\" content=\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/index.html",
+    "must": {
+     "source": "<link rel=\"canonical\" href=\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "paymentExecutor: every screen that lists payments reads the resolved name, not the column",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/payments.js",
+    "must": {
+     "source": "resolvePaymentExecutors\\(pool, req\\.tenantId,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/payments.js",
+    "mustNot": {
+     "source": "staffName: p\\.staff_name",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "must": {
+     "source": "resolvePaymentExecutors\\(pool, req\\.tenantId,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/stafflists.js",
+    "mustNot": {
+     "source": "staffName: p\\.staff_name",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "productionDeploymentSafety: SSH tooling supports key or agent authentication only",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tunnel.js",
+    "must": {
+     "source": "SSH_PRIVATE_KEY_FILE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tunnel.js",
+    "must": {
+     "source": "SSH_AUTH_SOCK",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tunnel.js",
+    "mustNot": {
+     "source": "SSH_PASS|keyboard-interactive|tryKeyboard|password\\s*:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/remote-readiness-inventory.cjs",
+    "must": {
+     "source": "SSH_PRIVATE_KEY_FILE",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/remote-readiness-inventory.cjs",
+    "must": {
+     "source": "SSH_AUTH_SOCK",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/remote-readiness-inventory.cjs",
+    "mustNot": {
+     "source": "SSH_PASS|keyboard-interactive|tryKeyboard|password\\s*:",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "publicLeadBranchChoice: the public forms really do offer a physical branch",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/components/home/OfferSpotlight.tsx",
+    "code": true,
+    "must": {
+     "source": "value=\"daqqi\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/components/home/OfferSpotlight.tsx",
+    "code": true,
+    "must": {
+     "source": "value=\"tagamoa\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/course-details-sections/LeadFormSection.tsx",
+    "code": true,
+    "must": {
+     "source": "value=\"daqqi\"",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/course-details-sections/LeadFormSection.tsx",
+    "code": true,
+    "must": {
+     "source": "value=\"tagamoa\"",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "rejectedPaymentSaysWhy: every reject button asks the question first, and none rejects with a canned reason",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/orders/useOrderActions.ts",
+    "must": {
+     "source": "askRejectionReason\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx",
+    "must": {
+     "source": "askRejectionReason\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/orders/CollectionBookingsReview.tsx",
+    "must": {
+     "source": "askRejectionReason\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/financial/usePaymentProofsReview.ts",
+    "must": {
+     "source": "askRejectionReason\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/unified-client/useUnifiedClientPaymentProofs.ts",
+    "must": {
+     "source": "askRejectionReason\\(",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "schemaColumns: nothing asks courses for is_active — the column is is_published",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/gsheets.js",
+    "mustNot": {
+     "source": "FROM courses[^`'\"]*is_active",
+     "flags": "i"
+    }
+   },
+   {
+    "file": "api/lib/sheets.js",
+    "mustNot": {
+     "source": "FROM courses[^`'\"]*is_active",
+     "flags": "i"
+    }
+   }
+  ]
+ },
+ {
+  "id": "seoWholeSite: an instructor\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/pages/Home.tsx",
+    "must": {
+     "source": "title: 'معهد الدراسات النفسية \\| دبلومات معتمدة في الصحة النفسية والعلاج النفسي', path: '/'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "client/pages/HomeClassic.tsx",
+    "must": {
+     "source": "title: 'معهد الدراسات النفسية \\| دبلومات معتمدة في الصحة النفسية والعلاج النفسي', path: '/'",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "settingsRoundTrip: the payment methods the settings screen writes are the ones the dialogs read",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/components/payment-modal/usePaymentModalModel.tsx",
+    "code": true,
+    "must": {
+     "source": "usePaymentBoxes\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/components/payment-modal/usePaymentModalModel.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "DEFAULT_PAYMENT_METHODS\\s*=",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx",
+    "code": true,
+    "must": {
+     "source": "usePaymentBoxes\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx",
+    "code": true,
+    "mustNot": {
+     "source": "DEFAULT_PAYMENT_METHODS\\s*=",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "systemLogCertificatesRefundsTracks: certificates: paid before the system is paid, and the courier has a way back",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
+    "must": {
+     "source": "السعر",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
+    "must": {
+     "source": "المدفوع",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
+    "must": {
+     "source": "المتبقي",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
+    "must": {
+     "source": "التحصيل:",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
+    "must": {
+     "source": "ملاحظات: ",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
+    "must": {
+     "source": "تحديد كل المعروض",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "theNewClientOfficerAndTheNoCollectorFilter: the four paths that make a client all ask the one picker, which honours him first",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "pickCollectionOfficer",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "pickCollectionOfficer",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/leads/convert.js",
+    "must": {
+     "source": "pickCollectionOfficer",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "therapistMeetingLinkPrivacy: nothing builds a join link from the public feed any more",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "client/lib/consultations.ts",
+    "code": true,
+    "mustNot": {
+     "source": "buildConsultationMeetingLink",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/lib/consultations.ts",
+    "code": true,
+    "mustNot": {
+     "source": "buildConsultationMeetingLink",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "twoPeopleOneNumberOnPurpose: a number is shared only by a new account, with the holder named and a reason, on both paths that make clients",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "sharedPhoneSlot\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "must": {
+     "source": "recordSharedPhone\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "sharedPhoneSlot\\(",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/subscriber-payments.js",
+    "must": {
+     "source": "recordSharedPhone\\(",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

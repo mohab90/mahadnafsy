@@ -10,32 +10,9 @@ const path = require('node:path');
 const root = path.join(__dirname, '..', '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('client and admin registration wait for the real auth API before reporting success', () => {
-  for (const relativePath of ['client/pages/Auth.tsx', 'admin/pages/Auth.tsx']) {
-    const source = read(relativePath);
-    assert.match(source, /else\s*\{[\s\S]{0,900}await mysqlAuth\.register\(/);
-    assert.match(source, /await mysqlAuth\.register\([\s\S]{0,700}setNotice\(\{ type: 'success'/);
-  }
-});
 
-test('client and admin code forms verify the pending session before refreshing auth', () => {
-  for (const relativePath of ['client/pages/Auth.tsx', 'admin/pages/Auth.tsx']) {
-    const source = read(relativePath);
-    assert.match(source, /await mysqlAuth\.verifyLoginEmailCode\(codeStep\.pendingToken,\s*code\)/);
-    // The session is the httpOnly cookie the API sets on that call, so the form
-    // has nothing to stash and only needs to re-read who it is now signed in as.
-    //
-    // This used to assert `localStorage.setItem('mahad-token', result.token)`.
-    // That line was deliberately removed when tokens moved to httpOnly cookies —
-    // keeping a copy in localStorage is exactly what an httpOnly cookie exists to
-    // prevent, since any injected script can read it. The assertion outlived the
-    // behaviour it described and pinned the insecure version as the requirement.
-    assert.match(source, /verifyLoginEmailCode\([\s\S]{0,400}?refreshAuth\(\)/);
-    assert.doesNotMatch(source, /localStorage\.setItem\(\s*'mahad-token'/,
-      'the session token must never be copied out of the httpOnly cookie');
-  }
-  
-});
+
+
 
 
 
@@ -409,21 +386,4 @@ test('admin namespace authenticates before database-backed feature gates', () =>
 
 
 
-test('a sign-in that never reached the server does not read as a wrong password', () => {
-  // The catch mapped a handful of server messages and sent everything else to
-  // "تعذر إتمام العملية، حاول مرة أخرى" — the same text a rejected password
-  // gets. A dropped connection therefore told the user their credentials were
-  // the problem, and they retyped a password that was already correct.
-  for (const relativePath of ['admin/pages/Auth.tsx', 'client/pages/Auth.tsx']) {
-    const source = read(relativePath);
-    assert.match(source, /error instanceof DOMException && error\.name === 'AbortError'/,
-      `${relativePath}: a timed-out request must be identified`);
-    assert.match(source, /error instanceof TypeError \|\| msg\.includes\('Failed to fetch'\)/,
-      `${relativePath}: an unreachable host must be identified`);
-    assert.match(source, /HTTP 5\d\d/,
-      `${relativePath}: a server fault must be identified`);
-    // Each of the three must reach the user as its own message, not the catch-all.
-    assert.match(source, /تحقق من الاتصال/, `${relativePath}: timeout wording`);
-    assert.match(source, /تحقق من اتصالك بالإنترنت/, `${relativePath}: unreachable wording`);
-  }
-});
+

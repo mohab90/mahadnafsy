@@ -57,28 +57,7 @@ test('cairoDateOnly names the Cairo day, not the UTC one', () => {
 
 
 
-test('all four screens judge the expiry the same way', () => {
-  // The course page and the home page no longer judge a rule themselves: they
-  // show the server's price (lib/usePrices), and api/lib/effectivePrice.js
-  // judges the expiry as a Cairo day — the same rule as the admin's list.
-  for (const rel of ['client/pages/CourseDetails.tsx', 'client/pages/Home.tsx']) {
-    const source = codeOnly(read(rel));
-    assert.match(source, /effectivePrice\(priceList, 'course'/, `${rel} does not show the server's price`);
-    assert.doesNotMatch(source, /discounts\.find\(/, `${rel} still applies a rule of its own`);
-  }
-  const server = codeOnly(read('api/lib/effectivePrice.js'));
-  
-  
-  for (const rel of [
-    'admin/pages/dashboard/tabs/courses/DiscountsView.tsx',
-  ]) {
-    const source = codeOnly(read(rel));
-    assert.match(source, /isExpiryActive\(/, `${rel} does not use the shared rule`);
-    assert.ok(!/new Date\(d\.expiresAt\) >= now/.test(source), `${rel} still compares instants`);
-    assert.ok(!/expiresAt >= new Date\(\)\.toISOString\(\)/.test(source), `${rel} still uses the UTC day`);
-    assert.ok(!/expiresAt < new Date\(\)\.toISOString\(\)/.test(source), `${rel} still uses the UTC day`);
-  }
-});
+
 
 test("the customer's certificate requests carry the note an admin wrote them", () => {
   const { mapSubscriber } = require('../lib/mappers');

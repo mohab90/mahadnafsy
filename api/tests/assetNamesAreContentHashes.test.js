@@ -28,11 +28,5 @@ for (const app of ['client', 'admin']) {
 
 
 
-test('index.html is never cached and hashed assets are immutable', () => {
-  for (const rel of ['deploy/nginx/mahad-web.conf.example', 'deploy/docker/nginx-spa.conf.template']) {
-    const conf = read(rel);
-    assert.match(conf, /location \/assets\/ \{[^}]*max-age=31536000, immutable/, rel);
-    assert.match(conf, /location \/ \{[^}]*Cache-Control "no-store"/, rel);
-  }
-});
+
 

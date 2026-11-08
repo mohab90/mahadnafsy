@@ -95,20 +95,7 @@ test('nothing else is rewritten into a YouTube embed', () => {
 // a computer starts it with playVideo over postMessage and every desktop
 // browser refused it. Measured from inside the redirected document: autoplay
 // false with the old attribute, true with the players' origins named.
-test('the lecture frames name the players, so the permission survives the ticket redirect', () => {
-  const lib = fs.readFileSync(path.join(ROOT, 'client/lib/lectureVideo.ts'), 'utf8');
-  
-  
-  
 
-  const surface = fs.readFileSync(path.join(ROOT, 'client/components/VideoSurface.tsx'), 'utf8');
-  
-  for (const file of ['client/components/UserDashboardVideoPlayer.tsx', 'client/pages/course-details-sections/LecturePlayerSection.tsx']) {
-    const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
-    assert.match(source, /allow=\{HOSTED_FRAME_ALLOW\}/, `${file} frames a hosted player without naming it`);
-    assert.doesNotMatch(source, /allow="autoplay/, `${file} still grants autoplay to the ticket's origin only`);
-  }
-});
 
 // And the ticket has to be recognised as one, or autoplay and the resume
 // position never reach the redirect. The test used to be "does not mention

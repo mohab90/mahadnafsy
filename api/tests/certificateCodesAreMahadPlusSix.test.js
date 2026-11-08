@@ -59,18 +59,4 @@ test('new and old codes both pass the public check', () => {
   }
 });
 
-test('every place that issues a code uses the helper, and nothing issues the long formats any more', () => {
-  const completion = read('api/lib/courseCompletion.js');
-  
-  
-  
-  for (const file of ['api/lib/certificatePayments.js', 'api/routes/certificates.js']) {
-    const source = read(file);
-    assert.match(source, /require\('\.\.?\/(?:lib\/)?certificateCodes'\)/, `${file} imports the helper`);
-    assert.match(source, /INSERT INTO certificate_requests\s*\(id, certificate_code,/, `${file} sets the code itself`);
-  }
-  
-  
-  
-  
-});
+

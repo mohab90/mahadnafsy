@@ -80,14 +80,7 @@ test('a day can be closed from today on, once, and the bookings already on it ar
   assert.equal(await availability.isDayBlocked(blocked, { tenantId: 't1', therapistId: null, date: today }), false);
 });
 
-test('a booking on a closed day is refused and the booking page greys it out', () => {
-  
-  
-  
-  for (const file of ['client/lib/consultations.ts', 'admin/lib/consultations.ts']) {
-    assert.match(read(file), /blockedDates\?\.includes\(dateValue\)\) return \[\]/, file);
-  }
-});
+
 
 test('the lecturer\'s notice says urgent or scheduled, with the hour', () => {
   const urgent = consultationNotice({ clientName: 'منى', source: 'site_express', sessionAt: '2026-10-25 12:00:00', sessionType: 'INDIVIDUAL' });

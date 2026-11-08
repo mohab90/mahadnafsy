@@ -18,16 +18,4 @@ test('a certificate shows the price list\'s figure for its type and currency, el
   assert.equal(certificateDue({}, { type: 'OTHER', currency: 'EGP', price: null }), 0);
 });
 
-test('the clients lists read that figure, voiding a certificate payment takes its money off, and the review exists', () => {
-  // the lists and the profile read their certificate requests from one place (lib/clientView.js), which prices them by the price list
-  
-  for (const file of ['api/routes/admin/stafflists.js', 'api/routes/admin/subscribers.js']) {
-    assert.match(read(file), /loadCertificateRequests\(/, file);
-  }
-  const voiding = read('api/lib/paymentCorrections.js');
-  
-  const routes = read('api/routes/certificates.js');
-  
-  
-  
-});
+

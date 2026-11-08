@@ -174,28 +174,7 @@ test('«تكملة»: the course joins the track, its money with it, access unto
   
 });
 
-test('certificates: paid before the system is paid, and the courier has a way back', () => {
-  const routes = read('api/routes/certificates.js');
-  // Since 8 Oct 2026 the desk moves a paid certificate freely between the seven
-  // stages, the courier's way back included (aCertificateMovesOnlyPaidInFull).
-  
-  
-  
-  
-  
-  
 
-  const tab = read('admin/pages/dashboard/tabs/CertRequestsTab.tsx');
-  
-  
-  // 19 Oct 2026: one card per request (client, certificate, money, stage) instead of a seventeen-column table.
-  for (const label of ['السعر', 'المدفوع', 'المتبقي', 'التحصيل:', 'ملاحظات: ', 'تحديد كل المعروض']) {
-    assert.ok(tab.includes(label), label);
-  }
-  
-  
-  
-});
 
 
 

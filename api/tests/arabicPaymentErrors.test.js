@@ -50,13 +50,7 @@ test('nothing thrown still leaves a reason', { skip: !arabicReason }, () => {
   assert.equal(arabicReason(new Error('weird'), 'تعذر حفظ الدفعة'), 'تعذر حفظ الدفعة (weird)');
 });
 
-test('the payment hooks send the reason under the key the toast reads, and the dialog translates', () => {
-  for (const file of ['admin/pages/unified-client/useUnifiedClientPayments.ts', 'admin/pages/unified-client/useUnifiedClientLifecycleActions.ts']) {
-    assert.match(read(file), /reason: arabicReason\(error\)/, file);
-  }
-  
-  
-});
+
 
 test('the booking route no longer answers a rep in English', () => {
   const route = read('api/routes/subscriber-payments.js');

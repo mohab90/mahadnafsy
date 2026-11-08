@@ -28,14 +28,7 @@ test('legacy deployment entrypoints fail closed without credentials or remote mu
   assert.match(guard, /process\.exitCode = 78/);
 });
 
-test('SSH tooling supports key or agent authentication only', () => {
-  for (const file of ['tunnel.js', 'tools/remote-readiness-inventory.cjs']) {
-    const source = readApi(file);
-    assert.match(source, /SSH_PRIVATE_KEY_FILE/);
-    assert.match(source, /SSH_AUTH_SOCK/);
-    assert.doesNotMatch(source, /SSH_PASS|keyboard-interactive|tryKeyboard|password\s*:/);
-  }
-});
+
 
 
 

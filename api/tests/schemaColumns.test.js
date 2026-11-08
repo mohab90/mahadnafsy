@@ -28,10 +28,7 @@ const API = path.join(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(API, rel), 'utf8');
 
 test('nothing asks courses for is_active — the column is is_published', () => {
-  for (const rel of ['routes/gsheets.js', 'lib/sheets.js']) {
-    const src = read(rel);
-    assert.ok(!/FROM courses[^`'"]*is_active/i.test(src), `${rel} queries courses on is_active again`);
-  }
+  
   // Both copies of the same lookup now agree, including on deleted courses.
   const wanted = 'FROM courses WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL';
   assert.ok(read('routes/gsheets.js').includes(wanted), 'the manual import lost the corrected query');

@@ -99,18 +99,4 @@ test('the pay mode goes on top of the list price, as checkout always applied it'
   assert.deepEqual([plan.planTotal, plan.dueNow], [Math.round(2808 * 0.93), Math.round(Math.round(2808 * 0.93) * 0.25)]);
 });
 
-test('every screen that shows a course or path price reads the server price, and checkout sends the code', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const read = rel => fs.readFileSync(path.resolve(__dirname, '..', '..', rel), 'utf8');
-  for (const rel of ['client/components/CourseCard.tsx', 'client/pages/CourseDetails.tsx', 'client/pages/Home.tsx', 'client/pages/HomeClassic.tsx',
-    'client/components/SpecialOffer.tsx', 'client/components/home/OfferSpotlight.tsx', 'client/components/home/PathsSection.tsx',
-    'client/pages/Bundles.tsx', 'client/pages/BundleDetails.tsx', 'client/pages/Enrollment.tsx', 'client/pages/Checkout.tsx']) {
-    assert.match(read(rel), /from '(\.\.\/)+lib\/usePrices'/, rel);
-  }
-  
-  const checkout = read('client/pages/Checkout.tsx');
-  
-  
-  
-});
+

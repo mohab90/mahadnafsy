@@ -74,17 +74,4 @@ test('a payment in full still books in full', async () => {
   assert.equal(grants[0].selections[0].accessType, 'full');
 });
 
-test('the checkout writes the plan, and the card and receipt paths read it too', () => {
-  const fs = require('fs');
-  const path = require('path');
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-  // The plan's total comes from the same quote as the amount (lib/effectivePrice.js quoteItem).
-  
-  
-  for (const file of ['lib/paymobFinalise.js', 'routes/payment-proofs.js']) {
-    const source = read(file);
-    assert.match(source, /orderPlan\(/, file);
-    assert.match(source, /planAccess\(conn/, file);
-    assert.doesNotMatch(source, /'paid',NOW\(\)\)`,[\s\S]{0,40}accessType: 'full'/, file);
-  }
-});
+

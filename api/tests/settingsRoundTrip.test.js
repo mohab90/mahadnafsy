@@ -43,31 +43,7 @@ test('adding a name to the stored map does not disturb pricing', () => {
     { price: 60, currency: 'SAR', status: 'PRICED' });
 });
 
-test('the payment methods the settings screen writes are the ones the dialogs read', () => {
-  // One helper reads them, and it reads one key. The settings screen has to
-  // write that key or every dialog silently shows the fallback list instead.
-  const helper = codeOnly(read('admin/lib/paymentMethods.ts'));
-  
 
-  const schema = codeOnly(read('admin/pages/dashboard/tabs/systemSettingsSchema.tsx'));
-  
-  
-
-  // usePaymentBoxes wraps parsePaymentMethods and adds the boxes with money
-  // against them. Both go through this one helper module either way.
-  
-  
-
-  for (const screen of [
-    'admin/components/payment-modal/usePaymentModalModel.tsx',
-    'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
-  ]) {
-    const source = codeOnly(read(screen));
-    assert.match(source, /usePaymentBoxes\(/, `${screen} must read them through the shared helper`);
-    assert.ok(!/DEFAULT_PAYMENT_METHODS\s*=/.test(source),
-      `${screen} must not carry its own list`);
-  }
-});
 
 
 

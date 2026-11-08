@@ -21,17 +21,7 @@ test('one «مشترك جديد» form opens from every account; the booking scr
   
 });
 
-test('the collection and Dokki forms have the management\'s details, except the login', () => {
-  for (const detail of ['الاسم الكامل', 'رقم الهاتف', 'سعر مخصص', 'خصم %', 'دفعة أولى', 'طريقة الدفع', 'تاريخ الدفع', 'رقم الإيصال', 'رقم المحوِّل', 'ملاحظات']) {
-    assert.ok(form.includes(detail), `${detail} is on the form`);
-  }
-  // The login, and each course's access, belong to the account variant alone.
-  
-  
-  // A collection officer does not set a price.
-  
-  
-});
+
 
 test('the management still creates the login account; the other two book through the booking endpoint', () => {
   

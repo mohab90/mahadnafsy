@@ -93,19 +93,4 @@ test('customer service and the Dokki desk — and no one else — book and open 
 
 
 
-test('every reject button asks the question first, and none rejects with a canned reason', () => {
-  for (const file of [
-    'admin/pages/dashboard/tabs/orders/useOrderActions.ts',
-    'admin/pages/dashboard/tabs/orders/OrdersOnlineManagerView.tsx',
-    'admin/pages/dashboard/tabs/orders/CollectionBookingsReview.tsx',
-    'admin/pages/dashboard/tabs/financial/usePaymentProofsReview.ts',
-    'admin/pages/unified-client/useUnifiedClientPaymentProofs.ts',
-  ]) {
-    assert.match(read(file), /askRejectionReason\(/, file);
-  }
-  
-  // …and every call that rejects a payment passes it on.
-  
-  
-  
-});
+

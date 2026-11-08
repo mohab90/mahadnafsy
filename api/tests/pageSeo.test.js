@@ -110,22 +110,4 @@ test('the app keeps the tags right while the visitor navigates', () => {
     'these set a title but leave the canonical pointing at whatever loaded first: ' + offenders.join(', '));
 });
 
-test('the shell still carries the tags the generator rewrites', () => {
-  // The generator edits by exact match. If the shell's markup is reformatted the
-  // replacements silently do nothing and every page goes back to the homepage's
-  // identity — with no error anywhere.
-  const shell = read('client/index.html');
-  for (const needle of [
-    '<meta property="og:url" content="',
-    '<meta property="og:title" content="',
-    '<meta property="og:description" content="',
-    '<meta property="og:type" content="',
-    '<meta property="og:image" content="',
-    '<meta name="description" content="',
-    '<meta name="twitter:description" content="',
-    '<link rel="canonical" href="',
-  ]) {
-    assert.ok(shell.includes(needle),
-      `client/index.html no longer contains \`${needle}\` — the generator's replacement would be a no-op`);
-  }
-});
+

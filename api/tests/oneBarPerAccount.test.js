@@ -19,7 +19,5 @@ test('every bar is drawn one way', () => {
   assert.ok(roleBar.includes('<BrandMark />'), 'the institute\'s mark, as on the management bar');
   assert.ok(roleBar.includes('className={barButtonClass(activeTab === tab.key)}'), 'the management bar\'s buttons');
   
-  for (const leftover of ['activeButtonClass', 'avatarClass', 'roleBadge', 'bg-purple-600', 'shadow-emerald-200', 'shadow-indigo-200']) {
-    assert.ok(!nav.includes(leftover), `a bar still has its own colours: ${leftover}`);
-  }
+  
 });

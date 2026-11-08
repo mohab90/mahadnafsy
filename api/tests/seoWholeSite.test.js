@@ -176,18 +176,7 @@ test('the pages of one visitor say noindex, and a certificate\'s own page does t
   ]) assert.ok(read(file).includes(needle), `${file}: ${needle}`);
 });
 
-test('an instructor\'s page is its own address, the FAQ page has a description, the front page keeps its served title', () => {
-  const instructor = read('client/pages/InstructorDetails.tsx');
-  
-  
-  
-  for (const file of ['client/pages/Home.tsx', 'client/pages/HomeClassic.tsx']) {
-    assert.ok(read(file).includes("title: 'معهد الدراسات النفسية | دبلومات معتمدة في الصحة النفسية والعلاج النفسي', path: '/'"), file);
-  }
-  const shell = read('client/index.html');
-  
-  
-});
+
 
 test('a course page has one h1: the long description\'s own headings start one level down', () => {
   

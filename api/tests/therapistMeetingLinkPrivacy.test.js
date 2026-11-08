@@ -58,9 +58,4 @@ test('mapping a list the way the route does withholds every link, not just the f
 
 
 
-test('nothing builds a join link from the public feed any more', () => {
-  for (const rel of ['client/lib/consultations.ts', 'admin/lib/consultations.ts']) {
-    assert.ok(!codeOnly(read(rel)).includes('buildConsultationMeetingLink'),
-      `${rel} still exports the helper that read slot.meetingLink`);
-  }
-});
+

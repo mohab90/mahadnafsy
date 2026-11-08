@@ -56,11 +56,4 @@ test('the values the public dropdowns emit all resolve to a real branch', () => 
 
 
 
-test('the public forms really do offer a physical branch', () => {
-  // The path page's form is the course page's (LeadFormSection), so that is where its branches are.
-  for (const rel of ['client/components/home/OfferSpotlight.tsx', 'client/pages/course-details-sections/LeadFormSection.tsx']) {
-    const page = codeOnly(read(rel));
-    assert.match(page, /value="daqqi"/, `${rel} no longer offers a physical branch`);
-    assert.match(page, /value="tagamoa"/);
-  }
-});
+

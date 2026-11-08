@@ -37,11 +37,7 @@ test('a course arrives spelled the way both apps declare it', () => {
 test('the spellings the mapper emits are the ones the screens compare', () => {
   // Both apps declare the vocabulary in their own types; the filters and the
   // card labels compare against it directly.
-  for (const rel of ['client/types.ts', 'admin/types.ts']) {
-    const types = read(rel);
-    assert.match(types, /type: 'Recorded' \| 'Live' \| 'Mix';/, `${rel} declares a different course type`);
-    assert.match(types, /category: 'Therapy' \| 'Diagnosis' \| 'Child' \| 'General';/);
-  }
+  
   const courses = codeOnly(read('client/pages/Courses.tsx'));
   // The study-system filter (Recorded / Live / Mix) was dropped on 19 Oct 2026: the page filters by field only.
   for (const value of ['Therapy', 'Child', 'Diagnosis']) {
