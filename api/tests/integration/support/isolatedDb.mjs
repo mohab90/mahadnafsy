@@ -93,6 +93,10 @@ async function sweep(conn, template) {
       const pid = Number(name.slice(COPY_PREFIX.length).split('_')[0]);
       if (pid && pid !== process.pid && !alive(pid)) await conn.query(`DROP DATABASE IF EXISTS ${quote(name)}`).catch(() => {});
     } else if (name.startsWith(TEMPLATE_PREFIX) && name !== template) {
+      // A template another run is still building has no _it_template yet, which read as «idle» and was dropped under it: that run then failed
+      // with «Unknown database» or a table missing half-way through its migrations. Its build lock says it is being built.
+      const [[building]] = await conn.query('SELECT IS_USED_LOCK(?) AS holder', [`mahad_it_template_${name}`]);
+      if (building?.holder != null) continue;
       const [[row]] = await conn.query(
         `SELECT MAX(used_at) < UTC_TIMESTAMP() - INTERVAL ${TEMPLATE_IDLE_DAYS} DAY AS idle FROM ${quote(name)}._it_template`,
       ).catch(() => [[{ idle: 1 }]]);

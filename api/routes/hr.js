@@ -16,4 +16,5 @@ router.use(require('./hr/staffprofile'));
 router.use(require('./hr/talent').router); // website join-us → recruiting bridge
 router.use(require('./hr/recruitment-workflow')); // contact -> evaluate -> grade, and HR notes
 router.use(require('./hr/staff-file')); // document checklist + pay basis
+router.use(require('./hr/bonuses')); // «نظام المكافآت»: the plan and a month's bonuses
 module.exports = router;

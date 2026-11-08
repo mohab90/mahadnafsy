@@ -17,6 +17,7 @@ const { uuidv4 } = require('../../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { hasPermission } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { SCHEMES, normalizeLevels } = require('../../lib/bonusPlan');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_hr')];
@@ -105,7 +106,7 @@ router.put('/api/admin/hr/staff/:staffId/documents/:docType', ...manage, async (
 router.get('/api/admin/hr/staff/:staffId/pay', ...view, async (req, res) => {
   try {
     const [[row]] = await pool.query(
-      `SELECT base_salary, commission_type, commission_rate, monthly_target
+      `SELECT base_salary, commission_type, commission_rate, monthly_target, bonus_scheme, booking_first_target, collection_levels_json
          FROM staff WHERE id=? AND tenant_id=? LIMIT 1`,
       [req.params.staffId, req.tenantId]
     );
@@ -115,6 +116,10 @@ router.get('/api/admin/hr/staff/:staffId/pay', ...view, async (req, res) => {
       commissionType: row.commission_type || 'NONE',
       commissionRate: row.commission_rate == null ? null : Number(row.commission_rate),
       monthlyTarget: row.monthly_target == null ? null : Number(row.monthly_target),
+      // «نظام المكافآت» (lib/bonusPlan.js): what the month's bonus is worked out on, where a rep's booking ladder starts, a collector's levels.
+      bonusScheme: row.bonus_scheme || 'NONE',
+      bookingFirstTarget: row.booking_first_target == null ? null : Number(row.booking_first_target),
+      collectionLevels: (() => { try { return normalizeLevels(row.collection_levels_json); } catch { return []; } })(),
     });
   } catch (error) {
     logger.error('[staff-pay/get]', error.message);
@@ -145,15 +150,28 @@ router.put('/api/admin/hr/staff/:staffId/pay', ...managePay, async (req, res) =>
     if (commissionType === 'TARGET' && monthlyTarget == null) {
       return res.status(400).json({ error: 'حدد قيمة التارجيت الشهري' });
     }
+    // The bonus scheme is sent only by a screen that shows it; one that does not leaves it as it is.
+    const bonus = req.body?.bonusScheme === undefined ? null : (() => {
+      const scheme = String(req.body.bonusScheme || 'NONE').toUpperCase();
+      if (!SCHEMES.includes(scheme)) throw Object.assign(new Error('نظام المكافأة لازم يكون: بدون / حجوزات / تحصيل / تحصيل وحجوزات'), { statusCode: 400 });
+      const firstTarget = num(req.body.bookingFirstTarget);
+      if (firstTarget !== null && !(firstTarget > 0)) throw Object.assign(new Error('أول تارجيت لازم يكون عدد حجوزات أكبر من صفر'), { statusCode: 400 });
+      if (scheme === 'SALES_BOOKINGS' && firstTarget === null) throw Object.assign(new Error('حدد أول تارجيت للموظف (مثلاً 10 أو 15 أو 20 حجز)'), { statusCode: 400 });
+      const levels = normalizeLevels(req.body.collectionLevels || []);
+      if (scheme.startsWith('COLLECTION') && !levels.length) throw Object.assign(new Error('حدد ليفلات التحصيل للموظف (من كام، ونسبة أو مبلغ)'), { statusCode: 400 });
+      return { scheme, firstTarget, levels };
+    })();
 
     const [result] = await pool.query(
-      `UPDATE staff SET base_salary=?, commission_type=?, commission_rate=?, monthly_target=?
+      `UPDATE staff SET base_salary=?, commission_type=?, commission_rate=?, monthly_target=?${bonus ? ', bonus_scheme=?, booking_first_target=?, collection_levels_json=?' : ''}
         WHERE id=? AND tenant_id=?`,
-      [baseSalary, commissionType, commissionRate, monthlyTarget, req.params.staffId, req.tenantId]
+      [baseSalary, commissionType, commissionRate, monthlyTarget,
+        ...(bonus ? [bonus.scheme, bonus.firstTarget, bonus.levels.length ? JSON.stringify(bonus.levels) : null] : []), req.params.staffId, req.tenantId]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Staff not found' });
     res.json({ ok: true });
   } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
     logger.error('[staff-pay/update]', error.message);
     hrError(res, error);
   }
