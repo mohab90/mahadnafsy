@@ -48,9 +48,6 @@ test('a minimum experience is that band and every band above it', () => {
   assert.match(experienceSql('a.experience_years', 'only_none').sql, /= 'none'/);
   assert.deepEqual(experienceSql('a.experience_years', ''), { sql: '', params: [] });
   assert.deepEqual(experienceSql('a.experience_years', 'whatever'), { sql: '', params: [] });
-  // The same ladder the admin uses.
-  const labels = read('admin/pages/dashboard/tabs/hr-sections/applicantLabels.ts');
-  assert.match(labels, /EXPERIENCE_ORDER = \['none', 'under_1', '1-3', '3-5', '5-10', '10plus'\]/);
 });
 
 test('a search word is matched literally', () => {

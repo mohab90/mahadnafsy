@@ -44,14 +44,6 @@ test('a certificate keeps its name across a save', () => {
   assert.ok(!schema.includes("key: 'cert_pricing'"));
 });
 
-test('a deleted certificate stays deleted', () => {
-  const catalog = codeOnly(read('admin/lib/certificateCatalog.ts'));
-  assert.ok(!catalog.includes('return [...DEFAULT_CERT_TYPES, ...extra];'),
-    'the defaults were prepended on every read, so a delete could never stick');
-  // The saved map is the list; the defaults only seed an empty one.
-  assert.match(catalog, /if \(!keys\.length\) return DEFAULT_CERT_TYPES;/);
-});
-
 test('each settings section has its own address', () => {
   // Fourteen sections lived behind /dashboard/system_settings, so none could be
   // linked to, none could be bookmarked, and the back button left the screen

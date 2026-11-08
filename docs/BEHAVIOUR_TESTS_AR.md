@@ -93,3 +93,9 @@ node api/tools/test-pin-report.cjs --dir=<نسخة قديمة من tests>   # م
 - `selfServiceGuards.test.js`: ملفي/تقريري/رسائلي بلا حق HR، والكتابة في ملف حد لـHR، واللوحات الشخصية.
 - اتشالت: communityTenantScope (كلها)، ٩ من tenantIsolationHardening، ٣ من adminAuthority. اللي بقى نص رجع لـ`tools/source-rules.json` (٢٣ قاعدة).
 - سياسة معلنة: دبابيس «بتستخدم transaction / FOR UPDATE / upsert idempotent» في ملفات الـTenantScope اتشالت مع نصها الخاص بالمستأجر (فحصا ١٤ و٣٠) — الذرّية نفسها ما عندهاش اختبار حقن أعطال. ده قرار مقصود ومكتوب هنا، مش نسيان.
+
+### الدفعة الرابعة
+الرقم: **١٠٩٧ من ٣٢٣٥ (٣٣٫٩٪)**.
+- `integration/hrMonthSheetAbsenceAndPenalty` (أنواع الغياب: بدون إذن / بإذن / يوم حر / من الرصيد ورفضه لما الرصيد يخلص، وجزاء المدير: مبلغ أو أيام على ثلاثين، السبب، مش لنفسه، PENDING).
+- `adminLibBehaviour.test.js` (bundle بـesbuild): أدوار الصلاحية الكاملة في اللوحة = السيرفر، `isCollected`، عناوين التابات القديمة، الشهادة المحذوفة تفضل محذوفة، سلّم الخبرة.
+- نص UI/دفع ثابت اتحول لقواعد في `tools/source-rules.json` (٢٤ قاعدة) مع سبب.

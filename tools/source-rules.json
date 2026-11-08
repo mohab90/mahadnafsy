@@ -842,5 +842,60 @@
     }
    }
   ]
+ },
+ {
+  "id": "penaltyLeaveBalanceAndAccountLinks: the month sheet names the three absences and the manager's penalty, and the payroll reads the leave balance and the commission type",
+  "why": "moved from a unit test that matched source text; the behaviour is integration/hrMonthSheetAbsenceAndPenalty",
+  "checks": [
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "leave_balance: balances\\.get\\(row\\.id\\)",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/hr/payroll.js",
+    "must": {
+     "source": "s\\.commission_rate, s\\.commission_type,",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/payrollCalc.js",
+    "must": {
+     "source": "emp\\.commission_type === 'TARGET' \\? 0",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrMonthEditModal.tsx",
+    "must": {
+     "source": "غياب بدون إذن",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrMonthEditModal.tsx",
+    "must": {
+     "source": "غياب بإذن",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrMonthEditModal.tsx",
+    "must": {
+     "source": "غياب من رصيد الإجازات",
+     "flags": ""
+    }
+   },
+   {
+    "file": "admin/pages/dashboard/tabs/hr-sections/HrMonthSheet.tsx",
+    "must": {
+     "source": "خصم جزاء من المدير",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

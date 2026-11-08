@@ -136,14 +136,6 @@ test('the online screen holds online clients, and says which market each is in',
   assert.match(table, /isOnlineClient\(row\) \? MARKET_LABELS\[subscriberMarket\(row\)\] : branchLabel\(row\.branch\)/);
 });
 
-test('عملائي has its own URL, and the old ones still land', () => {
-  const aliases = read('admin/pages/dashboard/tabUrlAliases.ts');
-  assert.match(aliases, /online_clients: 'my_clients'/);
-  assert.match(aliases, /my_clients: 'online_clients'/);
-  // The spelling that has been in bookmarks and notification links.
-  assert.match(aliases, /subscribers: 'online_clients'/);
-});
-
 test('محلي قديم and دولي get the same filters as the table view', () => {
   const leads = codeOnly(read('admin/pages/dashboard/tabs/LeadsTab.tsx'));
   // The bar was hidden on those sub-tabs entirely.

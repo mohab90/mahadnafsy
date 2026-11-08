@@ -106,13 +106,6 @@ test('a refunded payment is never counted as money collected', () => {
   assert.ok(paymentModal.includes('useClientMoney('), 'it asks the server what the client has paid');
 });
 
-test('one predicate decides what "collected" means', () => {
-  const money = read('admin/lib/money.ts');
-  assert.match(money, /export function isCollected/);
-  // A missing status means paid: rows predating the column carry none.
-  assert.match(money, /!status \|\| status === 'paid'/);
-});
-
 test('a sales figure printed in EGP was converted to EGP', () => {
   // orders.currency is enum('EGP','SAR','USD') and the leaderboard prints ج.
   assert.match(schema, /`currency` enum\('EGP','SAR','USD'\)/);
