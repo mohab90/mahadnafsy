@@ -48,7 +48,7 @@ function sourceNames(text) {
   const vars = new Set();
   for (const m of text.matchAll(/^(?:const|let)\s+(\w+)\s*=\s*([^\n]*)/gm)) {
     const rhs = m[2];
-    if (/readFileSync/.test(rhs) && !/fixture/i.test(rhs) && !/\.json/.test(rhs)) vars.add(m[1]);
+    if (readsRepo(rhs, []) && !/fixture/i.test(rhs) && !/\.json/.test(rhs)) vars.add(m[1]);
     else if ([...readers].some(name => new RegExp(`\\b${name}\\s*\\(`).test(rhs))) vars.add(m[1]);
   }
   return { readers: [...readers], vars: [...vars] };
@@ -62,6 +62,27 @@ function blocks(text) {
   return starts.map((start, index) => text.slice(start, starts[index + 1] ?? text.length));
 }
 
+/** The first argument of the readFileSync( that starts at `at` in `text`: up to the comma that ends it. */
+function firstArgument(text, at) {
+  let depth = 0; let i = text.indexOf('(', at) + 1; const start = i;
+  for (; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') { if (depth === 0) break; depth -= 1; } else if (c === ',' && depth === 0) break;
+  }
+  return text.slice(start, i);
+}
+
+/** Does this expression read a file of the repository? A helper of the file does; readFileSync does when its path names a folder of the repo (a literal, __dirname, a root), not a temp folder or a log. */
+function readsRepo(rhs, fileReaders) {
+  if (fileReaders.length && new RegExp(`(?:${fileReaders.map(escape).join('|')})\\s*\\(`).test(rhs)) return true;
+  for (const m of rhs.matchAll(/readFileSync\s*\(/g)) {
+    const arg = firstArgument(rhs, m.index);
+    if (/['"`]|__dirname|\b(?:ROOT|root|repoRoot|apiRoot|API|DIR)\b/.test(arg) && !/tmpdir|mkdtemp/.test(arg)) return true;
+  }
+  return false;
+}
+
 function pinsSource(block, fileReaders, fileVars) {
   const readerAlternatives = ['readFileSync', ...fileReaders.map(escape)].join('|');
   const readerCall = new RegExp(`(?:${readerAlternatives})\\s*\\(`);
@@ -71,7 +92,7 @@ function pinsSource(block, fileReaders, fileVars) {
     for (const m of block.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*([^;]*?);/gs)) {
       const rhs = m[2];
       if (/fixture/i.test(rhs) || /\.json['"`]/.test(rhs)) continue;
-      if (readerCall.test(rhs) || [...subjects].some(name => new RegExp(`\\b${escape(name)}\\b`).test(rhs))) subjects.add(m[1]);
+      if (readsRepo(rhs, fileReaders) || [...subjects].some(name => new RegExp(`\\b${escape(name)}\\b`).test(rhs))) subjects.add(m[1]);
     }
   }
   const names = [...subjects].map(escape).join('|');
