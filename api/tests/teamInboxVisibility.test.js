@@ -6,6 +6,8 @@
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-team-inbox-0123456789abcdef';
 
 const test = require('node:test');
+// A frozen clock: what the test reads as now is the same on every run and at every hour of the day.
+require('node:test').mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-04T10:00:00Z') });
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');

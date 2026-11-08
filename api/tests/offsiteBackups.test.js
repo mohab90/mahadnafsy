@@ -16,6 +16,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
+// A frozen clock: what the test reads as now is the same on every run and at every hour of the day.
+require('node:test').mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-04T10:00:00Z') });
 
 const repoRoot = path.join(__dirname, '..', '..');
 const OFFSITE = path.join(repoRoot, 'deploy', 'mahad-offsite.sh');
