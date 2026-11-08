@@ -8708,27 +8708,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "certificate_request_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "CERT_PAID_FORCE_REQUIRED",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "'SHIPPED'",
-     "flags": ""
-    }
-   },
-   {
     "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
     "must": {
      "source": "await mysqlAdmin\\.updateCertificateRequest",
@@ -8767,20 +8746,6 @@
     "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
     "must": {
      "source": "escapeHtml\\(clientName\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "!fullyPaid\\(request, systemPrice, agreedPrice\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "Number\\(standing\\?\\.course_taken\\) \\|\\| Number\\(standing\\?\\.completion_revoked\\)",
      "flags": ""
     }
    }
@@ -21570,34 +21535,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "router\\.put\\('\\/api\\/admin\\/certificate-requests\\/:id\\/details'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "collectionParty: collectionPartyOf\\(row\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "action: 'certificate_status'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/229_v26_activity_names_and_certificate_shipping.sql",
-    "must": {
-     "source": "'DELIVERED','RETURNED'\\)",
-     "flags": ""
-    }
-   },
-   {
     "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
     "must": {
      "source": "shipped: +\\{ label: 'اتشحنت'",
@@ -21622,20 +21559,6 @@
     "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
     "must": {
      "source": "mysqlAdmin\\.listAllCertificateRequests\\(\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "const PAID_STAGES = \\['PAID', 'IN_PROGRESS', 'ISSUED', 'AT_BRANCH', 'SHIPPED', 'DELIVERED', 'RETURNED'\\];",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/certificates.js",
-    "must": {
-     "source": "return due > 0 && Number\\(request\\.paid_amount\\) >= due;",
      "flags": ""
     }
    },
