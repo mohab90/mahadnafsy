@@ -1151,48 +1151,6 @@
   "class": "b"
  },
  {
-  "id": "aCarnetIsNotTheCoursesMoney: a paid carnet neither takes the course\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "const paysForItem = isItemPaymentType\\(safeType\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(priceTier && paysForItem && \\(courseId \\|\\| bundleId\\)\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(resolvedExpected == null && paysForItem && \\(courseId \\|\\| bundleId\\)\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(isPaid && paysForItem && \\(courseId \\|\\| bundleId\\) && !isRetake\\) \\{\\s*let enrollAccessType = 'full';",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "const opensItem = isItemPaymentType\\(payment\\.payment_type\\);\\s*if \\(opensItem && payment\\.course_id\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "accountingTenantScope: expense writes and ledger postings share one transaction",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -1221,34 +1179,6 @@
     "file": "api/routes/admin-operations.js",
     "mustNot": {
      "source": "postExpenseJournal\\([^;]+\\.catch\\(\\(\\) => \\{\\}\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "aClientPriceIsTheManagersToSet: the server takes a booking\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "const canSetClientPrice = Boolean\\(req\\.isSuperAdmin \\|\\| hasPermission\\(req\\.staffRecord, 'set_client_price'\\)\\);\\s*\\n\\s*const clientPrice = payment\\.customPrice === true && courseExpected != null && canSetClientPrice;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(courseExpected != null && !clientPrice && !priceMatches\\(courseExpected, heldPrice \\?\\? tierPrice\\.price\\)\\) return priceChangedResponse\\(",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "let resolvedExpected = clientPrice \\? courseExpected : heldPrice != null \\? heldPrice : tierPrice \\? tierPrice\\.price : courseExpected;",
      "flags": ""
     }
    }
@@ -1298,48 +1228,6 @@
     "file": "api/lib/archiveJob.js",
     "must": {
      "source": "rollback\\(\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "aDepositOpensTheFirstPaymentOnly: a booking whose price is unknown is not measured",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(payment\\.isInstallment \\|\\| Number\\(resolvedExpected\\) > 0\\) \\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "lenient: !payment\\.isInstallment,",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "aDepositOpensTheFirstPaymentOnly: approving a pending booking measures it the same way",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "if \\(Number\\(payment\\.course_expected\\) > 0\\) \\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/financepay.js",
-    "must": {
-     "source": "lenient: !payment\\.is_installment,",
      "flags": ""
     }
    }
@@ -4270,106 +4158,6 @@
      "source": "router\\.get\\('\\/api\\/admin\\/system\\/watchdog', requireAuth, requireAdmin",
      "flags": ""
     }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "paymentExpectedAmount: a stated expectation still wins",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "let resolvedExpected = clientPrice \\? courseExpected : heldPrice != null \\? heldPrice : tierPrice \\? tierPrice\\.price : courseExpected;",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(resolvedExpected == null && paysForItem && \\(courseId \\|\\| bundleId\\)\\)",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "paymentExpectedAmount: an instalment records the course\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "mustNot": {
-     "source": "courseExpected != null \\? courseExpected : \\(payment\\.isInstallment \\? null : paymentAmount\\)",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "if \\(resolvedExpected == null && !payment\\.isInstallment\\) resolvedExpected = paymentAmount;",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "paymentExpectedAmount: a course with no price anywhere falls back to the amount, not to zero",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "resolvedExpected = paymentAmount;",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "paymentExpectedAmount: a price the desk enters becomes the client\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "await setAgreedPrice\\(conn, \\{",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/agreedPrice.js",
-    "must": {
-     "source": "UPDATE payments SET course_expected=\\?",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/agreedPrice.js",
-    "must": {
-     "source": "await setItemMoney\\(db, \\{ tenantId, subscriberId, itemKey: itemKey\\(\\{ courseId, bundleId \\}\\), price: value \\}\\);",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "must": {
-     "source": "expectedAmount: resolvedExpected,",
-     "flags": ""
-    },
-    "code": true
    }
   ],
   "class": "b"
@@ -20143,21 +19931,6 @@
     "file": "client/lib/useSeo.ts",
     "must": {
      "source": "meta\\[property=\"og:title\"\\]",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "paymentExpectedAmount: an unstated expectation falls back to the agreed price, and then the catalogue",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/subscriber-payments.js",
-    "code": true,
-    "must": {
-     "source": "resolvedExpected = await agreedPrice\\(pool, \\{",
      "flags": ""
     }
    }
