@@ -767,6 +767,22 @@ console.log('\n29. Source rules');
   }
 }
 
+// ── 30. Tenant isolation in api/lib ──────────────────────────────────────────
+// Check 14 holds every query in api/routes. The libraries run the same queries on behalf of the routes (and of the workers), so the same scan
+// runs over api/lib on its own baseline: the 23 queries it finds today are workers and id-keyed rows that have no tenant in hand (outbox claims,
+// OTP rows by id, a lead by its own id inside a transaction). The count can only decrease. These are the rules the unit tests used to pin one
+// library at a time with regular expressions (`WHERE tenant_id=?` next to a table name).
+console.log('\n30. Tenant isolation in api/lib');
+{
+  const LIB_TENANT_BASELINE = 23;
+  const { violations: libViolations } = scanTenantViolations({ dirs: ['api/lib'] });
+  if (libViolations.length <= LIB_TENANT_BASELINE) {
+    pass(`tenant-scope violations in api/lib: ${libViolations.length} (≤ baseline ${LIB_TENANT_BASELINE}; lower the baseline as you clean them)`);
+  } else {
+    fail(`tenant-scope violations in api/lib increased to ${libViolations.length} (baseline ${LIB_TENANT_BASELINE}) — a new library query on a tenant-scoped table is missing tenant_id. Run: node tools/tenant-scope-scan.mjs --lib --list`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {
