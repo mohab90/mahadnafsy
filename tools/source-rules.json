@@ -897,5 +897,134 @@
     }
    }
   ]
+ },
+ {
+  "id": "financeSafetyContracts: production readiness rejects stale or fallback FX snapshots; the refresh button, the daily job and a stale payment all store the rate through lib/fxRefresh.js",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/production-readiness.cjs",
+    "must": {
+     "source": "snapshot\\.source !== 'static-fallback'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/tools/production-readiness.cjs",
+    "must": {
+     "source": "ageHours <= 72",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/config.js",
+    "must": {
+     "source": "storeTenantRates\\(req\\.tenantId, rates",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/fxRefresh.js",
+    "must": {
+     "source": "source = 'open\\.er-api\\.com'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/fxRefresh.js",
+    "must": {
+     "source": "'exchange\\.updated_at': updatedAt",
+     "flags": ""
+    }
+   }
+  ]
+ },
+ {
+  "id": "noBrowserDialogs: the admin never guards an action with window.confirm / prompt / alert (the browser may switch them off, and the click then does nothing, silently)",
+  "why": "moved from a unit test that scanned the admin's source",
+  "scan": {
+   "dirs": [
+    "admin/pages",
+    "admin/components"
+   ],
+   "exts": [
+    ".ts",
+    ".tsx"
+   ],
+   "skipSuffix": [
+    "confirmDialog.tsx"
+   ],
+   "minFiles": 250,
+   "mustNot": [
+    {
+     "source": "window\\.confirm\\s*\\(",
+     "reason": "window.confirm: use confirmDialog"
+    },
+    {
+     "source": "window\\.prompt\\s*\\(",
+     "reason": "window.prompt: use the prompt modal"
+    },
+    {
+     "source": "window\\.alert\\s*\\(",
+     "reason": "window.alert: use a toast"
+    }
+   ]
+  }
+ },
+ {
+  "id": "noUtcDayInQueries: no query asks the database what day or hour it is (UTC); Cairo's day comes from lib/dates.js",
+  "why": "moved from a unit test that scanned api/routes and api/lib",
+  "scan": {
+   "dirs": [
+    "api/routes",
+    "api/lib"
+   ],
+   "exts": [
+    ".js"
+   ],
+   "minFiles": 200,
+   "mustNot": [
+    {
+     "source": "CURDATE\\(\\)",
+     "reason": "CURDATE() is the UTC date — use sqlCairoToday() or sqlCairoDayStartUtc()"
+    },
+    {
+     "source": "\\bCURRENT_DATE\\b",
+     "reason": "CURRENT_DATE is the UTC date — use sqlCairoToday()"
+    },
+    {
+     "source": "DATE\\(NOW\\(\\)\\)",
+     "reason": "DATE(NOW()) is the UTC date — use sqlCairoToday()"
+    },
+    {
+     "source": "HOUR\\(NOW\\(\\)\\)|MINUTE\\(NOW\\(\\)\\)",
+     "reason": "NOW()'s hour is UTC — use cairoClock()"
+    }
+   ]
+  }
+ },
+ {
+  "id": "logRedaction: runtime code never bypasses the structured logger with console calls",
+  "why": "moved from a unit test that scanned api/lib, api/middleware and api/routes",
+  "scan": {
+   "dirs": [
+    "api/lib",
+    "api/middleware",
+    "api/routes"
+   ],
+   "exts": [
+    ".js"
+   ],
+   "skipSuffix": [
+    "lib/logger.js"
+   ],
+   "minFiles": 200,
+   "mustNot": [
+    {
+     "source": "console\\.(?:log|warn|error|debug)\\s*\\(",
+     "reason": "console call: use the structured logger (lib/logger.js), which redacts secrets and personal data"
+    }
+   ]
+  }
  }
 ]

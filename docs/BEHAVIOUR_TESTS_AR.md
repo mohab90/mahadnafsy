@@ -99,3 +99,9 @@ node api/tools/test-pin-report.cjs --dir=<نسخة قديمة من tests>   # م
 - `integration/hrMonthSheetAbsenceAndPenalty` (أنواع الغياب: بدون إذن / بإذن / يوم حر / من الرصيد ورفضه لما الرصيد يخلص، وجزاء المدير: مبلغ أو أيام على ثلاثين، السبب، مش لنفسه، PENDING).
 - `adminLibBehaviour.test.js` (bundle بـesbuild): أدوار الصلاحية الكاملة في اللوحة = السيرفر، `isCollected`، عناوين التابات القديمة، الشهادة المحذوفة تفضل محذوفة، سلّم الخبرة.
 - نص UI/دفع ثابت اتحول لقواعد في `tools/source-rules.json` (٢٤ قاعدة) مع سبب.
+
+### الدفعة الخامسة (فحوصات المسح تنتقل لبوابة الجودة)
+الرقم: **١٠٩١ من ٣٢٢٥ (٣٣٫٨٪)** في ٣٦٢ ملف.
+- اختبارات «امسح الشجرة كلها وامنع نمط» هي بالتعريف قاعدة نص: اتنقلت لـ`tools/source-rules.json` كـ«scan» (مجلدات + امتدادات + أنماط ممنوعة + حد أدنى لعدد الملفات يثبت إن المسح بيقرا): ممنوع `window.confirm/prompt/alert` في الأدمن، ممنوع `CURDATE()`/`HOUR(NOW())` في المسارات والمكتبات، ممنوع `console.*` في وقت التشغيل. وفي `source-rules.mjs`: `escapeHtml` معرَّفة في `api/lib/html.js` بس، وكل ملف بيدخّل دفعات بيكتب سجل التدقيق.
+- اتشال من `financeSafetyContracts` ٣ اختبارات (القيود اليدوية → `integration/accountingJournalsAndPeriods` + `journal.test.js`، صورة الإيصال → `uploadSafety.test.js`، FX → قواعد).
+- فحص الجودة: ٦٩ فحص، قواعد المصدر: ٣٤ قاعدة.

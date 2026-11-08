@@ -75,12 +75,46 @@ export const RULES = [
       return out;
     },
   },
+  {
+    id: 'one-escapeHtml-in-the-api',
+    why: 'nine copies of escapeHtml were nine answers to «is this page escaped»; api/lib/html.js is the only declaration',
+    files: { dir: 'api', ext: ['.js'] },
+    custom: (read, list) => [...list('api/routes'), ...list('api/lib'), ...list('api/middleware')]
+      .filter(file => file !== 'api/lib/html.js' && /^const escapeHtml = |^function escapeHtml\b/m.test(read(file)))
+      .map(file => `${file} declares its own escapeHtml: use api/lib/html.js`),
+  },
+  {
+    id: 'every-payment-writer-writes-an-audit-row',
+    why: 'a file that inserts into payments must also call logPaymentAudit, or the payments it makes can never be traced to who made them (production carried 165 of 296 untraceable)',
+    files: { dir: 'api', ext: ['.js'] },
+    custom: (read, list) => [...list('api/routes'), 'api/lib/orderPaymentConfirmation.js']
+      .filter(file => /INSERT INTO payments/.test(read(file)) && !/logPaymentAudit/.test(read(file)))
+      .map(file => `${file} inserts payments and never writes a payment audit row`),
+  },
 ];
 
 // Rules that were unit tests reading an infrastructure file (a deploy script, a migration, a tool) or only forbidding something. tools/source-rules.json holds
 // them as data: { id, why, checks: [{ file, must | mustNot: { source, flags }, code?, absent? }] } — `code` matches against the file without its comments.
 const withoutComments = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 for (const entry of JSON.parse(readFileSync(join(ROOT, 'tools', 'source-rules.json'), 'utf8'))) {
+  if (entry.scan) {
+    // A scan: every file under the folders is read without its comments and must not match any `mustNot`; `minFiles` proves the scan is reading the tree, so an empty
+    // result means something. `skipSuffix` leaves out the one file that is allowed to do the forbidden thing.
+    const { dirs, exts, skipSuffix = [], mustNot, minFiles = 1 } = entry.scan;
+    RULES.push({
+      id: entry.id, why: entry.why, files: dirs.map(dir => ({ dir, ext: exts })),
+      custom: (read, list) => {
+        const files = dirs.flatMap(dir => list(dir, exts)).filter(file => !skipSuffix.some(suffix => file.endsWith(suffix)));
+        const out = files.length < minFiles ? [`only ${files.length} files scanned (expected ${minFiles}+): the scan is not reading the tree`] : [];
+        for (const file of files) {
+          const code = withoutComments(read(file));
+          for (const rule of mustNot) if (new RegExp(rule.source, rule.flags || '').test(code)) out.push(`${file}: ${rule.reason}`);
+        }
+        return out;
+      },
+    });
+    continue;
+  }
   RULES.push({
     id: entry.id, why: entry.why, files: [...new Set(entry.checks.map(check => check.file))],
     custom: read => entry.checks.flatMap(check => {

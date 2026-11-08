@@ -98,26 +98,6 @@ test('the public certificate escapes every value a customer controls', () => {
   assert.match(handler, /encodeURIComponent\(`CERT:\$\{certCode\}\|\$\{studentName\}/);
 });
 
-test('there is exactly one escapeHtml in the API', () => {
-  // Nine copies is nine answers to "is this page escaped". The certificate's
-  // answer was "there is no escaper here at all".
-  const declarations = [];
-  const walk = dir => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'tests') continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) { walk(full); continue; }
-      if (!entry.name.endsWith('.js')) continue;
-      if (/^const escapeHtml = |^function escapeHtml\b/m.test(fs.readFileSync(full, 'utf8'))) {
-        declarations.push(path.relative(API, full).split(path.sep).join('/'));
-      }
-    }
-  };
-  walk(API);
-  assert.deepEqual(declarations, ['lib/html.js'],
-    'escapeHtml is declared in more than one place again');
-});
-
 test('customer names in HTML mail are escaped', () => {
   // Mail clients do not run script, so this is markup injection rather than
   // takeover — but a lead who names themselves with a closing tag rewrites the
