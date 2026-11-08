@@ -9,27 +9,6 @@ const path = require('node:path');
 const root = path.join(__dirname, '..', '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('manual money workflows separate recording, approval and refund authority', () => {
-  const createPayment = read('api/routes/subscriber-payments.js');
-  const approvePayment = read('api/routes/core/financepay.js');
-  const refundRoute = financeRouteSource();
-
-  assert.match(createPayment, /hasPermission\(req\.staffRecord,\s*'manage_financial'\)/);
-  assert.match(createPayment, /storedStatus = requestedStatus === 'paid' && !canApprovePayment \? 'pending'/);
-  assert.match(createPayment, /const scope = resolveFinancialScope\(req/);
-  assert.match(createPayment, /financialRecordMatches\(scope, subRow\)/);
-  assert.match(createPayment, /if \(isPaid && linkedLeadId\)/);
-  // Approval is the finance permission's, or «تأكيد التحويلات» (customer service confirms the transfers that arrive, 1 Nov 2026); never a bare view right.
-  assert.match(approvePayment, /payments\/:id\/status'[\s\S]{0,180}requireAnyPermission\('manage_financial', 'confirm_transfers'\)/);
-  assert.match(approvePayment, /\[status,\s*id,\s*payment\.transaction_id \|\| id,\s*tenantId,\s*payment\.branch_id \|\| null\]/);
-  assert.match(approvePayment, /enqueueFinanceEvent\(/);
-  assert.match(approvePayment, /const scope = resolveFinancialScope\(req/);
-  assert.match(approvePayment, /financialRecordMatches\(scope, payment\)/);
-  assert.match(approvePayment, /UPDATE orders[\s\S]{0,260}branch_id <=> \?/);
-  assert.match(refundRoute, /finance\/refunds\/:id'[\s\S]{0,180}requirePermission\('approve_refunds'\)/);
-  assert.match(refundRoute, /Refund request has already been resolved/);
-});
-
 test('proof and manual-journal inputs fail closed at the API boundary', () => {
   const proofRoute = read('api/routes/payment-proofs.js');
   const accounting = read('api/routes/accounting-erp.js');
@@ -41,20 +20,6 @@ test('proof and manual-journal inputs fail closed at the API boundary', () => {
   assert.match(accounting, /await conn\.beginTransaction\(\);[\s\S]{0,100}await assertWritable/);
   assert.match(finance, /await assertWritable\(date, conn, tenantId\)/);
   assert.match(finance, /Math\.abs\(totalDebit - totalCredit\) >= 0\.01/);
-});
-
-test('payment audit is tenant scoped and the reference schema has no duplicate columns', () => {
-  const finance = read('api/lib/finance.js');
-  const migration = read('api/migrations/143_v25_finance_audit_tenant_scope.sql');
-  const schema = read('api/schema.sql');
-  assert.match(finance, /INSERT INTO payment_audit_log[\s\S]{0,180}tenant_id/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS tenant_id/);
-  assert.match(migration, /MODIFY COLUMN action VARCHAR\(80\)/);
-
-  for (const table of schema.matchAll(/CREATE TABLE `([^`]+)` \(([\s\S]*?)\r?\n\) ENGINE/g)) {
-    const names = [...table[2].matchAll(/^\s*`([^`]+)`/gm)].map(match => match[1]);
-    assert.equal(new Set(names).size, names.length, `duplicate column in schema table ${table[1]}`);
-  }
 });
 
 test('production readiness rejects stale or fallback FX snapshots', () => {

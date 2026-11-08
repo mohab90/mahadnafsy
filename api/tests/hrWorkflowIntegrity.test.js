@@ -56,23 +56,6 @@ test('offboarding is atomic, requires completed checklist, transfers open work, 
   assert.match(offboarding, /hr\.offboarding\.completed/);
 });
 
-test('leave workflow uses one policy-backed source, legal transitions, balance checks, and reversible attendance links', () => {
-  assert.match(attendance, /const transitions = \{ PENDING: \['APPROVED', 'REJECTED'\], APPROVED: \['CANCELLED'\] \}/);
-  assert.match(attendance, /LEAVE_SELF_APPROVAL/);
-  assert.match(attendance, /LEAVE_BALANCE_EXCEEDED/);
-  assert.match(attendance, /ATTENDANCE_CONFLICT/);
-  assert.match(attendance, /leave_id/);
-  assert.match(attendance, /DELETE FROM attendance_logs WHERE tenant_id=\? AND leave_id=\?/);
-  assert.match(compensation, /createLeaveRequest/);
-});
-
-test('HR policy and missing staff branch schema are migration-owned', () => {
-  assert.match(migration, /ALTER TABLE staff[\s\S]*branch_id/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS hr_policy_versions/);
-  assert.match(migration, /ALTER TABLE leaves[\s\S]*policy_id/);
-  assert.match(migration, /ALTER TABLE attendance_logs[\s\S]*leave_id/);
-});
-
 test('employee HR profile does not expose authentication secrets or permission payloads', () => {
   assert.doesNotMatch(employees, /SELECT s\.\*/);
   const profileSelect = employees.slice(employees.indexOf("router.get('/api/admin/hr/employees/:id'"), employees.indexOf('// Current salary structure'));
@@ -102,13 +85,6 @@ test('compensation changes are approval-owned and only approved values enter pay
   // is that paying a run is what marks an advance DEDUCTED, not the shape of
   // the statement that does it.
   assert.match(payroll, /UPDATE salary_advances[\s\S]*status\s*=\s*'DEDUCTED'/);
-});
-
-test('performance appraisals require evidence and a separate approver before staff visibility', () => {
-  assert.match(appraisalMigration, /evidence_json/);
-  assert.match(compensation, /Evidence is required before appraisal submission/);
-  assert.match(compensation, /APPRAISAL_SOD/);
-  assert.match(compensation, /status IN \('submitted','approved'\)/);
 });
 
 test('HR audit retention is tenant-policy driven and bounded', () => {

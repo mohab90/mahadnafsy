@@ -751,6 +751,22 @@ console.log('\n28. Values written into ENUM columns');
   }
 }
 
+// ── 29. Source rules ─────────────────────────────────────────────────────────
+// The rules that are a property of the source and that no call can reach — a path that must not be written, two lists that must name the same
+// things. They were unit tests that read a file and matched a regular expression (they broke whenever the code moved with nothing changed);
+// tools/source-rules.mjs holds them as data, here, where a failure stops the release.
+console.log('\n29. Source rules');
+{
+  const sourceRules = await import('./source-rules.mjs');
+  const violations = sourceRules.scanSourceRules();
+  if (violations.length === 0) {
+    pass(`source rules: ${sourceRules.RULES.length} rules hold`);
+  } else {
+    for (const violation of violations.slice(0, 10)) console.log(`     ${violation.rule}: ${violation.file} — ${violation.detail}`);
+    fail(`source rules: ${violations.length} violation(s) — run: node tools/source-rules.mjs`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {
