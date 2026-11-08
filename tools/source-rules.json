@@ -8561,13 +8561,6 @@
     }
    },
    {
-    "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
-    "must": {
-     "source": "await recordSubscriberPayment\\(subscriberId,",
-     "flags": ""
-    }
-   },
-   {
     "file": "admin/pages/unified-client/useUnifiedClientLifecycleActions.ts",
     "must": {
      "source": "await mysqlAdmin\\.convertLead\\(lead\\.id",
@@ -30573,15 +30566,6 @@
     "from": "Transaction History",
     "to": "Payment Proofs",
     "must": {
-     "source": "رقم العملية: #\\{p\\.transactionId\\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx",
-    "from": "Transaction History",
-    "to": "Payment Proofs",
-    "must": {
      "source": "isConfirmed\\(p\\) && <button",
      "flags": ""
     }
@@ -30602,15 +30586,6 @@
   "id": "screensShowWhatWasWritten: the transaction number typed in the payment dialog is sent as the payment\\",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
-    "from": "const entry: PaymentHistoryEntry = {",
-    "to": "// The branch tier and the client",
-    "must": {
-     "source": "transactionId: draft\\.transactionId \\|\\| undefined,",
-     "flags": ""
-    }
-   },
    {
     "file": "admin/pages/unified-client/useUnifiedClientPayments.ts",
     "from": "const entry: PaymentHistoryEntry = {",

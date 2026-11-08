@@ -42,6 +42,8 @@ npm test
 - **public-smoke**: home, courses, `/join-us` (404 regression), `/auth`, API liveness, `/api/courses` shape, and a **negative-student-count regression guard**.
 - **admin-login**: login page renders; authenticated Admin and every employee role render in `admin-permissions`.
 
+- **payment-dialog** (needs the seed and `E2E_ADMIN_EMAIL/PASSWORD`): «تسجيل دفعة» on a client's page — what the dialog asks for, the branch's quoted price in the request,
+  the typed reference travelling as the transaction number, an instalment sending no price of its own. It records payments on its own seeded client («عميلة الدفعات»).
 - **ci-journeys** (needs the seed, `E2E_SEEDED=1`): a course page; checkout up to
   the redirect to Paymob (the Paymob call is answered by the spec); a paid
   student opening a paid lecture from the dashboard; an administrator's leads list.
