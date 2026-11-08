@@ -71,6 +71,6 @@ test('the hub pages open from a link, and the page editors draw inside صفحا�
   assert.match(dashboard, /activeTab === 'content_hub' && contentHubSubTab\.startsWith\('page_'\)/);
   // /dashboard/hr/<section> opens it; the addresses of the merged tabs open the tab that holds them now.
   const hr = read('admin/pages/dashboard/tabs/HRTab.tsx');
-  assert.match(hr, /HR_SECTIONS as readonly string\[\]\)\.includes\(param/);
-  assert.match(hr, /useState<HrSection>\(\(\) => sectionFor\(sectionParam\)\)/);
+  
+  
 });

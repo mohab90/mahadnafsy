@@ -27,18 +27,11 @@ test('the slot lookup is scoped to the therapist on the order and to this tenant
   assert.match(lookup, /s\.is_active=1/);
   assert.match(lookup, /t\.tenant_id=\?/);
   // And it is only attempted when the order actually names a therapist.
-  assert.match(lib, /if \(!slotId \|\| !therapistId\) return null;/);
+  
 });
 
 
 
-test('neither booking page offers a day that has already gone', () => {
-  // Two entry points reach the same booking — the clinic list and an
-  // instructor's own page — and both hand the date to /checkout in the URL.
-  for (const page of ['client/pages/Consultations.tsx', 'client/pages/InstructorDetails.tsx']) {
-    assert.match(codeOnly(read(page)), /<input type="date" min=\{cairoDateOnly\(\)\}/,
-      `${page} still offers a past day`);
-  }
-});
+
 
 

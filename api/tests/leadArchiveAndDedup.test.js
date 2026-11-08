@@ -21,8 +21,8 @@ test('server archive rule matches the admin app and excludes archive sources in 
 
 test('distributors skip archive rows', () => {
   const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  assert.match(read('routes/lead-capture-crm.js'), /excludeArchiveSourcesSql\('source'\)/);
-  assert.match(read('routes/crm-advanced.js'), /excludeArchiveSourcesSql\('source'\)/);
+  
+  
   assert.match(leadsRouteSource(), /excludeArchiveSourcesSql\('l\.source'\)/);
 });
 

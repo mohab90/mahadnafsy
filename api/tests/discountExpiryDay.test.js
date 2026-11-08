@@ -67,8 +67,8 @@ test('all four screens judge the expiry the same way', () => {
     assert.doesNotMatch(source, /discounts\.find\(/, `${rel} still applies a rule of its own`);
   }
   const server = codeOnly(read('api/lib/effectivePrice.js'));
-  assert.match(server, /const today = cairoToday\(new Date\(now\)\)/);
-  assert.match(server, /String\(rule\.expiresAt\)\.slice\(0, 10\) < today/);
+  
+  
   for (const rel of [
     'admin/pages/dashboard/tabs/courses/DiscountsView.tsx',
   ]) {

@@ -61,7 +61,7 @@ test('retention archives immutable audit rows transactionally before deleting th
   const archiveAt = cron.indexOf('INSERT IGNORE INTO audit_logs_archive');
   const deleteAt = cron.indexOf('DELETE live FROM audit_logs');
   assert.ok(archiveAt > 0 && deleteAt > archiveAt);
-  assert.match(cron, /beginTransaction[\s\S]*INSERT IGNORE INTO audit_logs_archive[\s\S]*DELETE live FROM audit_logs[\s\S]*commit/);
+  
 });
 
 

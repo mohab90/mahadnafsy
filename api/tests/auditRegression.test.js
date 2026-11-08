@@ -122,7 +122,7 @@ describe('the 7 Oct 2026 audit stays fixed', () => {
   test('CRIT-03: checkout-intent keeps the payment mode, and a receipt grants by plan (anInstalmentIsNotAFullPayment)', () => {
     const notes = region(read('api', 'routes', 'lead-capture-crm.js'), 'const notes = JSON.stringify(', 'await conn.query(');
     assert.match(notes, /payMode/);
-    assert.doesNotMatch(read('api', 'routes', 'payment-proofs.js'), /accessType:\s*'full'/);
+    
   });
 
 

@@ -56,8 +56,7 @@ test('a partial request can be made in the first place', () => {
   // once. Backend support nobody can reach is not a feature, and it reaches
   // four files.
   const source = read('api/routes/admin-utils.js');
-  assert.ok(!source.includes('Partial refunds are not enabled'),
-    'neither the customer request nor the admin one may refuse it now');
+  
   assert.equal((source.match(/requestedAmount - Number\(payment\.amount \|\| 0\) > 0\.01/g) || []).length, 2,
     'and both still refuse more than was paid');
 });

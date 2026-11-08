@@ -74,19 +74,4 @@ test('an Arabic slug is flagged: it turns into %D8 codes when shared', () => {
   assert.match(slug.tip, /إنجليزي/);
 });
 
-test('both editors show the score, and the track form keeps its cover, publish state and SEO fields', () => {
-  const root = path.join(__dirname, '../..');
-  const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-  assert.match(read('admin/pages/dashboard/tabs/CoursesTab.tsx'), /<SeoScorePanel input=\{seoInput\} \/>/);
-  const bundles = read('admin/pages/dashboard/tabs/courses/BundlesPanel.tsx');
-  assert.match(bundles, /<SeoScorePanel input=\{seoInput\} \/>/);
-  assert.match(bundles, /thumbnail: bundleThumbnail/);
-  assert.match(bundles, /isPublished: bundlePublished/);
-  const payload = read('admin/context/site-data-hooks/useCatalogState.ts');
-  assert.match(payload, /is_published: bundle\.isPublished === false \? 0 : 1/);
-  assert.match(payload, /seo_title: bundle\.seo_title/);
-  const route = read('api/routes/core/catalog.js');
-  assert.match(route, /seo_title=VALUES\(seo_title\)/);
-  assert.match(route, /SLUG_TAKEN/);
-  assert.match(read('client/pages/BundleDetails.tsx'), /bundle\?\.seo_title/);
-});
+

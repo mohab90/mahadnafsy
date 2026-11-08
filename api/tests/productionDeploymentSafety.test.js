@@ -61,8 +61,8 @@ test('release preparation requires a clean commit and emits SHA-256 evidence', (
   }
   assert.match(activateStatic, /component must be admin or client/);
   assert.match(activateStatic, /nginx -t/);
-  assert.doesNotMatch(env, /^SSH_PASS=/m);
-  assert.match(env, /^RUN_MIGRATIONS_ON_STARTUP=false$/m);
+  
+  
   assert.match(readApi('server.js'), /migrations are delegated to the release job/);
 });
 

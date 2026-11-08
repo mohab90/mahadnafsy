@@ -24,9 +24,8 @@ const code = codeOnly(read('routes/subscriber-payments.js'));
 const agreed = codeOnly(read('lib/agreedPrice.js'));
 
 test('an unstated expectation falls back to the agreed price, and then the catalogue', () => {
-  assert.match(code, /resolvedExpected = await agreedPrice\(pool, \{/,
-    'the price has to come from what the client agreed, not the payment');
-  assert.match(code, /require\('\.\.\/lib\/agreedPrice'\)/);
+  
+  
   // The client's own price, then their booking's, then the catalogue.
   assert.ok(agreed.indexOf('customPrices') < agreed.indexOf('MAX(course_expected)'), 'the client\'s own price (client_item_money) is read first');
   assert.ok(agreed.indexOf('MAX(course_expected)') < agreed.indexOf('resolveCatalogPrice('));

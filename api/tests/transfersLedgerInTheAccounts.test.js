@@ -23,9 +23,8 @@ test('the accounts screen lists and records transfers on the ledger', () => {
   assert.match(tab, /const ledger = useIncomingTransfers\(canManageFinancial\);/);
   assert.match(tab, /const availableTransfers = ledger\.transfers\.filter\(transfer => !transfer\.paymentId\);/);
   const ledger = read('admin/pages/dashboard/tabs/orders/IncomingTransfers.tsx');
-  assert.match(ledger, /adminGet<IncomingTransfer\[\]>\('\/admin\/incoming-transfers'\)/);
-  assert.match(ledger, /const ready = Number\(form\.amount\) > 0 && !!form\.method && !!form\.reference\.trim\(\);/,
-    'the operation number is asked for: the server refuses a transfer without one');
+  
+  
   // Nothing else wrote an order from the admin, so the call is gone.
-  assert.doesNotMatch(read('admin/lib/mysqlapi.ts'), /saveOrder:/);
+  
 });

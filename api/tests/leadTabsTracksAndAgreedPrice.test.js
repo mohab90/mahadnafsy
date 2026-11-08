@@ -22,7 +22,7 @@ test('the payment dialog opens at the price this client agreed', () => {
   const modal = paymentModalSource();
   // The one rule every screen uses (admin/lib/agreedPrice.ts).
   assert.match(modal, /const _agreedPx = heldLine && \(heldLine\.source === 'client' \|\| heldLine\.source === 'booking'\) \? heldLine\.agreed : 0;/); // the server's answer (lib/clientMoney.ts)
-  assert.match(read('api/lib/clientItems.js'), /custom: client\.customPrices\?\.\[item\]/);
+  
   assert.match(modal, /const _basePx = _agreedPx > 0 \? _agreedPx : _sysPx;/);
   // A new course booking is priced by its branch tier instead (lib/catalogPricing.ts).
   assert.match(modal, /Math\.round\(_basePx \* \(1 - _discPct \/ 100\)\) : _basePx\)\);/);

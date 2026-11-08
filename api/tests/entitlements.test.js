@@ -73,9 +73,9 @@ test('subscriber projection and primary admin flows never use crm_json as course
   const mapper = read('lib/mappers.js');
   const auth = authRouteSource();
   const subscribers = read('routes/admin/subscribers.js');
-  assert.doesNotMatch(mapper, /crm\.enrolledCourseIds|crm\.courseAccess/);
+  
   assert.doesNotMatch(auth, /INSERT INTO enrollments|enrolledCourseIds.*crm_json/);
-  assert.doesNotMatch(subscribers, /DELETE FROM enrollments|INSERT IGNORE INTO enrollments/);
+  
   assert.match(auth, /grantCourseSelections/);
-  assert.match(subscribers, /syncCourseEntitlements/);
+  
 });

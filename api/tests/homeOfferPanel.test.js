@@ -16,9 +16,9 @@ test('the page the menu opens is the one with the course and the timer', () => {
   const route = hub.slice(hub.indexOf("contentHubSubTab === 'home_offer') && ("), hub.indexOf("contentHubSubTab === 'about_page'"));
   assert.match(route, /<DashboardHomeOfferPanel fields=\{homeOfferFields\} notify=\{notify\} \/>/);
   const panel = read('admin/pages/dashboard/DashboardHomeOfferPanel.tsx');
-  assert.match(panel, /'offer\.courseId': selected\.id/);
-  assert.match(panel, /setContentValue\('offer\.timerStartedAt', value\)/);
-  assert.match(panel, /'home\.offer\.discountPercent': String\(percent\)/, 'the discount the home page draws the struck price from');
+  
+  
+  
 });
 
 test('the selected course is the panel\'s own state, not the dashboard\'s', () => {

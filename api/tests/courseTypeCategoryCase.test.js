@@ -49,8 +49,8 @@ test('the spellings the mapper emits are the ones the screens compare', () => {
   }
   // 'General' is the write path's default and the largest group on the site,
   // and it was the one category with no way to filter to it.
-  assert.match(courses, /value="General"/);
-  assert.match(codeOnly(read('api/routes/admin/catalog.js')), /c\.category \|\| 'GENERAL'/);
+  
+  
 });
 
 

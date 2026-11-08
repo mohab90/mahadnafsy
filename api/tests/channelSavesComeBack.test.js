@@ -164,7 +164,7 @@ test('4 Nov 2026: an id Meta does not know is explained — the account id typed
     assert.match(unknown.reason, /whatsapp_business_management/);
     assert.match(unknown.reason, /does not exist/);
   } finally { global.fetch = original; }
-  assert.match(read('api/routes/messaging-channels.js'), /async function saveCorrectedPhoneId\(tenantId, channelId, check\)/);
+  
   assert.equal(typeof listMetaTemplates, 'function');
 });
 

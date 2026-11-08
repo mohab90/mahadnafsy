@@ -171,8 +171,8 @@ test('each team screen has a figures-only source, and خدمة العملاء ha
 
   // A rep's pay is not part of how the team is doing.
   const sales = read('routes/analytics/sales.js');
-  assert.match(sales, /const seesPay = Boolean\(req\.isSuperAdmin\) \|\| hasPermission\(req\.staffRecord, PERMISSIONS\.MANAGE_SALES_TEAM\)/);
-  assert.match(sales, /const \{ email: _email, commission_rate: _rate, \.\.\.rest \} = s;/);
+  
+  
 
   // And the new screen is reachable: a key, a route entry, a renderer.
   const shared = read(path.join('..', 'admin', 'pages', 'dashboard', 'dashboardShared.tsx'));

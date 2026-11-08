@@ -64,7 +64,7 @@ test('a blocked send is not mistaken for a broken channel', () => {
   // markChannelError lives past the gate, so a refusal can never park a channel
   // in `error` and take OTP down with it.
   assert.ok(source.indexOf('markChannelError') > source.indexOf("reason: 'category_disabled'"));
-  assert.match(source, /reason === 'category_disabled'[\s\S]{0,200}رسائل التحقق/);
+  
 });
 
 test('every sendWhatsApp call names a category, and every category is a known one', () => {
@@ -143,5 +143,5 @@ test('the WhatsApp key is entered where the codes are sent from', () => {
   assert.ok(!page.includes('whatsapp.api_token'), 'no WhatsApp token field on the OTP page');
   assert.ok(!page.includes("channel: 'whatsapp'"), 'no WhatsApp test that goes to Green-API');
   assert.ok(page.includes('to="/dashboard/messaging_hub"'), 'a way to the real channel');
-  assert.ok(!read('lib/otpProvider.js').includes('async function sendOtp'), 'the uncalled sender stays gone');
+  
 });

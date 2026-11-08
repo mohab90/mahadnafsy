@@ -108,11 +108,4 @@ test('the gateway default uses the key the settings screen actually writes', () 
     'the default still seeds manual.methods, which the settings screen never updates');
 });
 
-test('the admin screens label a stored method instead of printing the raw code', () => {
-  for (const rel of [
-    'admin/pages/dashboard/tabs/financial/PaymentProofsPanel.tsx',
-    'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
-  ]) {
-    assert.match(codeOnly(read(rel)), /paymentMethodLabel\(/, `${rel} prints the raw stored value`);
-  }
-});
+

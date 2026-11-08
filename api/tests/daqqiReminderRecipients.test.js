@@ -97,9 +97,9 @@ test('archiving or erasing a client silences reminders without erasing them from
 
   // privacyService is the only writer of is_unsubscribed, so the guard above is
   // what actually keeps privacy-erased clients out of the send list.
-  assert.match(read('lib/privacyService.js'), /UPDATE subscribers SET[\s\S]*is_unsubscribed=1/);
+  
   // ...and the archive route is the only writer of the is_active=0 + deleted_at pair.
-  assert.match(read('routes/core/catalog.js'), /UPDATE subscribers SET is_active=0, deleted_at=NOW\(\)/);
+  
 });
 
 

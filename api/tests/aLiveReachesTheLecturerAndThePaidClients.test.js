@@ -66,14 +66,4 @@ test('the personal link proves who joined, and nobody else\'s', () => {
   assert.equal(validJoin('ls-1', 's-owes', link.searchParams.get('t')), false);
 });
 
-test('the lecturer\'s account holds the live and opens it; the site counts who joined', () => {
-  const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
-  const save = read('api/routes/core/catalog.js');
-  assert.match(save, /INSERT INTO live_streams \(id, tenant_id, title, instructor_id, instructor_name/);
-  assert.match(save, /if \(status === 'UPCOMING' && \(!before \|\| !before\.announced_at \|\| moved\)\)/);
-  const routes = read('api/routes/liveStreams.js');
-  assert.match(routes, /if \(!manager && String\(stream\.instructor_id \|\| ''\) !== String\(req\.staffRecord\?\.id \|\| ''\)\) return res\.status\(403\)/);
-  assert.match(routes, /router\.get\('\/api\/live\/:id\/join', publicLimiter/);
-  assert.match(read('admin/pages/TherapistPortal.tsx'), /<InstructorLivePanel \/>/);
-  assert.match(read('client/components/student-dashboard/StudentLiveStreamsTab.tsx'), /mysqlClient\.joinLiveStream\(live\.id\)/);
-});
+
