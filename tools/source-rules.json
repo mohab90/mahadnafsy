@@ -6397,48 +6397,6 @@
   "class": "b"
  },
  {
-  "id": "certificatesDeskMarksTracksAndForm: «إضافة شهادة»: search a client, their courses and tracks, issue and print",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "admin/pages/dashboard/tabs/AddInstituteCertificateModal.tsx",
-    "must": {
-     "source": "\\/admin\\/client-lookup\\?q=",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/dashboard/tabs/AddInstituteCertificateModal.tsx",
-    "must": {
-     "source": "institute-certificates\\/client\\/\\$\\{encodeURIComponent\\(subscriberId\\)\\}\\/items",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/dashboard/tabs/AddInstituteCertificateModal.tsx",
-    "must": {
-     "source": "force: true",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx",
-    "must": {
-     "source": "<AddInstituteCertificateModal",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/instituteCertificates.js",
-    "must": {
-     "source": "router\\.post\\('\\/api\\/admin\\/institute-certificates', \\.\\.\\.desk",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "certificatesDeskMarksTracksAndForm: training hours are set on every course and every track, and the certificate prints them",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -13795,20 +13753,6 @@
   "class": "b"
  },
  {
-  "id": "anInstituteCertificateComesAtNinetyPercent: the printed copy moves through the desk\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/instituteCertificates.js",
-    "must": {
-     "source": "if \\(!DELIVERY_STAGES\\.includes\\(status\\)\\) return res\\.status\\(400\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "aRegistrationReachesTheClientBase: one routine creates the lead, and both callers use it",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -14576,48 +14520,6 @@
     "file": "api/routes/instituteCertificates.js",
     "must": {
      "source": "cc\\.deleted_at IS NULL",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "certificatesDeskMarksTracksAndForm: the form\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/instituteCertificates.js",
-    "must": {
-     "source": "router\\.get\\('\\/api\\/admin\\/institute-certificates\\/layout'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/instituteCertificates.js",
-    "must": {
-     "source": "setTenantSetting\\('certificate_form_layout', layout",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/public.js",
-    "must": {
-     "source": "getTenantSetting\\('certificate_form_layout', \\{ tenantId: row\\.tenant_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/lib/certificateForm.ts",
-    "mustNot": {
-     "source": "localStorage",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx",
-    "must": {
-     "source": "<FormLayoutModal",
      "flags": ""
     }
    }
@@ -28721,37 +28623,6 @@
     "file": "api/routes/lms.js",
     "must": {
      "source": "certificate_lifecycle_events",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "certificatesDeskMarksTracksAndForm: a wrong certificate is deleted softly — revoked first — and the client\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/lms.js",
-    "from": "router.delete('/api/admin/completions/:id'",
-    "must": {
-     "source": "requirePermission\\('manage_courses'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/lms.js",
-    "from": "router.delete('/api/admin/completions/:id'",
-    "must": {
-     "source": "row\\.status === 'active'\\) return res\\.status\\(409\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/lms.js",
-    "from": "router.delete('/api/admin/completions/:id'",
-    "must": {
-     "source": "UPDATE course_completions SET deleted_at=NOW\\(\\), deleted_by=\\? WHERE id=\\? AND tenant_id=\\?",
      "flags": ""
     }
    }
