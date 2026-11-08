@@ -158,19 +158,6 @@ test('the watchdog is hooked to every request, runs every five minutes under a l
   assert.match(read('api/routes/admin-utils.js'), /router\.get\('\/api\/admin\/system\/watchdog', requireAuth, requireAdmin/);
 });
 
-test('the one-time off-site setup keeps the private key off the server and never overwrites what exists', () => {
-  const script = read('deploy/setup-offsite-backup.sh');
-  assert.match(script, /age-keygen -o "\$PRIVATE_KEY"/);
-  assert.match(script, /age-keygen -y "\$PRIVATE_KEY" > "\$RECIPIENTS"/, 'only the public key stays in the settings');
-  assert.match(script, /MAHAD_BACKUP_AGE_RECIPIENTS=%s/);
-  assert.doesNotMatch(script, /MAHAD_BACKUP_AGE_IDENTITY|age -d/, 'the server never decrypts');
-  assert.match(script, /chmod 600 "\$ENV_FILE"/);
-  assert.match(script, /already exists — left as it is/, 'an existing settings file is not overwritten');
-  assert.match(script, /shred -u/, 'the owner is told to move the private key and delete it');
-  assert.match(read('deploy/README_AR.md'), /'bash -s -- b2:mahad-backups\/db' < deploy\/setup-offsite-backup\.sh/);
-  assert.match(read('deploy/README_AR.md'), /OPS_HEARTBEAT_URL/);
-});
-
 test('the off-site copies are pruned only after today\'s is proven at the destination, and only this job\'s own files', () => {
   const script = read('deploy/mahad-db-backup.sh');
   const uploaded = script.indexOf('log "off-site ok:');

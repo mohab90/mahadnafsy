@@ -40,9 +40,3 @@ test('index.html is never cached and hashed assets are immutable', () => {
   }
 });
 
-test('the release is extracted with fresh dates, so pruning by age keeps what is live', () => {
-  const script = read('deploy-release.sh');
-  assert.match(script, /tar -xzf "\/staging\/\$R-admin\.tgz" --touch -C "\$admindir"/);
-  assert.match(script, /tar -xzf "\/staging\/\$R-client\.tgz" --touch -C "\$clientdir"/);
-  assert.match(script, /find "\$web" -type f -mtime \+7 -delete/);
-});

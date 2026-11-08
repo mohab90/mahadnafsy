@@ -99,14 +99,6 @@ test('the certificates tab was already correct and stays that way', () => {
   assert.match(mappers, /status: String\(cr\.status \|\| 'pending'\)\.toLowerCase\(\)/);
 });
 
-test('the two unreachable endpoints are gone', () => {
-  // Neither had a caller in either app, the e2e suite or the tools. One of them
-  // also identified the caller by email alone.
-  const lms = codeOnly(read('api/routes/lms.js'));
-  assert.doesNotMatch(lms, /router\.get\('\/api\/me\/cohorts'/);
-  assert.doesNotMatch(lms, /router\.get\('\/api\/me\/live-sessions'/);
-});
-
 test('a student sees the quiz they already passed', () => {
   // StudentQuizTab pairs an attempt to a quiz with
   // `attempt.quizId === quiz.id && attempt.subscriberId === subscriber.id`.

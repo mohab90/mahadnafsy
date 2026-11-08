@@ -22,12 +22,6 @@ test('the same Arabic name, spelled the ways the sheets and the sign-up form spe
   assert.equal(normalizeArabicName(null), '');
 });
 
-test('migration 352 makes a client\'s number comparable by its digits, indexed', () => {
-  const sql = read('migrations/352_v26_subscriber_phone_digits.sql');
-  assert.match(sql, /ADD COLUMN IF NOT EXISTS phone_digits VARCHAR\(64\) AS \(REGEXP_REPLACE\(phone,'\[\^0-9\]',''\)\) VIRTUAL/);
-  assert.match(sql, /ADD INDEX IF NOT EXISTS idx_subs_tenant_phone_digits \(tenant_id, phone_digits\)/);
-});
-
 test('the resolver matches the number by digits, and adopts a record whose account has vanished', async () => {
   const source = read('lib/subscriberIdentity.js');
   assert.match(source, /s\.phone_digits IN \(\$\{spellings\.map/);

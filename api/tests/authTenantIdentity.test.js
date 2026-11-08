@@ -6,15 +6,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
 
-test('user, staff, OTP and login security identities are unique and indexed per tenant', () => {
-  const migration = read('migrations/087_v25_auth_tenant_identity.sql');
-  assert.match(migration, /uq_users_tenant_email \(tenant_id, email/);
-  assert.match(migration, /idx_otp_tenant_email_type \(tenant_id, email/);
-  assert.match(migration, /idx_login_history_tenant_status \(tenant_id, status/);
-  assert.match(migration, /uq_staff_tenant_email \(tenant_id, email/);
-  assert.match(migration, /DROP INDEX IF EXISTS uq_users_email/);
-});
-
 test('login, password reset and 2FA never resolve an identity outside request tenant', () => {
   const auth = authRouteSource();
   const audit = read('lib/loginAudit.js');

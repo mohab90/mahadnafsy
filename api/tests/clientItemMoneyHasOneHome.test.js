@@ -69,18 +69,6 @@ test('the SQL that read a JSON path now reads the table', () => {
   assert.match(read('lib/instituteCertificates.js'), /FROM client_item_money WHERE tenant_id=\? AND prior_paid > 0/);
 });
 
-test('migration 359 creates the table and copies the numbers; 360 takes them out of the blob only where the copy is whole', () => {
-  const create = read('migrations/359_v26_client_item_money.sql');
-  assert.match(create, /CREATE TABLE IF NOT EXISTS client_item_money/);
-  assert.match(create, /PRIMARY KEY \(tenant_id, subscriber_id, item_key\)/);
-  assert.match(create, /JSON_KEYS\(s\.crm_json, '\$\.customPrices'\)/);
-  assert.match(create, /JSON_KEYS\(s\.crm_json, '\$\.priorPaid'\)/);
-  const strip = read('migrations/360_v26_client_item_money_leaves_crm_json.sql');
-  assert.match(strip, /JSON_REMOVE\(s\.crm_json, '\$\.customPrices', '\$\.priorPaid'\)/);
-  assert.match(strip, /NOT EXISTS \(SELECT 1 FROM client_item_money m/);
-  assert.match(read('schema.sql'), /CREATE TABLE `client_item_money`/);
-});
-
 test('every comparison of the new table\'s columns with another table\'s names the collation (a production database mixes utf8mb4_unicode_ci and utf8mb4_general_ci)', () => {
   // The release's staging run stopped on «Illegal mix of collations» in migration 360, which the lab (one collation everywhere) cannot show.
   const strip = read('migrations/360_v26_client_item_money_leaves_crm_json.sql');

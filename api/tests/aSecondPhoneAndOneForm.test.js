@@ -10,13 +10,6 @@ const path = require('node:path');
 
 const read = file => fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
 
-test('a second number column exists, indexed, and old numbers are brought to one form', () => {
-  const sql = read('api/migrations/283_v26_second_phone_and_one_form.sql');
-  assert.match(sql, /ADD COLUMN IF NOT EXISTS phone2/i);
-  assert.match(sql, /idx_subscribers_phone2/);
-  assert.match(sql, /UPDATE subscribers/i);
-});
-
 test('every save that takes a number asks who already holds it', () => {
   for (const file of ['api/routes/admin/subscribers.js', 'api/routes/subscriber-payments.js', 'api/routes/admin/leads/convert.js']) {
     assert.match(read(file), /clientHoldingPhone/, file);

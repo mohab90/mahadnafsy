@@ -95,15 +95,6 @@ test('course analytics are scoped to the assigned instructor identity', () => {
   assert.match(publicRoutes, /requirePermission\('view_courses'\)/);
 });
 
-test('bundle learning paths carry tenant ownership through catalog and entitlement queries', () => {
-  const migration = read('api/migrations/126_v25_lms_cohorts_instructor_scope.sql');
-  const catalog = read('api/routes/core/catalog.js');
-  const entitlements = read('api/lib/entitlements.js');
-  assert.match(migration, /ALTER TABLE bundle_courses[\s\S]*tenant_id/);
-  assert.match(catalog, /bundle_courses \(bundle_id, course_id, tenant_id, sort_order\)/);
-  assert.match(entitlements, /WHERE bc\.tenant_id=\?/);
-});
-
 test('offline progress queue is user-stable, monotonic and refreshes canonical subscriber data', () => {
   const api = read('client/lib/mysqlapi.ts');
   const runtime = read('client/context/site-data-hooks/useClientAccountRuntime.ts');

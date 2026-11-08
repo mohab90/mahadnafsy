@@ -1,0 +1,748 @@
+[
+ {
+  "id": "rawRowResponses: the two unreachable endpoints are gone",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/lms.js",
+    "mustNot": {
+     "source": "router\\.get\\('\\/api\\/me\\/cohorts'",
+     "flags": ""
+    },
+    "code": true
+   },
+   {
+    "file": "api/routes/lms.js",
+    "mustNot": {
+     "source": "router\\.get\\('\\/api\\/me\\/live-sessions'",
+     "flags": ""
+    },
+    "code": true
+   }
+  ]
+ },
+ {
+  "id": "staticRulesKept: a subscriber is saved by an explicit insert or update in one transaction, never by an upsert that could land on another institute\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/admin/subscribers.js",
+    "mustNot": {
+     "source": "INSERT INTO subscribers[\\s\\S]{0,900}ON DUPLICATE KEY UPDATE",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "actionPermissionGates: the scan that found them still knows what every route requires",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "tools/permission-mismatch-scan.mjs",
+    "must": {
+     "source": "const guardFor = \\(verb, called\\) =>",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "tools/permission-mismatch-scan.mjs",
+    "must": {
+     "source": "if \\(routeVerb !== verb\\) continue;",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "tools/permission-mismatch-scan.mjs",
+    "must": {
+     "source": "Check the call site before acting",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "aSecondPhoneAndOneForm: a second number column exists, indexed, and old numbers are brought to one form",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/283_v26_second_phone_and_one_form.sql",
+    "must": {
+     "source": "ADD COLUMN IF NOT EXISTS phone2",
+     "flags": "i"
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/283_v26_second_phone_and_one_form.sql",
+    "must": {
+     "source": "idx_subscribers_phone2",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/283_v26_second_phone_and_one_form.sql",
+    "must": {
+     "source": "UPDATE subscribers",
+     "flags": "i"
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "assetNamesAreContentHashes: the release is extracted with fresh dates, so pruning by age keeps what is live",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "tar -xzf \"\\/staging\\/\\$R-admin\\.tgz\" --touch -C \"\\$admindir\"",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "tar -xzf \"\\/staging\\/\\$R-client\\.tgz\" --touch -C \"\\$clientdir\"",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "find \"\\$web\" -type f -mtime \\+7 -delete",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "authTenantIdentity: user, staff, OTP and login security identities are unique and indexed per tenant",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/087_v25_auth_tenant_identity.sql",
+    "must": {
+     "source": "uq_users_tenant_email \\(tenant_id, email",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/087_v25_auth_tenant_identity.sql",
+    "must": {
+     "source": "idx_otp_tenant_email_type \\(tenant_id, email",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/087_v25_auth_tenant_identity.sql",
+    "must": {
+     "source": "idx_login_history_tenant_status \\(tenant_id, status",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/087_v25_auth_tenant_identity.sql",
+    "must": {
+     "source": "uq_staff_tenant_email \\(tenant_id, email",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/087_v25_auth_tenant_identity.sql",
+    "must": {
+     "source": "DROP INDEX IF EXISTS uq_users_email",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "aYearOfAccessFromSubscription: the conversion tool is a report until --apply, never shortens a longer expiry, backs up, and ends an open-ended access only when ",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "const APPLY = process\\.argv\\.includes\\('--apply'\\);",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "const INCLUDE_OPEN = process\\.argv\\.includes\\('--include-open-ended'\\);",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "if \\(INCLUDE_OPEN\\) changes\\.push\\(\\{ row, target \\}\\);",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "new Date\\(row\\.expiry_date\\)\\.getTime\\(\\) > target\\.getTime\\(\\)\\) \\{\\s+groups\\.longer\\.push\\(\\{ row, target \\}\\);\\s+if \\(EXACT\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "branch_id LIKE 'branch-online%'",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "Number\\(row\\.bundle_months\\) > 0 \\? Number\\(row\\.bundle_months\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "fs\\.writeFileSync\\(backup,",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "AND expiry_date = \\?'",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "must": {
+     "source": "--reinstate-revoked-by=",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/set-year-access.cjs",
+    "mustNot": {
+     "source": "\\bDELETE\\b|\\bDROP\\b",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "backupRecovery: restore rehearsal is opt-in, uses a generated database and always drops it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/backup-restore-rehearsal.cjs",
+    "must": {
+     "source": "ALLOW_DB_RESTORE_REHEARSAL",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/backup-restore-rehearsal.cjs",
+    "must": {
+     "source": "mahad_restore_rehearsal_\\$\\{process\\.pid\\}",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/backup-restore-rehearsal.cjs",
+    "must": {
+     "source": "CREATE DATABASE",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/backup-restore-rehearsal.cjs",
+    "must": {
+     "source": "DROP DATABASE IF EXISTS",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/backup-restore-rehearsal.cjs",
+    "must": {
+     "source": "checksumsMatch",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/backup-restore-rehearsal.cjs",
+    "must": {
+     "source": "countsMatch",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "clientItemMoneyHasOneHome: migration 359 creates the table and copies the numbers; 360 takes them out of the blob only where the copy is whole",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/359_v26_client_item_money.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS client_item_money",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/359_v26_client_item_money.sql",
+    "must": {
+     "source": "PRIMARY KEY \\(tenant_id, subscriber_id, item_key\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/359_v26_client_item_money.sql",
+    "must": {
+     "source": "JSON_KEYS\\(s\\.crm_json, '\\$\\.customPrices'\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/359_v26_client_item_money.sql",
+    "must": {
+     "source": "JSON_KEYS\\(s\\.crm_json, '\\$\\.priorPaid'\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/360_v26_client_item_money_leaves_crm_json.sql",
+    "must": {
+     "source": "JSON_REMOVE\\(s\\.crm_json, '\\$\\.customPrices', '\\$\\.priorPaid'\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/360_v26_client_item_money_leaves_crm_json.sql",
+    "must": {
+     "source": "NOT EXISTS \\(SELECT 1 FROM client_item_money m",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "CREATE TABLE `client_item_money`",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "financeOperations: finance operations migrations establish AP, bank reconciliation and close approval contracts",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/167_v25_accounts_payable.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_ap_vendor_invoice",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/167_v25_accounts_payable.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_ap_payment_reference",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/168_v25_bank_reconciliation.sql",
+    "must": {
+     "source": "UNIQUE KEY uq_bank_reconciliation_period",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/169_v25_accounting_close_approval.sql",
+    "must": {
+     "source": "checklist_sha256 CHAR\\(64\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/170_v25_accounting_close_request_guard.sql",
+    "must": {
+     "source": "uq_accounting_close_request_active",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/171_v25_bank_reconciliation_scope_guard.sql",
+    "must": {
+     "source": "COALESCE\\(branch_id,'__CENTRAL__'\\)",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "opsWatchdog: the one-time off-site setup keeps the private key off the server and never overwrites what exists",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "must": {
+     "source": "age-keygen -o \"\\$PRIVATE_KEY\"",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "must": {
+     "source": "age-keygen -y \"\\$PRIVATE_KEY\" > \"\\$RECIPIENTS\"",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "must": {
+     "source": "MAHAD_BACKUP_AGE_RECIPIENTS=%s",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "mustNot": {
+     "source": "MAHAD_BACKUP_AGE_IDENTITY|age -d",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "must": {
+     "source": "chmod 600 \"\\$ENV_FILE\"",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "must": {
+     "source": "already exists — left as it is",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/setup-offsite-backup.sh",
+    "must": {
+     "source": "shred -u",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/README_AR.md",
+    "must": {
+     "source": "'bash -s -- b2:mahad-backups\\/db' < deploy\\/setup-offsite-backup\\.sh",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "deploy/README_AR.md",
+    "must": {
+     "source": "OPS_HEARTBEAT_URL",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "paymentIntents: payment intent schema enforces active-order and retry idempotency uniqueness",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/172_v25_payment_intents.sql",
+    "must": {
+     "source": "uq_payment_intent_idempotency",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/172_v25_payment_intents.sql",
+    "must": {
+     "source": "uq_payment_intent_active_order",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/172_v25_payment_intents.sql",
+    "must": {
+     "source": "uq_payment_attempt_proof",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/172_v25_payment_intents.sql",
+    "must": {
+     "source": "payment_intent_id",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/172_v25_payment_intents.sql",
+    "must": {
+     "source": "payment_attempt_id",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "problemsFoundInTheProductionLog: login history can hold the id of the person who signed in",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/217_v26_login_history_user_id_is_a_uuid.sql",
+    "must": {
+     "source": "ALTER TABLE login_history\\s+MODIFY COLUMN user_id VARCHAR\\(100\\) NULL DEFAULT NULL;",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "receiptsRunInSequence: the migration numbers what exists in the order it was recorded and starts the counter after it",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/280_v26_branch_receipt_numbers.sql",
+    "must": {
+     "source": "CREATE TABLE IF NOT EXISTS receipt_counters",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/280_v26_branch_receipt_numbers.sql",
+    "must": {
+     "source": "ADD COLUMN IF NOT EXISTS receipt_no INT NULL",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/280_v26_branch_receipt_numbers.sql",
+    "must": {
+     "source": "ADD UNIQUE KEY IF NOT EXISTS uq_payments_branch_receipt \\(tenant_id, branch, receipt_no\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/280_v26_branch_receipt_numbers.sql",
+    "must": {
+     "source": "ROW_NUMBER\\(\\) OVER \\(PARTITION BY tenant_id, branch ORDER BY created_at, `date`, id\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/280_v26_branch_receipt_numbers.sql",
+    "must": {
+     "source": "branch IN \\('DAQQI', 'TAGAMOA'\\)",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/280_v26_branch_receipt_numbers.sql",
+    "must": {
+     "source": "ON DUPLICATE KEY UPDATE last_no = GREATEST\\(last_no, VALUES\\(last_no\\)\\)",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "releaseGateReachesStaging: the server refuses production unless staging runs the same release",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy-release.sh",
+    "must": {
+     "source": "REFUSED - staging does not run \\$R",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "salesDeskSixOctober: the sign-in audit can store a text account id, and lead names follow the rep",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/250_v26_login_history_user_id_text.sql",
+    "must": {
+     "source": "MODIFY COLUMN user_id VARCHAR\\(100\\) NULL",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/schema.sql",
+    "must": {
+     "source": "CREATE TABLE `login_history` \\([\\s\\S]{0,200}`user_id` varchar\\(100\\) DEFAULT NULL",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/252_v26_lead_rep_name_follows_the_rep.sql",
+    "must": {
+     "source": "CREATE OR REPLACE TRIGGER trg_leads_assigned_at_update BEFORE UPDATE ON leads",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/252_v26_lead_rep_name_follows_the_rep.sql",
+    "must": {
+     "source": "NEW\\.assigned_sales_name = IF\\(COALESCE\\(NEW\\.assigned_sales_id, ''\\) = '', NEW\\.assigned_sales_name,",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/252_v26_lead_rep_name_follows_the_rep.sql",
+    "must": {
+     "source": "SET l\\.assigned_sales_name = s\\.name, l\\.updated_at = l\\.updated_at",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "schemaColumns: the schema check reads without locking and without writing",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/tools/explain-sql.cjs",
+    "must": {
+     "source": "EXPLAIN",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/explain-sql.cjs",
+    "must": {
+     "source": "SET SESSION TRANSACTION READ ONLY",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/tools/explain-sql.cjs",
+    "must": {
+     "source": "FOR\\\\s\\+UPDATE\\(\\\\s\\+SKIP\\\\s\\+LOCKED\\|\\\\s\\+NOWAIT\\)\\?",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "securityHeadersAndSessionHygiene: the docker image carries the snippet it includes",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "deploy/docker/Dockerfile.static",
+    "must": {
+     "source": "COPY deploy\\/nginx\\/mahad-security-headers\\.conf \\/etc\\/nginx\\/snippets\\/mahad-security-headers\\.conf",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ },
+ {
+  "id": "siteAccountsFindTheirClient: migration 352 makes a client\\",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/migrations/352_v26_subscriber_phone_digits.sql",
+    "must": {
+     "source": "ADD COLUMN IF NOT EXISTS phone_digits VARCHAR\\(64\\) AS \\(REGEXP_REPLACE\\(phone,'\\[\\^0-9\\]',''\\)\\) VIRTUAL",
+     "flags": ""
+    },
+    "code": false
+   },
+   {
+    "file": "api/migrations/352_v26_subscriber_phone_digits.sql",
+    "must": {
+     "source": "ADD INDEX IF NOT EXISTS idx_subs_tenant_phone_digits \\(tenant_id, phone_digits\\)",
+     "flags": ""
+    },
+    "code": false
+   }
+  ]
+ }
+]

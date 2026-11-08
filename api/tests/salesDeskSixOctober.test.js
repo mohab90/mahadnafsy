@@ -263,17 +263,6 @@ test('the student assistant reads what a student studies from enrollments', () =
   assert.match(route, /SELECT course_id FROM enrollments WHERE tenant_id=\? AND subscriber_id=\?/);
 });
 
-test('the sign-in audit can store a text account id, and lead names follow the rep', () => {
-  assert.match(read('api/migrations/250_v26_login_history_user_id_text.sql'), /MODIFY COLUMN user_id VARCHAR\(100\) NULL/);
-  assert.match(read('api/schema.sql'), /CREATE TABLE `login_history` \([\s\S]{0,200}`user_id` varchar\(100\) DEFAULT NULL/);
-  const names = read('api/migrations/252_v26_lead_rep_name_follows_the_rep.sql');
-  assert.match(names, /CREATE OR REPLACE TRIGGER trg_leads_assigned_at_update BEFORE UPDATE ON leads/);
-  assert.match(names, /NEW\.assigned_sales_name = IF\(COALESCE\(NEW\.assigned_sales_id, ''\) = '', NEW\.assigned_sales_name,/);
-  assert.match(names, /SET l\.assigned_sales_name = s\.name, l\.updated_at = l\.updated_at/);
-});
-
-// ── carnets, books and Saudi numbers ─────────────────────────────────────────
-
 test('a carnet or a book is never a course instalment, and books beside its course', () => {
   const route = read('api/routes/subscriber-payments.js');
   assert.match(route, /if \(safeType !== 'COURSE'\) payment\.isInstallment = false;/);

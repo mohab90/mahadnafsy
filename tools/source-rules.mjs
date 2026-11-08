@@ -77,6 +77,24 @@ export const RULES = [
   },
 ];
 
+// Rules that were unit tests reading an infrastructure file (a deploy script, a migration, a tool) or only forbidding something. tools/source-rules.json holds
+// them as data: { id, why, checks: [{ file, must | mustNot: { source, flags }, code?, absent? }] } — `code` matches against the file without its comments.
+const withoutComments = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+for (const entry of JSON.parse(readFileSync(join(ROOT, 'tools', 'source-rules.json'), 'utf8'))) {
+  RULES.push({
+    id: entry.id, why: entry.why, files: [...new Set(entry.checks.map(check => check.file))],
+    custom: read => entry.checks.flatMap(check => {
+      let text;
+      try { text = read(check.file); } catch { return check.absent ? [] : [`${check.file} is missing`]; }
+      if (check.absent) return [`${check.file} exists again`];
+      const body = check.code ? withoutComments(text) : text;
+      if (check.must && !new RegExp(check.must.source, check.must.flags).test(body)) return [`${check.file} no longer matches /${check.must.source}/`];
+      if (check.mustNot && new RegExp(check.mustNot.source, check.mustNot.flags).test(body)) return [`${check.file} matches /${check.mustNot.source}/, which it must not`];
+      return [];
+    }),
+  });
+}
+
 /** Applies one rule to a reader `read(path) => text`; returns the violations as { rule, file, detail }. */
 const listUnder = (dir, exts = ['.js']) => walk(join(ROOT, dir), exts).map(file => relative(ROOT, file).split(sep).join('/'));
 

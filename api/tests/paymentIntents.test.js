@@ -29,11 +29,3 @@ test('manual proof lifecycle binds order, intent, attempt, payment and journal t
   assert.match(proof, /grantCourseSelections/);
 });
 
-test('payment intent schema enforces active-order and retry idempotency uniqueness', () => {
-  const migration = read('migrations/172_v25_payment_intents.sql');
-  assert.match(migration, /uq_payment_intent_idempotency/);
-  assert.match(migration, /uq_payment_intent_active_order/);
-  assert.match(migration, /uq_payment_attempt_proof/);
-  assert.match(migration, /payment_intent_id/);
-  assert.match(migration, /payment_attempt_id/);
-});

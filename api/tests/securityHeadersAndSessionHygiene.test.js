@@ -56,10 +56,6 @@ for (const [rel, include] of [
   });
 }
 
-test('the docker image carries the snippet it includes', () => {
-  assert.match(read('deploy/docker/Dockerfile.static'), /COPY deploy\/nginx\/mahad-security-headers\.conf \/etc\/nginx\/snippets\/mahad-security-headers\.conf/);
-});
-
 test('a course page from the API sheds the API\'s CSP, which forbade every script on it', () => {
   const source = read('api/routes/seo-pages.js');
   assert.match(source, /for \(const header of \['Content-Security-Policy', 'Cross-Origin-Opener-Policy', 'Cross-Origin-Resource-Policy', 'X-Frame-Options'\]\)/);

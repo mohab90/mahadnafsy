@@ -63,16 +63,3 @@ test('bank reconciliation and period close require zero difference and independe
   assert.match(accounting, /status='consumed',consumed_at=NOW\(\)/);
 });
 
-test('finance operations migrations establish AP, bank reconciliation and close approval contracts', () => {
-  const ap = read('migrations/167_v25_accounts_payable.sql');
-  const bank = read('migrations/168_v25_bank_reconciliation.sql');
-  const close = read('migrations/169_v25_accounting_close_approval.sql');
-  const closeGuard = read('migrations/170_v25_accounting_close_request_guard.sql');
-  const bankGuard = read('migrations/171_v25_bank_reconciliation_scope_guard.sql');
-  assert.match(ap, /UNIQUE KEY uq_ap_vendor_invoice/);
-  assert.match(ap, /UNIQUE KEY uq_ap_payment_reference/);
-  assert.match(bank, /UNIQUE KEY uq_bank_reconciliation_period/);
-  assert.match(close, /checklist_sha256 CHAR\(64\)/);
-  assert.match(closeGuard, /uq_accounting_close_request_active/);
-  assert.match(bankGuard, /COALESCE\(branch_id,'__CENTRAL__'\)/);
-});

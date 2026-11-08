@@ -42,12 +42,3 @@ test('the MySQL-only dump flag is conditional, because MariaDB refuses to start 
   assert.match(backup, /spawnSync\([^)]*MYSQLDUMP_PATH[^)]*\|\| 'mysqldump', \['--help'\]/);
 });
 
-test('restore rehearsal is opt-in, uses a generated database and always drops it', () => {
-  const rehearsal = read('tools/backup-restore-rehearsal.cjs');
-  assert.match(rehearsal, /ALLOW_DB_RESTORE_REHEARSAL/);
-  assert.match(rehearsal, /mahad_restore_rehearsal_\$\{process\.pid\}/);
-  assert.match(rehearsal, /CREATE DATABASE/);
-  assert.match(rehearsal, /DROP DATABASE IF EXISTS/);
-  assert.match(rehearsal, /checksumsMatch/);
-  assert.match(rehearsal, /countsMatch/);
-});

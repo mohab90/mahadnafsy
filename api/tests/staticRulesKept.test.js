@@ -11,11 +11,6 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { read } = require('./support/repo');
 
-test('a subscriber is saved by an explicit insert or update in one transaction, never by an upsert that could land on another institute\'s row', () => {
-  const route = read('api/routes/admin/subscribers.js');
-  assert.doesNotMatch(route, /INSERT INTO subscribers[\s\S]{0,900}ON DUPLICATE KEY UPDATE/);
-});
-
 test('drip delivery goes through the outbox in the enrolment\'s own transaction, once per step', () => {
   const service = read('api/lib/dripCampaigns.js');
   assert.match(service, /outbox\.enqueue\([\s\S]*\}, conn\)/);

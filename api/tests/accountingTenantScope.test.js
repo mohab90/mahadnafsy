@@ -8,13 +8,6 @@ const path = require('node:path');
 
 const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('journal core writes tenant header and tenant chart in the same transaction', () => {
-  const finance = read('lib/finance.js');
-  assert.match(finance, /INSERT INTO journal_entries[\s\S]*\(id, tenant_id, branch, branch_id/);
-  assert.match(finance, /INSERT IGNORE INTO tenant_chart_of_accounts \(tenant_id, code, name, type\)/);
-  assert.match(finance, /actor \|\| 'system', db, tenantId, \{ branch, branchId \}/);
-});
-
 test('accounting periods and snapshots are tenant scoped', () => {
   const route = read('routes/accounting.js');
   assert.match(route, /accounting_periods WHERE tenant_id=\?/);

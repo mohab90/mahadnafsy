@@ -48,17 +48,6 @@ test('nothing filters subscribers on a status column', () => {
   assert.match(src, /FROM leads WHERE tenant_id=\? AND phone IS NOT NULL AND phone != ''/);
 });
 
-test('the schema check reads without locking and without writing', () => {
-  const tool = read('tools/explain-sql.cjs');
-  assert.match(tool, /EXPLAIN/);
-  assert.match(tool, /SET SESSION TRANSACTION READ ONLY/);
-  // A plan, not a lock: FOR UPDATE and its modifiers are stripped together —
-  // splitting them left "SKIP LOCKED" stranded and reported a working query.
-  assert.match(tool, /FOR\\s\+UPDATE\(\\s\+SKIP\\s\+LOCKED\|\\s\+NOWAIT\)\?/);
-  // What the tool is allowed to send is pinned in one place, over every
-  // connection it opens: writeStatements.test.js, "can only ever plan them".
-});
-
 test('the branch migration names the column leads actually has', () => {
   const src = read('routes/payments.js');
   assert.ok(!src.includes('crm_data'), 'leads.crm_data is back — the column is crm_json, and every statement using it throws');

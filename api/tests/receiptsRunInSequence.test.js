@@ -79,16 +79,6 @@ test('the gaps are read per branch, from the payments that carry a number', asyn
   assert.equal(asked[0].params[0], 't1');
 });
 
-test('the migration numbers what exists in the order it was recorded and starts the counter after it', () => {
-  const sql = read('api/migrations/280_v26_branch_receipt_numbers.sql');
-  assert.match(sql, /CREATE TABLE IF NOT EXISTS receipt_counters/);
-  assert.match(sql, /ADD COLUMN IF NOT EXISTS receipt_no INT NULL/);
-  assert.match(sql, /ADD UNIQUE KEY IF NOT EXISTS uq_payments_branch_receipt \(tenant_id, branch, receipt_no\)/);
-  assert.match(sql, /ROW_NUMBER\(\) OVER \(PARTITION BY tenant_id, branch ORDER BY created_at, `date`, id\)/);
-  assert.match(sql, /branch IN \('DAQQI', 'TAGAMOA'\)/);
-  assert.match(sql, /ON DUPLICATE KEY UPDATE last_no = GREATEST\(last_no, VALUES\(last_no\)\)/);
-});
-
 test('a recorded payment takes its number inside its transaction and answers with it', () => {
   const route = read('api/routes/subscriber-payments.js');
   assert.match(route, /receiptNo = await nextReceiptNo\(conn, \{ tenantId: paymentTenantId, branch: paymentBranch \}\);/);

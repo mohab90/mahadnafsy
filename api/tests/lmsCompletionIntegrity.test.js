@@ -164,11 +164,3 @@ test('admin completion route requires manage_courses permission and passes tenan
   assert.match(route, /completeCourses\(\{[\s\S]*tenantId: req\.tenantId/);
 });
 
-test('live sessions and waitlists are tenant owned and notify through the outbox', () => {
-  const route = read('routes/lms.js');
-  const migration = read('migrations/083_v25_lms_sequence_tenant_scope.sql');
-  assert.match(migration, /ALTER TABLE live_sessions[\s\S]*tenant_id/);
-  assert.match(migration, /ALTER TABLE course_waitlist[\s\S]*tenant_id/);
-  assert.match(route, /INSERT INTO live_sessions \(id, tenant_id/);
-  assert.match(route, /WHERE id=\? AND tenant_id=\?/);
-});

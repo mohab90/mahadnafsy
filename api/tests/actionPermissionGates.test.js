@@ -44,13 +44,3 @@ test('refreshing the exchange rates is offered only to whoever can', () => {
   assert.match(financial, /'manage_financial',\s*\);/);
 });
 
-test('the scan that found them still knows what every route requires', () => {
-  const scan = read('tools/permission-mismatch-scan.mjs');
-  // Verb and path together: /api/admin/tickets/:id is manage_inbox on GET and
-  // admin-only on DELETE, and matching on the path alone reported six roles as
-  // broken when their reads were fine.
-  assert.match(scan, /const guardFor = \(verb, called\) =>/);
-  assert.match(scan, /if \(routeVerb !== verb\) continue;/);
-  // And it says what it cannot prove, rather than overclaiming.
-  assert.match(scan, /Check the call site before acting/);
-});

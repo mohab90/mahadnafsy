@@ -34,13 +34,6 @@ test('an error raised on purpose reaches the desk as itself, not as a server fau
   assert.deepEqual([res.statusCode, res.body], [500, { error: 'Internal server error' }]);
 });
 
-test('login history can hold the id of the person who signed in', () => {
-  // users.id is a UUID and the column was an INT: every successful sign-in was
-  // refused ("Incorrect integer value"), 94 times in two days.
-  assert.match(read('api/migrations/217_v26_login_history_user_id_is_a_uuid.sql'),
-    /ALTER TABLE login_history\s+MODIFY COLUMN user_id VARCHAR\(100\) NULL DEFAULT NULL;/);
-});
-
 test('«نقل للأرشيف» on the local tab takes the local tab\'s leads, and only those', () => {
   const route = leadsRouteSource();
   const block = route.slice(route.indexOf("router.post('/api/admin/leads/move-to-archive'"));

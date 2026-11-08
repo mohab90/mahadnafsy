@@ -55,20 +55,6 @@ test('maintenance and payment proof duplicate checks cannot use another tenant',
   assert.match(proofs, /FROM payment_proofs[\s\S]{0,100}order_id=\? AND tenant_id=\?/);
 });
 
-test('Daqqi rounds and attendee reports are tenant native', () => {
-  const route = read('routes/daqqi-rounds.js');
-  const migration = read('migrations/110_v25_daqqi_tenant_integrity.sql');
-
-  assert.match(route, /FROM daqqi_rounds WHERE tenant_id=\?/);
-  assert.match(route, /UPDATE daqqi_rounds[\s\S]{0,300}WHERE id=\? AND tenant_id=\?/);
-  assert.match(route, /INSERT INTO daqqi_rounds[\s\S]{0,400}tenant_id\)/);
-  assert.match(route, /DELETE FROM daqqi_attendees WHERE round_id=\? AND tenant_id=\?/);
-  assert.match(route, /FROM daqqi_attendees WHERE tenant_id=\?/);
-  assert.match(route, /DELETE FROM daqqi_rounds WHERE id=\? AND tenant_id=\?/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS tenant_id/);
-  assert.match(migration, /uq_daqqi_rounds_tenant_code \(tenant_id, code\)/);
-});
-
 test('Dokki classroom, check-in and inventory operations validate tenant ownership', () => {
   const route = read('routes/dokki-operations.js');
 
