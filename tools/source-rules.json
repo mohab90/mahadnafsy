@@ -774,5 +774,73 @@
     }
    }
   ]
+ },
+ {
+  "id": "tenantIsolationHardening: subscriber maintenance archives, it never hard-deletes customer history",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/client-maintenance.js",
+    "mustNot": {
+     "source": "DELETE FROM subscribers",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/client-maintenance.js",
+    "mustNot": {
+     "source": "DELETE FROM enrollments WHERE subscriber_id",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/lib/startupTasks.js",
+    "absent": true
+   }
+  ]
+ },
+ {
+  "id": "communityTenantScope: the community routes resolve the member through the shared resolver, the forum routes are gone, posting is rate limited",
+  "why": "moved from a unit test that matched source text",
+  "checks": [
+   {
+    "file": "api/routes/community.js",
+    "mustNot": {
+     "source": "FROM subscribers",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/community.js",
+    "must": {
+     "source": "router\\.post\\('/api/community/posts',\\s*requireAuth,\\s*communityPostLimiter",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "code": true,
+    "mustNot": {
+     "source": "router\\.get\\('/api/community/posts/:id'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "code": true,
+    "mustNot": {
+     "source": "router\\.post\\('/api/community/posts/:id/upvote'",
+     "flags": ""
+    }
+   },
+   {
+    "file": "api/routes/lms.js",
+    "code": true,
+    "mustNot": {
+     "source": "forum_upvotes|forum_posts",
+     "flags": ""
+    }
+   }
+  ]
  }
 ]

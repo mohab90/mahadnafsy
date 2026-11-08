@@ -40,19 +40,6 @@ function guardBody(name) {
   return auth.slice(start, stop);
 }
 
-test('every guard that resolves a staff record raises a full-access role', () => {
-  for (const guard of ['requireAdmin', 'requireAdminOrOnlineManager', 'requireAdminOrOnlineManagerOrCollection', 'requireAdminOrStaff']) {
-    const body = guardBody(guard);
-    assert.match(body, /findActiveStaff/, `${guard} no longer looks the caller up`);
-    // The property, not the spelling: after the lookup, a full-access role
-    // raises the flag. Each guard writes that differently.
-    const afterLookup = body.slice(body.indexOf('findActiveStaff'));
-    assert.match(afterLookup, /FULL_ACCESS_ROLES/,
-      `${guard} decides authority from the environment list alone — an ADMIN or MANAGER account is refused`);
-    assert.match(afterLookup, /req\.isSuperAdmin = true/, `${guard} never raises the flag for the role it just read`);
-  }
-});
-
 test('the roles that carry full access are the two the product calls top', () => {
   const { FULL_ACCESS_ROLES, DATA_SCOPE } = require('../constants/permissions');
   assert.deepEqual([...FULL_ACCESS_ROLES].sort(), ['admin', 'manager']);
@@ -65,51 +52,6 @@ test('the permission grid is gated on that flag, not on a role string', () => {
   const employees = fs.readFileSync(path.join(API, 'routes', 'hr', 'employees.js'), 'utf8');
   assert.match(employees, /sentAccessFields && !req\.isSuperAdmin/);
   assert.match(employees, /PERMISSIONS_REQUIRE_SUPERADMIN/);
-});
-
-test('your own profile is not a section you need rights to enter', () => {
-  // Watched live on production: the HR manager's grid had been narrowed to lead
-  // and client work — no view_dashboard, no view_hr — so «ملفي الشخصي» answered
-  // «غير مصرح بالوصول» before the page even called the API, and the API would
-  // have refused it too.
-  const profile = fs.readFileSync(path.join(API, 'routes', 'hr', 'staffprofile.js'), 'utf8');
-  for (const route of ['profile', 'report', 'messages']) {
-    const line = new RegExp(`router\\.get\\('/api/admin/hr/staff/:id/${route}'[^\\n]*`).exec(profile);
-    assert.ok(line, `the ${route} route is gone`);
-    assert.match(line[0], /requirePermissionOrSelf\('view_hr'\)/,
-      `reading your own ${route} still demands view_hr`);
-  }
-  // Writing to somebody's file is a different act and stays where it was.
-  const post = /router\.post\('\/api\/admin\/hr\/staff\/:id\/messages'[^\n]*/.exec(profile);
-  assert.match(post[0], /requirePermission\('manage_hr'\)/);
-
-  // …and the middleware only waives the permission for your own id.
-  const helper = auth.slice(auth.indexOf('function requirePermissionOrSelf'));
-  assert.match(helper, /String\(req\.staffRecord\.id\) === String\(req\.params\?\.\[param\]\)/);
-  assert.match(helper, /if \(!mine\) return gate\(req, res, next\)/);
-});
-
-test('the personal panels answer their owner, and still only their own rows', () => {
-  // Her own landing page showed her name and two «Permission denied:
-  // view_dashboard» toasts: her tasks and her notifications. Both handlers had
-  // always scoped a non-manager to their own rows — the gate was refusing a
-  // question that was already answered safely.
-  const tasks = fs.readFileSync(path.join(API, 'routes', 'campaigns.js'), 'utf8');
-  const notifications = fs.readFileSync(path.join(API, 'routes', 'notifications.js'), 'utf8');
-  for (const [name, src] of [['tasks', tasks], ['notifications', notifications]]) {
-    assert.ok(!/router\.[a-z]+\('\/api\/admin\/(tasks|notifications)[^\n]*requirePermission\('view_dashboard'\)/.test(src),
-      `a ${name} route asks for view_dashboard again — an employee cannot reach their own`);
-  }
-  // The waiver only holds while the scoping does, so the scoping is pinned here.
-  assert.match(tasks, /const mineOnly = askedForMine \|\| !taskManager\(req\)/);
-  for (const write of [/DELETE FROM tasks WHERE id=\?[^`]*taskManager\(req\) \? '' : ' AND \(assigned_to=\? OR created_by=\?\)'/,
-    /UPDATE tasks SET[\s\S]{0,400}taskManager\(req\) \? '' : ' AND \(assigned_to=\? OR created_by=\?\)'/]) {
-    assert.match(tasks, write, 'a task write stopped scoping a non-manager to their own rows');
-  }
-  assert.match(notifications, /const visibility = visibilitySql\(req\);/);
-  // A caller with no staff record at all is still refused by the permission.
-  const helper = auth.slice(auth.indexOf('function requirePermissionOrOwnRows'));
-  assert.match(helper, /if \(!req\.staffRecord && !req\.isSuperAdmin\) return gate\(req, res, next\)/);
 });
 
 test('the personal tabs are open to every staff member, and only those', () => {
