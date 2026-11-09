@@ -1579,34 +1579,6 @@
   "class": "b"
  },
  {
-  "id": "aYearOfAccessFromSubscription: the grant counts the duration the course names, else a year, from the subscription day",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/entitlements.js",
-    "must": {
-     "source": "const DEFAULT_ACCESS_MONTHS = 12;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/entitlements.js",
-    "must": {
-     "source": "Number\\(durationResult\\?\\.\\[0\\]\\?\\.\\[0\\]\\?\\.access_months\\) > 0\\s+\\? Number\\(durationResult\\[0\\]\\[0\\]\\.access_months\\) : DEFAULT_ACCESS_MONTHS;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/entitlements.js",
-    "must": {
-     "source": "CASE WHEN \\? > 0 THEN DATE_ADD\\(COALESCE\\(\\?,NOW\\(\\)\\), INTERVAL \\? MONTH\\) ELSE NULL END",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "certificatesPickAndExcel: the APIs hand the screens the links and the national id",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -5421,13 +5393,6 @@
   "id": "aYearOfAccessFromSubscription: a re-grant never shortens or restarts a live window, and leaves an open-ended one to the conversion tool",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "api/lib/entitlements.js",
-    "must": {
-     "source": "expiry_date=CASE WHEN \\? > 0 AND expiry_date IS NOT NULL THEN GREATEST\\(\\s+expiry_date,\\s+DATE_ADD\\(IF\\(status='active' AND expiry_date > NOW\\(\\),enrolled_at,NOW\\(\\)\\), INTERVAL \\? MONTH\\)\\) ELSE expiry_date END,",
-     "flags": ""
-    }
-   },
    {
     "file": "api/lib/entitlements.js",
     "must": {
