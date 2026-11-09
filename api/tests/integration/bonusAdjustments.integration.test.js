@@ -40,7 +40,7 @@ const staff = (id, scheme = 'SALES_BOOKINGS') => pool.query(
 const ids = {};
 
 async function clean() {
-  for (const table of ['bonus_adjustments', 'employee_bonuses', 'payments', 'client_item_money', 'subscribers', 'courses', 'staff', 'users', 'tenant_settings', 'audit_events', 'tenant_subscriptions']) {
+  for (const table of ['bonus_adjustments', 'employee_bonuses', 'payments', 'client_item_money', 'subscribers', 'courses', 'staff', 'users', 'tenant_settings', 'audit_logs', 'tenant_subscriptions']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [T]).catch(() => {});
   }
 }
@@ -192,7 +192,7 @@ test('the owner changes the plan, and a change to a month: with a reason, the mo
   const undone = await app.call('POST', `/api/admin/hr/bonus-adjustments/${made.body.adjustment.id}/revoke`, { session: who.owner, body: { reason: 'غلط' } });
   assert.equal(undone.status, 200);
   assert.equal((await app.call('POST', `/api/admin/hr/bonus-adjustments/${made.body.adjustment.id}/revoke`, { session: who.owner, body: {} })).status, 404);
-  const [[audit]] = await pool.query("SELECT COUNT(*) AS n FROM audit_events WHERE tenant_id=? AND action IN ('hr.bonus_adjusted','hr.bonus_adjustment_revoked','hr.bonus_plan_saved')", [T]);
+  const [[audit]] = await pool.query("SELECT COUNT(*) AS n FROM audit_logs WHERE tenant_id=? AND action IN ('hr.bonus_adjusted','hr.bonus_adjustment_revoked','hr.bonus_plan_saved')", [T]);
   assert.ok(Number(audit.n) >= 3, 'the plan, the change and taking it back are in the audit trail');
 });
 
