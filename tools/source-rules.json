@@ -14762,41 +14762,6 @@
   "class": "b"
  },
  {
-  "id": "crmLeadIntegrity: a lead cannot be marked converted without a customer behind it",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/leadState.js",
-    "must": {
-     "source": "status === 'converted'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadState.js",
-    "must": {
-     "source": "FROM subscribers[\\s\\S]{0,120}lead_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadState.js",
-    "must": {
-     "source": "statusCode = 409",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadState.js",
-    "must": {
-     "source": "metadata\\?\\.subscriberId",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "crmTenantScope: CRM operational views share the canonical role and branch scope",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -23066,110 +23031,6 @@
   "class": "b"
  },
  {
-  "id": "crmLeadIntegrity: admin conversion uses one server transaction and the UI waits for persistence",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "requestedCourseId",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "LIMIT 1 FOR UPDATE",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "transitionLead\\(\\{[\\s\\S]*toStatus: 'converted'",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "await conn\\.commit\\(\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "crmLeadIntegrity: lead assignments validate tenant staff and persist audit in the same transaction",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "bulk-assign'[\\s\\S]*await conn\\.beginTransaction\\(\\)[\\s\\S]*logLeadEventStrict[\\s\\S]*await conn\\.commit\\(\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "crmLeadIntegrity: CRM interactions use one tenant-owned transactional service",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -23259,42 +23120,6 @@
   "id": "crmTenantScope: lead conversion is tenant-owned, transactional and releases once",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "FROM leads WHERE id=\\? AND tenant_id=\\? AND hidden=0",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "SELECT id FROM subscribers[\\s\\S]{0,120}WHERE tenant_id=\\?[\\s\\S]{0,80}lead_id=\\?",
-     "flags": ""
-    }
-   },
    {
     "files": [
      "api/routes/admin/leads.js",
@@ -25753,31 +25578,6 @@
     ],
     "must": {
      "source": "const BACK_IN_PLAY = \\['archived', 'not_interested_hidden'\\];",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "staffAccountsReview: a collection account\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "files": [
-     "api/routes/admin/leads.js",
-     "api/routes/admin/leads/_shared.js",
-     "api/routes/admin/leads/write.js",
-     "api/routes/admin/leads/importDaqqi.js",
-     "api/routes/admin/leads/assignment.js",
-     "api/routes/admin/leads/dedup.js",
-     "api/routes/admin/leads/convert.js",
-     "api/routes/admin/leads/insights.js",
-     "api/routes/admin/leads/stats.js",
-     "api/routes/admin/leads/lists.js"
-    ],
-    "must": {
-     "source": "code: 'COLLECTION_BOOKING_REQUIRED'",
      "flags": ""
     }
    }
