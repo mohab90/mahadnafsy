@@ -244,3 +244,68 @@ test('saving writes the rounds of a rep, the owner\'s round figure and its reaso
   const calc = typeof row.calc_json === 'string' ? JSON.parse(row.calc_json) : row.calc_json;
   assert.deepEqual(calc.ladder.rounds.map(item => [item.label, item.amount, item.computedAmount ?? null, item.override?.reason ?? null]), [['1–15', 1000, null, null], ['16–30', 400, 0, 'تقدير من المالك']]);
 });
+
+// ───────────── what the screens read: the payroll month sheet and a rep's current round ─────────────
+
+test('the month sheet\'s summary carries each rep\'s rounds (bookings and bonus, the owner\'s figure beside the plan\'s), what was saved, and what was typed by hand', { skip }, async () => {
+  await pool.query(
+    `INSERT INTO employee_bonuses (id, tenant_id, staff_id, type, amount, status, for_month, for_year, source, reason, currency)
+     VALUES ('rnd-manual', ?, 'rep-a', 'bonus', 300, 'APPROVED', 9, 2026, 'MONTH_SHEET', 'مكافأة يدوية', 'EGP')`, [T]);
+  const summary = await app.call('GET', '/api/admin/hr/attendance/summary?month=9&year=2026', { session: who.hr });
+  assert.equal(summary.status, 200, summary.text);
+  const a = summary.body.find(row => row.id === 'rep-a');
+  assert.deepEqual(a.bonus_plan.rounds.map(round => [round.label, round.bookings, round.amount, round.computedAmount, round.override ? round.override.reason : null]),
+    [['1–15', 10, 1000, 1000, null], ['16–30', 3, 400, 0, 'تقدير من المالك']]);
+  assert.deepEqual([a.bonus_plan.total, a.bonus_plan.computedTotal, a.bonus_plan.halfMonths, a.bonus_plan.splitDay], [1400, 1400, true, 16]);
+  assert.deepEqual([a.bonuses.manualApproved, a.bonuses.manualPending, a.bonuses.planSaved], [300, 0, { amount: 1400, approved: false }]);
+  const b = summary.body.find(row => row.id === 'rep-b');
+  assert.deepEqual([b.bonus_plan.rounds.map(round => round.bookings), b.bonus_plan.total, b.bonuses.planSaved], [[9, 0], 0, null]);
+  assert.equal(summary.body.find(row => row.id === 'plain').bonus_plan, null, 'an employee on no scheme has none');
+  assert.ok(summary.body.find(row => row.id === 'desk-x').bonus_plan.collection, 'a collector has one cell: what was collected and the bonus');
+});
+
+test('a rep\'s current round: its dates, the bookings so far, the next step and how many are left; round 1\'s result once round 2 has begun', { skip }, async () => {
+  const { roundProgressOf } = require('../../lib/roundProgress');
+  const result = await compute(9);
+  const early = roundProgressOf(result, 'rep-a', '2026-09-10');
+  assert.deepEqual([early.onRounds, early.month, early.firstTarget, early.halfMonths], [true, '2026-09', 10, true]);
+  assert.deepEqual([early.current.label, early.current.from, early.current.to, early.current.bookings, early.current.amount], ['1–15', '2026-09-01', '2026-09-15', 10, 1000]);
+  assert.deepEqual([early.current.stepReached, early.current.nextStep], [{ bookings: 10, amount: 1000 }, { bookings: 15, amount: 1500, remaining: 5 }]);
+  assert.deepEqual(early.previous, []);
+
+  const late = roundProgressOf(result, 'rep-a', '2026-09-20');
+  assert.deepEqual([late.current.label, late.current.bookings, late.current.amount, late.current.stepReached], ['16–30', 3, 400, null], 'round 2 pays the owner\'s 400');
+  assert.deepEqual(late.current.nextStep, { bookings: 10, amount: 1000, remaining: 7 });
+  assert.deepEqual(late.previous.map(round => [round.label, round.bookings, round.amount]), [['1–15', 10, 1000]]);
+  assert.equal(late.monthTotal, 1400);
+
+  assert.deepEqual(roundProgressOf(result, 'desk-x', '2026-09-20'), { onRounds: false, scheme: 'COLLECTION_BOOKINGS' });
+  assert.deepEqual(roundProgressOf(result, 'plain', '2026-09-20'), { onRounds: false, scheme: 'NONE' });
+  assert.deepEqual(roundProgressOf(result, 'nobody', '2026-09-20'), { onRounds: false, scheme: 'NONE' });
+});
+
+test('past the last step each booking is worth the band it falls in', { skip }, async () => {
+  const { roundProgressOf } = require('../../lib/roundProgress');
+  await staff('rep-top');
+  for (let index = 0; index < 31; index += 1) { await client(`top${index}`, 'rep-top'); await pay({ client: `top${index}`, course: 'c1', staff: 'rep-top', date: '2026-09-02' }); }
+  const top = roundProgressOf(await compute(9), 'rep-top', '2026-09-10');
+  assert.equal(top.current.bookings, 31);
+  assert.deepEqual([top.current.nextStep, top.current.nextBookingWorth], [null, 200], 'past 30 each booking adds 200');
+});
+
+test('over HTTP the employee reads their own round, not another\'s; HR reads anyone\'s; an employee with no scheme gets none', { skip }, async () => {
+  const repA = await require('./support/http').signInStaff(pool, app, { tenantId: T, id: 'rep-a', role: 'SALES', email: 'rep-a@rnd.test', permissions: ['view_dashboard'] });
+  const repB = await require('./support/http').signInStaff(pool, app, { tenantId: T, id: 'rep-b', role: 'SALES', email: 'rep-b@rnd.test', permissions: ['view_dashboard'] });
+  const own = await app.call('GET', '/api/admin/hr/staff/rep-a/round-progress', { session: repA });
+  assert.equal(own.status, 200, own.text);
+  // The route answers for the month the clock is in, which the seeded Aug–Oct payments are not: the figures are the pure function's above, here is who may read.
+  assert.deepEqual([own.body.onRounds, own.body.firstTarget, own.body.current.nextStep.remaining], [true, 10, own.body.current.nextStep.bookings - own.body.current.bookings]);
+  assert.equal((await app.call('GET', '/api/admin/hr/staff/rep-b/round-progress', { session: repA })).status, 403, 'not another rep\'s');
+  assert.equal((await app.call('GET', '/api/admin/hr/staff/rep-a/round-progress', { session: repB })).status, 403);
+  assert.equal((await app.call('GET', '/api/admin/hr/staff/rep-b/round-progress', { session: who.hr })).status, 200);
+  assert.equal((await app.call('GET', '/api/admin/hr/staff/rep-b/round-progress', { session: who.owner })).status, 200);
+  assert.equal((await app.call('GET', '/api/admin/hr/staff/rep-a/round-progress')).status, 401, 'signed out');
+  const plain = await require('./support/http').signInStaff(pool, app, { tenantId: T, id: 'plain', role: 'SALES', email: 'plain@rnd.test', permissions: ['view_dashboard'] });
+  const none = await app.call('GET', '/api/admin/hr/staff/plain/round-progress', { session: plain });
+  assert.deepEqual([none.status, none.body.onRounds, none.body.scheme], [200, false, 'NONE']);
+});

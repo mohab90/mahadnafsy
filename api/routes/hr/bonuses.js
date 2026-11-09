@@ -8,7 +8,7 @@ const router = express.Router();
 const { hrError } = require('./_shared');
 const logger = require('../../lib/logger').child({ module: 'hr-bonuses' });
 const { pool } = require('../../lib/db');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOrSelf } = require('../../middleware/auth');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { normalizePlan, bookingWeight } = require('../../lib/bonusPlan');
 const { computeMonthlyBonuses, saveMonthlyBonuses, adjustmentContext } = require('../../lib/monthlyBonuses');
@@ -20,6 +20,8 @@ const { readCollectionSheet } = require('../../lib/collectionSheet');
 const { reconcileCollectionSheet } = require('../../lib/collectionSheetReconcile');
 const collectionReport = require('../../lib/collectionSheetReport');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { roundProgressOf } = require('../../lib/roundProgress');
+const { cairoYearMonth, dateOnlyInTimeZone } = require('../../lib/dates');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_hr')];
@@ -94,6 +96,21 @@ router.post('/api/admin/hr/monthly-bonuses', ...manage, async (req, res) => {
     logger.error('[monthly-bonuses/save]', error.message);
     hrError(res, error);
   } finally { conn.release(); }
+});
+
+// GET /api/admin/hr/staff/:id/round-progress — a rep's current round: its dates, the bookings counted so far, the next step and what is left to reach it, and the
+// rounds already over this month. The employee reads their own (the page every rep lands on); someone else's needs view_hr. Reads only, the same computation as the
+// payroll's bonus columns.
+router.get('/api/admin/hr/staff/:id/round-progress', requireAuth, requireAdminOrStaff, requirePermissionOrSelf('view_hr'), async (req, res) => {
+  try {
+    const { year, month } = cairoYearMonth();
+    res.set('Cache-Control', 'no-store');
+    const result = await computeMonthlyBonuses(pool, { tenantId: req.tenantId, year, month });
+    res.json(roundProgressOf(result, req.params.id, dateOnlyInTimeZone()));
+  } catch (error) {
+    logger.error('[round-progress]', error.message);
+    hrError(res, error);
+  }
 });
 
 const actorOf = req => ({ id: String(req.staffRecord?.id || req.user?.uid || '').slice(0, 36) || null, name: req.staffRecord?.name || req.user?.name || req.user?.email || null });

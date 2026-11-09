@@ -82,8 +82,10 @@ function computePayrollLine(emp = {}, ctx = {}) {
     commissionSource = 'crm_commissions';
   } else {
     // A target earner (staff.commission_type = 'TARGET') is paid by the month's bonus, never by a percentage of what they collected: a rate left on the staff
-    // row from before must not turn their sales into a commission.
-    const rate = emp.commission_type === 'TARGET' ? 0 : (parseFloat(emp.commission_rate) || 0);
+    // row from before must not turn their sales into a commission. The same holds for an employee on a bonus scheme (staff.bonus_scheme: the sales rounds, the
+    // collection levels — 9 Nov 2026): the month's bonus is their pay on top of the salary, and the old percentage would pay the same sales twice.
+    const onBonusScheme = Boolean(emp.bonus_scheme) && emp.bonus_scheme !== 'NONE';
+    const rate = emp.commission_type === 'TARGET' || onBonusScheme ? 0 : (parseFloat(emp.commission_rate) || 0);
     commission = totalSales * (rate / 100);
     commissionCount = null;
     commissionSource = 'flat_rate';
