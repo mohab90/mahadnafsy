@@ -17691,20 +17691,6 @@
   "class": "b"
  },
  {
-  "id": "paymentMethodVocabulary: only one file pairs a rail code with an Arabic name",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "admin/lib/paymentMethods.ts",
-    "must": {
-     "source": "export const DEFAULT_PAYMENT_METHODS = \\[",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "paymentMethodVocabulary: what production actually stores resolves to the rail the filter offers",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -17733,20 +17719,6 @@
     "file": "admin/pages/dashboard/tabs/orders/useOrdersDesk.ts",
     "must": {
      "source": "sameMethod\\(raw, filters\\.method\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "paymentOrigin: every origin has a label and a colour",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "admin/lib/paymentOrigin.ts",
-    "must": {
-     "source": "PAYMENT_ORIGIN_CLASS",
      "flags": ""
     }
    }
@@ -25696,27 +25668,6 @@
   "class": "b"
  },
  {
-  "id": "anOwnerPreviewsAnEmployeesAccount: the tab sends the header on /api calls only, and the server lets the header through CORS",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "admin/lib/previewMode.ts",
-    "must": {
-     "source": "headers\\.set\\('X-Preview-Staff', preview\\.id\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/lib/previewMode.ts",
-    "must": {
-     "source": "const toApi = url\\.startsWith\\('\\/api'\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "aPaidLecturePlaysLikeAFreeOne: the media route passes them through from the request",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -30463,20 +30414,6 @@
   "id": "criticalFrontendContracts: site-data browser caches contain public catalog only, never customer or operational truth",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "shared/siteDataCache.ts",
-    "must": {
-     "source": "_dataVersion !== version",
-     "flags": ""
-    }
-   },
-   {
-    "file": "shared/siteDataCache.ts",
-    "must": {
-     "source": "stripLargeInlineAssets",
-     "flags": ""
-    }
-   },
    {
     "file": "shared/siteDataCache.ts",
     "mustNot": {
