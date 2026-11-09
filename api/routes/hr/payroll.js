@@ -1042,8 +1042,19 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
     const policy = await getEffectiveHrPolicy(pool, req.tenantId, `${monthKey}-01`);
     // The year's leave balance (21 days; a free day, an annual leave and an absence marked «من رصيد الإجازات» each spend one).
     const balances = await leaveBalances(pool, { tenantId: req.tenantId, year: y, entitlement: Number(policy.annual_leave_days) || 21 });
+    // The month's bonuses and extra deductions per employee, approved and still waiting (9 Nov 2026: the month sheet shows them beside the net).
+    const [bonusRows] = rows.length ? await pool.query(
+      `SELECT staff_id, type, status, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS n FROM employee_bonuses
+        WHERE tenant_id=? AND for_year=? AND for_month=? AND status IN ('APPROVED','PENDING') AND staff_id IN (?)
+        GROUP BY staff_id, type, status`, [req.tenantId, y, m, rows.map(row => row.id)]) : [[]];
+    const bonusesOf = id => {
+      const mine = bonusRows.filter(row => row.staff_id === id);
+      const sum = (type, status) => Number(mine.find(row => row.type === type && row.status === status)?.amount || 0);
+      return { approved: sum('bonus', 'APPROVED'), pending: sum('bonus', 'PENDING'), deductionsApproved: sum('deduction', 'APPROVED'), deductionsPending: sum('deduction', 'PENDING') };
+    };
     res.json(rows.map(({ hired, ...row }) => ({
       ...row,
+      bonuses: bonusesOf(row.id),
       leave_balance: balances.get(row.id) || { entitlement: Number(policy.annual_leave_days) || 21, annualLeaveDays: 0, freeDays: 0, balanceDays: 0, used: 0, remaining: Number(policy.annual_leave_days) || 21 },
       // HR has not filled departments in: the job says where the employee sits (lib/staffDepartment.js).
       department_name: departmentOf({ departmentName: row.department_name, role: row.role }),

@@ -13,6 +13,7 @@ import { useAutoResizableColumns } from '../../../../components/useAutoResizable
 import HrFingerprintUpload from './HrFingerprintUpload';
 import HrMonthEditModal from './HrMonthEditModal';
 import HrPenaltyModal from './HrPenaltyModal';
+import HrBonusInlineEditor from './HrBonusInlineEditor';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type AttendanceRow = {
@@ -20,6 +21,7 @@ type AttendanceRow = {
   present_days?: number; absent_days?: number; late_days?: number; total_late_minutes?: number;
   leave_days?: number; deduction_days?: number | string; overtime_days?: number | string; flagged_days?: number; free_days_used?: number; free_days_allowed?: number;
   excused_days?: number; leave_balance?: { entitlement: number; used: number; remaining: number };
+  bonuses?: { approved: number; pending: number; deductionsApproved: number; deductionsPending: number };
 };
 type Run = { id: string; month: number | string; year: number | string; status: string; employee_count?: number };
 type Item = {
@@ -34,6 +36,10 @@ const num = (value: unknown) => Number(value) || 0;
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
 const PAY_MONTH_DAYS = 30; // a day's pay is the month's salary over thirty (api/lib/payrollCalc.js)
 const UNEXCUSED_ABSENCE_DAYS = 2; // a day missed without permission costs two (api/lib/payrollCalc.js)
+const COLUMNS = 14;
+const HEAD = 'sticky top-0 z-20 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2';
+const STICKY_HEAD = 'sticky top-0 whitespace-nowrap border-b border-gray-200 bg-gray-100 px-3 py-2';
+const CELL = 'whitespace-nowrap border-b border-gray-100 px-3 py-2';
 
 export default function HrMonthSheet({ notify, canManageFinance, canManagePayroll }: { notify: Notify; canManageFinance: boolean; canManagePayroll: boolean }) {
   const [month, setMonth] = useState(cairoMonthOnly());
@@ -45,6 +51,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
   const [showUpload, setShowUpload] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [penalising, setPenalising] = useState(false);
+  const [editingBonus, setEditingBonus] = useState<string | null>(null);
   const tableRef = useAutoResizableColumns('hr-month-sheet');
 
   const load = useCallback(async () => {
@@ -163,78 +170,102 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
       {loading ? (
         <div className="py-10 text-center text-gray-400"><Loader2 className="mx-auto animate-spin" size={20} /></div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table ref={tableRef} className="w-full min-w-[1600px] text-sm">
-            <thead className="bg-gray-50 text-right text-xs font-bold text-gray-500">
+        // 9 Nov 2026, «سكرول علي الشمال ولكن عمود اسم الموظف يكون ثابت، وخلي يطلع صافي المرتب الاول وبعدها علي جنب يظهر المكافات»: the name stays put while
+        // the rest scrolls, the net comes first, the bonuses beside it with their own editor, and the header stays at the top.
+        <div className="max-h-[72vh] overflow-auto rounded-xl border border-gray-200">
+          <table ref={tableRef} className="w-full min-w-[1500px] border-separate border-spacing-0 text-sm">
+            <thead className="text-right text-xs font-bold text-gray-500">
               <tr>
-                <th className="px-3 py-2">الموظف</th>
-                <th className="px-3 py-2">القسم</th>
-                <th className="px-3 py-2">الراتب الأساسي</th>
-                <th className="px-3 py-2">حضور</th>
-                <th className="px-3 py-2">غياب</th>
-                <th className="px-3 py-2">تأخير</th>
-                <th className="px-3 py-2">إجازات</th>
-                <th className="px-3 py-2">يوم مجاني</th>
-                <th className="px-3 py-2">رصيد الإجازات</th>
-                <th className="px-3 py-2">أيام خصم</th>
-                <th className="px-3 py-2">عمولة ومكافأة</th>
-                <th className="px-3 py-2">الخصومات</th>
-                <th className="px-3 py-2">إجمالي بعد المكافأة</th>
-                <th className="px-3 py-2">الصافي</th>
-                <th className="px-3 py-2" />
+                <th className={`${STICKY_HEAD} right-0 z-30 min-w-[210px] border-l border-gray-200`}>الموظف</th>
+                <th className={`${HEAD} min-w-[130px] text-gray-800`}>صافي المرتب</th>
+                <th className={`${HEAD} min-w-[230px] text-emerald-700`}>المكافآت والعمولة</th>
+                <th className={`${HEAD} min-w-[110px] text-red-600`}>الخصومات</th>
+                <th className={`${HEAD} min-w-[130px]`}>الإجمالي قبل الخصم</th>
+                <th className={`${HEAD} min-w-[110px]`}>الراتب الأساسي</th>
+                <th className={HEAD}>أيام خصم</th>
+                <th className={HEAD}>حضور</th>
+                <th className={HEAD}>غياب</th>
+                <th className={HEAD}>تأخير</th>
+                <th className={HEAD}>إجازات</th>
+                <th className={HEAD}>يوم مجاني</th>
+                <th className={HEAD}>رصيد الإجازات</th>
+                <th className={HEAD} />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {groups.map(([department, members]) => (
                 <Fragment key={department}>
-                  <tr className="bg-indigo-50/60">
-                    <td colSpan={15} className="px-3 py-1.5 text-xs font-extrabold text-indigo-900">
-                      {department} <span className="mr-2 font-semibold text-indigo-700">{n(members.length)} موظف</span>
-                      <span className="mr-2 font-semibold text-indigo-700">إجمالي الرواتب بعد المكافأة {fmtMoney(members.reduce((sum, member) => sum + (member.gross || 0), 0))}</span>
-                      {members.some(member => member.item) && <span className="mr-2 font-semibold text-emerald-700">الصافي {fmtMoney(members.reduce((sum, member) => sum + num(member.item?.net_salary), 0))}</span>}
+                  <tr>
+                    <td className="sticky right-0 z-10 border-b border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-extrabold text-indigo-900">{department} <span className="font-semibold text-indigo-700">· {n(members.length)}</span></td>
+                    <td colSpan={COLUMNS - 1} className="border-b border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+                      {members.some(member => member.item) && <span className="ml-3 text-emerald-700">الصافي {fmtMoney(members.reduce((sum, member) => sum + num(member.item?.net_salary), 0))}</span>}
+                      الإجمالي قبل الخصم {fmtMoney(members.reduce((sum, member) => sum + (member.gross || 0), 0))}
                     </td>
                   </tr>
                   {members.map(({ row, item, deductions, estimate, gross, overtimePay }) => {
-                return (
-                  <tr key={row.id} className="hover:bg-gray-50/60">
-                    <td className="px-3 py-2">
-                      <p className="font-bold text-gray-800">{row.name}</p>
-                      <p className="text-[11px] text-gray-400">{row.biometric_user_no ? `بصمة #${row.biometric_user_no}` : 'بدون رقم بصمة'}</p>
-                    </td>
-                    <td className="px-3 py-2 text-gray-700">{row.department_name || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2 tabular-nums">{row.base_salary ? fmtMoney(num(row.base_salary)) : <span className="text-xs font-bold text-red-600">فاضي</span>}</td>
-                    <td className="px-3 py-2 tabular-nums text-emerald-700">{n(num(row.present_days))}</td>
-                    <td className={`px-3 py-2 tabular-nums ${num(row.absent_days) ? 'font-bold text-red-600' : 'text-gray-300'}`}>
-                      {n(num(row.absent_days))}
-                      {num(row.excused_days) > 0 && <span className="mr-1 text-[10px] font-normal text-gray-500">{n(num(row.excused_days))} بإذن · {n(num(row.absent_days) - num(row.excused_days))} بدون</span>}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-gray-700">{num(row.late_days) ? `${n(num(row.late_days))} يوم · ${n(num(row.total_late_minutes))} د` : '—'}</td>
-                    <td className="px-3 py-2 tabular-nums text-gray-700">{num(row.leave_days) ? n(num(row.leave_days)) : '—'}</td>
-                    <td className="px-3 py-2 tabular-nums text-sky-700">{num(row.free_days_allowed) || num(row.free_days_used) ? `${n(num(row.free_days_used))} من ${n(num(row.free_days_allowed))}` : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2 tabular-nums text-sky-700" title="٢١ يوم في السنة؛ اليوم المجاني والإجازة الاعتيادية والغياب «من رصيد الإجازات» كل واحد بيخصم يوم">
-                      {row.leave_balance ? `${n(row.leave_balance.remaining)} من ${n(row.leave_balance.entitlement)}` : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className={`px-3 py-2 tabular-nums ${num(row.deduction_days) ? 'font-bold text-amber-700' : 'text-gray-300'}`}>{num(row.deduction_days) ? n(num(row.deduction_days)) : '—'}</td>
-                    <td className="px-3 py-2 tabular-nums text-emerald-700">
-                      {item && (num(item.commission) + num(item.bonus_amount)) ? `+${fmtMoney(num(item.commission) + num(item.bonus_amount))}` : (num(row.overtime_days) ? '' : '—')}
-                      {num(row.overtime_days) ? <span className="block text-[11px] text-indigo-700">أوفر تايم {n(num(row.overtime_days))} يوم{overtimePay ? ` · +${fmtMoney(Math.round(overtimePay))}` : ''}</span> : null}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-red-600">{deductions ? `−${fmtMoney(deductions)}` : '—'}</td>
-                    <td className="px-3 py-2 tabular-nums text-emerald-800">{gross !== null ? <span className={item ? 'font-semibold' : 'text-xs text-gray-500'}>{item ? '' : '≈ '}{fmtMoney(Math.round(gross))}</span> : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2 font-extrabold tabular-nums text-gray-900">
-                      {item ? fmtMoney(num(item.net_salary))
-                        : estimate !== null ? <span className="text-xs font-semibold text-gray-500" title="تقدير من الراتب الأساسي والغياب والخصم — احسب المسير لتثبيته">≈ {fmtMoney(Math.round(estimate))}</span>
-                          : <span className="text-xs font-normal text-gray-400">{row.base_salary ? 'لسه ما اتحسبش' : 'من غير راتب أساسي'}</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <button type="button" onClick={() => setEditing({ id: row.id, name: row.name })} className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"><Pencil size={12} /> تعديل</button>
-                    </td>
-                  </tr>
-                );
+                    const bonus = row.bonuses || { approved: 0, pending: 0, deductionsApproved: 0, deductionsPending: 0 };
+                    const open = editingBonus === row.id;
+                    const nothing = !(item && num(item.commission)) && !bonus.approved && !bonus.pending && !bonus.deductionsApproved && !bonus.deductionsPending && !num(row.overtime_days);
+                    return (
+                      <Fragment key={row.id}>
+                        <tr className="group">
+                          <td className={`${CELL} sticky right-0 z-10 border-l border-gray-200 bg-white group-hover:bg-slate-50`}>
+                            <p className="font-bold text-gray-800">{row.name}</p>
+                            <p className="text-[11px] text-gray-400">{row.biometric_user_no ? `بصمة #${row.biometric_user_no}` : 'بدون رقم بصمة'}</p>
+                          </td>
+                          <td className={`${CELL} bg-emerald-50/40 text-base font-extrabold tabular-nums text-gray-900`}>
+                            {item ? fmtMoney(num(item.net_salary))
+                              : estimate !== null ? <span className="text-sm font-semibold text-gray-500" title="تقدير من الراتب الأساسي والغياب والخصم — احسب المسير لتثبيته">≈ {fmtMoney(Math.round(estimate))}</span>
+                                : <span className="text-xs font-normal text-gray-400">{row.base_salary ? 'لسه ما اتحسبش' : 'من غير راتب أساسي'}</span>}
+                          </td>
+                          <td className={`${CELL} tabular-nums`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-0.5 text-xs">
+                                {item && num(item.commission) > 0 && <p className="text-emerald-700">عمولة +{fmtMoney(num(item.commission))}</p>}
+                                {bonus.approved > 0 && <p className="font-bold text-emerald-700">مكافأة +{fmtMoney(bonus.approved)}</p>}
+                                {bonus.pending > 0 && <p className="text-amber-600">مستنية الاعتماد +{fmtMoney(bonus.pending)}</p>}
+                                {bonus.deductionsApproved + bonus.deductionsPending > 0 && <p className="text-red-600">خصم إضافي −{fmtMoney(bonus.deductionsApproved + bonus.deductionsPending)}{bonus.deductionsPending ? ' (جزء مستني)' : ''}</p>}
+                                {num(row.overtime_days) > 0 && <p className="text-indigo-700">أوفر تايم {n(num(row.overtime_days))} يوم{overtimePay ? ` +${fmtMoney(Math.round(overtimePay))}` : ''}</p>}
+                                {nothing && <p className="text-gray-300">—</p>}
+                              </div>
+                              <button type="button" onClick={() => setEditingBonus(open ? null : row.id)}
+                                className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold ${open ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>± مكافأة</button>
+                            </div>
+                          </td>
+                          <td className={`${CELL} tabular-nums text-red-600`}>{deductions ? `−${fmtMoney(deductions)}` : '—'}</td>
+                          <td className={`${CELL} tabular-nums text-emerald-800`}>{gross !== null ? <span className={item ? 'font-semibold' : 'text-xs text-gray-500'}>{item ? '' : '≈ '}{fmtMoney(Math.round(gross))}</span> : <span className="text-gray-300">—</span>}</td>
+                          <td className={`${CELL} tabular-nums`}>{row.base_salary ? fmtMoney(num(row.base_salary)) : <span className="text-xs font-bold text-red-600">فاضي</span>}</td>
+                          <td className={`${CELL} tabular-nums ${num(row.deduction_days) ? 'font-bold text-amber-700' : 'text-gray-300'}`}>{num(row.deduction_days) ? n(num(row.deduction_days)) : '—'}</td>
+                          <td className={`${CELL} tabular-nums text-emerald-700`}>{n(num(row.present_days))}</td>
+                          <td className={`${CELL} tabular-nums ${num(row.absent_days) ? 'font-bold text-red-600' : 'text-gray-300'}`}>
+                            {n(num(row.absent_days))}
+                            {num(row.excused_days) > 0 && <span className="mr-1 text-[10px] font-normal text-gray-500">{n(num(row.excused_days))} بإذن · {n(num(row.absent_days) - num(row.excused_days))} بدون</span>}
+                          </td>
+                          <td className={`${CELL} tabular-nums text-gray-700`}>{num(row.late_days) ? `${n(num(row.late_days))} يوم · ${n(num(row.total_late_minutes))} د` : '—'}</td>
+                          <td className={`${CELL} tabular-nums text-gray-700`}>{num(row.leave_days) ? n(num(row.leave_days)) : '—'}</td>
+                          <td className={`${CELL} tabular-nums text-sky-700`}>{num(row.free_days_allowed) || num(row.free_days_used) ? `${n(num(row.free_days_used))} من ${n(num(row.free_days_allowed))}` : <span className="text-gray-300">—</span>}</td>
+                          <td className={`${CELL} tabular-nums text-sky-700`} title="٢١ يوم في السنة؛ اليوم المجاني والإجازة الاعتيادية والغياب «من رصيد الإجازات» كل واحد بيخصم يوم">
+                            {row.leave_balance ? `${n(row.leave_balance.remaining)} من ${n(row.leave_balance.entitlement)}` : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className={CELL}>
+                            <button type="button" onClick={() => setEditing({ id: row.id, name: row.name })} className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"><Pencil size={12} /> تعديل</button>
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr>
+                            <td colSpan={COLUMNS} className="border-b border-emerald-100 bg-emerald-50/40 p-0">
+                              <div className="sticky right-0 w-[min(calc(100vw-4rem),760px)] p-3">
+                                <HrBonusInlineEditor staffId={row.id} name={row.name} month={month} notify={notify} onSaved={() => void load()} />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
                   })}
                 </Fragment>
               ))}
-              {rows.length === 0 && <tr><td colSpan={15} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={COLUMNS} className="py-10 text-center text-gray-400">مفيش موظفين نشطين</td></tr>}
             </tbody>
           </table>
         </div>
