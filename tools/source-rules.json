@@ -21033,13 +21033,6 @@
    },
    {
     "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
-    "must": {
-     "source": "mysqlAdmin\\.listAllCertificateRequests\\(\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/dashboard/tabs/CertRequestsTab.tsx",
     "mustNot": {
      "source": "<table",
      "flags": ""
@@ -24618,61 +24611,6 @@
   "class": "b"
  },
  {
-  "id": "ownerAndCustomerServiceAccounts: customer service reads and escalates refunds; deciding them stays with accounts",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "files": [
-     "api/routes/finance.js",
-     "api/routes/finance/_shared.js",
-     "api/routes/finance/documents.js",
-     "api/routes/finance/reports.js",
-     "api/routes/finance/paymentLinks.js",
-     "api/routes/finance/cockpit.js",
-     "api/routes/finance/budgets.js",
-     "api/routes/finance/refunds.js"
-    ],
-    "must": {
-     "source": "router\\.get\\('\\/api\\/admin\\/finance\\/refunds', requireAuth, requireAdminOrStaff, requireAnyPermission\\('view_financial', 'manage_inbox'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/finance.js",
-     "api/routes/finance/_shared.js",
-     "api/routes/finance/documents.js",
-     "api/routes/finance/reports.js",
-     "api/routes/finance/paymentLinks.js",
-     "api/routes/finance/cockpit.js",
-     "api/routes/finance/budgets.js",
-     "api/routes/finance/refunds.js"
-    ],
-    "must": {
-     "source": "refunds\\/:id\\/escalate', requireAuth, requireAdminOrStaff, requireAnyPermission\\('view_financial', 'manage_inbox'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/finance.js",
-     "api/routes/finance/_shared.js",
-     "api/routes/finance/documents.js",
-     "api/routes/finance/reports.js",
-     "api/routes/finance/paymentLinks.js",
-     "api/routes/finance/cockpit.js",
-     "api/routes/finance/budgets.js",
-     "api/routes/finance/refunds.js"
-    ],
-    "must": {
-     "source": "router\\.put\\('\\/api\\/admin\\/finance\\/refunds\\/:id', requireAuth, requireAdminOrStaff, requirePermission\\('approve_refunds'\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "ownerAndCustomerServiceAccounts: the Dokki desk\\",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -25510,61 +25448,6 @@
     ],
     "must": {
      "source": "course-upgrade`, \\{",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "systemLogCertificatesRefundsTracks: refunds: the course under the client, contact and its result, organised actions, filters",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "files": [
-     "api/routes/finance.js",
-     "api/routes/finance/_shared.js",
-     "api/routes/finance/documents.js",
-     "api/routes/finance/reports.js",
-     "api/routes/finance/paymentLinks.js",
-     "api/routes/finance/cockpit.js",
-     "api/routes/finance/budgets.js",
-     "api/routes/finance/refunds.js"
-    ],
-    "must": {
-     "source": "COALESCE\\(NULLIF\\(c\\.title_ar, ''\\), c\\.title, b\\.title\\) AS course_title",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/finance.js",
-     "api/routes/finance/_shared.js",
-     "api/routes/finance/documents.js",
-     "api/routes/finance/reports.js",
-     "api/routes/finance/paymentLinks.js",
-     "api/routes/finance/cockpit.js",
-     "api/routes/finance/budgets.js",
-     "api/routes/finance/refunds.js"
-    ],
-    "must": {
-     "source": "LEFT JOIN bundles b ON b\\.id = COALESCE\\(p\\.bundle_id, IF\\(rr\\.course_item LIKE 'bundle:%'",
-     "flags": ""
-    }
-   },
-   {
-    "files": [
-     "api/routes/finance.js",
-     "api/routes/finance/_shared.js",
-     "api/routes/finance/documents.js",
-     "api/routes/finance/reports.js",
-     "api/routes/finance/paymentLinks.js",
-     "api/routes/finance/cockpit.js",
-     "api/routes/finance/budgets.js",
-     "api/routes/finance/refunds.js"
-    ],
-    "must": {
-     "source": "JSON_OBJECT\\('outcome', cm\\.outcome",
      "flags": ""
     }
    }

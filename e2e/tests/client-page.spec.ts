@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginAdmin } from '../helpers/adminLogin';
+import { apiCall } from '../helpers/adminApi';
 
 /**
  * The client's page, in a browser against a real API and database (the CI seed: e2e/README.md).
@@ -21,8 +22,9 @@ const PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 const CLIENT = process.env.E2E_PAYER_ID || 'e2e-payer-sub';
 
 const communicationsOf = async (page: Page) => {
-  const res = await page.request.get(`${ADMIN}/api/staff/subscribers/${CLIENT}/communications`).catch(() => null);
-  return res && res.ok() ? ((await res.json()) as unknown[]) : null;
+  const res = await apiCall<unknown[]>(page, 'GET', `/api/staff/subscribers/${CLIENT}/communications`);
+  expect(res.status, 'the contacts of the client can be read').toBe(200);
+  return res.body ?? [];
 };
 
 test.describe('the client\'s page', () => {
@@ -41,7 +43,7 @@ test.describe('the client\'s page', () => {
   test('a contact needs a result or a note, a result alone is enough, and the contact lives on the server', async ({ page }) => {
     await loginAdmin(page, ADMIN, EMAIL!, PASSWORD!);
     await page.goto(`${ADMIN}/client/${CLIENT}`);
-    const before = (await communicationsOf(page))?.length ?? null;
+    const before = (await communicationsOf(page)).length;
     await page.getByRole('button', { name: 'تسجيل تواصل' }).first().click();
     const dialog = page.getByRole('dialog');
     const save = dialog.getByRole('button', { name: 'سجّل التواصل', exact: true });
@@ -65,6 +67,6 @@ test.describe('the client\'s page', () => {
     // Loaded again, the contact is still there: it is the server's, not this browser's.
     await page.reload();
     await expect(page.getByRole('button', { name: /التواصل \((\d+)\)/ })).toBeVisible();
-    if (before !== null) expect((await communicationsOf(page))?.length, 'one more contact on the client').toBe(before + 1);
+    expect((await communicationsOf(page)).length, 'one more contact on the client').toBe(before + 1);
   });
 });

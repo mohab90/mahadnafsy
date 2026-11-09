@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginAdmin } from '../helpers/adminLogin';
+import { apiCall } from '../helpers/adminApi';
 
 /**
  * «تسجيل دفعة» on the client's page, the dialog the owner uses most — in a browser, against a real API and database (the CI seed: e2e/README.md).
@@ -29,8 +30,9 @@ const BRANCH_LABEL = 'أونلاين — مصريين';
 const isPaymentPost = (url: string) => /\/api\/admin\/subscriber-payments(\?|$)/.test(url);
 
 const paymentsOf = async (page: Page) => {
-  const res = await page.request.get(`${ADMIN}/api/admin/subscriber-payments?subscriber_id=${CLIENT}`).catch(() => null);
-  return res && res.ok() ? ((await res.json()) as unknown[]) : null;
+  const res = await apiCall<unknown[]>(page, 'GET', `/api/admin/subscribers/${CLIENT}/payments`);
+  expect(res.status, 'the payments of the client can be read').toBe(200);
+  return res.body ?? [];
 };
 
 const collect = (page: Page) => {
@@ -84,7 +86,7 @@ test.describe('the payment dialog on a client\'s page', () => {
     await referenceField(dialog).fill(reference);
     await expect(submit).toBeEnabled();
 
-    const before = (await paymentsOf(page))?.length ?? null;
+    const before = (await paymentsOf(page)).length;
     const response = page.waitForResponse(r => r.request().method() === 'POST' && isPaymentPost(r.url()));
     await submit.click();
     const answered = await response;
@@ -100,7 +102,7 @@ test.describe('the payment dialog on a client\'s page', () => {
     expect(payment.transactionId, 'the number typed in «رقم العملية» travels as the payment transaction number').toBe(reference);
 
     await expect(dialog).toBeHidden({ timeout: 15_000 });
-    if (before !== null) expect((await paymentsOf(page))?.length, 'one more payment on the client').toBe(before + 1);
+    expect((await paymentsOf(page)).length, 'one more payment on the client').toBe(before + 1);
     await page.reload();
     await expect(page.getByRole('button', { name: /حجز \/ دفع \((\d+)\)/ })).toBeVisible();
   });
