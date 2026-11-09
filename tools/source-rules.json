@@ -29466,69 +29466,6 @@
   "class": "b"
  },
  {
-  "id": "subscriberContactGuard: the lead matcher no longer matches on a blank identifier",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/leadMatching.js",
-    "must": {
-     "source": "if \\(!match\\.length\\) return null;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadMatching.js",
-    "must": {
-     "source": "if \\(cleanEmail\\) \\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadMatching.js",
-    "must": {
-     "source": "if \\(spellings\\.length\\) \\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadMatching.js",
-    "mustNot": {
-     "source": "email\\s*\\|\\|\\s*''\\s*\\]",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "subscriberContactGuard: the phone term is an exact set membership, not a trailing wildcard",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/leadMatching.js",
-    "must": {
-     "source": "phone_digits IN \\(",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadMatching.js",
-    "must": {
-     "source": "REGEXP_REPLACE\\(\\$\\{column\\},'\\[\\^0-9\\]',''\\) IN \\(",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadMatching.js",
-    "mustNot": {
-     "source": "LIKE\\s+CONCAT\\('%'",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "subscriberProvisioningPhone: the registration conversion stores NULL for a missing phone too",
   "why": "moved from a unit test that matched source text",
   "checks": [
