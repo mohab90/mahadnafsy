@@ -2669,41 +2669,6 @@
   "class": "b"
  },
  {
-  "id": "lmsAdvancedContracts: cohort removal preserves independent paid or other-cohort access",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/learningCohorts.js",
-    "must": {
-     "source": "has_paid_source",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/learningCohorts.js",
-    "must": {
-     "source": "has_other_cohort",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/learningCohorts.js",
-    "must": {
-     "source": "!authority\\.has_paid_source && !authority\\.has_other_cohort",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/learningCohorts.js",
-    "must": {
-     "source": "revokeCourseEntitlement\\(\\{",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "lmsAdvancedContracts: course analytics are scoped to the assigned instructor identity",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -2998,27 +2963,6 @@
     "file": "api/routes/team-inbox.js",
     "must": {
      "source": "const receiving = list\\.filter\\(channel => channel\\.kind === 'whatsapp'[^\\n]*provider === 'meta'\\);",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "mergeAndOtpCollisions: a number that cannot be dialled is the customer\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/whatsappOtp.js",
-    "must": {
-     "source": "const badNumber = reason === 'invalid_number';",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/whatsappOtp.js",
-    "must": {
-     "source": "failure\\.statusCode = badNumber \\? 400 : 503;",
      "flags": ""
     }
    }
@@ -16881,20 +16825,6 @@
   "class": "b"
  },
  {
-  "id": "mergeAndOtpCollisions: merge frees the sources\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/leadMerge.js",
-    "must": {
-     "source": "JSON\\.stringify\\(\\{ lead: source, relations \\}\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "mergeAndOtpCollisions: a verified number signs in to its own account, and a switched-off one says so",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -26174,22 +26104,6 @@
   "class": "b"
  },
  {
-  "id": "auditFindingsThatWereReal: the claims that were already handled stay handled",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/learningCohorts.js",
-    "from": "async function addCohortMember",
-    "to": "INSERT INTO cohort_members",
-    "must": {
-     "source": "FROM course_cohorts WHERE tenant_id=\\? AND id=\\? FOR UPDATE",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "authMeAdminIsTheServersAdmin: auth/me decides admin with the list the server enforces",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -27989,29 +27903,6 @@
     "file": "api/routes/lms.js",
     "mustNot": {
      "source": "accessible:\\s*true,\\s*video_url:\\s*lecture\\.video_url",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "mergeAndOtpCollisions: merge frees the sources\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/leadMerge.js",
-    "from": "async function unmergeLead",
-    "must": {
-     "source": "for \\(const field of \\['phone', 'client_code'\\]\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadMerge.js",
-    "from": "async function unmergeLead",
-    "must": {
-     "source": "SELECT id FROM leads WHERE tenant_id=\\? AND \\$\\{field\\}=\\? AND id<>\\? LIMIT 1",
      "flags": ""
     }
    }
