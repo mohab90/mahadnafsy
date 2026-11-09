@@ -5515,20 +5515,6 @@
    {
     "file": "admin/pages/UnifiedClientPage.tsx",
     "must": {
-     "source": "onDashboard=\\{\\(\\) => goBack\\('\\/dashboard'\\)\\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/UnifiedClientPage.tsx",
-    "mustNot": {
-     "source": "onDashboard=\\{\\(\\) => navigate\\('\\/dashboard'\\)\\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/UnifiedClientPage.tsx",
-    "must": {
      "source": "goBack\\('\\/dashboard\\/subscribers'\\)",
      "flags": ""
     }
@@ -5551,13 +5537,6 @@
     "file": "admin/pages/StaffProfile.tsx",
     "must": {
      "source": "goBack\\('\\/dashboard\\/hr'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/unified-client/UnifiedClientHeroHeader.tsx",
-    "must": {
-     "source": "<ArrowRight size=\\{13\\} \\/> رجوع",
      "flags": ""
     }
    }
@@ -6748,13 +6727,6 @@
     "file": "admin/pages/dashboard/tabs/leads/LeadSubcomponents.tsx",
     "mustNot": {
      "source": "wa_rep_|apiToken.*localStorage|localStorage.*apiToken",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/unified-client/useUnifiedClientCommunications.ts",
-    "mustNot": {
-     "source": "client-note-|localStorage\\.setItem\\(noteKey",
      "flags": ""
     }
    },
@@ -11452,13 +11424,6 @@
     "file": "api/routes/admin/subscribers.js",
     "must": {
      "source": "if \\(!notes\\.trim\\(\\) && !outcome\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/pages/unified-client/ClientContactLog.tsx",
-    "must": {
-     "source": "const ready = !!draft\\.notes\\.trim\\(\\) \\|\\| !!draft\\.outcome;",
      "flags": ""
     }
    },
