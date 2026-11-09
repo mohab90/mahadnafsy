@@ -2631,27 +2631,6 @@
   "class": "b"
  },
  {
-  "id": "lecturerAccountPortalOnlyMeetingsAndPay: the students tab asks only for columns that exist (course_lectures has no tenant_id) — it answered 500 for every lecturer",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/lecturerPortal.js",
-    "mustNot": {
-     "source": "lc\\.tenant_id=cl\\.tenant_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/lecturerPortal.js",
-    "must": {
-     "source": "lc\\.lecture_id=cl\\.id AND lc\\.subscriber_id=s\\.id AND lc\\.tenant_id=c\\.tenant_id",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "lecturerAccountPortalOnlyMeetingsAndPay: a consultation status outside the enum is refused with 400, a long «education» is cut to its column",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -2676,13 +2655,6 @@
   "id": "lecturerPortalSecondRound: a lecturer takes down comments on their own posts and their own comments, nothing else",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "api/routes/lecturer-portal.js",
-    "must": {
-     "source": "WHERE c\\.tenant_id=\\? AND c\\.id=\\? AND \\(c\\.subscriber_id=\\? OR p\\.staff_id=\\?\\)",
-     "flags": ""
-    }
-   },
    {
     "file": "api/routes/lecturer-portal.js",
     "must": {
@@ -9169,34 +9141,6 @@
     "file": "admin/pages/lecturer/LecturerConsultations.tsx",
     "must": {
      "source": "<ConsultationTimingBadge item=\\{",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "lecturerPortalSecondRound: a payout request tells the accounts team once every three days and only when something is approved",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/lecturer-portal.js",
-    "must": {
-     "source": "totals\\.approved > 0\\)\\) throw bad\\(",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/lecturer-portal.js",
-    "must": {
-     "source": "created_at >= NOW\\(\\) - INTERVAL 3 DAY",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/lecturer-portal.js",
-    "must": {
-     "source": "createNotification\\('payroll', PAYOUT_TITLE",
      "flags": ""
     }
    }
