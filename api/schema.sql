@@ -6671,7 +6671,7 @@ CREATE TABLE `email_delivery_events` (
   KEY `idx_email_events_email` (`tenant_id`,`email`(120),`occurred_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- bonus_adjustments: migration 383 — the owner's changes to a month's bonuses, each with who, when and why (lib/bonusAdjustments.js).
+-- bonus_adjustments: migration 383 (round_no: 384) — the owner's changes to a month's bonuses, each with who, when and why (lib/bonusAdjustments.js).
 CREATE TABLE `bonus_adjustments` (
   `id` varchar(36) NOT NULL,
   `tenant_id` varchar(64) NOT NULL,
@@ -6684,6 +6684,7 @@ CREATE TABLE `bonus_adjustments` (
   `weight` decimal(5,2) DEFAULT NULL,
   `amount` decimal(12,2) DEFAULT NULL,
   `split_day` tinyint(4) DEFAULT NULL,
+  `round_no` tinyint(4) DEFAULT NULL,
   `reason` varchar(500) NOT NULL,
   `created_by` varchar(36) DEFAULT NULL,
   `created_by_name` varchar(255) DEFAULT NULL,
