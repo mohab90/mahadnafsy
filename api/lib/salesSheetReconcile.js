@@ -301,7 +301,7 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
   });
 
   // 5. the target system, twice.
-  const system = await computeMonthlyBonuses(db, { tenantId, year, month });
+  const system = await computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustments: false });
   const employeeOf = new Map(system.employees.map(employee => [employee.staffId, employee]));
   const perRep = sheet.reps.map(rep => {
     const mine = results.filter(item => item.tab === rep.tab);

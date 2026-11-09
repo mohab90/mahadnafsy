@@ -11,7 +11,11 @@ const { pool } = require('../../lib/db');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { normalizePlan, bookingWeight } = require('../../lib/bonusPlan');
-const { computeMonthlyBonuses, saveMonthlyBonuses } = require('../../lib/monthlyBonuses');
+const { computeMonthlyBonuses, saveMonthlyBonuses, adjustmentContext } = require('../../lib/monthlyBonuses');
+const { listAdjustments, addAdjustment, revokeAdjustment } = require('../../lib/bonusAdjustments');
+const { readSalesSheet } = require('../../lib/salesSheet');
+const { reconcileSalesSheet } = require('../../lib/salesSheetReconcile');
+const { renderMarkdown, renderCsv } = require('../../lib/salesSheetReport');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
@@ -87,6 +91,79 @@ router.post('/api/admin/hr/monthly-bonuses', ...manage, async (req, res) => {
     logger.error('[monthly-bonuses/save]', error.message);
     hrError(res, error);
   } finally { conn.release(); }
+});
+
+const actorOf = req => ({ id: String(req.staffRecord?.id || req.user?.uid || '').slice(0, 36) || null, name: req.staffRecord?.name || req.user?.name || req.user?.email || null });
+
+// GET /api/admin/hr/bonus-adjustments?month=YYYY-MM[&history=1] — the owner's changes to the month's bonuses (lib/bonusAdjustments.js), who, when and why.
+router.get('/api/admin/hr/bonus-adjustments', ...view, async (req, res) => {
+  try {
+    const { year, month } = monthOf(req.query.month);
+    res.set('Cache-Control', 'no-store');
+    res.json({ adjustments: await listAdjustments(pool, { tenantId: req.tenantId, year, month, history: req.query.history === '1' }) });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
+    logger.error('[bonus-adjustments/get]', error.message);
+    hrError(res, error);
+  }
+});
+
+// POST /api/admin/hr/bonus-adjustments {month, kind, staffId?, paymentId?, toStaffId?, weight?, amount?, reason} — a change to a month's calculation; whoever
+// holds manage_financial (the owner, admin). A reason is required. The month's bonuses are worked out again with it (and saved only when HR saves them).
+router.post('/api/admin/hr/bonus-adjustments', ...managePay, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { year, month } = monthOf(req.body?.month);
+    await conn.beginTransaction();
+    const context = await adjustmentContext(conn, { tenantId: req.tenantId, year, month });
+    const made = await addAdjustment(conn, { tenantId: req.tenantId, year, month, input: req.body || {}, actor: actorOf(req), context });
+    await conn.commit();
+    await writeAuditEvent({ action: 'hr.bonus_adjusted', entityType: 'bonus_adjustment', entityId: made.id, severity: 'warning', metadata: { month: `${year}-${month}`, kind: made.kind, staffId: made.staffId, paymentId: made.paymentId, toStaffId: made.toStaffId, weight: made.weight, amount: made.amount, reason: made.reason }, req }).catch(() => {});
+    res.json({ ok: true, adjustment: made });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message, code: error.code });
+    logger.error('[bonus-adjustments/post]', error.message);
+    hrError(res, error);
+  } finally { conn.release(); }
+});
+
+// POST /api/admin/hr/bonus-adjustments/:id/revoke {reason?} — takes a change back; it stays in the month's history.
+router.post('/api/admin/hr/bonus-adjustments/:id/revoke', ...managePay, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const revoked = await revokeAdjustment(conn, { tenantId: req.tenantId, id: req.params.id, actor: actorOf(req), reason: req.body?.reason });
+    await conn.commit();
+    if (!revoked) return res.status(404).json({ error: 'التعديل ده مش موجود أو اتلغى قبل كده' });
+    await writeAuditEvent({ action: 'hr.bonus_adjustment_revoked', entityType: 'bonus_adjustment', entityId: req.params.id, severity: 'warning', metadata: { kind: revoked.kind, reason: req.body?.reason || null }, req }).catch(() => {});
+    res.json({ ok: true });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    logger.error('[bonus-adjustments/revoke]', error.message);
+    hrError(res, error);
+  } finally { conn.release(); }
+});
+
+// POST /api/admin/hr/sales-sheet-reconciliation {fileBase64, filename, month} — the owner's monthly sales target sheet held against the system and the target
+// system applied to both (lib/salesSheetReconcile.js). Reads only. It holds real clients' names and phones, so it is the financial permission's.
+router.post('/api/admin/hr/sales-sheet-reconciliation', ...managePay, async (req, res) => {
+  try {
+    const { fileBase64, month: monthText } = req.body || {};
+    if (typeof fileBase64 !== 'string' || !fileBase64) return res.status(400).json({ error: 'ارفع شيت المبيعات (.xlsx)' });
+    const { year, month } = monthOf(monthText);
+    const buffer = Buffer.from(fileBase64.replace(/^data:[^,]*,/, ''), 'base64');
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'الملف لازم يكون أقل من 8 ميجا' });
+    const sheet = readSalesSheet(buffer, { month: `${year}-${String(month).padStart(2, '0')}` });
+    if (!sheet.rows) return res.status(400).json({ error: 'مفيش صفوف حجوزات اتقرت من الشيت ده', unreadable: sheet.unreadable });
+    const report = await reconcileSalesSheet(pool, { tenantId: req.tenantId, sheet, year, month });
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, report, markdown: renderMarkdown(report), csv: renderCsv(report) });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message, code: error.code });
+    logger.error('[sales-sheet-reconciliation]', error.message);
+    hrError(res, error);
+  }
 });
 
 module.exports = router;
