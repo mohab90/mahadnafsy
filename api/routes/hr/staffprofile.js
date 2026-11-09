@@ -950,7 +950,7 @@ router.get('/api/staff/me/hr-file', requireAuth, async (req, res) => {
     const [[profileRows], [payrollRows], [docRows], [structureRows]] = await Promise.all([
       pool.query(
         `SELECT s.id, s.name, s.email, s.phone, s.role, s.image, s.employment_type,
-                s.joined_at, s.hire_date, s.commission_rate, s.branch_id,
+                s.joined_at, s.hire_date, s.commission_rate, s.bonus_scheme, s.branch_id,
                 d.name department_name
            FROM staff s
            LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id

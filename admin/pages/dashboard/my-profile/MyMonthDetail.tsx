@@ -6,6 +6,8 @@ import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 // «خلي كل موظف يشوف كل التفاصيل بتاعت الراتب بتاعه غيابات واذونات وغيره»: the signed-in employee's own month
 // (GET /api/staff/me/month-detail) — the days the fingerprint judged, the permissions and leave of the month,
 // the bonus with what was required and reached, and the payslip once payroll is approved.
+// 9 Nov 2026: once management has approved the month's payroll the payslip reads line by line — base salary, the late deduction, the absence and leave deduction, the
+// administrative deduction, each bonus with its reason (round 1, round 2, the ones typed by hand) and the net. Before that the server answers with no money at all.
 
 type Day = {
   date: string; status: string; checkIn: string | null; checkOut: string | null; lateMinutes: number; earlyLeaveMinutes: number;
@@ -13,9 +15,11 @@ type Day = {
 };
 type Leave = { id: string; type: string; status: string; from: string; to: string; startTime: string | null; endTime: string | null; totalDays: number; reason: string | null; adminNote: string | null };
 type Bonus = { id: string; type: string; amount: number; currency: string; status: string; note: string | null; targetValue: number | null; achievedValue: number | null; targetUnit: string | null };
+type PayLine = { id: string | null; label: string; amount: number; reason: string | null };
 type Payslip = {
-  status: string; base: number; allowances: number; commission: number; bonus: number; bonusNote: string | null;
-  lateDeduction: number; absenceDeduction: number; advanceDeduction: number; otherDeduction: number; deductionsNote: string | null; net: number;
+  status: string; base: number; allowances: number; commission: number; overtime: number; bonus: number; bonusNote: string | null;
+  lateDeduction: number; absenceDeduction: number; advanceDeduction: number; administrativeDeduction: number; insuranceAndTax: number; otherDeduction: number; deductionsNote: string | null;
+  bonusLines: PayLine[]; deductionLines: PayLine[]; net: number;
 };
 type MonthDetail = {
   month: number; year: number;
@@ -70,6 +74,8 @@ export function MyMonthDetail() {
 
   const pay = detail?.payslip;
   const deductions = pay ? pay.lateDeduction + pay.absenceDeduction + pay.advanceDeduction + pay.otherDeduction : 0;
+  // The part of «other» that is neither the manager's deduction nor insurance and tax (nothing, unless the run was changed by hand).
+  const otherRest = pay ? Math.round((pay.otherDeduction - pay.administrativeDeduction - pay.insuranceAndTax) * 100) / 100 : 0;
 
   return (
     <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -106,24 +112,32 @@ export function MyMonthDetail() {
                   <>
                     <Row label="الراتب الأساسي" value={egp(pay.base)} />
                     {pay.allowances > 0 && <Row label="البدلات" value={`+${egp(pay.allowances)}`} tone="text-emerald-700" />}
-                    {pay.commission > 0 && <Row label="العمولة" value={`+${egp(pay.commission)}`} tone="text-emerald-700" />}
-                    {pay.bonus > 0 && <Row label={`مكافآت${pay.bonusNote ? ` — ${pay.bonusNote}` : ''}`} value={`+${egp(pay.bonus)}`} tone="text-emerald-700" />}
-                    {pay.absenceDeduction > 0 && <Row label="خصم الغياب" value={`−${egp(pay.absenceDeduction)}`} tone="text-red-600" />}
+                    {pay.overtime > 0 && <Row label="أوفر تايم" value={`+${egp(pay.overtime)}`} tone="text-emerald-700" />}
+                    {pay.commission > 0 && <Row label="حوافز مبيعات" value={`+${egp(pay.commission)}`} tone="text-emerald-700" />}
+                    {pay.bonusLines.map((line, index) => (
+                      <Row key={line.id ? `${line.id}-${index}` : `bonus-${index}`} label={`${line.label}${line.reason ? ` — ${line.reason}` : ''}`} value={`${line.amount < 0 ? '−' : '+'}${egp(Math.abs(line.amount))}`} tone="text-emerald-700" />
+                    ))}
+                    {pay.absenceDeduction > 0 && <Row label="خصم الغياب والإجازات بدون مرتب" value={`−${egp(pay.absenceDeduction)}`} tone="text-red-600" />}
                     {pay.lateDeduction > 0 && <Row label="خصم التأخير والانصراف المبكر" value={`−${egp(pay.lateDeduction)}`} tone="text-red-600" />}
                     {pay.advanceDeduction > 0 && <Row label="سلف" value={`−${egp(pay.advanceDeduction)}`} tone="text-red-600" />}
-                    {pay.otherDeduction > 0 && <Row label={`خصومات أخرى${pay.deductionsNote ? ` — ${pay.deductionsNote}` : ''}`} value={`−${egp(pay.otherDeduction)}`} tone="text-red-600" />}
+                    {pay.deductionLines.map((line, index) => (
+                      <Row key={line.id ? `${line.id}-${index}` : `deduction-${index}`} label={`${line.label}${line.reason ? ` — ${line.reason}` : ''}`} value={`−${egp(line.amount)}`} tone="text-red-600" />
+                    ))}
+                    {pay.deductionLines.length === 0 && pay.administrativeDeduction > 0 && <Row label="خصم إداري" value={`−${egp(pay.administrativeDeduction)}`} tone="text-red-600" />}
+                    {pay.insuranceAndTax > 0 && <Row label="تأمينات وضرائب" value={`−${egp(pay.insuranceAndTax)}`} tone="text-red-600" />}
+                    {otherRest > 0 && <Row label={`خصومات أخرى${pay.deductionsNote ? ` — ${pay.deductionsNote}` : ''}`} value={`−${egp(otherRest)}`} tone="text-red-600" />}
                     <div className="mt-2 flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
                       <span className="text-sm font-extrabold text-emerald-900">الصافي{deductions > 0 ? ` (بعد خصم ${egp(deductions)})` : ''}</span>
                       <span className="text-lg font-black text-emerald-700">{egp(pay.net)}</span>
                     </div>
                   </>
-                ) : <p className="py-3 text-center text-sm text-gray-400">كشف مرتب الشهر ده لسه ما اتعتمدش — حضورك وإذونك تحت بتتحسب منها.</p>}
+                ) : <p className="py-3 text-center text-sm text-gray-400">كشف مرتب الشهر ده لسه ما اتعتمدش من الإدارة — المرتب والمكافآت والخصومات هتظهر هنا بالتفصيل بعد الاعتماد.</p>}
               </div>
 
-              {detail.bonuses.length > 0 && (
+              {detail.bonuses.some(b => b.targetValue != null || b.achievedValue != null) && (
                 <div className="rounded-xl border border-gray-100 p-3">
                   <h4 className="mb-2 text-sm font-extrabold text-gray-900">التارجت والمكافأة</h4>
-                  {detail.bonuses.map(b => (
+                  {detail.bonuses.filter(b => b.targetValue != null || b.achievedValue != null).map(b => (
                     <div key={b.id} className="border-b border-gray-50 py-2 text-sm last:border-0">
                       {b.targetValue != null && (
                         <Row label="المطلوب" value={`${num(b.targetValue)} ${b.targetUnit ? UNIT_AR[b.targetUnit] || '' : ''}`} />
@@ -132,7 +146,7 @@ export function MyMonthDetail() {
                         <Row label="المحقق" value={`${num(b.achievedValue)} ${b.targetUnit ? UNIT_AR[b.targetUnit] || '' : ''}`} />
                       )}
                       <Row label={`${b.type === 'deduction' ? 'خصم' : 'مكافأة'}${b.note ? ` — ${b.note}` : ''}`}
-                        value={`${egp(b.amount)} · ${b.status === 'APPROVED' ? 'معتمدة' : 'مستنية الاعتماد'}`} tone={b.type === 'deduction' ? 'text-red-600' : 'text-emerald-700'} />
+                        value={`${egp(b.amount)} · معتمدة`} tone={b.type === 'deduction' ? 'text-red-600' : 'text-emerald-700'} />
                     </div>
                   ))}
                 </div>
