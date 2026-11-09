@@ -1,12 +1,13 @@
 // «خلي في زر تعديل اقدر اغير في الغيابات او ازود مكافاه او اعدل اي حاجة تخص الموظف»: one window per employee for the month on the month sheet —
 // the days (change a day, make one a free day, add a missing one), a bonus or a deduction with its reason, and the employee's basics (salary,
-// device number, target, free days). A day edited here becomes a manual entry, which a fingerprint re-upload leaves alone.
+// device number, bonus scheme, free days). A day edited here becomes a manual entry, which a fingerprint re-upload leaves alone.
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
-import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { mysqlAdmin, type BonusLevel } from '../../../../lib/mysqlapi';
 import { fmtMoney } from './hrFormat';
+import BonusSchemeFields, { schemeDraftOf, schemePayload, type SchemeDraft } from './BonusSchemeFields';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type Log = {
@@ -16,8 +17,8 @@ type Log = {
 };
 type Bonus = { id: string; type: 'bonus' | 'deduction'; amount: number | string; status: string; reason: string | null; for_month: number | null; for_year: number | null };
 type Basics = {
-  id: string; baseSalary: number | null; biometricNo: string; targetType: 'clients' | 'bookings' | 'egp' | null; targetValue: number | null;
-  targetBonus: number | null; freeDays: number | null;
+  id: string; baseSalary: number | null; biometricNo: string; freeDays: number | null;
+  bonusScheme: string; bookingFirstTarget: number | null; collectionLevels: BonusLevel[];
 };
 
 const STATUS_OPTIONS: [string, string][] = [
@@ -48,7 +49,7 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
   const [logs, setLogs] = useState<Log[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [basics, setBasics] = useState<Basics | null>(null);
-  const [basicsDraft, setBasicsDraft] = useState<Partial<Basics>>({});
+  const [basicsDraft, setBasicsDraft] = useState<Partial<Pick<Basics, 'baseSalary' | 'biometricNo' | 'freeDays'>> & { scheme?: SchemeDraft }>({});
   const [days, setDays] = useState<Record<string, DayDraft>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -122,15 +123,17 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
     if (!basics || !Object.keys(basicsDraft).length) return;
     setBusy('basics');
     try {
-      await mysqlAdmin.adminPut('/admin/hr/staff-basics', { rows: [{ id: staffId, ...basicsDraft }] });
+      const { scheme, ...rest } = basicsDraft;
+      await mysqlAdmin.adminPut('/admin/hr/staff-basics', { rows: [{ id: staffId, ...rest, ...(scheme ? schemePayload(scheme) : {}) }] });
       notify('success', 'اتحفظت بيانات الموظف');
       await load(); onSaved();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر حفظ البيانات');
     } finally { setBusy(''); }
   };
-  const basic = <K extends keyof Basics>(key: K): Basics[K] | undefined => (key in basicsDraft ? (basicsDraft as Basics)[key] : basics?.[key]);
-  const setBasic = (patch: Partial<Basics>) => setBasicsDraft(current => ({ ...current, ...patch }));
+  const basic = <K extends 'baseSalary' | 'biometricNo' | 'freeDays'>(key: K): Basics[K] | undefined => (key in basicsDraft ? (basicsDraft as Basics)[key] : basics?.[key]);
+  const setBasic = (patch: Partial<Pick<Basics, 'baseSalary' | 'biometricNo' | 'freeDays'>>) => setBasicsDraft(current => ({ ...current, ...patch }));
+  const scheme: SchemeDraft = basicsDraft.scheme || schemeDraftOf(basics || {});
   const toNum = (value: string) => (value === '' ? null : Number(value));
 
   return (
@@ -213,13 +216,10 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
                   <input dir="ltr" className={field} value={basic('biometricNo') ?? ''} onChange={e => setBasic({ biometricNo: e.target.value.trim() })} /></label>
                 <label className="text-xs text-gray-600">أيام الإجازة المجانية في الشهر
                   <input type="number" min={0} max={31} className={field} placeholder="حسب السياسة" value={basic('freeDays') ?? ''} onChange={e => setBasic({ freeDays: toNum(e.target.value) })} /></label>
-                <label className="text-xs text-gray-600">نوع التارجت
-                  <select className={field} value={basic('targetType') ?? ''} onChange={e => setBasic({ targetType: (e.target.value || null) as Basics['targetType'] })}>
-                    <option value="">بدون تارجت</option><option value="clients">عدد عملاء</option><option value="bookings">عدد حجوزات</option><option value="egp">فلوس (ج.م)</option></select></label>
-                <label className="text-xs text-gray-600">التارجت الشهري
-                  <input type="number" min={0} className={field} value={basic('targetValue') ?? ''} onChange={e => setBasic({ targetValue: toNum(e.target.value) })} /></label>
-                <label className="text-xs text-gray-600">مكافأة التارجت
-                  <input type="number" min={0} className={field} value={basic('targetBonus') ?? ''} onChange={e => setBasic({ targetBonus: toNum(e.target.value) })} /></label>
+              </div>
+              <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3">
+                <BonusSchemeFields value={scheme} disabled={!canEditSalary} onChange={patch => setBasicsDraft(current => ({ ...current, scheme: { ...scheme, ...patch } }))} />
+                {!canEditSalary && <p className="mt-2 text-[11px] text-amber-800">تغيير نظام المكافأة محتاج صلاحية الحسابات.</p>}
               </div>
               <button type="button" disabled={busy === 'basics' || !Object.keys(basicsDraft).length} onClick={() => void saveBasics()} className="mt-3 flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"><Save size={13} /> حفظ بيانات الموظف</button>
             </section>

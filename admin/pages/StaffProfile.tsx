@@ -15,6 +15,7 @@ import StaffAchievements from './staff-profile/StaffAchievements';
 import StaffMessagesPanel from './staff-profile/StaffMessagesPanel';
 import StaffTasksPanel from './staff-profile/StaffTasksPanel';
 import StaffEmployeeFilePanel from './staff-profile/StaffEmployeeFilePanel';
+import StaffRoundProgress, { useRoundProgress } from './staff-profile/StaffRoundProgress';
 import StaffPeriodReport from './staff-profile/StaffPeriodReport';
 import StaffBroadcastPanel from './staff-profile/StaffBroadcastPanel';
 import { fmtMoney as fmtMoneyEgp, fmtNum, monthLabel, type StaffProfileData } from './staff-profile/types';
@@ -110,6 +111,9 @@ const StaffProfile: React.FC = () => {
   }, []);
 
   const staff = useMemo(() => staffMembers.find(s => s.id === id), [staffMembers, id]);
+  // A rep on the half-month rounds is paid by the plan (api/lib/roundProgress.js), not by a percentage: the round's card replaces the «عمولة %» lines below.
+  const roundProgress = useRoundProgress(id);
+  const commissionPct = roundProgress ? 0 : staff?.commissionRate || 0;
   // From the context: staffMembers is empty for the ten roles that cannot read
   // the staff list, and this used to search it alone.
 
@@ -270,7 +274,7 @@ const StaffProfile: React.FC = () => {
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                   <span className="rounded-lg bg-white/15 px-2 py-1 font-bold">{ROLE_LABELS[staff.role] ?? staff.role}</span>
                   {staff.joinedAt && <span className="text-white/60">{getTenure(staff.joinedAt)}</span>}
-                  {staff.commissionRate ? <span className="text-white/60">· عمولة {staff.commissionRate}%</span> : null}
+                  {commissionPct ? <span className="text-white/60">· عمولة {commissionPct}%</span> : null}
                 </div>
                 {/* Headline stats, so the band answers "how is this person doing?" */}
                 {profile && (
@@ -438,9 +442,9 @@ const StaffProfile: React.FC = () => {
                     <div className="text-[11px] text-blue-600 font-bold">📞 {p.calls} مكالمة</div>
                   )}
                   {p.rev > 0 && <div className="text-[11px] text-emerald-700 font-bold mt-0.5">{fmt(p.rev)} ج.م</div>}
-                  {p.rev > 0 && (staff.commissionRate || 0) > 0 && (
+                  {p.rev > 0 && commissionPct > 0 && (
                     <div className="text-[10px] text-orange-600 font-bold">
-                      عمولة: {fmt(Math.round(p.rev * (staff.commissionRate || 0) / 100))} ج
+                      عمولة: {fmt(Math.round(p.rev * commissionPct / 100))} ج
                     </div>
                   )}
                 </div>
@@ -463,7 +467,7 @@ const StaffProfile: React.FC = () => {
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
                   <div className="text-3xl font-bold text-emerald-700">{fmt(perf.revTotal)}</div>
                   <div className="text-sm text-emerald-600 mt-1">إيراد كلي (ج.م)</div>
-                  {(staff.commissionRate || 0) > 0 && (
+                  {commissionPct > 0 && (
                     <>
                       <div className="text-xl font-bold text-orange-700 mt-2">{fmt(perf.commission)}</div>
                       <div className="text-xs text-orange-500">عمولة إجمالية</div>
@@ -617,6 +621,7 @@ const StaffProfile: React.FC = () => {
         {/* ══ BOOKINGS TAB ══ */}
         {activeTab === 'bookings' && perf && (
           <div className="space-y-4">
+            {roundProgress && <StaffRoundProgress progress={roundProgress} />}
             <div className="flex items-center gap-3">
               <h3 className="font-bold text-gray-800 text-lg">سجل الحجوزات والإيرادات</h3>
               <span className="bg-emerald-100 text-emerald-700 text-sm font-bold px-3 py-1 rounded-full">
@@ -634,9 +639,9 @@ const StaffProfile: React.FC = () => {
                 <div key={c.label} className={`${c.color} border rounded-2xl p-4 text-center`}>
                   <div className="text-2xl font-bold">{fmt(c.rev)}</div>
                   <div className="text-xs mt-1 font-medium">ج.م — {c.label}</div>
-                  {c.rev > 0 && (staff.commissionRate || 0) > 0 && (
+                  {c.rev > 0 && commissionPct > 0 && (
                     <div className="text-[11px] text-orange-600 font-bold mt-0.5">
-                      عمولة: {fmt(Math.round(c.rev * (staff.commissionRate || 0) / 100))} ج
+                      عمولة: {fmt(Math.round(c.rev * commissionPct / 100))} ج
                     </div>
                   )}
                 </div>

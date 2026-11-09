@@ -8,11 +8,11 @@ const router = express.Router();
 const { hrError } = require('./_shared');
 const logger = require('../../lib/logger').child({ module: 'hr-bonuses' });
 const { pool } = require('../../lib/db');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOrSelf } = require('../../middleware/auth');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { normalizePlan, bookingWeight } = require('../../lib/bonusPlan');
 const { computeMonthlyBonuses, saveMonthlyBonuses, adjustmentContext } = require('../../lib/monthlyBonuses');
-const { listAdjustments, addAdjustment, revokeAdjustment } = require('../../lib/bonusAdjustments');
+const { listAdjustments, listCountedElsewhere, addAdjustment, revokeAdjustment } = require('../../lib/bonusAdjustments');
 const { readSalesSheet } = require('../../lib/salesSheet');
 const { reconcileSalesSheet } = require('../../lib/salesSheetReconcile');
 const { renderMarkdown, renderCsv } = require('../../lib/salesSheetReport');
@@ -20,6 +20,8 @@ const { readCollectionSheet } = require('../../lib/collectionSheet');
 const { reconcileCollectionSheet } = require('../../lib/collectionSheetReconcile');
 const collectionReport = require('../../lib/collectionSheetReport');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { roundProgressOf } = require('../../lib/roundProgress');
+const { cairoYearMonth, dateOnlyInTimeZone } = require('../../lib/dates');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_hr')];
@@ -96,6 +98,21 @@ router.post('/api/admin/hr/monthly-bonuses', ...manage, async (req, res) => {
   } finally { conn.release(); }
 });
 
+// GET /api/admin/hr/staff/:id/round-progress — a rep's current round: its dates, the bookings counted so far, the next step and what is left to reach it, and the
+// rounds already over this month. The employee reads their own (the page every rep lands on); someone else's needs view_hr. Reads only, the same computation as the
+// payroll's bonus columns.
+router.get('/api/admin/hr/staff/:id/round-progress', requireAuth, requireAdminOrStaff, requirePermissionOrSelf('view_hr'), async (req, res) => {
+  try {
+    const { year, month } = cairoYearMonth();
+    res.set('Cache-Control', 'no-store');
+    const result = await computeMonthlyBonuses(pool, { tenantId: req.tenantId, year, month });
+    res.json(roundProgressOf(result, req.params.id, dateOnlyInTimeZone()));
+  } catch (error) {
+    logger.error('[round-progress]', error.message);
+    hrError(res, error);
+  }
+});
+
 const actorOf = req => ({ id: String(req.staffRecord?.id || req.user?.uid || '').slice(0, 36) || null, name: req.staffRecord?.name || req.user?.name || req.user?.email || null });
 
 // GET /api/admin/hr/bonus-adjustments?month=YYYY-MM[&history=1] — the owner's changes to the month's bonuses (lib/bonusAdjustments.js), who, when and why.
@@ -111,7 +128,33 @@ router.get('/api/admin/hr/bonus-adjustments', ...view, async (req, res) => {
   }
 });
 
-// POST /api/admin/hr/bonus-adjustments {month, kind, staffId?, paymentId?, toStaffId?, weight?, amount?, reason} — a change to a month's calculation; whoever
+// GET /api/admin/hr/late-bookings?month=YYYY-MM — the first payments of the month before and after: the bookings that can be counted in this month instead of their own
+// (COUNT_IN_MONTH, «الحجز اتأخر رفعه»), each with the sales rep it belongs to and whether it is already counted in this month.
+router.get('/api/admin/hr/late-bookings', ...view, async (req, res) => {
+  try {
+    const { year, month } = monthOf(req.query.month);
+    const context = await adjustmentContext(pool, { tenantId: req.tenantId, year, month });
+    const sales = new Map(context.staff.filter(row => row.bonus_scheme === 'SALES_BOOKINGS').map(row => [row.id, row.name]));
+    const counted = await listCountedElsewhere(pool, { tenantId: req.tenantId, paymentIds: context.adjacentBookings.map(booking => booking.paymentId) });
+    const bookings = context.adjacentBookings.map(booking => {
+      const repId = [booking.salesRep, booking.recordedBy].find(id => id && sales.has(id)) || null;
+      const move = counted.get(booking.paymentId);
+      return {
+        paymentId: booking.paymentId, client: booking.client, clientCode: booking.clientCode, title: booking.title, day: booking.day, month: booking.day.slice(0, 7),
+        priceEgp: booking.priceEgp, weight: bookingWeight(context.plan, booking.priceEgp), repId, repName: repId ? sales.get(repId) : null,
+        countedIn: move ? `${move.year}-${String(move.month).padStart(2, '0')}` : null,
+      };
+    }).sort((a, b) => (a.day < b.day ? -1 : 1));
+    res.set('Cache-Control', 'no-store');
+    res.json({ bookings, reps: [...sales].map(([id, name]) => ({ id, name })) });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
+    logger.error('[late-bookings]', error.message);
+    hrError(res, error);
+  }
+});
+
+// POST /api/admin/hr/bonus-adjustments {month, kind, staffId?, paymentId?, toStaffId?, weight?, amount?, round?, reason} — a change to a month's calculation; whoever
 // holds manage_financial (the owner, admin). A reason is required. The month's bonuses are worked out again with it (and saved only when HR saves them).
 router.post('/api/admin/hr/bonus-adjustments', ...managePay, async (req, res) => {
   const conn = await pool.getConnection();

@@ -323,19 +323,32 @@ export interface BonusPlan {
 /** A collector's level: from this much collected (EGP), a percentage of the month's whole or a fixed amount. */
 export interface BonusLevel { from: number; kind: 'percent' | 'fixed'; value: number }
 /** One of the owner's changes to a month's bonuses (api/lib/bonusAdjustments.js): who, when and why. */
-export type BonusAdjustmentKind = 'EXCLUDE_BOOKING' | 'REASSIGN_BOOKING' | 'WEIGHT_BOOKING' | 'TOTAL_OVERRIDE' | 'ROUND_SPLIT';
+export type BonusAdjustmentKind = 'EXCLUDE_BOOKING' | 'REASSIGN_BOOKING' | 'WEIGHT_BOOKING' | 'TOTAL_OVERRIDE' | 'ROUND_SPLIT' | 'ROUND_OVERRIDE' | 'COUNT_IN_MONTH';
 export interface BonusAdjustment {
   id: string; year: number; month: number; kind: BonusAdjustmentKind; kindLabel: string; staffId: string | null; paymentId: string | null; toStaffId: string | null;
-  weight: number | null; amount: number | null; splitDay: number | null; reason: string; by: string | null; at: string; revokedAt?: string | null;
+  weight: number | null; amount: number | null; splitDay: number | null; round?: number | null; reason: string; by: string | null; at: string; revokedAt?: string | null;
   client?: string | null; clientCode?: string | null; item?: string | null; staffName?: string | null; toStaffName?: string | null;
 }
-export type BonusBooking = { paymentId: string; client: string; clientCode: string; title: string; day: string; currency: string; price: number; priceEgp: number; weight?: number; computedWeight?: number; deskBonus?: number; round?: string | null };
+export type BonusBooking = {
+  paymentId: string; client: string; clientCode: string; title: string; day: string; currency: string; price: number; priceEgp: number; weight?: number; computedWeight?: number; deskBonus?: number; round?: string | null;
+  /** Paid in another month and counted in this one (COUNT_IN_MONTH): the day it was really paid. */
+  movedIn?: { adjustmentId: string; staffId: string; paidDay: string };
+  /** Paid in this month and counted in another (COUNT_IN_MONTH): the month ('YYYY-MM') it is counted in. */
+  countedElsewhere?: { adjustmentId: string; staffId: string; month: string };
+};
+/** One round of a rep's month: its dates, the weighted bookings, the bonus (the owner's figure when set, the plan's beside it). */
+export interface BonusRound {
+  round: number; label: string; from: string | null; to: string | null; bookings: number; amount: number; computedAmount: number;
+  override: { id: string; amount: number; reason: string; by: string | null } | null;
+}
 /** GET /admin/hr/monthly-bonuses — every employee on a scheme and how their month's bonus is made up (api/lib/monthlyBonuses.js). */
 export interface MonthlyBonuses {
   year: number; month: number; from: string; to: string; total: number; computedTotal: number;
   /** The day the second round starts for every rep this month (the 16th unless the owner set another). */
   splitDay: number; plan: { salesPeriod?: 'MONTH' | 'HALF_MONTH' };
   adjustments: BonusAdjustment[];
+  /** This month's own bookings the owner counted in another month (not in any rep's count here). */
+  movedOut?: (BonusBooking & { staffName: string | null })[];
   employees: {
     staffId: string; name: string; role: string; scheme: string; schemeLabel: string; total: number; summary: string;
     computedTotal: number; override: { id: string; amount: number; reason: string; by: string | null; at: string } | null;
@@ -343,11 +356,29 @@ export interface MonthlyBonuses {
     /** The day this rep's second round starts (the 16th unless the owner set another); null when the plan is monthly or the employee is not a rep. */
     splitDay: number | null; splitSource: 'rep' | 'month' | 'default' | null;
     ladder: { bookings: number; amount: number; tier: { bookings: number; amount: number } | null; extraBookings: number; extraAmount: number; firstTarget: number | null;
-      rounds?: { label: string; bookings: number; amount: number }[] } | null;
+      rounds?: BonusRound[] } | null;
     collection: { amount: number; collected: number; payments: number; level: BonusLevel | null } | null;
     deskBonus: number | null;
     bookings: BonusBooking[];
   }[];
+}
+
+/** A first payment of the month before or after, that can be counted in the month asked for. */
+export interface LateBooking {
+  paymentId: string; client: string; clientCode: string; title: string; day: string; month: string; priceEgp: number; weight: number;
+  repId: string | null; repName: string | null; countedIn: string | null;
+}
+/** GET /admin/hr/staff/:id/round-progress — a rep's current round. */
+export type RoundProgress = { onRounds: false; scheme: string } | {
+  onRounds: true; scheme: string; month: string; today: string; halfMonths: boolean; firstTarget: number | null;
+  current: BonusRound & { stepReached: { bookings: number; amount: number } | null; nextStep: { bookings: number; amount: number; remaining: number } | null; nextBookingWorth: number | null };
+  previous: BonusRound[]; monthBookings: number; monthTotal: number;
+};
+/** The payroll month sheet's bonus figures of one employee (attendance summary → bonus_plan). */
+export interface SheetBonusPlan {
+  scheme: string; schemeLabel: string; halfMonths: boolean; splitDay: number | null; splitSource: 'rep' | 'month' | 'default' | null;
+  rounds: BonusRound[] | null; collection: { collected: number; amount: number; from: number | null } | null; deskBonus: number | null;
+  computedTotal: number; total: number; totalOverride: { id: string; amount: number; reason: string; by: string | null } | null;
 }
 
 /** POST /admin/hr/collection-sheet-reconciliation — the collection employees' sheet against the system's payments (api/lib/collectionSheetReconcile.js). */
@@ -1163,8 +1194,12 @@ export const mysqlAdmin = {
   saveMonthlyBonuses: (month: string) => apiFetch<{ ok: boolean; written: { staffId: string; name: string; amount: number }[]; kept: { staffId: string; name: string; status: string; amount: number; now: number }[]; cleared: string[]; total: number }>(
     '/admin/hr/monthly-bonuses', { method: 'POST', body: JSON.stringify({ month }) }, A),
   // The owner's changes to a month (api/routes/hr/bonuses.js, the financial permission's) and the sales-sheet comparison.
-  addBonusAdjustment: (body: { month: string; kind: BonusAdjustmentKind; reason: string; staffId?: string; paymentId?: string; toStaffId?: string; weight?: number; amount?: number; splitDay?: number }) =>
+  addBonusAdjustment: (body: { month: string; kind: BonusAdjustmentKind; reason: string; staffId?: string; paymentId?: string; toStaffId?: string; weight?: number; amount?: number; splitDay?: number; round?: number }) =>
     apiFetch<{ ok: boolean }>('/admin/hr/bonus-adjustments', { method: 'POST', body: JSON.stringify(body) }, A),
+  /** The first payments of the month before and after (those that can be counted in this month instead), for «حجز اتأخر رفعه». */
+  getLateBookings: (month: string) => apiFetch<{ bookings: LateBooking[]; reps: { id: string; name: string }[] }>(`/admin/hr/late-bookings?month=${encodeURIComponent(month)}`, {}, A),
+  /** A rep's current round (api/lib/roundProgress.js): the employee reads their own, HR anyone's. */
+  getRoundProgress: (staffId: string) => apiFetch<RoundProgress>(`/admin/hr/staff/${encodeURIComponent(staffId)}/round-progress`, {}, A),
   revokeBonusAdjustment: (id: string, reason?: string) => apiFetch<{ ok: boolean }>(`/admin/hr/bonus-adjustments/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: JSON.stringify({ reason }) }, A),
   reconcileCollectionSheet: (body: { fileBase64: string; filename: string; month: string }) =>
     apiFetch<{ ok: boolean; report: CollectionSheetReport; markdown: string; csv: string }>('/admin/hr/collection-sheet-reconciliation', { method: 'POST', body: JSON.stringify(body) }, A),

@@ -1,5 +1,6 @@
 'use strict';
 const { Router } = require('express');
+const { payslipBreakdown } = require('../../lib/payslipBreakdown');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
@@ -677,6 +678,8 @@ router.put('/api/staff/me/leaves/:id/cancel', requireAuth, async (req, res) => {
 // «خلي كل موظف يشوف كل التفاصيل بتاعت الراتب بتاعه غيابات واذونات وغيره»: one employee's own month in one answer — every day the fingerprint judged (arrival,
 // leaving, minutes late, the permission used, the part of the day deducted), the leave and permission requests of the month, the bonuses recorded for it with what
 // was required and reached, and the payslip once the month's payroll is approved. Only ever the signed-in employee's own rows.
+// 9 Nov 2026: the money of the month — every bonus with its reason, the payslip line by line — is answered only once the month's payroll run is APPROVED (or paid) by
+// management; before that the answer holds the days and the leave, and no amount: not a pending bonus, not an estimate.
 router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
   try {
     const staff = await _resolveStaffByUser(req);
@@ -687,7 +690,7 @@ router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
     if (!(month >= 1 && month <= 12 && year >= 2000 && year <= 2100)) return res.status(400).json({ error: 'اختار الشهر' });
     const first = `${year}-${String(month).padStart(2, '0')}-01`;
     const last = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
-    const [[days], [leaves], [bonuses], [[payslip]]] = await Promise.all([
+    const [[days], [leaves], [[payslip]]] = await Promise.all([
       pool.query(
         `SELECT date, status, check_in, check_out, total_hours, late_minutes, early_leave_minutes, deduction_days, permit_used, review_flag, source, leave_id, notes
            FROM attendance_logs WHERE tenant_id=? AND staff_id=? AND date BETWEEN ? AND ? ORDER BY date`,
@@ -698,18 +701,18 @@ router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
           ORDER BY start_date`,
         [req.tenantId, staff.id, last, first]),
       pool.query(
-        `SELECT id, type, amount, currency, status, reason, target_value, achieved_value, target_unit
-           FROM employee_bonuses WHERE tenant_id=? AND staff_id=? AND for_month=? AND for_year=? AND status IN ('PENDING','APPROVED')
-          ORDER BY created_at`,
-        [req.tenantId, staff.id, month, year]),
-      pool.query(
         `SELECT pi.base_salary, pi.total_allowances, pi.commission, pi.bonus, pi.bonus_note, pi.late_deductions, pi.absence_deductions,
                 pi.advance_deductions, pi.other_deductions, pi.deductions_note, pi.net_salary, pi.attendance_days, pi.absent_days, pi.late_minutes,
-                pr.status AS run_status
+                pi.calculation_details, pr.status AS run_status
            FROM payroll_items pi JOIN payroll_runs pr ON pr.id=pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
           WHERE pi.tenant_id=? AND pi.staff_id=? AND pr.month=? AND pr.year=? AND pr.status IN ('APPROVED','PAID') LIMIT 1`,
         [req.tenantId, staff.id, month, year]),
     ]);
+    const [bonuses] = payslip ? await pool.query(
+      `SELECT id, type, amount, currency, status, reason, source, calc_json, target_value, achieved_value, target_unit
+         FROM employee_bonuses WHERE tenant_id=? AND staff_id=? AND for_month=? AND for_year=? AND status='APPROVED'
+        ORDER BY created_at, id`,
+      [req.tenantId, staff.id, month, year]) : [[]];
     const dateOnly = value => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10));
     const hhmm = value => (value ? String(value).slice(0, 5) : null);
     const rows = days.map(d => ({
@@ -742,13 +745,7 @@ router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
         targetValue: b.target_value == null ? null : money(b.target_value), achievedValue: b.achieved_value == null ? null : money(b.achieved_value),
         targetUnit: b.target_unit || null,
       })),
-      payslip: payslip ? {
-        status: payslip.run_status, base: money(payslip.base_salary), allowances: money(payslip.total_allowances), commission: money(payslip.commission),
-        bonus: money(payslip.bonus), bonusNote: payslip.bonus_note || null,
-        lateDeduction: money(payslip.late_deductions), absenceDeduction: money(payslip.absence_deductions),
-        advanceDeduction: money(payslip.advance_deductions), otherDeduction: money(payslip.other_deductions), deductionsNote: payslip.deductions_note || null,
-        net: money(payslip.net_salary),
-      } : null,
+      payslip: payslip ? payslipBreakdown(payslip, bonuses, payslip.run_status) : null,
     });
   } catch (error) {
     logger.error('[staff/me/month-detail]', error.message);

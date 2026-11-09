@@ -65,10 +65,8 @@ export function MyJobFileSection({ hr, disciplinary, setDisciplinary, notify }: 
     } finally { setBusy(''); }
   };
 
-  const salaryTotal = hr?.salary
-    ? Number(hr.salary.base_salary) + Number(hr.salary.housing_allowance || 0) + Number(hr.salary.transport_allowance || 0)
-      + Number(hr.commission?.thisMonth?.total || 0)
-    : 0;
+  // The fixed part of the pay: what the structure says. The month's bonuses and deductions are the payslip's (مرتبي وحضوري), shown only once management approves the month.
+  const fixedSalary = hr?.salary ? Number(hr.salary.base_salary) + Number(hr.salary.housing_allowance || 0) + Number(hr.salary.transport_allowance || 0) : 0;
   const balance = hr?.leaveBalance;
   const usedRatio = balance ? Math.min(1, (balance.usedDays || 0) / (balance.annualEntitlement || 21)) : 0;
   const ring = 2 * Math.PI * 34;
@@ -93,11 +91,11 @@ export function MyJobFileSection({ hr, disciplinary, setDisciplinary, notify }: 
                 <Line label="الراتب الأساسي" value={egp(hr.salary.base_salary)} />
                 <Line label="بدل سكن" value={egp(hr.salary.housing_allowance)} />
                 <Line label="بدل مواصلات" value={egp(hr.salary.transport_allowance)} />
-                <Line label="عمولة الشهر" value={<span className="text-emerald-700">{egp(hr.commission?.thisMonth?.total || 0)}</span>} />
                 <div className="mt-3 flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
-                  <span className="text-sm font-extrabold text-emerald-900">الإجمالي المتوقع</span>
-                  <span className="text-lg font-black text-emerald-700">{egp(salaryTotal)}</span>
+                  <span className="text-sm font-extrabold text-emerald-900">الثابت في الشهر</span>
+                  <span className="text-lg font-black text-emerald-700">{egp(fixedSalary)}</span>
                 </div>
+                <p className="mt-2 text-[11px] text-gray-500">مكافآت الشهر وخصوماته والصافي بتظهر بالتفصيل في «مرتبي وحضوري» بعد ما الإدارة تعتمد مسير الشهر.</p>
               </>
             ) : <p className="py-6 text-center text-sm text-gray-400">هيكل راتبك لسه متحددش — تواصل مع الموارد البشرية.</p>}
           </Card>

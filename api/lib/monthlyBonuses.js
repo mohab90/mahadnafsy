@@ -8,6 +8,9 @@
 //                    it was paid in. Its price is the client's agreed price (lib/agreedPrice.js) at the rate of that payment, in EGP.
 //   whose booking    SALES_BOOKINGS: the rep the client belongs to, else the one who recorded it. COLLECTION_BOOKINGS (the desk): the one who recorded it,
 //                    else the client's collection officer. One booking can count for a rep and for a desk.
+//                    A late-uploaded booking can be counted in the month before or after its own for a rep (COUNT_IN_MONTH, lib/bonusAdjustments.js): there it counts
+//                    on the day the month nearest to its own ends (the last day of the month it is counted in when it was paid after it, the first when before), and
+//                    in its own month it is not counted for the reps. Nothing about the payment changes.
 //   collected        the course and track money (never a certificate's) an employee recorded, paid in the month, in EGP at the payment's own rate.
 //   SALES_BOOKINGS        the booking ladder on the weighted bookings (+ the course page's sales bonus, only while the plan switches it on)
 //   COLLECTION            the collector's level on what they collected
@@ -18,7 +21,7 @@ const { agreedPrice } = require('./agreedPrice');
 const { normalizeBonuses } = require('./priceTiers');
 const { addDaysToDateOnly, cairoDayOf, cairoDayStartUtc } = require('./dates');
 const { normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount, splitDayOf, roundOfDay, roundLabels } = require('./bonusPlan');
-const { listAdjustments } = require('./bonusAdjustments');
+const { listAdjustments, listCountedElsewhere } = require('./bonusAdjustments');
 
 const SOURCE = 'BONUS_PLAN';
 const SCHEME_LABEL = { SALES_BOOKINGS: 'حجوزات (سيلز)', COLLECTION: 'تحصيل', COLLECTION_BOOKINGS: 'تحصيل + حجوزات' };
@@ -34,12 +37,13 @@ async function loadPlan(db, tenantId) {
   return normalizePlan(await getTenantSetting('bonus_plan', { tenantId, fallback: {}, db }));
 }
 
-/** The month's bookings: one per client and item, at the first paid payment, with what it is worth in EGP. */
-async function bookingsOf(db, tenantId, { start, end }) {
+/** The month's bookings: one per client and item, at the first paid payment, with what it is worth in EGP. `include`: payments counted in this month although paid outside it. */
+async function bookingsOf(db, tenantId, { start, end }, { include = [] } = {}) {
   const [clients] = await db.query(
     `SELECT DISTINCT subscriber_id FROM payments
       WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL AND payment_type IN ('COURSE','BUNDLE') AND subscriber_id IS NOT NULL
-        AND (course_id IS NOT NULL OR bundle_id IS NOT NULL) AND date >= ? AND date < ?`, [tenantId, start, end]);
+        AND (course_id IS NOT NULL OR bundle_id IS NOT NULL) AND (date >= ? AND date < ?${include.length ? ' OR id IN (?)' : ''})`,
+    [tenantId, start, end, ...(include.length ? [include] : [])]);
   if (!clients.length) return [];
   const [rows] = await db.query(
     `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.staff_id, p.currency, p.fx_rate_to_egp, p.amount_egp, p.amount, p.date,
@@ -52,6 +56,7 @@ async function bookingsOf(db, tenantId, { start, end }) {
       WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.payment_type IN ('COURSE','BUNDLE') AND p.subscriber_id IN (?)
         AND (p.course_id IS NOT NULL OR p.bundle_id IS NOT NULL)
       ORDER BY p.date, p.created_at, p.id`, [tenantId, clients.map(row => row.subscriber_id)]);
+  const includeSet = new Set(include);
   const first = new Map();
   for (const row of rows) {
     const key = `${row.subscriber_id}|${row.bundle_id ? `bundle:${row.bundle_id}` : row.course_id}`;
@@ -60,7 +65,7 @@ async function bookingsOf(db, tenantId, { start, end }) {
   const bookings = [];
   for (const row of first.values()) {
     const at = new Date(row.date);
-    if (!(at >= new Date(start) && at < new Date(end))) continue;
+    if (!(at >= new Date(start) && at < new Date(end)) && !includeSet.has(row.id)) continue;
     const currency = String(row.currency || 'EGP').toUpperCase();
     const rate = currency === 'EGP' ? 1 : Number(row.fx_rate_to_egp) || (Number(row.amount) > 0 ? Number(row.amount_egp) / Number(row.amount) : 0);
     const agreed = await agreedPrice(db, {
@@ -91,11 +96,26 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
   const reweighed = new Map(adjustments.filter(item => item.kind === 'WEIGHT_BOOKING').map(item => [item.paymentId, item]));
   const overridden = new Map(adjustments.filter(item => item.kind === 'TOTAL_OVERRIDE').map(item => [item.staffId, item]));
   const splits = new Map(adjustments.filter(item => item.kind === 'ROUND_SPLIT').map(item => [item.staffId, item]));
+  const roundChanges = new Map(adjustments.filter(item => item.kind === 'ROUND_OVERRIDE').map(item => [`${item.staffId}|${item.round}`, item]));
+  const countedHere = new Map(adjustments.filter(item => item.kind === 'COUNT_IN_MONTH').map(item => [item.paymentId, item]));
   const [staff] = await db.query(
     `SELECT id, name, role, bonus_scheme, booking_first_target, collection_levels_json FROM staff
       WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND bonus_scheme <> 'NONE' ORDER BY name`, [tenantId]);
   const schemeOf = new Map(staff.map(row => [row.id, row.bonus_scheme]));
-  const bookings = await bookingsOf(db, tenantId, bounds);
+  const bookings = await bookingsOf(db, tenantId, bounds, { include: [...countedHere.keys()] });
+  // Late-uploaded bookings: the ones counted here although paid in the month before or after stand on the nearest day of this month; the ones paid here but counted in
+  // another month are not the reps' here (the desk still has them).
+  const elsewhere = await listCountedElsewhere(db, { tenantId, paymentIds: bookings.filter(booking => !countedHere.has(booking.paymentId)).map(booking => booking.paymentId) });
+  for (const booking of bookings) {
+    const change = countedHere.get(booking.paymentId);
+    if (change) {
+      booking.movedIn = { adjustmentId: change.id, staffId: change.staffId, paidDay: booking.day };
+      booking.day = booking.day < bounds.first ? bounds.first : bounds.last;
+    } else if (elsewhere.has(booking.paymentId)) {
+      const target = elsewhere.get(booking.paymentId);
+      booking.countedElsewhere = { adjustmentId: target.id, staffId: target.staffId, month: `${target.year}-${String(target.month).padStart(2, '0')}` };
+    }
+  }
   const [collectedRows] = staff.some(row => row.bonus_scheme !== 'SALES_BOOKINGS') ? await db.query(
     `SELECT staff_id, COALESCE(SUM(amount_egp), 0) AS collected, COUNT(*) AS payments FROM payments
       WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL AND staff_id IS NOT NULL
@@ -104,8 +124,11 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
   const collected = new Map(collectedRows.map(row => [row.staff_id, { amount: money(row.collected), payments: Number(row.payments) }]));
 
   const ownerOf = (booking, scheme) => {
+    if (booking.movedIn && scheme !== 'SALES_BOOKINGS') return null;
+    if (booking.countedElsewhere && scheme === 'SALES_BOOKINGS') return null;
     const moved = scheme === 'SALES_BOOKINGS' ? reassigned.get(booking.paymentId) : null;
     if (moved && schemeOf.get(moved.toStaffId) === scheme) return moved.toStaffId;
+    if (booking.movedIn && schemeOf.get(booking.movedIn.staffId) === scheme) return booking.movedIn.staffId;
     const order = scheme === 'SALES_BOOKINGS' ? [booking.salesRep, booking.recordedBy] : [booking.recordedBy, booking.collector];
     return order.find(id => id && schemeOf.get(id) === scheme) || null;
   };
@@ -140,14 +163,22 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
       const rounds = plan.salesPeriod === 'HALF_MONTH'
         ? [[firstLabel, mine.filter(booking => roundOfDay(booking.day, splitDay) === 1)], [secondLabel, mine.filter(booking => roundOfDay(booking.day, splitDay) === 2)]]
         : [['الشهر', mine]];
-      const perRound = rounds.map(([label, list]) => ({ label, bookings: weightOf(list), ...ladderBonus(plan, weightOf(list), firstTarget) }));
+      const dayOf = number => `${bounds.first.slice(0, 8)}${String(number).padStart(2, '0')}`;
+      const perRound = rounds.map(([label, list], index) => {
+        const split = rounds.length > 1;
+        const figures = { round: index + 1, label, from: split ? (index ? dayOf(splitDay) : bounds.first) : bounds.first, to: split ? (index ? bounds.last : dayOf(splitDay - 1)) : bounds.last,
+          bookings: weightOf(list), ...ladderBonus(plan, weightOf(list), firstTarget) };
+        // The owner's figure for the round replaces the plan's; the plan's stays beside it.
+        const change = split ? roundChanges.get(`${row.id}|${index + 1}`) : null;
+        return change ? { ...figures, computedAmount: figures.amount, amount: change.amount, override: { id: change.id, amount: change.amount, reason: change.reason, by: change.by, at: change.at } } : figures;
+      });
       for (const booking of mine) booking.round = perRound.length > 1 ? perRound[roundOfDay(booking.day, splitDay) - 1].label : null;
       ladder = { bookings: weightOf(mine), amount: money(perRound.reduce((sum, round) => sum + round.amount, 0)), firstTarget, rounds: perRound,
         tier: perRound.length === 1 ? perRound[0].tier : null, extraBookings: perRound.length === 1 ? perRound[0].extraBookings : 0, extraAmount: perRound.length === 1 ? perRound[0].extraAmount : 0 };
       total += ladder.amount;
       const target = firstTarget ?? plan.bookingLadder[0]?.bookings ?? '—';
       lines.push(perRound.length > 1
-        ? perRound.map(round => `روند ${round.label}: ${round.bookings} حجز ← ${round.amount}`).join(' · ') + ` (أول تارجيت ${target} لكل روند)`
+        ? perRound.map(round => `روند ${round.label}: ${round.bookings} حجز ← ${round.amount}${round.override ? ` (تعديل يدوي بدل ${round.computedAmount})` : ''}`).join(' · ') + ` (أول تارجيت ${target} لكل روند)`
         : `حجوزات ${ladder.bookings} (أول تارجيت ${target}) ← ${ladder.amount}`);
       if (plan.courseSalesBonusEnabled) {
         const fromCourses = money(mine.reduce((sum, booking) => sum + courseBonusAmount(booking.bonuses.sales, booking.priceEgp), 0));
@@ -196,8 +227,10 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
       staffName: nameOf.get(item.staffId) || null, toStaffName: nameOf.get(item.toStaffId) || null,
     };
   });
+  // The month's own bookings that the owner counted in another month, for the screen (they are not in any rep's count here).
+  const movedOut = bookings.filter(booking => booking.countedElsewhere).map(({ bonuses: _bonuses, ...booking }) => ({ ...booking, staffName: nameOf.get(booking.countedElsewhere.staffId) || null }));
   return {
-    year, month, from: bounds.first, to: bounds.last, plan, employees, adjustments: shownAdjustments,
+    year, month, from: bounds.first, to: bounds.last, plan, employees, adjustments: shownAdjustments, movedOut,
     // The day the second round starts for every rep this month (the 16th unless the owner set another); a rep's own exception is on the rep.
     splitDay: splitDayOf((splits.get(null) || {}).splitDay),
     computedTotal: money(employees.reduce((sum, item) => sum + item.computedTotal, 0)), total: money(employees.reduce((sum, item) => sum + item.total, 0)),
@@ -239,12 +272,19 @@ async function saveMonthlyBonuses(db, { tenantId, year, month, actorId = null })
 async function adjustmentContext(db, { tenantId, year, month }) {
   const bounds = monthBounds(year, month);
   const [staff] = await db.query("SELECT id, name, bonus_scheme FROM staff WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND bonus_scheme <> 'NONE'", [tenantId]);
-  const bookings = await bookingsOf(db, tenantId, bounds);
+  const live = await listAdjustments(db, { tenantId, year, month });
+  const countedHere = new Map(live.filter(item => item.kind === 'COUNT_IN_MONTH').map(item => [item.paymentId, item.staffId]));
+  // The month's bookings include the ones counted here although paid in the month before or after.
+  const bookings = await bookingsOf(db, tenantId, bounds, { include: [...countedHere.keys()] });
+  // The first payments of the month before and after: the ones that can be counted here instead of in their own month.
+  const previous = monthBounds(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1);
+  const following = monthBounds(month === 12 ? year + 1 : year, month === 12 ? 1 : month + 1);
+  const adjacentBookings = [...await bookingsOf(db, tenantId, previous), ...await bookingsOf(db, tenantId, following)];
   const schemeOf = new Map(staff.map(row => [row.id, row.bonus_scheme]));
-  const moves = new Map((await listAdjustments(db, { tenantId, year, month })).filter(item => item.kind === 'REASSIGN_BOOKING').map(item => [item.paymentId, item.toStaffId]));
+  const moves = new Map(live.filter(item => item.kind === 'REASSIGN_BOOKING').map(item => [item.paymentId, item.toStaffId]));
   const natural = (booking, scheme) => (scheme === 'SALES_BOOKINGS' ? [booking.salesRep, booking.recordedBy] : [booking.recordedBy, booking.collector]).find(id => id && schemeOf.get(id) === scheme) || null;
-  const countedFor = (booking, { ignoreAdjustments = false } = {}) => (ignoreAdjustments ? null : moves.get(booking.paymentId)) || natural(booking, 'SALES_BOOKINGS') || natural(booking, 'COLLECTION_BOOKINGS');
-  return { staff, bookings, countedFor };
+  const countedFor = (booking, { ignoreAdjustments = false } = {}) => (ignoreAdjustments ? null : moves.get(booking.paymentId)) || countedHere.get(booking.paymentId) || natural(booking, 'SALES_BOOKINGS') || natural(booking, 'COLLECTION_BOOKINGS');
+  return { staff, bookings, adjacentBookings, plan: await loadPlan(db, tenantId), countedFor };
 }
 
 module.exports = { SOURCE, monthBounds, loadPlan, bookingsOf, adjustmentContext, computeMonthlyBonuses, saveMonthlyBonuses };

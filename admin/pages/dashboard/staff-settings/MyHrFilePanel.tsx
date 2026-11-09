@@ -11,7 +11,7 @@ type Gap = { kind: string; label: string; severity: 'high' | 'medium' | 'low' };
 type Doc = { id: string; title: string; category: string; file_name: string | null; expiry_date: string | null; created_at: string };
 type HrFile = {
   profile: { name: string; role: string; department_name: string | null; employment_type: string | null;
-    joined_at: string | null; hire_date: string | null; commission_rate: number | null } | null;
+    joined_at: string | null; hire_date: string | null; commission_rate: number | null; bonus_scheme?: string | null } | null;
   payroll: PayrollPoint[];
   trend: { direction: 'up' | 'down' | 'flat'; changePct: number | null;
     from: string; to: string; fromNet: number; toNet: number } | null;
@@ -57,7 +57,7 @@ function PayTrajectory({ points }: { points: PayrollPoint[] }) {
               <div
                 className="w-8 rounded-t-lg bg-gradient-to-t from-indigo-600 to-indigo-400"
                 style={{ height: `${h}px` }}
-                title={`أساسي ${egp(p.base)} · بدلات ${egp(p.allowances)} · عمولة ${egp(p.commission)} · مكافأة ${egp(p.bonus)} · خصومات ${egp(p.deductions)}`}
+                title={`أساسي ${egp(p.base)} · بدلات ${egp(p.allowances)}${p.commission > 0 ? ` · حوافز مبيعات ${egp(p.commission)}` : ''} · مكافآت ${egp(p.bonus)} · خصومات ${egp(p.deductions)}`}
               />
               <span className="text-[9px] text-gray-400">{monthShort(p.period)}</span>
             </div>
@@ -163,10 +163,12 @@ export default function MyHrFilePanel() {
                 <p className="font-extrabold text-gray-900">{egp(Number(value))} ج.م</p>
               </div>
             ))}
-            <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-2.5">
-              <p className="text-gray-500">نسبة العمولة</p>
-              <p className="font-extrabold text-gray-900">{Number(data.profile?.commission_rate || 0)}%</p>
-            </div>
+            {(!data.profile?.bonus_scheme || data.profile.bonus_scheme === 'NONE') && Number(data.profile?.commission_rate || 0) > 0 && (
+              <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-2.5">
+                <p className="text-gray-500">نسبة العمولة</p>
+                <p className="font-extrabold text-gray-900">{Number(data.profile?.commission_rate || 0)}%</p>
+              </div>
+            )}
           </div>
         )}
       </div>

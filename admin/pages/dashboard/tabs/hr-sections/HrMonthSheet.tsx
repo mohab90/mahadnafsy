@@ -3,10 +3,10 @@
 // department, basic salary, attendance, free day, deductions, the net (or an estimate before the run)
 // and an edit button that opens every part of the employee's month.
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { Award, CalendarCheck, Gavel, Loader2, Pencil, Upload, Wallet } from 'lucide-react';
+import { Award, CalendarCheck, Gavel, Loader2, Pencil, Save, Upload, Wallet } from 'lucide-react';
 import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { departmentRank } from '../../../../../shared/staffDepartment';
-import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { mysqlAdmin, type SheetBonusPlan } from '../../../../lib/mysqlapi';
 import { PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hrLabels';
 import { fmtMoney } from './hrFormat';
 import { useAutoResizableColumns } from '../../../../components/useAutoResizableColumns';
@@ -14,6 +14,7 @@ import HrFingerprintUpload from './HrFingerprintUpload';
 import HrMonthEditModal from './HrMonthEditModal';
 import HrPenaltyModal from './HrPenaltyModal';
 import HrBonusInlineEditor from './HrBonusInlineEditor';
+import { BonusRoundCells, BonusTotalCell, RoundOverrideEditor } from './HrBonusRoundCells';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type AttendanceRow = {
@@ -21,7 +22,9 @@ type AttendanceRow = {
   present_days?: number; absent_days?: number; late_days?: number; total_late_minutes?: number;
   leave_days?: number; deduction_days?: number | string; overtime_days?: number | string; flagged_days?: number; free_days_used?: number; free_days_allowed?: number;
   excused_days?: number; leave_balance?: { entitlement: number; used: number; remaining: number };
-  bonuses?: { approved: number; pending: number; deductionsApproved: number; deductionsPending: number };
+  bonuses?: { approved: number; pending: number; deductionsApproved: number; deductionsPending: number; manualApproved?: number; manualPending?: number; planSaved?: { amount: number; approved: boolean } | null };
+  /** The month's bonus-plan figures: the rounds of a sales rep, the collector's level (null for an employee on no scheme). */
+  bonus_plan?: SheetBonusPlan | null;
 };
 type Run = { id: string; month: number | string; year: number | string; status: string; employee_count?: number };
 type Item = {
@@ -36,7 +39,7 @@ const num = (value: unknown) => Number(value) || 0;
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
 const PAY_MONTH_DAYS = 30; // a day's pay is the month's salary over thirty (api/lib/payrollCalc.js)
 const UNEXCUSED_ABSENCE_DAYS = 2; // a day missed without permission costs two (api/lib/payrollCalc.js)
-const COLUMNS = 14;
+const COLUMNS = 17;
 const HEAD = 'sticky top-0 z-20 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2';
 const STICKY_HEAD = 'sticky top-0 whitespace-nowrap border-b border-gray-200 bg-gray-100 px-3 py-2';
 const CELL = 'whitespace-nowrap border-b border-gray-100 px-3 py-2';
@@ -52,6 +55,8 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [penalising, setPenalising] = useState(false);
   const [editingBonus, setEditingBonus] = useState<string | null>(null);
+  const [editingRound, setEditingRound] = useState<{ id: string; round: number } | null>(null);
+  const [savingBonuses, setSavingBonuses] = useState(false);
   const tableRef = useAutoResizableColumns('hr-month-sheet');
 
   const load = useCallback(async () => {
@@ -93,6 +98,15 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل احتساب المسير');
     } finally { setCalculating(false); }
+  };
+  // The month's bonuses (the rounds, the owner's figures in them) written as bonuses awaiting approval in «اعتمادات المرتبات»: what the round columns show.
+  const saveBonuses = async () => {
+    setSavingBonuses(true);
+    try {
+      const result = await mysqlAdmin.saveMonthlyBonuses(month);
+      notify('success', `اتحفظت مكافآت ${result.written.length} موظف للاعتماد${result.kept.length ? ` — ${result.kept.length} معتمدة قبل كده فاتسابت زي ما هي` : ''}`);
+      await load();
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر حفظ المكافآت'); } finally { setSavingBonuses(false); }
   };
   const setRunStatus = async (status: string) => {
     if (!run) return;
@@ -148,6 +162,11 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
           <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm" />
           <button type="button" onClick={() => setShowUpload(true)} className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"><Upload size={13} /> رفع شيت البصمة</button>
           <button type="button" onClick={() => setPenalising(true)} className="flex items-center gap-1 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-bold text-white"><Gavel size={13} /> خصم جزاء من المدير</button>
+          {canManagePayroll && attendance.some(row => row.bonus_plan) && (
+            <button type="button" onClick={() => void saveBonuses()} disabled={savingBonuses} className="flex items-center gap-1 rounded-xl bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+              {savingBonuses ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} حفظ المكافآت للاعتماد
+            </button>
+          )}
           <button type="button" onClick={() => void calculate()} disabled={calculating || run?.status === 'APPROVED' || run?.status === 'PAID'} className="flex items-center gap-1 rounded-xl bg-slate-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
             {calculating ? <Loader2 size={13} className="animate-spin" /> : <Award size={13} />} {run ? 'أعد حساب المسير' : 'احسب المسير'}
           </button>
@@ -178,7 +197,10 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
               <tr>
                 <th className={`${STICKY_HEAD} right-0 z-30 min-w-[210px] border-l border-gray-200`}>الموظف</th>
                 <th className={`${HEAD} min-w-[130px] text-gray-800`}>صافي المرتب</th>
-                <th className={`${HEAD} min-w-[230px] text-emerald-700`}>المكافآت والعمولة</th>
+                <th className={`${HEAD} min-w-[150px] text-emerald-700`}>مكافأة الروند الأولى</th>
+                <th className={`${HEAD} min-w-[150px] text-emerald-700`}>مكافأة الروند الثانية</th>
+                <th className={`${HEAD} min-w-[150px] text-emerald-700`}>إجمالي المكافآت</th>
+                <th className={`${HEAD} min-w-[210px] text-emerald-700`}>مكافآت يدوية وإضافي</th>
                 <th className={`${HEAD} min-w-[110px] text-red-600`}>الخصومات</th>
                 <th className={`${HEAD} min-w-[130px]`}>الإجمالي قبل الخصم</th>
                 <th className={`${HEAD} min-w-[110px]`}>الراتب الأساسي</th>
@@ -205,6 +227,7 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                   {members.map(({ row, item, deductions, estimate, gross, overtimePay }) => {
                     const bonus = row.bonuses || { approved: 0, pending: 0, deductionsApproved: 0, deductionsPending: 0 };
                     const open = editingBonus === row.id;
+                    const roundOpen = editingRound?.id === row.id ? row.bonus_plan?.rounds?.find(round => round.round === editingRound.round) : undefined;
                     const nothing = !(item && num(item.commission)) && !bonus.approved && !bonus.pending && !bonus.deductionsApproved && !bonus.deductionsPending && !num(row.overtime_days);
                     return (
                       <Fragment key={row.id}>
@@ -218,10 +241,12 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                               : estimate !== null ? <span className="text-sm font-semibold text-gray-500" title="تقدير من الراتب الأساسي والغياب والخصم — احسب المسير لتثبيته">≈ {fmtMoney(Math.round(estimate))}</span>
                                 : <span className="text-xs font-normal text-gray-400">{row.base_salary ? 'لسه ما اتحسبش' : 'من غير راتب أساسي'}</span>}
                           </td>
+                          <BonusRoundCells plan={row.bonus_plan || null} canEdit={canManageFinance} onEdit={round => setEditingRound({ id: row.id, round })} />
+                          <BonusTotalCell plan={row.bonus_plan || null} bonuses={row.bonuses} />
                           <td className={`${CELL} tabular-nums`}>
                             <div className="flex items-start justify-between gap-2">
                               <div className="space-y-0.5 text-xs">
-                                {item && num(item.commission) > 0 && <p className="text-emerald-700">عمولة +{fmtMoney(num(item.commission))}</p>}
+                                {item && num(item.commission) > 0 && <p className="text-emerald-700">حوافز مبيعات +{fmtMoney(num(item.commission))}</p>}
                                 {bonus.approved > 0 && <p className="font-bold text-emerald-700">مكافأة +{fmtMoney(bonus.approved)}</p>}
                                 {bonus.pending > 0 && <p className="text-amber-600">مستنية الاعتماد +{fmtMoney(bonus.pending)}</p>}
                                 {bonus.deductionsApproved + bonus.deductionsPending > 0 && <p className="text-red-600">خصم إضافي −{fmtMoney(bonus.deductionsApproved + bonus.deductionsPending)}{bonus.deductionsPending ? ' (جزء مستني)' : ''}</p>}
@@ -251,6 +276,15 @@ export default function HrMonthSheet({ notify, canManageFinance, canManagePayrol
                             <button type="button" onClick={() => setEditing({ id: row.id, name: row.name })} className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"><Pencil size={12} /> تعديل</button>
                           </td>
                         </tr>
+                        {roundOpen && (
+                          <tr>
+                            <td colSpan={COLUMNS} className="border-b border-indigo-100 bg-indigo-50/40 p-0">
+                              <div className="sticky right-0 w-[min(calc(100vw-4rem),760px)] p-3">
+                                <RoundOverrideEditor staffId={row.id} name={row.name} month={month} round={roundOpen} notify={notify} onSaved={() => void load()} onClose={() => setEditingRound(null)} />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                         {open && (
                           <tr>
                             <td colSpan={COLUMNS} className="border-b border-emerald-100 bg-emerald-50/40 p-0">

@@ -207,6 +207,15 @@ test('a target earner is not paid a percentage of what they collected', () => {
   assert.equal(computePayrollLine({ ...EMP, commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000, 'a row from before commission_type keeps its rate');
 });
 
+test('9 Nov 2026: an employee on a bonus scheme is not paid a percentage of what they sold on top of the monthly bonus', () => {
+  const sales = { totalSales: 40000, crmCommission: null };
+  for (const bonus_scheme of ['SALES_BOOKINGS', 'COLLECTION', 'COLLECTION_BOOKINGS']) {
+    assert.equal(computePayrollLine({ ...EMP, bonus_scheme, commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 0, bonus_scheme);
+  }
+  assert.equal(computePayrollLine({ ...EMP, bonus_scheme: 'NONE', commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000, 'no scheme: the rate stands');
+  assert.equal(computePayrollLine({ ...EMP, bonus_scheme: 'SALES_BOOKINGS', commission_rate: 10 }, { ...CTX, totalSales: 40000, crmCommission: { amt: 900, cnt: 3 } }).commission, 900, 'commission rules written at payment time are not the flat rate');
+});
+
 test('4 Nov 2026: a day missed without permission costs two days of pay, a day missed with permission costs one', () => {
   const pay = attendance => computePayrollLine(EMP, { ...CTX, baseSalary: 9000, attendance });
   const excused = pay({ absent_days: 2, unexcused_absent_days: 0 });

@@ -2,7 +2,8 @@
 /**
  * 2 Nov 2026, «خلي كل موظف يشوف كل التفاصيل بتاعت الراتب بتاعه غيابات واذونات وغيره»: GET /api/staff/me/month-detail answers the signed-in employee's own
  * month — every judged day, the permissions and leave, the bonus with required and reached, the payslip once approved — and never another employee's.
- * Runs only with DB_* (or TEST_DB_*).
+ * 9 Nov 2026: the month's money — bonuses with their reasons, the payslip line by line — is answered only once management has APPROVED the month's payroll run: not a
+ * pending bonus, not a calculated-but-unapproved run. Runs only with DB_* (or TEST_DB_*).
  */
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -68,8 +69,21 @@ test('the employee sees every judged day of the month, the permission, the leave
   assert.equal(body.days[2].permit, 'morning');
   assert.deepEqual(body.summary, { present: 2, absent: 1, lateDays: 2, lateMinutes: 110, deductionDays: 0.25, oneStamp: 0 });
   assert.deepEqual(body.leaves.map(l => [l.type, l.status, l.from, l.startTime, l.endTime]), [['LATE_PERMIT', 'APPROVED', '2026-10-04', '11:00', '12:30']]);
-  assert.deepEqual(body.bonuses.map(b => [b.amount, b.status, b.targetValue, b.achievedValue, b.targetUnit]), [[500, 'PENDING', 20, 23, 'clients']]);
+  assert.deepEqual(body.bonuses, [], 'a bonus still waiting for approval is not shown');
   assert.equal(body.payslip, null, 'no approved payroll for the month yet');
+});
+
+test('a calculated run that management has not approved shows no money either', { skip }, async () => {
+  await pool.query("INSERT INTO payroll_runs (id, tenant_id, month, year, status, branch_id) VALUES ('mm-run-calc', ?, 10, 2026, 'CALCULATED', 'branch-calc')", [T]);
+  await pool.query(
+    `INSERT INTO payroll_items (id, payroll_run_id, staff_id, tenant_id, base_salary, total_allowances, commission, bonus, late_deductions, absence_deductions, advance_deductions, other_deductions, net_salary)
+     VALUES ('mm-pi-calc', 'mm-run-calc', 'mm-sara', ?, 6000, 0, 0, 500, 0, 0, 0, 0, 6500)`, [T]);
+  await pool.query("UPDATE employee_bonuses SET status='APPROVED' WHERE id='mm-b-sara'");
+  const { body } = await detail('mm1@x.t');
+  assert.deepEqual([body.payslip, body.bonuses], [null, []], 'approved bonus, calculated run: nothing yet');
+  await pool.query("DELETE FROM payroll_items WHERE id='mm-pi-calc'");
+  await pool.query("DELETE FROM payroll_runs WHERE id='mm-run-calc'");
+  await pool.query("UPDATE employee_bonuses SET status='PENDING' WHERE id='mm-b-sara'");
 });
 
 test('the payslip appears once the month\'s payroll is approved, with every line', { skip }, async () => {
@@ -79,9 +93,10 @@ test('the payslip appears once the month\'s payroll is approved, with every line
      VALUES ('mm-pi', 'mm-run', 'mm-sara', ?, 6000, 0, 300, 500, 'حققت التارجت', 75, 200, 0, 0, 6525)`, [T]);
   const { body } = await detail('mm1@x.t');
   assert.deepEqual(body.payslip, {
-    status: 'APPROVED', base: 6000, allowances: 0, commission: 300, bonus: 500, bonusNote: 'حققت التارجت', lateDeduction: 75, absenceDeduction: 200,
-    advanceDeduction: 0, otherDeduction: 0, deductionsNote: null, net: 6525,
-  });
+    status: 'APPROVED', base: 6000, allowances: 0, commission: 300, overtime: 0, bonus: 500, bonusNote: 'حققت التارجت', lateDeduction: 75, absenceDeduction: 200,
+    advanceDeduction: 0, administrativeDeduction: 0, insuranceAndTax: 0, otherDeduction: 0, deductionsNote: null,
+    bonusLines: [{ id: null, kind: 'plan', label: 'مكافآت أخرى اتحسبت في المسير', amount: 500, reason: 'حققت التارجت', currency: 'EGP' }], deductionLines: [], net: 6525,
+  }, 'a bonus still pending when the run was calculated is said as the difference, so the lines add up');
   const other = (await detail('mm2@x.t')).body;
   assert.equal(other.payslip, null, 'another employee sees none of it');
   assert.deepEqual(other.leaves.map(l => l.type), ['ANNUAL']);
@@ -91,4 +106,35 @@ test('the payslip appears once the month\'s payroll is approved, with every line
 test('an unknown month is refused and a stranger has no record', { skip }, async () => {
   assert.equal((await detail('mm1@x.t', { month: 13, year: 2026 })).statusCode, 400);
   assert.equal((await detail('nobody@x.t')).statusCode, 404);
+});
+
+test('once approved the payslip reads line by line: the rounds with their reasons, the manual bonus, the manager deduction, the net — and only the employee own', { skip }, async () => {
+  await pool.query("DELETE FROM employee_bonuses WHERE id='mm-b-omar'");
+  const calc = JSON.stringify({
+    ladder: { bookings: 17, amount: 1400, rounds: [
+      { round: 1, label: '1–15', bookings: 11, amount: 1000, computedAmount: 1000 },
+      { round: 2, label: '16–31', bookings: 6, amount: 400, computedAmount: 0, override: { reason: 'قرار الإدارة' } }] },
+  });
+  await pool.query(
+    `INSERT INTO employee_bonuses (id, tenant_id, staff_id, type, amount, status, for_month, for_year, source, reason, calc_json, currency) VALUES
+       ('mm-plan', ?, 'mm-omar', 'bonus', 1400, 'APPROVED', 10, 2026, 'BONUS_PLAN', 'مكافأة شهر 10', ?, 'EGP'),
+       ('mm-hand', ?, 'mm-omar', 'bonus', 300, 'APPROVED', 10, 2026, 'MONTH_SHEET', 'شغل إضافي في المعرض', NULL, 'EGP'),
+       ('mm-pen', ?, 'mm-omar', 'deduction', 150, 'APPROVED', 10, 2026, 'MONTH_SHEET', 'مخالفة التعليمات', NULL, 'EGP'),
+       ('mm-wait', ?, 'mm-omar', 'bonus', 999, 'PENDING', 10, 2026, 'MONTH_SHEET', 'لسه ما اتعتمدتش', NULL, 'EGP')`, [T, calc, T, T, T]);
+  await pool.query(
+    `INSERT INTO payroll_items (id, payroll_run_id, staff_id, tenant_id, base_salary, total_allowances, commission, bonus, late_deductions, absence_deductions, advance_deductions, other_deductions, net_salary, calculation_details)
+     VALUES ('mm-pi2', 'mm-run', 'mm-omar', ?, 9000, 0, 0, 1700, 90, 300, 0, 150, 10160, '{"deductionTotal":150,"dedSocial":0,"dedTax":0,"overtimePay":0}')`, [T]);
+  const { body } = await detail('mm2@x.t');
+  const pay = body.payslip;
+  assert.deepEqual([pay.base, pay.lateDeduction, pay.absenceDeduction, pay.administrativeDeduction, pay.net], [9000, 90, 300, 150, 10160]);
+  assert.deepEqual(pay.bonusLines.map(line => [line.kind, line.label, line.amount, line.reason]), [
+    ['round', 'مكافأة الروند الأول (1–15)', 1000, '11 حجز'],
+    ['round', 'مكافأة الروند التاني (16–31)', 400, '6 حجز — اتعدلت من الإدارة: قرار الإدارة'],
+    ['manual', 'مكافأة', 300, 'شغل إضافي في المعرض'],
+  ]);
+  assert.equal(pay.bonusLines.reduce((sum, line) => sum + line.amount, 0), pay.bonus, 'the lines add up to the bonus on the payslip');
+  assert.deepEqual(pay.deductionLines.map(line => [line.label, line.amount, line.reason]), [['خصم إداري', 150, 'مخالفة التعليمات']]);
+  assert.deepEqual(body.bonuses.map(b => b.id).sort(), ['mm-hand', 'mm-pen', 'mm-plan'], 'the one still waiting is not listed');
+  const sara = (await detail('mm1@x.t')).body;
+  assert.equal(JSON.stringify(sara).includes('mm-plan') || JSON.stringify(sara).includes('قرار الإدارة'), false, 'nothing of the other employee');
 });

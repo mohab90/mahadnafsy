@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { BadgeCheck, Banknote, FileText, Loader2 } from 'lucide-react';
-import { mysqlAdmin, type BonusLevel } from '../../lib/mysqlapi';
+import { mysqlAdmin } from '../../lib/mysqlapi';
+import BonusSchemeFields, { schemeDraftOf, schemePayload } from '../dashboard/tabs/hr-sections/BonusSchemeFields';
 import PromptModal from '../../../shared/ui/PromptModal';
 import { cairoDay } from '../../../shared/cairoDate';
 
@@ -30,14 +31,6 @@ const COMMISSION_LABELS: Record<string, string> = {
   NONE: 'بدون عمولة',
   PERCENT: 'نسبة من المبيعات',
   TARGET: 'تارجيت شهري محدد',
-};
-
-// «نظام المكافآت» (api/lib/bonusPlan.js): what the month's bonus is worked out on. The plan's own numbers are on HR → «نظام المكافآت».
-const BONUS_SCHEMES: Record<string, string> = {
-  NONE: 'بدون مكافأة شهرية',
-  SALES_BOOKINGS: 'حجوزات (سيلز): سلّم التارجيت',
-  COLLECTION: 'تحصيل: ليفلات على فلوس التحصيل',
-  COLLECTION_BOOKINGS: 'تحصيل + حجوزات: ليفلات + مكافأة الكورس (الريسبشن)',
 };
 
 /**
@@ -70,9 +63,7 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
           commissionType: payRow.commissionType || 'NONE',
           commissionRate: payRow.commissionRate == null ? '' : String(payRow.commissionRate),
           monthlyTarget: payRow.monthlyTarget == null ? '' : String(payRow.monthlyTarget),
-          bonusScheme: payRow.bonusScheme || 'NONE',
-          bookingFirstTarget: payRow.bookingFirstTarget == null ? '' : String(payRow.bookingFirstTarget),
-          collectionLevels: (payRow.collectionLevels || []).map(level => ({ from: String(level.from), kind: level.kind, value: String(level.value) })),
+          ...schemeDraftOf(payRow),
         });
       } catch {
         notify('error', 'تعذّر تحميل ملف الموظف');
@@ -126,12 +117,7 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
           commissionType: pay.commissionType,
           commissionRate: num(pay.commissionRate),
           monthlyTarget: num(pay.monthlyTarget),
-          bonusScheme: pay.bonusScheme,
-          bookingFirstTarget: pay.bonusScheme === 'SALES_BOOKINGS' ? num(pay.bookingFirstTarget) : null,
-          collectionLevels: pay.bonusScheme.startsWith('COLLECTION')
-            ? pay.collectionLevels.filter(level => level.from.trim() !== '' && level.value.trim() !== '')
-              .map((level): BonusLevel => ({ from: Number(level.from), kind: level.kind, value: Number(level.value) }))
-            : [],
+          ...schemePayload(pay),
         });
         notify('success', `تم حفظ بيانات راتب ${staffName}`);
         await load();
@@ -222,7 +208,7 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
         {pay && (
           <section className="rounded-2xl border border-gray-200 bg-white p-4">
             <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900">
-              <Banknote size={16} className="text-emerald-600" /> الراتب والعمولة
+              <Banknote size={16} className="text-emerald-600" /> الراتب والمكافآت
             </h3>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -233,6 +219,7 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
                   className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" placeholder="غير محدد" />
               </label>
 
+              {pay.bonusScheme === 'NONE' && (
               <label className="block">
                 <span className="mb-1 block text-xs font-bold text-gray-600">نظام العمولة</span>
                 <select value={pay.commissionType}
@@ -243,10 +230,11 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
                   ))}
                 </select>
               </label>
+              )}
 
               {/* Only the field the chosen system actually uses is shown; the
                   other one is not a setting that applies. */}
-              {pay.commissionType === 'PERCENT' && (
+              {pay.bonusScheme === 'NONE' && pay.commissionType === 'PERCENT' && (
                 <label className="block">
                   <span className="mb-1 block text-xs font-bold text-gray-600">النسبة (%)</span>
                   <input type="number" min="0" max="100" step="0.5" dir="ltr" value={pay.commissionRate}
@@ -254,7 +242,7 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
                     className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" placeholder="مثال: 5" />
                 </label>
               )}
-              {pay.commissionType === 'TARGET' && (
+              {pay.bonusScheme === 'NONE' && pay.commissionType === 'TARGET' && (
                 <label className="block">
                   <span className="mb-1 block text-xs font-bold text-gray-600">التارجيت الشهري (ج.م)</span>
                   <input type="number" min="0" dir="ltr" value={pay.monthlyTarget}
@@ -264,57 +252,11 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
               )}
             </div>
 
-            {/* ── The month's bonus ── */}
+            {/* ── The month's bonus: the half-month rounds (sales), the levels (collection) ── */}
             <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/40 p-3">
-              <label className="block">
-                <span className="mb-1 block text-xs font-bold text-gray-700">المكافأة الشهرية</span>
-                <select value={pay.bonusScheme}
-                  onChange={e => setPay(p => (p ? { ...p, bonusScheme: e.target.value } : p))}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
-                  {Object.entries(BONUS_SCHEMES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
-              {pay.bonusScheme === 'SALES_BOOKINGS' && (
-                <label className="mt-3 block">
-                  <span className="mb-1 block text-xs font-bold text-gray-600">أول تارجيت (عدد حجوزات)</span>
-                  <select value={pay.bookingFirstTarget}
-                    onChange={e => setPay(p => (p ? { ...p, bookingFirstTarget: e.target.value } : p))}
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
-                    <option value="">— اختار —</option>
-                    {['10', '15', '20', '25', '30'].map(value => <option key={value} value={value}>{value} حجز</option>)}
-                  </select>
-                  <span className="mt-1 block text-[11px] text-gray-500">تحت أول تارجيت مفيش مكافأة. سلّم التارجيت وعدد حجوزات كل كورس في الموارد البشرية ← «نظام المكافآت».</span>
-                </label>
-              )}
-              {pay.bonusScheme.startsWith('COLLECTION') && (
-                <div className="mt-3 space-y-2">
-                  <span className="block text-xs font-bold text-gray-600">ليفلات التحصيل — الليفل اللي التحصيل يوصله بيتطبق على تحصيل الشهر كله</span>
-                  {pay.collectionLevels.map((level, index) => (
-                    <div key={index} className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-gray-500">من</span>
-                      <input type="number" min="0" dir="ltr" value={level.from} placeholder="مثلاً 50000"
-                        onChange={e => setPay(p => (p ? { ...p, collectionLevels: p.collectionLevels.map((item, i) => (i === index ? { ...item, from: e.target.value } : item)) } : p))}
-                        className="w-28 rounded-lg border border-gray-200 px-2 py-1 text-sm" />
-                      <span className="text-xs text-gray-500">ج.م ←</span>
-                      <select value={level.kind}
-                        onChange={e => setPay(p => (p ? { ...p, collectionLevels: p.collectionLevels.map((item, i) => (i === index ? { ...item, kind: e.target.value as 'percent' | 'fixed' } : item)) } : p))}
-                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm">
-                        <option value="percent">نسبة %</option>
-                        <option value="fixed">مبلغ ثابت</option>
-                      </select>
-                      <input type="number" min="0" dir="ltr" value={level.value} placeholder={level.kind === 'percent' ? '2' : '1000'}
-                        onChange={e => setPay(p => (p ? { ...p, collectionLevels: p.collectionLevels.map((item, i) => (i === index ? { ...item, value: e.target.value } : item)) } : p))}
-                        className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm" />
-                      <button type="button" onClick={() => setPay(p => (p ? { ...p, collectionLevels: p.collectionLevels.filter((_, i) => i !== index) } : p))}
-                        className="rounded-lg px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50">حذف</button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setPay(p => (p ? { ...p, collectionLevels: [...p.collectionLevels, { from: '', kind: 'percent', value: '' }] } : p))}
-                    className="rounded-lg bg-white px-3 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50">+ ليفل</button>
-                  {pay.bonusScheme === 'COLLECTION_BOOKINGS' && (
-                    <span className="block text-[11px] text-gray-500">وكل حجز بيسجّله بياخد مكافأة الريسبشن المسجّلة في صفحة الكورس نفسه.</span>
-                  )}
-                </div>
+              <BonusSchemeFields value={pay} onChange={patch => setPay(p => (p ? { ...p, ...patch } : p))} />
+              {pay.bonusScheme !== 'NONE' && (
+                <p className="mt-2 text-[11px] text-gray-500">الموظف ده مكافأته من نظام المكافآت، فمفيش عمولة ولا تارجت شهري ليه. سلّم التارجيت وعدد حجوزات كل كورس في الموارد البشرية ← «نظام المكافآت».</p>
               )}
             </div>
 

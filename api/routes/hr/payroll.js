@@ -15,6 +15,8 @@ const { freeDaysFor } = require('../../lib/attendancePolicy');
 const { departmentOf } = require('../../lib/staffDepartment');
 const { leaveBalances } = require('../../lib/leaveBalance');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { computeMonthlyBonuses } = require('../../lib/monthlyBonuses');
+const { sheetFiguresOf } = require('../../lib/roundProgress');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
 // add. The panel adds four deductions together and totals the column; against
@@ -165,7 +167,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
 
     // Get all active staff with salary structures
     const [employees] = await conn.query(`
-      SELECT s.id AS staff_id, s.name, s.commission_rate, s.commission_type, s.base_salary AS staff_base_salary,
+      SELECT s.id AS staff_id, s.name, s.commission_rate, s.commission_type, s.bonus_scheme, s.base_salary AS staff_base_salary,
         ss.base_salary, ss.housing_allowance, ss.transport_allowance,
         ss.food_allowance, ss.other_fixed, ss.deduction_social_insurance, ss.deduction_tax,
         ss.other_allowances_json,ss.currency AS salary_currency
@@ -1028,7 +1030,7 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
         COUNT(a.review_flag) AS flagged_days,
         COUNT(CASE WHEN a.permit_used='free_day' THEN 1 END) AS free_days_used,
         COUNT(CASE WHEN a.permit_used='leave_balance' THEN 1 END) AS balance_days_used,
-        s.biometric_user_no, s.base_salary, s.free_days_per_month, COALESCE(s.hire_date, s.joined_at) AS hired,
+        s.biometric_user_no, s.base_salary, s.free_days_per_month, s.bonus_scheme, COALESCE(s.hire_date, s.joined_at) AS hired,
         COUNT(a.id) AS total_records
       FROM staff s
       LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
@@ -1044,17 +1046,35 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
     const balances = await leaveBalances(pool, { tenantId: req.tenantId, year: y, entitlement: Number(policy.annual_leave_days) || 21 });
     // The month's bonuses and extra deductions per employee, approved and still waiting (9 Nov 2026: the month sheet shows them beside the net).
     const [bonusRows] = rows.length ? await pool.query(
-      `SELECT staff_id, type, status, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS n FROM employee_bonuses
+      `SELECT staff_id, type, status, source = 'BONUS_PLAN' AS from_plan, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS n FROM employee_bonuses
         WHERE tenant_id=? AND for_year=? AND for_month=? AND status IN ('APPROVED','PENDING') AND staff_id IN (?)
-        GROUP BY staff_id, type, status`, [req.tenantId, y, m, rows.map(row => row.id)]) : [[]];
+        GROUP BY staff_id, type, status, from_plan`, [req.tenantId, y, m, rows.map(row => row.id)]) : [[]];
     const bonusesOf = id => {
       const mine = bonusRows.filter(row => row.staff_id === id);
-      const sum = (type, status) => Number(mine.find(row => row.type === type && row.status === status)?.amount || 0);
-      return { approved: sum('bonus', 'APPROVED'), pending: sum('bonus', 'PENDING'), deductionsApproved: sum('deduction', 'APPROVED'), deductionsPending: sum('deduction', 'PENDING') };
+      const sum = (type, status, fromPlan = null) => mine.filter(row => row.type === type && row.status === status && (fromPlan === null || Boolean(Number(row.from_plan)) === fromPlan))
+        .reduce((total, row) => total + Number(row.amount || 0), 0);
+      // «manual» are the ones typed by hand (± مكافأة); «plan» is what the bonus plan's monthly calculation saved, which the sheet's own round columns show.
+      return {
+        approved: sum('bonus', 'APPROVED'), pending: sum('bonus', 'PENDING'), deductionsApproved: sum('deduction', 'APPROVED'), deductionsPending: sum('deduction', 'PENDING'),
+        manualApproved: sum('bonus', 'APPROVED', false), manualPending: sum('bonus', 'PENDING', false),
+        planSaved: mine.some(row => row.type === 'bonus' && Boolean(Number(row.from_plan)))
+          ? { amount: sum('bonus', 'APPROVED', true) + sum('bonus', 'PENDING', true), approved: sum('bonus', 'APPROVED', true) > 0 } : null,
+      };
     };
+    // The bonus plan's month for every employee on a scheme (the rounds of the reps, the collectors' level): the same figures «نظام المكافآت» shows. A failure here
+    // must not take the attendance sheet down with it.
+    let planOf = () => null;
+    if (rows.some(row => row.bonus_scheme && row.bonus_scheme !== 'NONE')) {
+      try {
+        const month = await computeMonthlyBonuses(pool, { tenantId: req.tenantId, year: y, month: m });
+        const byStaff = new Map(month.employees.map(employee => [employee.staffId, sheetFiguresOf(employee)]));
+        planOf = id => byStaff.get(id) || null;
+      } catch (error) { logger.error('[hr/payroll] bonus plan month', error.message); }
+    }
     res.json(rows.map(({ hired, ...row }) => ({
       ...row,
       bonuses: bonusesOf(row.id),
+      bonus_plan: planOf(row.id),
       leave_balance: balances.get(row.id) || { entitlement: Number(policy.annual_leave_days) || 21, annualLeaveDays: 0, freeDays: 0, balanceDays: 0, used: 0, remaining: Number(policy.annual_leave_days) || 21 },
       // HR has not filled departments in: the job says where the employee sits (lib/staffDepartment.js).
       department_name: departmentOf({ departmentName: row.department_name, role: row.role }),
