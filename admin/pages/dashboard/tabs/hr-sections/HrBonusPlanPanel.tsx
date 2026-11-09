@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Award, Calculator, Loader2, Save } from 'lucide-react';
-import { mysqlAdmin, type BonusPlan, type MonthlyBonuses } from '../../../../lib/mysqlapi';
-import { cairoMonthOnly } from '../../../../../shared/cairoDate';
+import { mysqlAdmin, type BonusAdjustmentKind, type BonusPlan, type MonthlyBonuses } from '../../../../lib/mysqlapi';
+import HrSalesSheetReconcile from './HrSalesSheetReconcile';
+import HrCollectionSheetReconcile from './HrCollectionSheetReconcile';
+import { cairoDateTime, cairoMonthOnly } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Item = { kind: 'course' | 'track'; id: string; title: string; priceEgp: number; weight: number };
+/** A change to the month being written: what it is about, and the reason (required). */
+type Draft = { kind: BonusAdjustmentKind; label: string; staffId?: string; paymentId?: string; toStaffId: string; weight: string; amount: string; splitDay: string; reason: string };
 
 const n = (value: number | null | undefined) => (value == null ? '—' : Number(value).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 }));
 const input = 'w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm';
@@ -26,6 +30,8 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
   const [result, setResult] = useState<MonthlyBonuses | null>(null);
   const [working, setWorking] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [taking, setTaking] = useState<{ id: string; reason: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -61,6 +67,35 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذّر التسجيل'); } finally { setWorking(false); }
   };
 
+  // The owner's changes to the month (manage_financial): written with a reason, the month worked out again with them, taken back the same way.
+  const startDraft = (kind: BonusAdjustmentKind, label: string, ids: { staffId?: string; paymentId?: string }, preset: Partial<Draft> = {}) =>
+    setDraft({ kind, label, ...ids, toStaffId: '', weight: '', amount: '', splitDay: '', reason: '', ...preset });
+  const submitDraft = async () => {
+    if (!draft) return;
+    if (draft.reason.trim().length < 3) { notify('error', 'اكتب سبب التعديل'); return; }
+    setWorking(true);
+    try {
+      await mysqlAdmin.addBonusAdjustment({
+        month, kind: draft.kind, reason: draft.reason.trim(), staffId: draft.staffId, paymentId: draft.paymentId,
+        toStaffId: draft.kind === 'REASSIGN_BOOKING' ? draft.toStaffId : undefined,
+        splitDay: draft.kind === 'ROUND_SPLIT' ? Number(draft.splitDay) : undefined,
+        weight: draft.kind === 'WEIGHT_BOOKING' ? Number(draft.weight) : undefined, amount: draft.kind === 'TOTAL_OVERRIDE' ? Number(draft.amount) : undefined,
+      });
+      setDraft(null);
+      notify('success', 'اتسجّل التعديل واتحسب الشهر من جديد');
+      setResult(await mysqlAdmin.getMonthlyBonuses(month));
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذّر التعديل'); } finally { setWorking(false); }
+  };
+  const takeBack = async (id: string, reason: string) => {
+    setWorking(true);
+    try {
+      await mysqlAdmin.revokeBonusAdjustment(id, reason);
+      setTaking(null);
+      notify('success', 'اتلغى التعديل');
+      setResult(await mysqlAdmin.getMonthlyBonuses(month));
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذّر الإلغاء'); } finally { setWorking(false); }
+  };
+
   const weightRows = useMemo(() => plan?.bookingWeights ?? [], [plan]);
   if (!plan) return <div className="flex items-center justify-center gap-2 p-8 text-sm text-gray-400"><Loader2 size={16} className="animate-spin" /> جاري التحميل…</div>;
   const disabled = !canEditPlan;
@@ -73,6 +108,12 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
         <div className="flex flex-wrap items-center gap-2">
           <input type="month" dir="ltr" value={month} onChange={e => setMonth(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm" />
           <button type="button" onClick={work} disabled={working} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{working ? 'بيحسب…' : 'احسب'}</button>
+          {result && result.plan.salesPeriod === 'HALF_MONTH' && (
+            <span className="flex items-center gap-1.5 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-700">
+              الروند التاني للكل بيبدأ يوم <b>{result.splitDay}</b>{result.splitDay === 16 && ' (الأساسي)'}
+              {canEditPlan && <button type="button" className="font-bold text-indigo-600" onClick={() => startDraft('ROUND_SPLIT', 'يوم بداية الروند التاني لكل السيلز في الشهر ده', {}, { splitDay: String(result.splitDay) })}>غيّر</button>}
+            </span>
+          )}
           {result && result.employees.some(item => item.total > 0) && (
             <button type="button" onClick={saveMonth} disabled={working} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">
               سجّلها مكافآت مستنية الاعتماد
@@ -95,24 +136,53 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                         <td className="p-2 font-bold">
                           <button type="button" onClick={() => setOpen(open === item.staffId ? null : item.staffId)} className="text-right hover:underline">{item.name}</button>
                         </td>
-                        <td className="p-2 text-xs text-gray-600">{item.schemeLabel}</td>
+                        <td className="p-2 text-xs text-gray-600">
+                          {item.schemeLabel}
+                          {item.splitDay != null && (
+                            <div className="text-[11px] text-gray-500">
+                              الروند التاني من يوم {item.splitDay}{item.splitSource === 'rep' && ' (استثناء ليه)'}
+                              {canEditPlan && <button type="button" className="mr-1 font-bold text-indigo-600" onClick={() => startDraft('ROUND_SPLIT', `استثناء: يوم بداية الروند التاني لـ${item.name} (بدل تقسيم الشهر)`, { staffId: item.staffId }, { splitDay: String(item.splitDay) })}>غيّر</button>}
+                            </div>
+                          )}
+                        </td>
                         <td className="p-2 text-xs text-gray-700">{item.summary}</td>
-                        <td className="p-2 font-extrabold text-emerald-700">{n(item.total)}</td>
+                        <td className="p-2 font-extrabold text-emerald-700">
+                          {n(item.total)}
+                          {item.override && <span className="mr-1 text-[11px] font-normal text-gray-400 line-through" title="المحسوب من السيستم">{n(item.computedTotal)}</span>}
+                          {item.override && <span className="mr-1 rounded bg-amber-50 px-1 text-[10px] font-bold text-amber-700" title={item.override.reason}>معدّل</span>}
+                          {canEditPlan && (
+                            <button type="button" className="mr-2 text-[11px] font-bold text-indigo-600"
+                              onClick={() => startDraft('TOTAL_OVERRIDE', `إجمالي مكافأة ${item.name} (المحسوب ${n(item.computedTotal)})`, { staffId: item.staffId }, { amount: String(item.total) })}>عدّل الإجمالي</button>
+                          )}
+                        </td>
                       </tr>
                       {open === item.staffId && item.bookings.length > 0 && (
                         <tr><td colSpan={4} className="bg-gray-50 p-2">
                           <table className="w-full text-xs">
-                            <thead className="text-gray-500"><tr><th className="p-1 text-right">اليوم</th>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <th className="p-1 text-right">الروند</th>}<th className="p-1 text-right">العميل</th><th className="p-1 text-right">الكورس / المسار</th><th className="p-1 text-right">السعر</th><th className="p-1 text-right">بالمصري</th><th className="p-1 text-right">{item.scheme === 'SALES_BOOKINGS' ? 'يتحسب حجز' : 'مكافأة الكورس'}</th></tr></thead>
+                            <thead className="text-gray-500"><tr><th className="p-1 text-right">اليوم</th>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <th className="p-1 text-right">الروند</th>}<th className="p-1 text-right">العميل</th><th className="p-1 text-right">الكورس / المسار</th><th className="p-1 text-right">السعر</th><th className="p-1 text-right">بالمصري</th><th className="p-1 text-right">{item.scheme === 'SALES_BOOKINGS' ? 'يتحسب حجز' : 'مكافأة الكورس'}</th>{canEditPlan && <th className="p-1 text-right">تعديل</th>}</tr></thead>
                             <tbody>
                               {item.bookings.map(booking => (
                                 <tr key={booking.paymentId} className="border-t border-gray-100">
                                   <td className="p-1" dir="ltr">{booking.day}</td>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <td className="p-1">{booking.round}</td>}<td className="p-1">{booking.client} {booking.clientCode && <span className="text-gray-400">({booking.clientCode})</span>}</td>
                                   <td className="p-1">{booking.title}</td><td className="p-1">{n(booking.price)} {booking.currency}</td><td className="p-1">{n(booking.priceEgp)}</td>
-                                  <td className="p-1 font-bold">{item.scheme === 'SALES_BOOKINGS' ? n(booking.weight) : n(booking.deskBonus)}</td>
+                                  <td className="p-1 font-bold">
+                                    {item.scheme === 'SALES_BOOKINGS' ? n(booking.weight) : n(booking.deskBonus)}
+                                    {booking.computedWeight != null && <span className="mr-1 font-normal text-gray-400 line-through" title="المحسوب من السعر">{n(booking.computedWeight)}</span>}
+                                  </td>
+                                  {canEditPlan && (
+                                    <td className="p-1 whitespace-nowrap">
+                                      <button type="button" className="ml-2 font-bold text-rose-600" onClick={() => startDraft('EXCLUDE_BOOKING', `استبعاد حجز ${booking.client} من ${item.name}`, { staffId: item.staffId, paymentId: booking.paymentId })}>استبعد</button>
+                                      {item.scheme === 'SALES_BOOKINGS' && <button type="button" className="ml-2 font-bold text-indigo-600" onClick={() => startDraft('REASSIGN_BOOKING', `نقل حجز ${booking.client} من ${item.name}`, { paymentId: booking.paymentId })}>انقل</button>}
+                                      {item.scheme === 'SALES_BOOKINGS' && <button type="button" className="font-bold text-amber-700" onClick={() => startDraft('WEIGHT_BOOKING', `عدد الحجوزات اللي حجز ${booking.client} بيتحسب بيها`, { paymentId: booking.paymentId }, { weight: String(booking.weight ?? '') })}>العدد</button>}
+                                    </td>
+                                  )}
                                 </tr>
                               ))}
                             </tbody>
                           </table>
+                          {item.excludedBookings.length > 0 && (
+                            <p className="mt-1 text-[11px] text-rose-700">مستبعد من حسابه: {item.excludedBookings.map(b => `${b.client} (${b.title})`).join('، ')}</p>
+                          )}
                         </td></tr>
                       )}
                     </React.Fragment>
@@ -125,9 +195,60 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
               الحجز = أول دفعة مدفوعة للعميل في الكورس أو المسار في الشهر، بسعر العميل المتفق عليه محوّل للمصري بسعر الصرف وقت الدفعة. التحصيل = فلوس الكورسات والمسارات اللي سجّلها الموظف (مش الشهادات).
               «سجّلها» بتعمل مكافأة واحدة لكل موظف مستنية الاعتماد؛ لو اتحسبت تاني قبل الاعتماد بتتبدّل، والمعتمدة ما بتتغيرش.
             </p>
+            {draft && (
+              <div className="mt-3 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+                <div className="font-extrabold text-amber-900">{draft.label}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {draft.kind === 'REASSIGN_BOOKING' && (
+                    <select value={draft.toStaffId} onChange={e => setDraft({ ...draft, toStaffId: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-2 py-1">
+                      <option value="">اختار السيلز اللي الحجز يتحسب له</option>
+                      {result.employees.filter(e => e.scheme === 'SALES_BOOKINGS').map(e => <option key={e.staffId} value={e.staffId}>{e.name}</option>)}
+                    </select>
+                  )}
+                  {draft.kind === 'WEIGHT_BOOKING' && <label>يتحسب <input type="number" min="0" max="20" step="0.5" dir="ltr" value={draft.weight} onChange={e => setDraft({ ...draft, weight: e.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1" /> حجز</label>}
+                  {draft.kind === 'ROUND_SPLIT' && <label>الروند التاني يبدأ يوم <input type="number" min="2" max="28" step="1" dir="ltr" value={draft.splitDay} onChange={e => setDraft({ ...draft, splitDay: e.target.value })} className="w-16 rounded-lg border border-gray-200 px-2 py-1" /></label>}
+                  {draft.kind === 'TOTAL_OVERRIDE' && <label>الإجمالي <input type="number" min="0" dir="ltr" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} className="w-28 rounded-lg border border-gray-200 px-2 py-1" /> ج.م</label>}
+                  <input value={draft.reason} onChange={e => setDraft({ ...draft, reason: e.target.value })} placeholder="السبب (مطلوب)" maxLength={500} className="min-w-[14rem] flex-1 rounded-lg border border-gray-200 px-2 py-1" />
+                  <button type="button" onClick={submitDraft} disabled={working || draft.reason.trim().length < 3} className="rounded-lg bg-amber-600 px-3 py-1 font-bold text-white disabled:opacity-40">نفّذ</button>
+                  <button type="button" onClick={() => setDraft(null)} className="rounded-lg border border-gray-200 bg-white px-3 py-1 font-bold">إلغاء</button>
+                </div>
+              </div>
+            )}
+            {result.adjustments.length > 0 && (
+              <div className="mt-4">
+                <h4 className="mb-1 text-xs font-extrabold text-gray-800">تعديلات الشهر (المحسوب من السيستم {n(result.computedTotal)} ← بعد التعديل {n(result.total)})</h4>
+                <ul className="space-y-1 text-xs">
+                  {result.adjustments.map(adjustment => (
+                    <li key={adjustment.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-2 py-1.5">
+                      <span className="font-bold">{adjustment.kindLabel}</span>
+                      <span>
+                        {adjustment.kind === 'TOTAL_OVERRIDE' && `${adjustment.staffName}: ${n(adjustment.amount)} ج.م`}
+                        {adjustment.kind === 'EXCLUDE_BOOKING' && `${adjustment.client} (${adjustment.item}) من ${adjustment.staffName}`}
+                        {adjustment.kind === 'REASSIGN_BOOKING' && `${adjustment.client} (${adjustment.item}): من ${adjustment.staffName || '—'} إلى ${adjustment.toStaffName}`}
+                        {adjustment.kind === 'ROUND_SPLIT' && (adjustment.staffName ? `استثناء ${adjustment.staffName}: الروند التاني من يوم ${adjustment.splitDay}` : `كل السيلز: الروند التاني من يوم ${adjustment.splitDay}`)}
+                        {adjustment.kind === 'WEIGHT_BOOKING' && `${adjustment.client} (${adjustment.item}): ${n(adjustment.weight)} حجز`}
+                      </span>
+                      <span className="text-gray-600">— {adjustment.reason}</span>
+                      <span className="text-gray-400">({adjustment.by || '—'} · {cairoDateTime(adjustment.at)})</span>
+                      {canEditPlan && taking?.id !== adjustment.id && <button type="button" className="mr-auto font-bold text-rose-600" onClick={() => setTaking({ id: adjustment.id, reason: '' })}>إلغاء التعديل</button>}
+                      {taking?.id === adjustment.id && (
+                        <span className="mr-auto flex items-center gap-1">
+                          <input value={taking.reason} onChange={e => setTaking({ id: adjustment.id, reason: e.target.value })} placeholder="سبب الإلغاء (اختياري)" maxLength={500} className="rounded-lg border border-gray-200 px-2 py-1" />
+                          <button type="button" disabled={working} onClick={() => takeBack(adjustment.id, taking.reason)} className="rounded-lg bg-rose-600 px-2 py-1 font-bold text-white disabled:opacity-40">تأكيد</button>
+                          <button type="button" onClick={() => setTaking(null)} className="rounded-lg border border-gray-200 bg-white px-2 py-1 font-bold">رجوع</button>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      {canEditPlan && <HrSalesSheetReconcile notify={notify} defaultMonth={month} />}
+      {canEditPlan && <HrCollectionSheetReconcile notify={notify} defaultMonth={month} />}
 
       {/* ── The plan ── */}
       <section className="rounded-2xl border border-gray-200 bg-white p-4">

@@ -17,7 +17,8 @@ const { getTenantSetting } = require('./tenantSettings');
 const { agreedPrice } = require('./agreedPrice');
 const { normalizeBonuses } = require('./priceTiers');
 const { addDaysToDateOnly, cairoDayOf, cairoDayStartUtc } = require('./dates');
-const { normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount } = require('./bonusPlan');
+const { normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount, splitDayOf, roundOfDay, roundLabels } = require('./bonusPlan');
+const { listAdjustments } = require('./bonusAdjustments');
 
 const SOURCE = 'BONUS_PLAN';
 const SCHEME_LABEL = { SALES_BOOKINGS: 'حجوزات (سيلز)', COLLECTION: 'تحصيل', COLLECTION_BOOKINGS: 'تحصيل + حجوزات' };
@@ -80,9 +81,16 @@ async function bookingsOf(db, tenantId, { start, end }) {
  * Every employee on a scheme, with how their month's bonus is made up.
  * @returns {Promise<{ year, month, plan, employees: object[], total: number }>}
  */
-async function computeMonthlyBonuses(db, { tenantId, year, month }) {
+async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustments = true }) {
   const bounds = monthBounds(year, month);
   const plan = await loadPlan(db, tenantId);
+  // The owner's changes to the month (lib/bonusAdjustments.js): what the system works out below is changed by them, and each is shown beside the figure.
+  const adjustments = applyAdjustments ? await listAdjustments(db, { tenantId, year, month }) : [];
+  const excluded = new Set(adjustments.filter(item => item.kind === 'EXCLUDE_BOOKING').map(item => `${item.staffId}|${item.paymentId}`));
+  const reassigned = new Map(adjustments.filter(item => item.kind === 'REASSIGN_BOOKING').map(item => [item.paymentId, item]));
+  const reweighed = new Map(adjustments.filter(item => item.kind === 'WEIGHT_BOOKING').map(item => [item.paymentId, item]));
+  const overridden = new Map(adjustments.filter(item => item.kind === 'TOTAL_OVERRIDE').map(item => [item.staffId, item]));
+  const splits = new Map(adjustments.filter(item => item.kind === 'ROUND_SPLIT').map(item => [item.staffId, item]));
   const [staff] = await db.query(
     `SELECT id, name, role, bonus_scheme, booking_first_target, collection_levels_json FROM staff
       WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND bonus_scheme <> 'NONE' ORDER BY name`, [tenantId]);
@@ -96,8 +104,14 @@ async function computeMonthlyBonuses(db, { tenantId, year, month }) {
   const collected = new Map(collectedRows.map(row => [row.staff_id, { amount: money(row.collected), payments: Number(row.payments) }]));
 
   const ownerOf = (booking, scheme) => {
+    const moved = scheme === 'SALES_BOOKINGS' ? reassigned.get(booking.paymentId) : null;
+    if (moved && schemeOf.get(moved.toStaffId) === scheme) return moved.toStaffId;
     const order = scheme === 'SALES_BOOKINGS' ? [booking.salesRep, booking.recordedBy] : [booking.recordedBy, booking.collector];
     return order.find(id => id && schemeOf.get(id) === scheme) || null;
+  };
+  const countedFor = (booking, scheme) => {
+    const owner = ownerOf(booking, scheme);
+    return owner && !excluded.has(`${owner}|${booking.paymentId}`) ? owner : null;
   };
 
   const employees = staff.map(row => {
@@ -105,16 +119,29 @@ async function computeMonthlyBonuses(db, { tenantId, year, month }) {
     const lines = [];
     let total = 0;
     let ladder = null; let collection = null; let mine = [];
+    let splitDay = null;
+    let splitSource = null;
+    const leftOut = bookings.filter(booking => ownerOf(booking, scheme) === row.id && excluded.has(`${row.id}|${booking.paymentId}`))
+      .map(({ bonuses: _bonuses, ...booking }) => booking);
     if (scheme === 'SALES_BOOKINGS') {
-      mine = bookings.filter(booking => ownerOf(booking, scheme) === row.id).map(booking => ({ ...booking, weight: bookingWeight(plan, booking.priceEgp) }));
+      mine = bookings.filter(booking => countedFor(booking, scheme) === row.id).map(booking => {
+        const computedWeight = bookingWeight(plan, booking.priceEgp);
+        const change = reweighed.get(booking.paymentId);
+        return { ...booking, weight: change ? change.weight : computedWeight, ...(change ? { computedWeight, weightChangedBy: change.id } : {}) };
+      });
       const firstTarget = Number(row.booking_first_target) > 0 ? Number(row.booking_first_target) : null;
       const weightOf = list => Math.round(list.reduce((sum, booking) => sum + booking.weight, 0) * 100) / 100;
-      // Half-month rounds: the 1st to the 15th, the 16th to the end, each on the whole ladder.
+      // Half-month rounds: round 1 is the days before the rep's split day (the 16th unless the owner set another for them and the month), round 2 from it
+      // to the end, each on the whole ladder.
+      // The rep's own exception, else the month's split (for every rep), else the 16th.
+      splitSource = splits.has(row.id) ? 'rep' : (splits.has(null) ? 'month' : 'default');
+      splitDay = splitDayOf((splits.get(row.id) || splits.get(null) || {}).splitDay);
+      const [firstLabel, secondLabel] = roundLabels(splitDay, Number(bounds.last.slice(8, 10)));
       const rounds = plan.salesPeriod === 'HALF_MONTH'
-        ? [['1–15', mine.filter(booking => Number(booking.day.slice(8, 10)) <= 15)], [`16–${bounds.last.slice(8, 10)}`, mine.filter(booking => Number(booking.day.slice(8, 10)) > 15)]]
+        ? [[firstLabel, mine.filter(booking => roundOfDay(booking.day, splitDay) === 1)], [secondLabel, mine.filter(booking => roundOfDay(booking.day, splitDay) === 2)]]
         : [['الشهر', mine]];
       const perRound = rounds.map(([label, list]) => ({ label, bookings: weightOf(list), ...ladderBonus(plan, weightOf(list), firstTarget) }));
-      for (const booking of mine) booking.round = perRound.length > 1 ? (Number(booking.day.slice(8, 10)) <= 15 ? perRound[0].label : perRound[1].label) : null;
+      for (const booking of mine) booking.round = perRound.length > 1 ? perRound[roundOfDay(booking.day, splitDay) - 1].label : null;
       ladder = { bookings: weightOf(mine), amount: money(perRound.reduce((sum, round) => sum + round.amount, 0)), firstTarget, rounds: perRound,
         tier: perRound.length === 1 ? perRound[0].tier : null, extraBookings: perRound.length === 1 ? perRound[0].extraBookings : 0, extraAmount: perRound.length === 1 ? perRound[0].extraAmount : 0 };
       total += ladder.amount;
@@ -137,19 +164,44 @@ async function computeMonthlyBonuses(db, { tenantId, year, month }) {
     }
     let deskBonus = null;
     if (scheme === 'COLLECTION_BOOKINGS') {
-      mine = bookings.filter(booking => ownerOf(booking, scheme) === row.id).map(booking => ({ ...booking, deskBonus: courseBonusAmount(booking.bonuses.service, booking.priceEgp) }));
+      mine = bookings.filter(booking => countedFor(booking, scheme) === row.id).map(booking => ({ ...booking, deskBonus: courseBonusAmount(booking.bonuses.service, booking.priceEgp) }));
       deskBonus = money(mine.reduce((sum, booking) => sum + booking.deskBonus, 0));
       total += deskBonus;
       lines.push(`حجوزات ${mine.length} بمكافأة الكورس ← ${deskBonus}`);
     }
+    // The owner's figure for the month replaces the computed one; the computed one stays beside it.
+    const computedTotal = money(total);
+    const override = overridden.get(row.id) || null;
+    if (override) lines.push(`تعديل يدوي: الإجمالي ${override.amount} بدل ${computedTotal}`);
+    const mineIds = new Set(mine.map(booking => booking.paymentId));
     return {
       staffId: row.id, name: row.name, role: row.role, scheme, schemeLabel: SCHEME_LABEL[scheme] || scheme,
       ladder, collection, deskBonus,
       bookings: mine.map(({ bonuses: _bonuses, ...booking }) => booking),
-      total: money(total), summary: lines.join(' · '),
+      excludedBookings: leftOut,
+      splitDay: scheme === 'SALES_BOOKINGS' && plan.salesPeriod === 'HALF_MONTH' ? splitDay : null,
+      splitSource: scheme === 'SALES_BOOKINGS' && plan.salesPeriod === 'HALF_MONTH' ? splitSource : null,
+      adjustments: adjustments.filter(item => item.staffId === row.id || item.toStaffId === row.id || (item.kind === 'WEIGHT_BOOKING' && mineIds.has(item.paymentId))).map(item => item.id),
+      computedTotal, override: override ? { id: override.id, amount: override.amount, reason: override.reason, by: override.by, at: override.at } : null,
+      total: override ? override.amount : computedTotal, summary: lines.join(' · '),
     };
   });
-  return { year, month, from: bounds.first, to: bounds.last, plan, employees, total: money(employees.reduce((sum, item) => sum + item.total, 0)) };
+  // Each change with the booking and the people it is about, for the screen's list.
+  const bookingOf = new Map(bookings.map(booking => [booking.paymentId, booking]));
+  const nameOf = new Map(staff.map(row => [row.id, row.name]));
+  const shownAdjustments = adjustments.map(item => {
+    const booking = item.paymentId ? bookingOf.get(item.paymentId) : null;
+    return {
+      ...item, client: booking ? booking.client : null, clientCode: booking ? booking.clientCode : null, item: booking ? booking.title : null,
+      staffName: nameOf.get(item.staffId) || null, toStaffName: nameOf.get(item.toStaffId) || null,
+    };
+  });
+  return {
+    year, month, from: bounds.first, to: bounds.last, plan, employees, adjustments: shownAdjustments,
+    // The day the second round starts for every rep this month (the 16th unless the owner set another); a rep's own exception is on the rep.
+    splitDay: splitDayOf((splits.get(null) || {}).splitDay),
+    computedTotal: money(employees.reduce((sum, item) => sum + item.computedTotal, 0)), total: money(employees.reduce((sum, item) => sum + item.total, 0)),
+  };
 }
 
 /**
@@ -164,8 +216,8 @@ async function saveMonthlyBonuses(db, { tenantId, year, month, actorId = null })
       `SELECT id, status, amount FROM employee_bonuses WHERE tenant_id=? AND staff_id=? AND for_year=? AND for_month=? AND source=? ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [tenantId, employee.staffId, year, month, SOURCE]);
     if (existing && existing.status !== 'PENDING') { kept.push({ staffId: employee.staffId, name: employee.name, status: existing.status, amount: Number(existing.amount), now: employee.total }); continue; }
-    const reason = `مكافأة شهر ${month}/${year} (${employee.schemeLabel}): ${employee.summary}`;
-    const calc = JSON.stringify({ scheme: employee.scheme, ladder: employee.ladder, collection: employee.collection && { ...employee.collection, levels: undefined }, deskBonus: employee.deskBonus, bookings: employee.bookings.map(b => ({ paymentId: b.paymentId, client: b.clientCode, item: b.item, priceEgp: b.priceEgp, weight: b.weight, deskBonus: b.deskBonus })) });
+    const reason = `مكافأة شهر ${month}/${year} (${employee.schemeLabel}): ${employee.summary}${employee.override ? ` — السبب: ${employee.override.reason}` : ''}`;
+    const calc = JSON.stringify({ scheme: employee.scheme, computedTotal: employee.computedTotal, override: employee.override, adjustments: result.adjustments.filter(item => employee.adjustments.includes(item.id)).map(item => ({ kind: item.kind, paymentId: item.paymentId, staffId: item.staffId, toStaffId: item.toStaffId, weight: item.weight, amount: item.amount, splitDay: item.splitDay, reason: item.reason, by: item.by })), ladder: employee.ladder, collection: employee.collection && { ...employee.collection, levels: undefined }, deskBonus: employee.deskBonus, bookings: employee.bookings.map(b => ({ paymentId: b.paymentId, client: b.clientCode, item: b.item, priceEgp: b.priceEgp, weight: b.weight, deskBonus: b.deskBonus })) });
     if (!(employee.total > 0)) {
       if (existing) { await db.query('DELETE FROM employee_bonuses WHERE id=? AND tenant_id=?', [existing.id, tenantId]); cleared.push(employee.staffId); }
       continue;
@@ -183,4 +235,16 @@ async function saveMonthlyBonuses(db, { tenantId, year, month, actorId = null })
   return { ...result, written, kept, cleared };
 }
 
-module.exports = { SOURCE, monthBounds, loadPlan, computeMonthlyBonuses, saveMonthlyBonuses };
+/** What a change to the month needs to be checked against: its bookings, the staff on a scheme, and whom a booking counts for (before the owner's changes, with `ignoreAdjustments`). */
+async function adjustmentContext(db, { tenantId, year, month }) {
+  const bounds = monthBounds(year, month);
+  const [staff] = await db.query("SELECT id, name, bonus_scheme FROM staff WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND bonus_scheme <> 'NONE'", [tenantId]);
+  const bookings = await bookingsOf(db, tenantId, bounds);
+  const schemeOf = new Map(staff.map(row => [row.id, row.bonus_scheme]));
+  const moves = new Map((await listAdjustments(db, { tenantId, year, month })).filter(item => item.kind === 'REASSIGN_BOOKING').map(item => [item.paymentId, item.toStaffId]));
+  const natural = (booking, scheme) => (scheme === 'SALES_BOOKINGS' ? [booking.salesRep, booking.recordedBy] : [booking.recordedBy, booking.collector]).find(id => id && schemeOf.get(id) === scheme) || null;
+  const countedFor = (booking, { ignoreAdjustments = false } = {}) => (ignoreAdjustments ? null : moves.get(booking.paymentId)) || natural(booking, 'SALES_BOOKINGS') || natural(booking, 'COLLECTION_BOOKINGS');
+  return { staff, bookings, countedFor };
+}
+
+module.exports = { SOURCE, monthBounds, loadPlan, bookingsOf, adjustmentContext, computeMonthlyBonuses, saveMonthlyBonuses };
