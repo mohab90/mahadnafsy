@@ -12,7 +12,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOr
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { normalizePlan, bookingWeight } = require('../../lib/bonusPlan');
 const { computeMonthlyBonuses, saveMonthlyBonuses, adjustmentContext } = require('../../lib/monthlyBonuses');
-const { listAdjustments, addAdjustment, revokeAdjustment } = require('../../lib/bonusAdjustments');
+const { listAdjustments, listCountedElsewhere, addAdjustment, revokeAdjustment } = require('../../lib/bonusAdjustments');
 const { readSalesSheet } = require('../../lib/salesSheet');
 const { reconcileSalesSheet } = require('../../lib/salesSheetReconcile');
 const { renderMarkdown, renderCsv } = require('../../lib/salesSheetReport');
@@ -128,7 +128,33 @@ router.get('/api/admin/hr/bonus-adjustments', ...view, async (req, res) => {
   }
 });
 
-// POST /api/admin/hr/bonus-adjustments {month, kind, staffId?, paymentId?, toStaffId?, weight?, amount?, reason} — a change to a month's calculation; whoever
+// GET /api/admin/hr/late-bookings?month=YYYY-MM — the first payments of the month before and after: the bookings that can be counted in this month instead of their own
+// (COUNT_IN_MONTH, «الحجز اتأخر رفعه»), each with the sales rep it belongs to and whether it is already counted in this month.
+router.get('/api/admin/hr/late-bookings', ...view, async (req, res) => {
+  try {
+    const { year, month } = monthOf(req.query.month);
+    const context = await adjustmentContext(pool, { tenantId: req.tenantId, year, month });
+    const sales = new Map(context.staff.filter(row => row.bonus_scheme === 'SALES_BOOKINGS').map(row => [row.id, row.name]));
+    const counted = await listCountedElsewhere(pool, { tenantId: req.tenantId, paymentIds: context.adjacentBookings.map(booking => booking.paymentId) });
+    const bookings = context.adjacentBookings.map(booking => {
+      const repId = [booking.salesRep, booking.recordedBy].find(id => id && sales.has(id)) || null;
+      const move = counted.get(booking.paymentId);
+      return {
+        paymentId: booking.paymentId, client: booking.client, clientCode: booking.clientCode, title: booking.title, day: booking.day, month: booking.day.slice(0, 7),
+        priceEgp: booking.priceEgp, weight: bookingWeight(context.plan, booking.priceEgp), repId, repName: repId ? sales.get(repId) : null,
+        countedIn: move ? `${move.year}-${String(move.month).padStart(2, '0')}` : null,
+      };
+    }).sort((a, b) => (a.day < b.day ? -1 : 1));
+    res.set('Cache-Control', 'no-store');
+    res.json({ bookings, reps: [...sales].map(([id, name]) => ({ id, name })) });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
+    logger.error('[late-bookings]', error.message);
+    hrError(res, error);
+  }
+});
+
+// POST /api/admin/hr/bonus-adjustments {month, kind, staffId?, paymentId?, toStaffId?, weight?, amount?, round?, reason} — a change to a month's calculation; whoever
 // holds manage_financial (the owner, admin). A reason is required. The month's bonuses are worked out again with it (and saved only when HR saves them).
 router.post('/api/admin/hr/bonus-adjustments', ...managePay, async (req, res) => {
   const conn = await pool.getConnection();

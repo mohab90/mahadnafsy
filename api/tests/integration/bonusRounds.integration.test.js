@@ -89,6 +89,7 @@ before(async () => {
     owner: await signInStaff(pool, app, { tenantId: T, id: 'rnd-owner', role: 'ADMIN' }),
     financial: await signInStaff(pool, app, { tenantId: T, id: 'rnd-fin', role: 'OTHER', permissions: ['manage_financial'] }),
     hr: await signInStaff(pool, app, { tenantId: T, id: 'rnd-hr', role: 'HR', permissions: ['view_hr', 'manage_hr'] }),
+    nobody: await signInStaff(pool, app, { tenantId: T, id: 'rnd-none', role: 'OTHER', permissions: ['view_dashboard'] }),
   };
 });
 after(async () => { if (!ENABLED) return; await app.close(); await clean(); await pool.query('DELETE FROM tenants WHERE id=?', [T]).catch(() => {}); await pool.end(); });
@@ -338,4 +339,19 @@ test('the staff data screen reads and sets the bonus scheme and the starting ste
   assert.deepEqual([b.bonusScheme, b.bookingFirstTarget, b.collectionLevels], ['COLLECTION', null, [{ from: 50000, kind: 'percent', value: 2 }]]);
   assert.equal((await put(who.owner, { bonusScheme: 'SALES_BOOKINGS', bookingFirstTarget: 10 })).status, 200);
   assert.deepEqual((await read()).collectionLevels, [], 'a rep keeps no collector levels');
+});
+
+test('the late-bookings list shows the first payments of the month before and after with their rep, and which are already counted here', { skip }, async () => {
+  const list = async () => (await app.call('GET', '/api/admin/hr/late-bookings?month=2026-09', { session: who.hr })).body;
+  let body = await list();
+  const m1 = body.bookings.find(item => item.paymentId === ids.m1);
+  const l1 = body.bookings.find(item => item.paymentId === ids.l1);
+  assert.deepEqual([m1.month, m1.repId, m1.weight, m1.countedIn, l1.month, l1.repId, l1.countedIn], ['2026-08', 'rep-b', 3, null, '2026-10', 'rep-a', null]);
+  assert.equal(body.bookings.some(item => item.month === '2026-09'), false, 'only the neighbouring months');
+  assert.ok(body.reps.some(rep => rep.id === 'rep-a') && !body.reps.some(rep => rep.id === 'desk-x'), 'only reps on the booking scheme can be given one');
+  const made = await add({ kind: 'COUNT_IN_MONTH', staffId: 'rep-b', paymentId: ids.m1, reason: 'اترفع متأخر' });
+  body = await list();
+  assert.equal(body.bookings.find(item => item.paymentId === ids.m1).countedIn, '2026-09');
+  await revoke(made.id);
+  assert.equal((await app.call('GET', '/api/admin/hr/late-bookings?month=2026-09', { session: who.nobody })).status, 403);
 });
