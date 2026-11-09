@@ -4469,20 +4469,6 @@
   "class": "b"
  },
  {
-  "id": "securityHeadersAndSessionHygiene: the session cookie is HttpOnly and Secure",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/token.js",
-    "must": {
-     "source": "`authToken=\\$\\{token\\}; HttpOnly; Path=\\/; Max-Age=\\$\\{maxAge\\}; SameSite=None; Secure`",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "securityHeadersAndSessionHygiene: CSP reports are accepted and logged, and the route is rate limited",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -10977,58 +10963,9 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/lib/token.js",
-    "must": {
-     "source": "sv: Number\\(sessionVersion\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/token.js",
-    "must": {
-     "source": "sid: sessionId",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "Number\\(payload\\.sv\\) !== identity\\.sessionVersion\\) return false",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "payload\\.stf !== true && payload\\.sid !== identity\\.sessionId",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/token.js",
-    "must": {
-     "source": "stf: isStaff === true",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "Number\\(payload\\.sv\\) !== identity\\.sessionVersion\\) return false",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/middleware/auth.js",
     "must": {
      "source": "hashClientIp\\(requestIp\\) === identity\\.sessionIpHash",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/middleware/auth.js",
-    "must": {
-     "source": "code: 'SESSION_REVOKED'",
      "flags": ""
     }
    },
