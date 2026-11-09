@@ -350,6 +350,21 @@ export interface MonthlyBonuses {
   }[];
 }
 
+/** POST /admin/hr/collection-sheet-reconciliation — the collection employees' sheet against the system's payments (api/lib/collectionSheetReconcile.js). */
+export type CollectionCategory = 'FOUND_SAME' | 'OTHER_EMPLOYEE' | 'TYPE_MISMATCH' | 'DIFFERENT' | 'NOT_IN_SYSTEM' | 'NOT_REGISTERED';
+export interface CollectionSheetReport {
+  month: string; from: string; to: string;
+  totals: Record<CollectionCategory | 'rows' | 'TYPE_FLAGS' | 'outsideMonth' | 'missingFromSheet' | 'systemPayments' | 'sheetAmount' | 'systemAmount', number>;
+  tabs: { tab: string; employee: { id: string; name: string } | null; ambiguous: string[] }[];
+  rows: { tab: string; rowNumber: number; name: string; phones: string[]; senderPhones: string[]; text: string; kinds: string[]; amount: number; day: string | null; category: CollectionCategory;
+    flags: string[]; notes: string[]; diffs?: { field: string; sheet: unknown; system: unknown; gap?: number | null }[];
+    client: { code: string; name: string; by: string } | null; payments: { day: string; amountEgp: number; type: string; staff: { name: string } | null }[] }[];
+  missingFromSheet: { employee: { name: string } | null; employeeHasTab: boolean; client: string; clientCode: string; day: string; amountEgp: number; type: string; title: string | null; claimedByTab: string | null }[];
+  perCollector: { tab: string; employee: { id: string; name: string } | null; rows: number; counts: Record<CollectionCategory, number>; sheetTotal: number; sheetOutsideMonth: number;
+    systemTotal: number; systemPayments: number; difference: number | null; missingFromTab: { count: number; amount: number }; reasons: { kind: string; label: string; rows: number; amount: number }[] }[];
+  unreadable: { tab: string; rowNumber: number; reason: string }[];
+}
+
 /** POST /admin/hr/sales-sheet-reconciliation — the owner's sales sheet against the system (api/lib/salesSheetReconcile.js). */
 export type SheetCategory = 'MATCHED' | 'DIFFERENT' | 'REFUNDED' | 'VOIDED' | 'NO_PAID_BOOKING' | 'NOT_REGISTERED' | 'OTHER_REP';
 export interface SalesSheetReport {
@@ -1151,6 +1166,8 @@ export const mysqlAdmin = {
   addBonusAdjustment: (body: { month: string; kind: BonusAdjustmentKind; reason: string; staffId?: string; paymentId?: string; toStaffId?: string; weight?: number; amount?: number; splitDay?: number }) =>
     apiFetch<{ ok: boolean }>('/admin/hr/bonus-adjustments', { method: 'POST', body: JSON.stringify(body) }, A),
   revokeBonusAdjustment: (id: string, reason?: string) => apiFetch<{ ok: boolean }>(`/admin/hr/bonus-adjustments/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: JSON.stringify({ reason }) }, A),
+  reconcileCollectionSheet: (body: { fileBase64: string; filename: string; month: string }) =>
+    apiFetch<{ ok: boolean; report: CollectionSheetReport; markdown: string; csv: string }>('/admin/hr/collection-sheet-reconciliation', { method: 'POST', body: JSON.stringify(body) }, A),
   reconcileSalesSheet: (body: { fileBase64: string; filename: string; month: string }) =>
     apiFetch<{ ok: boolean; report: SalesSheetReport; markdown: string; csv: string }>('/admin/hr/sales-sheet-reconciliation', { method: 'POST', body: JSON.stringify(body) }, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),

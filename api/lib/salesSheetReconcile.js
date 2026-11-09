@@ -392,4 +392,4 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
   };
 }
 
-module.exports = { CATEGORIES, mapTabsToStaff, ladderOver, reconcileSalesSheet };
+module.exports = { CATEGORIES, mapTabsToStaff, ladderOver, reconcileSalesSheet, loadClients, pickByPhone, pickByName, wordsOf, sharedWords };

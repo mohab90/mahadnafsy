@@ -16,6 +16,9 @@ const { listAdjustments, addAdjustment, revokeAdjustment } = require('../../lib/
 const { readSalesSheet } = require('../../lib/salesSheet');
 const { reconcileSalesSheet } = require('../../lib/salesSheetReconcile');
 const { renderMarkdown, renderCsv } = require('../../lib/salesSheetReport');
+const { readCollectionSheet } = require('../../lib/collectionSheet');
+const { reconcileCollectionSheet } = require('../../lib/collectionSheetReconcile');
+const collectionReport = require('../../lib/collectionSheetReport');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
@@ -162,6 +165,27 @@ router.post('/api/admin/hr/sales-sheet-reconciliation', ...managePay, async (req
   } catch (error) {
     if (error.statusCode === 400) return res.status(400).json({ error: error.message, code: error.code });
     logger.error('[sales-sheet-reconciliation]', error.message);
+    hrError(res, error);
+  }
+});
+
+// POST /api/admin/hr/collection-sheet-reconciliation {fileBase64, filename, month} — the collection employees' monthly sheet held against the system's payments
+// (lib/collectionSheetReconcile.js): is every payment of the sheet in the system, and under the same employee? Reads only; the financial permission's.
+router.post('/api/admin/hr/collection-sheet-reconciliation', ...managePay, async (req, res) => {
+  try {
+    const { fileBase64, month: monthText } = req.body || {};
+    if (typeof fileBase64 !== 'string' || !fileBase64) return res.status(400).json({ error: 'ارفع شيت التحصيل (.xlsx)' });
+    const { year, month } = monthOf(monthText);
+    const buffer = Buffer.from(fileBase64.replace(/^data:[^,]*,/, ''), 'base64');
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'الملف لازم يكون أقل من 8 ميجا' });
+    const sheet = readCollectionSheet(buffer, { month: `${year}-${String(month).padStart(2, '0')}` });
+    if (!sheet.rows) return res.status(400).json({ error: 'مفيش دفعات اتقرت من الشيت ده', unreadable: sheet.unreadable });
+    const report = await reconcileCollectionSheet(pool, { tenantId: req.tenantId, sheet, year, month });
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, report, markdown: collectionReport.renderMarkdown(report), csv: collectionReport.renderCsv(report) });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message, code: error.code });
+    logger.error('[collection-sheet-reconciliation]', error.message);
     hrError(res, error);
   }
 });

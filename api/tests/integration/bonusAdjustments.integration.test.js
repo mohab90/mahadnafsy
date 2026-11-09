@@ -204,6 +204,11 @@ test('an account holding only manage_financial changes the plan and the month, a
   assert.equal((await app.call('POST', `/api/admin/hr/bonus-adjustments/${made.body.adjustment.id}/revoke`, { session: who.financial, body: {} })).status, 200);
   const upload = await app.call('POST', '/api/admin/hr/sales-sheet-reconciliation', { session: who.financial, body: { month: '2026-09' } });
   assert.equal(upload.status, 400, 'allowed in, and asked for the file');
+  const collection = await app.call('POST', '/api/admin/hr/collection-sheet-reconciliation', { session: who.financial, body: { month: '2026-09' } });
+  assert.equal(collection.status, 400, 'the collection sheet too: allowed in, and asked for the file');
+  const notACollection = await app.call('POST', '/api/admin/hr/collection-sheet-reconciliation', { session: who.owner, body: { month: '2026-09', fileBase64: Buffer.from('not a workbook').toString('base64') } });
+  assert.equal(notACollection.status, 400);
+  assert.match(notACollection.body.error, /Excel/);
   const notAWorkbook = await app.call('POST', '/api/admin/hr/sales-sheet-reconciliation', { session: who.financial, body: { month: '2026-09', fileBase64: Buffer.from('not a workbook').toString('base64') } });
   assert.equal(notAWorkbook.status, 400);
   assert.match(notAWorkbook.body.error, /Excel/);
@@ -220,6 +225,9 @@ test('HR reads, calculates and saves, and is refused every change to the rules a
   assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.hr, body: attempt })).status, 403);
   assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/x/revoke', { session: who.hr, body: {} })).status, 403);
   assert.equal((await app.call('POST', '/api/admin/hr/sales-sheet-reconciliation', { session: who.hr, body: { month: '2026-09' } })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/collection-sheet-reconciliation', { session: who.hr, body: { month: '2026-09' } })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/collection-sheet-reconciliation', { session: who.viewer, body: { month: '2026-09' } })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/collection-sheet-reconciliation', { session: who.nobody, body: { month: '2026-09' } })).status, 403);
 });
 
 test('a viewer reads and nothing else; an account with neither permission is refused everything', { skip }, async () => {

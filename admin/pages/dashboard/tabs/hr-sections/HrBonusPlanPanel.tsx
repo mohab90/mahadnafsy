@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Award, Calculator, Loader2, Save } from 'lucide-react';
 import { mysqlAdmin, type BonusAdjustmentKind, type BonusPlan, type MonthlyBonuses } from '../../../../lib/mysqlapi';
 import HrSalesSheetReconcile from './HrSalesSheetReconcile';
+import HrCollectionSheetReconcile from './HrCollectionSheetReconcile';
 import { cairoDateTime, cairoMonthOnly } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -247,6 +248,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
       </section>
 
       {canEditPlan && <HrSalesSheetReconcile notify={notify} defaultMonth={month} />}
+      {canEditPlan && <HrCollectionSheetReconcile notify={notify} defaultMonth={month} />}
 
       {/* ── The plan ── */}
       <section className="rounded-2xl border border-gray-200 bg-white p-4">

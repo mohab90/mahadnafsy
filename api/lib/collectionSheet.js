@@ -19,7 +19,8 @@ const { readXlsx } = require('./xlsxRead');
 const { normalizeArabicName } = require('./linkSiteAccounts');
 const { parsePhones, parseDayMonth, serialToDay, monthOf } = require('./salesSheet');
 
-const BIDI = /[‎‏‪-‮⁦-⁩؜﻿]/g;
+// the invisible direction marks (LRM, RLM, embeddings and isolates, the Arabic letter mark, the BOM) the sheet carries around its numbers
+const BIDI = new RegExp(`[${[[0x200e, 0x200f], [0x202a, 0x202e], [0x2066, 0x2069], [0x061c, 0x061c], [0xfeff, 0xfeff]].map(([a, b]) => `${String.fromCharCode(a)}-${String.fromCharCode(b)}`).join('')}]`, 'g');
 const latin = value => String(value ?? '')
   .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 0x0660))
   .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 0x06f0));
