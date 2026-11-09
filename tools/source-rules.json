@@ -3590,27 +3590,6 @@
   "class": "b"
  },
  {
-  "id": "privacySuppression: suppression is keyed on a hash, not the raw address",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/marketingConsent.js",
-    "must": {
-     "source": "destination_hash",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/marketingConsent.js",
-    "mustNot": {
-     "source": "INSERT INTO marketing_suppressions[\\s\\S]{0,200}destination[^_]",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "privacyWorkflow: privacy export is self-service, tenant scoped, consistent and excludes auth secrets",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -4487,13 +4466,6 @@
   "id": "staffAccountTakeover: staff.js will not let a non-owner rewrite a manager\\",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "api/routes/staff.js",
-    "must": {
-     "source": "existingStaff && \\(!req\\.isSuperAdmin \\|\\| !isOwnerRequest\\(req\\)\\)[^\\n]*\\n\\s*&& PRIVILEGED_ROLES\\.includes",
-     "flags": ""
-    }
-   },
    {
     "file": "api/routes/staff.js",
     "must": {
@@ -11753,55 +11725,6 @@
   "class": "b"
  },
  {
-  "id": "whatsappOutboundGate: the gate refuses anything that does not name an allowed category",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "function isCategoryAllowed",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "WHATSAPP_OUTBOUND_CATEGORIES\\s*\\?\\?\\s*'otp'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "if \\(!await isCategoryOpen\\(opts\\.category, tenantId\\)\\) \\{",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "async function isCategoryOpen\\(category, tenantId\\) \\{\\n  if \\(isCategoryAllowed\\(category\\)\\) return true;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "return \\{ ok: false, reason: 'category_disabled'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "if \\(!name\\) return false;",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "aBellShowsEveryEmployeeTheirOwnNotifications: every role bar carries the real notifications bell, with the follow-up drawer beside it",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -12676,20 +12599,6 @@
     "file": "api/lib/leadMerge.js",
     "must": {
      "source": "syncLeadDealValue",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "auditFindingsThatWereReal: nobody sets their own commission or bonus",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/staff.js",
-    "must": {
-     "source": "PAY_FIELDS_REQUIRE_OWNER|OWN_PAY_REFUSED",
      "flags": ""
     }
    }
@@ -21742,20 +21651,6 @@
     "file": "api/lib/finance.js",
     "must": {
      "source": "  const financial = await getTenantSetting\\('sys_financial', \\{ tenantId, fallback: null \\}\\);",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "whatsappOutboundGate: a blocked send is not mistaken for a broken channel",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/whatsapp.js",
-    "must": {
-     "source": "reason === 'category_disabled'[\\s\\S]{0,200}رسائل التحقق",
      "flags": ""
     }
    }

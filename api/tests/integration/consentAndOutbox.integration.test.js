@@ -49,6 +49,9 @@ test('opting out suppresses the address under any spelling and is audited; optin
   assert.equal(out.ok, true);
   assert.equal(await consent.isSuppressed(T, 'email', 'mona@example.test'), true, 'upper or lower case is the same address');
   assert.equal(await consent.isSuppressed(OTHER, 'email', 'mona@example.test'), false, 'another institute is unaffected');
+  const stored = JSON.stringify((await pool.query('SELECT * FROM marketing_suppressions WHERE tenant_id=?', [T]))[0]);
+  assert.ok(!/example.test|mona/i.test(stored), 'the list keeps a hash of the address, never the address');
+  assert.match(stored, /destination_hash":"[0-9a-f]{64}/);
   const kept = await consent.filterSuppressed(T, 'email', [{ email: 'MONA@example.test' }, { email: 'sara@example.test' }], 'email');
   assert.deepEqual(kept.map(item => item.email), ['sara@example.test'], 'the suppressed address is out of a send');
   await consent.setMarketingConsent({ tenantId: T, subjectType: 'subscriber', subjectId: 'sub-co-2', channel: 'whatsapp', subscribed: false, source: 'stop-reply' });
