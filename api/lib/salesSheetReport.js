@@ -43,13 +43,13 @@ function renderMarkdown(report) {
   for (const rep of report.perRep) {
     out.push(`### ${rep.tab}${rep.staff ? ` — ${rep.staff.name}` : ''}`, '');
     const roundsOf = side => side.rounds.map(round => `${round.label}: ${fmt(round.bookings)} حجز ← ${fmt(round.amount)}`).join(' · ');
-    const split = rep.suggestedSplit;
-    out.push(split.day ? `- تقسيم الشيت المقترح: الروند التاني من يوم ${split.day}${split.note ? ` — تنبيه: ${split.note}` : ''}` : `- تقسيم الشيت: ${split.note}`);
+    const marker = rep.sheetMarker;
+    out.push(`- فاصل «النص التانى» في الشيت: ${marker.day ? `يوم ${marker.day}${marker.note ? ` — تنبيه: ${marker.note}` : ''}` : marker.note} · تقسيم السيستم: الروند التاني من يوم ${rep.systemSplit} (للمعلومية بس)`);
     out.push(`- من الشيت (الروندات بفاصل «النص التانى»): ${roundsOf(rep.sheet.byMarker)} = **${fmt(rep.sheet.byMarker.amount)}**`);
     if (rep.sheet.byDate.amount !== rep.sheet.byMarker.amount) out.push(`- من الشيت لو الروندات بالتاريخ (1–15 / 16–آخر الشهر): ${roundsOf(rep.sheet.byDate)} = ${fmt(rep.sheet.byDate.amount)}`);
     out.push(`- الشيت بأول تارجيت 10 / 15 / 20: ${fmt(rep.sheet.byFirstTarget[10])} / ${fmt(rep.sheet.byFirstTarget[15])} / ${fmt(rep.sheet.byFirstTarget[20])}`);
     if (rep.system) {
-      out.push(`- من السيستم (بنفس تقسيم الشيت): ${roundsOf(rep.system)} = **${fmt(rep.system.amount)}**${rep.system.onScheme ? '' : ' (الموظف مش على نظام المكافآت: اتحسب هنا بس)'}${rep.system.total !== rep.system.amount ? ` · الإجمالي بعد التعديلات ${fmt(rep.system.total)}` : ''}`);
+      out.push(`- من السيستم (بتقسيم السيستم): ${roundsOf(rep.system)} = **${fmt(rep.system.amount)}**${rep.system.onScheme ? '' : ' (الموظف مش على نظام المكافآت: اتحسب هنا بس)'}${rep.system.total !== rep.system.amount ? ` · الإجمالي بعد التعديلات ${fmt(rep.system.total)}` : ''}`);
       out.push(`- الفرق (الشيت − السيستم): **${fmt(rep.difference)}**${rep.reasons.length ? ' — السبب:' : ''}`);
       for (const reason of rep.reasons) out.push(`  - ${reason.label}: ${reason.rows} صف${reason.weight ? ` (${reason.weight > 0 ? '+' : ''}${fmt(reason.weight)} حجز)` : ''}`);
     } else out.push('- من السيستم: مفيش موظف مربوط بالتاب ده، فمفيش حساب من السيستم.');

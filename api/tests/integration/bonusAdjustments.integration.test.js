@@ -235,49 +235,69 @@ test('a viewer reads and nothing else; an account with neither permission is ref
   assert.equal((await app.call('GET', '/api/admin/hr/bonus-plan')).status, 401, 'signed out');
 });
 
-// ───────────── the rep's second round starts on the day the owner's sheet says (ROUND_SPLIT) ─────────────
+// ───────────── the day the second round starts: the month's (every rep), and one rep's exception (ROUND_SPLIT) ─────────────
 
-test('the second round starts on the rep\'s split day: the 13th to the 15th move into round 2 and the bonus follows', { skip }, async () => {
+test('the month\'s split moves the 13th to the 15th of every rep into round 2; a rep\'s own exception overrides it; with none the 16th', { skip }, async () => {
   const settings = require('../../lib/tenantSettings');
   const plan = await settings.getTenantSetting('bonus_plan', { tenantId: T });
   await settings.setTenantSetting('bonus_plan', { ...plan, salesPeriod: 'HALF_MONTH' }, { tenantId: T });
   await staff('rep-c');
-  // six on the 5th, and six on the 13th, 13th, 14th, 14th, 15th, 15th: twelve (c1, one booking each)
+  // rep-c: six on the 5th, and six on the 13th, 13th, 14th, 14th, 15th, 15th: twelve (c1, one booking each)
   const days = [5, 5, 5, 5, 5, 5, 13, 13, 14, 14, 15, 15];
   for (const [index, day] of days.entries()) { await client(`c${index}`, 'rep-c'); await pay({ client: `c${index}`, course: 'c1', amount: 1000, staff: 'rep-c', day }); }
-  const rep = async () => of(await compute(), 'rep-c');
+  const rep = async (id = 'rep-c') => of(await compute(), id);
   const rounds = employee => employee.ladder.rounds.map(round => [round.label, round.bookings, round.amount]);
   try {
     let c = await rep();
-    assert.equal(c.splitDay, 16, 'no split set: the 16th');
+    assert.deepEqual([c.splitDay, c.splitSource], [16, 'default'], 'no split set: the 16th');
     assert.deepEqual(rounds(c), [['1–15', 12, 1000], ['16–30', 0, 0]]);
     assert.equal(c.total, 1000);
 
-    const thirteenth = await add({ kind: 'ROUND_SPLIT', staffId: 'rep-c', splitDay: 13, reason: 'من شيت المبيعات' });
-    c = await rep();
-    assert.equal(c.splitDay, 13);
+    const month = await add({ kind: 'ROUND_SPLIT', splitDay: 13, reason: 'الشهر ده الروند التاني بدأ من 13' });
+    let result = await compute();
+    c = of(result, 'rep-c');
+    assert.equal(result.splitDay, 13);
+    assert.deepEqual([c.splitDay, c.splitSource], [13, 'month']);
     assert.deepEqual(rounds(c), [['1–12', 6, 0], ['13–30', 6, 0]], 'the 13th to the 15th are round 2');
     assert.deepEqual([c.total, c.computedTotal], [0, 0]);
     assert.deepEqual(c.bookings.filter(b => b.day === '2026-09-13').map(b => b.round), ['13–30', '13–30']);
+    assert.equal(of(result, 'rep-a').splitDay, 13, 'every rep follows the month');
+    assert.deepEqual(result.adjustments.map(item => [item.kind, item.staffId, item.splitDay, item.reason]), [['ROUND_SPLIT', null, 13, 'الشهر ده الروند التاني بدأ من 13']]);
 
-    await add({ kind: 'ROUND_SPLIT', staffId: 'rep-c', splitDay: 15, reason: 'الفاصل اتنقل' });
-    c = await rep();
-    assert.deepEqual(rounds(c), [['1–14', 10, 1000], ['15–30', 2, 0]], 'a newer split replaces the older one');
+    // one rep's exception overrides the month's
+    await add({ kind: 'ROUND_SPLIT', staffId: 'rep-c', splitDay: 15, reason: 'استثناء لها' });
+    result = await compute();
+    c = of(result, 'rep-c');
+    assert.deepEqual([c.splitDay, c.splitSource], [15, 'rep']);
+    assert.deepEqual(rounds(c), [['1–14', 10, 1000], ['15–30', 2, 0]]);
     assert.equal(c.total, 1000);
-    assert.equal((await compute()).adjustments.filter(item => item.kind === 'ROUND_SPLIT').length, 1);
-    assert.equal((await adjustments.listAdjustments(pool, { tenantId: T, year: 2026, month: 9, history: true })).filter(item => item.kind === 'ROUND_SPLIT').length, 2);
+    assert.deepEqual([of(result, 'rep-a').splitDay, of(result, 'rep-a').splitSource], [13, 'month'], 'the others stay on the month\'s');
+
+    // a newer month split replaces the older month split, not the exception
+    await add({ kind: 'ROUND_SPLIT', splitDay: 14, reason: 'غلطنا' });
+    result = await compute();
+    assert.equal(result.splitDay, 14);
+    assert.equal(result.adjustments.filter(item => item.kind === 'ROUND_SPLIT').length, 2);
+    assert.equal(of(result, 'rep-c').splitDay, 15);
+    assert.equal((await adjustments.listAdjustments(pool, { tenantId: T, year: 2026, month: 9, history: true })).filter(item => item.kind === 'ROUND_SPLIT' && !item.staffId).length, 2);
     assert.equal((await compute({ applyAdjustments: false })).employees.find(e => e.staffId === 'rep-c').splitDay, 16, 'the system\'s own figure keeps the 16th');
-    assert.ok(thirteenth.id);
+
+    // taking the month's back: the 16th again for everyone but the exception
+    const live = (await compute()).adjustments.find(item => item.kind === 'ROUND_SPLIT' && !item.staffId);
+    assert.ok(await revoke(live.id));
+    result = await compute();
+    assert.deepEqual([result.splitDay, of(result, 'rep-a').splitDay, of(result, 'rep-c').splitDay], [16, 16, 15]);
+    assert.ok(month.id);
 
     const refused = async (input, pattern) => assert.rejects(() => add({ kind: 'ROUND_SPLIT', ...input }), error => error.statusCode === 400 && pattern.test(error.message));
-    await refused({ staffId: 'rep-c', splitDay: 29, reason: 'سبب' }, /من 2 لـ28/);
-    await refused({ staffId: 'rep-c', splitDay: 1, reason: 'سبب' }, /من 2 لـ28/);
+    await refused({ splitDay: 29, reason: 'سبب' }, /من 2 لـ28/);
+    await refused({ splitDay: 1, reason: 'سبب' }, /من 2 لـ28/);
     await refused({ staffId: 'rep-c', splitDay: 13.5, reason: 'سبب' }, /من 2 لـ28/);
-    await refused({ staffId: 'rep-c', splitDay: 13, reason: ' ' }, /سبب/);
+    await refused({ splitDay: 13, reason: ' ' }, /سبب/);
     await refused({ staffId: 'plain', splitDay: 13, reason: 'سبب' }, /حجوزات \(سيلز\)/);
     await refused({ staffId: 'desk-x', splitDay: 13, reason: 'سبب' }, /حجوزات \(سيلز\)/);
   } finally {
-    await pool.query("DELETE FROM bonus_adjustments WHERE tenant_id=? AND staff_id='rep-c'", [T]);
+    await pool.query("DELETE FROM bonus_adjustments WHERE tenant_id=? AND kind='ROUND_SPLIT'", [T]);
     await pool.query("DELETE FROM payments WHERE tenant_id=? AND staff_id='rep-c'", [T]);
     await pool.query("DELETE FROM subscribers WHERE tenant_id=? AND assigned_sales_id='rep-c'", [T]);
     await pool.query("DELETE FROM staff WHERE tenant_id=? AND id='rep-c'", [T]);
@@ -285,24 +305,20 @@ test('the second round starts on the rep\'s split day: the 13th to the 15th move
   }
 });
 
-test('splits for several reps at once are the financial permission\'s, with a reason, all or none', { skip }, async () => {
-  const body = reason => ({ month: '2026-09', reason, splits: [{ staffId: 'rep-a', day: 13 }, { staffId: 'rep-b', day: 14 }] });
-  const splitRows = async () => (await adjustments.listAdjustments(pool, { tenantId: T, year: 2026, month: 9, history: true })).filter(item => item.kind === 'ROUND_SPLIT').length;
-  const before = await splitRows();
-  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.hr, body: body('من شيت المبيعات') })).status, 403);
-  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.viewer, body: body('من شيت المبيعات') })).status, 403);
-  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.nobody, body: body('من شيت المبيعات') })).status, 403);
-  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.hr, body: { month: '2026-09', kind: 'ROUND_SPLIT', staffId: 'rep-a', splitDay: 13, reason: 'سبب' } })).status, 403);
-  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.owner, body: body('') })).status, 400, 'no reason');
-  const bad = await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.owner, body: { ...body('من شيت المبيعات'), splits: [{ staffId: 'rep-a', day: 13 }, { staffId: 'rep-b', day: 40 }] } });
-  assert.equal(bad.status, 400);
-  assert.equal(await splitRows(), before, 'none of a refused batch was written');
-  const owner = await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.owner, body: body('من شيت المبيعات') });
-  assert.equal(owner.status, 200, owner.text);
-  assert.equal(owner.body.adjustments.length, 2);
-  const financial = await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.financial, body: { ...body('من شيت المبيعات'), splits: [{ staffId: 'rep-a', day: 12 }] } });
-  assert.equal(financial.status, 200, financial.text);
+test('who may set the round split: the owner and manage_financial, with a reason — not HR, a viewer, or an account with neither', { skip }, async () => {
+  const month = { month: '2026-09', kind: 'ROUND_SPLIT', splitDay: 13, reason: 'الشهر ده الروند التاني بدأ من 13' };
+  const rep = { ...month, staffId: 'rep-a', splitDay: 14 };
+  for (const name of ['hr', 'viewer', 'nobody']) {
+    assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who[name], body: month })).status, 403, `${name}: the month`);
+    assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who[name], body: rep })).status, 403, `${name}: a rep`);
+  }
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.owner, body: { ...month, reason: '' } })).status, 400, 'no reason');
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.owner, body: { ...month, splitDay: 40 } })).status, 400, 'a day outside 2–28');
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.owner, body: month })).status, 200);
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.financial, body: rep })).status, 200);
+  const seen = await app.call('GET', '/api/admin/hr/monthly-bonuses?month=2026-09', { session: who.hr });
+  assert.equal(seen.body.splitDay, 13, 'HR sees the month\'s split');
   const live = (await app.call('GET', '/api/admin/hr/bonus-adjustments?month=2026-09', { session: who.hr })).body.adjustments.filter(item => item.kind === 'ROUND_SPLIT');
-  assert.deepEqual(live.map(item => [item.staffId, item.splitDay, item.reason]).sort(), [['rep-a', 12, 'من شيت المبيعات'], ['rep-b', 14, 'من شيت المبيعات']]);
+  assert.deepEqual(live.map(item => [item.staffId, item.splitDay]).sort(), [['rep-a', 14], [null, 13]].sort());
   for (const item of live) assert.equal((await app.call('POST', `/api/admin/hr/bonus-adjustments/${item.id}/revoke`, { session: who.owner, body: {} })).status, 200);
 });

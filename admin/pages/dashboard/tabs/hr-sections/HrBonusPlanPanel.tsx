@@ -107,6 +107,12 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
         <div className="flex flex-wrap items-center gap-2">
           <input type="month" dir="ltr" value={month} onChange={e => setMonth(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm" />
           <button type="button" onClick={work} disabled={working} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{working ? 'بيحسب…' : 'احسب'}</button>
+          {result && result.plan.salesPeriod === 'HALF_MONTH' && (
+            <span className="flex items-center gap-1.5 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-700">
+              الروند التاني للكل بيبدأ يوم <b>{result.splitDay}</b>{result.splitDay === 16 && ' (الأساسي)'}
+              {canEditPlan && <button type="button" className="font-bold text-indigo-600" onClick={() => startDraft('ROUND_SPLIT', 'يوم بداية الروند التاني لكل السيلز في الشهر ده', {}, { splitDay: String(result.splitDay) })}>غيّر</button>}
+            </span>
+          )}
           {result && result.employees.some(item => item.total > 0) && (
             <button type="button" onClick={saveMonth} disabled={working} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">
               سجّلها مكافآت مستنية الاعتماد
@@ -133,8 +139,8 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                           {item.schemeLabel}
                           {item.splitDay != null && (
                             <div className="text-[11px] text-gray-500">
-                              الروند التاني من يوم {item.splitDay}
-                              {canEditPlan && <button type="button" className="mr-1 font-bold text-indigo-600" onClick={() => startDraft('ROUND_SPLIT', `يوم بداية الروند التاني لـ${item.name}`, { staffId: item.staffId }, { splitDay: String(item.splitDay) })}>غيّر</button>}
+                              الروند التاني من يوم {item.splitDay}{item.splitSource === 'rep' && ' (استثناء ليه)'}
+                              {canEditPlan && <button type="button" className="mr-1 font-bold text-indigo-600" onClick={() => startDraft('ROUND_SPLIT', `استثناء: يوم بداية الروند التاني لـ${item.name} (بدل تقسيم الشهر)`, { staffId: item.staffId }, { splitDay: String(item.splitDay) })}>غيّر</button>}
                             </div>
                           )}
                         </td>
@@ -218,7 +224,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                         {adjustment.kind === 'TOTAL_OVERRIDE' && `${adjustment.staffName}: ${n(adjustment.amount)} ج.م`}
                         {adjustment.kind === 'EXCLUDE_BOOKING' && `${adjustment.client} (${adjustment.item}) من ${adjustment.staffName}`}
                         {adjustment.kind === 'REASSIGN_BOOKING' && `${adjustment.client} (${adjustment.item}): من ${adjustment.staffName || '—'} إلى ${adjustment.toStaffName}`}
-                        {adjustment.kind === 'ROUND_SPLIT' && `${adjustment.staffName}: الروند التاني من يوم ${adjustment.splitDay}`}
+                        {adjustment.kind === 'ROUND_SPLIT' && (adjustment.staffName ? `استثناء ${adjustment.staffName}: الروند التاني من يوم ${adjustment.splitDay}` : `كل السيلز: الروند التاني من يوم ${adjustment.splitDay}`)}
                         {adjustment.kind === 'WEIGHT_BOOKING' && `${adjustment.client} (${adjustment.item}): ${n(adjustment.weight)} حجز`}
                       </span>
                       <span className="text-gray-600">— {adjustment.reason}</span>

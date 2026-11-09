@@ -128,36 +128,6 @@ router.post('/api/admin/hr/bonus-adjustments', ...managePay, async (req, res) =>
   } finally { conn.release(); }
 });
 
-// POST /api/admin/hr/bonus-adjustments/round-splits {month, splits: [{staffId, day}], reason} — the day each rep's second round starts, several at once (the
-// button «اعتمد تقسيم الشيت»): all or none. Same permission, same reason rule, each one logged as a change of its own.
-router.post('/api/admin/hr/bonus-adjustments/round-splits', ...managePay, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const { year, month } = monthOf(req.body?.month);
-    const splits = Array.isArray(req.body?.splits) ? req.body.splits : [];
-    if (!splits.length || splits.length > 100) return res.status(400).json({ error: 'مفيش تقسيمات تتسجّل' });
-    await conn.beginTransaction();
-    const context = await adjustmentContext(conn, { tenantId: req.tenantId, year, month });
-    const made = [];
-    for (const split of splits) {
-      made.push(await addAdjustment(conn, {
-        tenantId: req.tenantId, year, month, actor: actorOf(req), context,
-        input: { kind: 'ROUND_SPLIT', staffId: split.staffId, splitDay: split.day, reason: req.body?.reason },
-      }));
-    }
-    await conn.commit();
-    for (const item of made) {
-      await writeAuditEvent({ action: 'hr.bonus_adjusted', entityType: 'bonus_adjustment', entityId: item.id, severity: 'warning', metadata: { month: `${year}-${month}`, kind: item.kind, staffId: item.staffId, splitDay: item.splitDay, reason: item.reason }, req }).catch(() => {});
-    }
-    res.json({ ok: true, adjustments: made });
-  } catch (error) {
-    await conn.rollback().catch(() => {});
-    if (error.statusCode === 400) return res.status(400).json({ error: error.message, code: error.code });
-    logger.error('[bonus-adjustments/round-splits]', error.message);
-    hrError(res, error);
-  } finally { conn.release(); }
-});
-
 // POST /api/admin/hr/bonus-adjustments/:id/revoke {reason?} — takes a change back; it stays in the month's history.
 router.post('/api/admin/hr/bonus-adjustments/:id/revoke', ...managePay, async (req, res) => {
   const conn = await pool.getConnection();

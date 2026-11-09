@@ -120,6 +120,7 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
     let total = 0;
     let ladder = null; let collection = null; let mine = [];
     let splitDay = null;
+    let splitSource = null;
     const leftOut = bookings.filter(booking => ownerOf(booking, scheme) === row.id && excluded.has(`${row.id}|${booking.paymentId}`))
       .map(({ bonuses: _bonuses, ...booking }) => booking);
     if (scheme === 'SALES_BOOKINGS') {
@@ -132,7 +133,9 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
       const weightOf = list => Math.round(list.reduce((sum, booking) => sum + booking.weight, 0) * 100) / 100;
       // Half-month rounds: round 1 is the days before the rep's split day (the 16th unless the owner set another for them and the month), round 2 from it
       // to the end, each on the whole ladder.
-      splitDay = splits.has(row.id) ? splitDayOf(splits.get(row.id).splitDay) : splitDayOf(null);
+      // The rep's own exception, else the month's split (for every rep), else the 16th.
+      splitSource = splits.has(row.id) ? 'rep' : (splits.has(null) ? 'month' : 'default');
+      splitDay = splitDayOf((splits.get(row.id) || splits.get(null) || {}).splitDay);
       const [firstLabel, secondLabel] = roundLabels(splitDay, Number(bounds.last.slice(8, 10)));
       const rounds = plan.salesPeriod === 'HALF_MONTH'
         ? [[firstLabel, mine.filter(booking => roundOfDay(booking.day, splitDay) === 1)], [secondLabel, mine.filter(booking => roundOfDay(booking.day, splitDay) === 2)]]
@@ -177,6 +180,7 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
       bookings: mine.map(({ bonuses: _bonuses, ...booking }) => booking),
       excludedBookings: leftOut,
       splitDay: scheme === 'SALES_BOOKINGS' && plan.salesPeriod === 'HALF_MONTH' ? splitDay : null,
+      splitSource: scheme === 'SALES_BOOKINGS' && plan.salesPeriod === 'HALF_MONTH' ? splitSource : null,
       adjustments: adjustments.filter(item => item.staffId === row.id || item.toStaffId === row.id || (item.kind === 'WEIGHT_BOOKING' && mineIds.has(item.paymentId))).map(item => item.id),
       computedTotal, override: override ? { id: override.id, amount: override.amount, reason: override.reason, by: override.by, at: override.at } : null,
       total: override ? override.amount : computedTotal, summary: lines.join(' · '),
@@ -194,6 +198,8 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
   });
   return {
     year, month, from: bounds.first, to: bounds.last, plan, employees, adjustments: shownAdjustments,
+    // The day the second round starts for every rep this month (the 16th unless the owner set another); a rep's own exception is on the rep.
+    splitDay: splitDayOf((splits.get(null) || {}).splitDay),
     computedTotal: money(employees.reduce((sum, item) => sum + item.computedTotal, 0)), total: money(employees.reduce((sum, item) => sum + item.total, 0)),
   };
 }

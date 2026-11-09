@@ -7,7 +7,8 @@
 //   REASSIGN_BOOKING  a booking counts for another rep
 //   WEIGHT_BOOKING    a booking counts as this many bookings
 //   TOTAL_OVERRIDE    the employee's month total is this amount (the computed figure is shown beside it)
-//   ROUND_SPLIT       the day this rep's second round starts (2–28; none set: the 16th)
+//   ROUND_SPLIT       the day the second round starts (2–28; none set: the 16th) — for the whole month (no staff_id: 9 Nov 2026, «الشهر ده الروند التاني بدأ من يوم كذا»),
+//                     or, as an exception, for one rep, which overrides the month's
 //
 // A change is revoked, never deleted; a newer change to the same thing revokes the older. Only the month's bookings can be changed, and only a rep on the
 // booking scheme can have one counted for them.
@@ -56,11 +57,12 @@ async function addAdjustment(db, { tenantId, year, month, input, actor, context 
   const record = { kind, staffId: null, paymentId: null, toStaffId: null, weight: null, amount: null, splitDay: null };
 
   if (kind === 'ROUND_SPLIT') {
+    // No employee: the split of the whole month. An employee: their own exception to it.
     const staffId = String(input.staffId || '');
-    if (!onScheme(staffId, 'SALES_BOOKINGS')) throw refuse('الموظف لازم يكون على نظام «حجوزات (سيلز)»');
+    if (staffId && !onScheme(staffId, 'SALES_BOOKINGS')) throw refuse('الموظف لازم يكون على نظام «حجوزات (سيلز)»');
     const day = Number(input.splitDay ?? input.day);
     if (!Number.isInteger(day) || day < MIN_SPLIT_DAY || day > MAX_SPLIT_DAY) throw refuse(`يوم بداية الروند التاني لازم يكون رقم من ${MIN_SPLIT_DAY} لـ${MAX_SPLIT_DAY}`);
-    record.staffId = staffId;
+    record.staffId = staffId || null;
     record.splitDay = day;
   } else if (kind !== 'TOTAL_OVERRIDE') {
     const booking = context.bookings.find(item => item.paymentId === String(input.paymentId || ''));

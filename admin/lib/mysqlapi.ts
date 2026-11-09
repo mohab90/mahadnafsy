@@ -333,13 +333,15 @@ export type BonusBooking = { paymentId: string; client: string; clientCode: stri
 /** GET /admin/hr/monthly-bonuses — every employee on a scheme and how their month's bonus is made up (api/lib/monthlyBonuses.js). */
 export interface MonthlyBonuses {
   year: number; month: number; from: string; to: string; total: number; computedTotal: number;
+  /** The day the second round starts for every rep this month (the 16th unless the owner set another). */
+  splitDay: number; plan: { salesPeriod?: 'MONTH' | 'HALF_MONTH' };
   adjustments: BonusAdjustment[];
   employees: {
     staffId: string; name: string; role: string; scheme: string; schemeLabel: string; total: number; summary: string;
     computedTotal: number; override: { id: string; amount: number; reason: string; by: string | null; at: string } | null;
     excludedBookings: BonusBooking[]; adjustments: string[];
     /** The day this rep's second round starts (the 16th unless the owner set another); null when the plan is monthly or the employee is not a rep. */
-    splitDay: number | null;
+    splitDay: number | null; splitSource: 'rep' | 'month' | 'default' | null;
     ladder: { bookings: number; amount: number; tier: { bookings: number; amount: number } | null; extraBookings: number; extraAmount: number; firstTarget: number | null;
       rounds?: { label: string; bookings: number; amount: number }[] } | null;
     collection: { amount: number; collected: number; payments: number; level: BonusLevel | null } | null;
@@ -358,7 +360,7 @@ export interface SalesSheetReport {
     client: { code: string; name: string; by: string } | null; diffs: { field: string; sheet: unknown; system: unknown; gap?: number; note?: string }[]; notes: string[];
     system: { title?: string; agreed?: number; rep?: { name: string } | null } | null }[];
   missingFromSheet: { owner: { name: string } | null; ownerHasTab: boolean; client: string; clientCode: string; item: string; day: string; priceEgp: number }[];
-  perRep: { tab: string; suggestedSplit: { day: number | null; overlap: number; note: string | null; used: number; staffId: string | null };
+  perRep: { tab: string; sheetMarker: { day: number | null; overlap: number; note: string | null }; systemSplit: number;
     staff: { id: string; name: string; firstTarget: number | null; scheme: string } | null; rows: number; rowsByRound: Record<string, number>; counts: Record<SheetCategory, number>;
     sheet: { byMarker: { bookings: number; amount: number }; byDate: { amount: number }; byFirstTarget: Record<string, number> };
     system: { bookings: number; amount: number; total: number; onScheme: boolean; splitDay: number } | null; difference: number | null; reasons: { kind: string; label: string; rows: number; weight: number }[] }[];
@@ -1148,8 +1150,6 @@ export const mysqlAdmin = {
   // The owner's changes to a month (api/routes/hr/bonuses.js, the financial permission's) and the sales-sheet comparison.
   addBonusAdjustment: (body: { month: string; kind: BonusAdjustmentKind; reason: string; staffId?: string; paymentId?: string; toStaffId?: string; weight?: number; amount?: number; splitDay?: number }) =>
     apiFetch<{ ok: boolean }>('/admin/hr/bonus-adjustments', { method: 'POST', body: JSON.stringify(body) }, A),
-  saveRoundSplits: (body: { month: string; reason: string; splits: { staffId: string; day: number }[] }) =>
-    apiFetch<{ ok: boolean; adjustments: { id: string }[] }>('/admin/hr/bonus-adjustments/round-splits', { method: 'POST', body: JSON.stringify(body) }, A),
   revokeBonusAdjustment: (id: string, reason?: string) => apiFetch<{ ok: boolean }>(`/admin/hr/bonus-adjustments/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: JSON.stringify({ reason }) }, A),
   reconcileSalesSheet: (body: { fileBase64: string; filename: string; month: string }) =>
     apiFetch<{ ok: boolean; report: SalesSheetReport; markdown: string; csv: string }>('/admin/hr/sales-sheet-reconciliation', { method: 'POST', body: JSON.stringify(body) }, A),

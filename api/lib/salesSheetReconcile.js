@@ -17,8 +17,9 @@
 const { normalizeArabicName } = require('./linkSiteAccounts');
 const { matchingSpellings } = require('./phoneNumber');
 const { agreedPrice } = require('./agreedPrice');
-const { bookingWeight, ladderBonus, DEFAULT_SPLIT_DAY, roundOfDay, roundLabels } = require('./bonusPlan');
+const { bookingWeight, ladderBonus, DEFAULT_SPLIT_DAY, splitDayOf, roundOfDay, roundLabels } = require('./bonusPlan');
 const { monthBounds, loadPlan, bookingsOf, computeMonthlyBonuses } = require('./monthlyBonuses');
+const { listAdjustments } = require('./bonusAdjustments');
 const { cairoDayOf } = require('./dates');
 const { courseSimilarity, suggestRoundSplit } = require('./salesSheet');
 
@@ -308,17 +309,22 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
   const system = await computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustments: false });
   const employeeOf = new Map(system.employees.map(employee => [employee.staffId, employee]));
   const lastDay = Number(bounds.last.slice(8, 10));
+  const splitChanges = await listAdjustments(db, { tenantId, year, month });
+  const monthSplit = splitDayOf((splitChanges.find(item => item.kind === 'ROUND_SPLIT' && !item.staffId) || {}).splitDay);
+  const repSplits = new Map(splitChanges.filter(item => item.kind === 'ROUND_SPLIT' && item.staffId).map(item => [item.staffId, splitDayOf(item.splitDay)]));
   const perRep = sheet.reps.map(rep => {
     const mine = results.filter(item => item.tab === rep.tab);
     const member = staffOfTab.get(rep.tab) || null;
-    // Where the owner's marker puts this rep's second round: the system's side is worked out with it (the sheet's side is the marker itself).
-    const suggestion = suggestRoundSplit(rep.rows);
-    const splitDay = suggestion.day || DEFAULT_SPLIT_DAY;
+    // The sheet's own line (the «النص التانى» row) — information only; the system draws its rounds on the month's split (the 16th unless the owner set another
+    // for the month, or for this rep).
+    const marker = suggestRoundSplit(rep.rows);
+    const markerDay = marker.day || DEFAULT_SPLIT_DAY;
+    const splitDay = member && repSplits.has(member.id) ? repSplits.get(member.id) : monthSplit;
     const firstTarget = member && Number(member.booking_first_target) > 0 ? Number(member.booking_first_target) : null;
     const sheetItems = mine.map(item => ({ weight: item.weight, round: item.round, roundByDate: item.roundByDate }));
-    const sheetSide = ladderOver(plan, sheetItems, firstTarget, item => item.round, { splitDay, lastDay });
+    const sheetSide = ladderOver(plan, sheetItems, firstTarget, item => item.round, { splitDay: markerDay, lastDay });
     const sheetByDate = ladderOver(plan, sheetItems, firstTarget, item => item.roundByDate ?? item.round, { lastDay });
-    const sheetFirst = Object.fromEntries([10, 15, 20].map(target => [target, ladderOver(plan, sheetItems, target, item => item.round, { splitDay, lastDay }).amount]));
+    const sheetFirst = Object.fromEntries([10, 15, 20].map(target => [target, ladderOver(plan, sheetItems, target, item => item.round, { splitDay: markerDay, lastDay }).amount]));
     const counts = Object.fromEntries(CATEGORIES.map(category => [category, mine.filter(item => item.category === category).length]));
     const weightOf = list => Math.round(list.reduce((total, item) => total + item.weight, 0) * 100) / 100;
     let systemSide = null;
@@ -327,7 +333,7 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
       const employee = employeeOf.get(member.id);
       const owned = monthBookings.filter(booking => ownerOf(booking) === member.id).map(booking => ({ weight: bookingWeight(plan, booking.priceEgp), day: booking.day, booking }));
       systemItems = owned;
-      // The system's bookings on the rep's rounds as the sheet draws them (the 16th when the sheet gives no line).
+      // The system's bookings on the system's rounds.
       const here = ladderOver(plan, owned, firstTarget, item => roundOfDay(item.day, splitDay), { splitDay, lastDay });
       systemSide = employee
         ? { ...here, total: money(employee.total - (employee.ladder ? employee.ladder.amount : 0) + here.amount), onScheme: true, splitDay }
@@ -360,7 +366,7 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
       }
     }
     return {
-      tab: rep.tab, suggestedSplit: { ...suggestion, day: suggestion.day, used: splitDay, staffId: member ? member.id : null },
+      tab: rep.tab, sheetMarker: marker, systemSplit: splitDay,
       staff: member ? { id: member.id, name: member.name, firstTarget, active: Boolean(member.is_active), scheme: member.bonus_scheme } : null,
       rowsByRound: { 1: mine.filter(item => item.round === 1).length, 2: mine.filter(item => item.round === 2).length },
       rows: mine.length, counts, sheetWeight: weightOf(mine),
