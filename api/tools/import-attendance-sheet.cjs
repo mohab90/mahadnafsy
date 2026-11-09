@@ -32,7 +32,7 @@ async function main() {
   const { importAttendanceMonth } = require('../lib/attendanceImport');
   const tenantId = arg('tenant') || process.env.DEFAULT_TENANT_ID || 'tenant-default';
   const sheet = readDeviceSheet(fs.readFileSync(path.resolve(file)), { filename: path.basename(file), month });
-  console.log(`${APPLY ? 'APPLY' : 'DRY RUN'}: ${path.basename(file)} — ${sheet.punches.length} punches of ${month} (${sheet.rowsRead} rows read, ${sheet.skipped?.length ?? sheet.skipped ?? 0} skipped)`);
+  console.log(`${APPLY ? 'APPLY' : 'DRY RUN'}: ${path.basename(file)} — ${sheet.punches.length} punches of ${month} (${sheet.rowsRead} rows read; skipped: ${sheet.skipped.outsideMonth} outside the month, ${sheet.skipped.unreadable} unreadable)`);
 
   const preview = await importAttendanceMonth(pool, { tenantId, month, punches: sheet.punches, filename: path.basename(file), dryRun: true });
   const [held] = await pool.query(
