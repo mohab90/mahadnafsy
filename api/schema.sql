@@ -6670,3 +6670,28 @@ CREATE TABLE `email_delivery_events` (
   KEY `idx_email_events_when` (`tenant_id`,`event`,`occurred_at`),
   KEY `idx_email_events_email` (`tenant_id`,`email`(120),`occurred_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- bonus_adjustments: migration 383 — the owner's changes to a month's bonuses, each with who, when and why (lib/bonusAdjustments.js).
+CREATE TABLE `bonus_adjustments` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `for_year` smallint(6) NOT NULL,
+  `for_month` tinyint(4) NOT NULL,
+  `kind` varchar(24) NOT NULL,
+  `staff_id` varchar(36) DEFAULT NULL,
+  `payment_id` varchar(100) DEFAULT NULL,
+  `to_staff_id` varchar(36) DEFAULT NULL,
+  `weight` decimal(5,2) DEFAULT NULL,
+  `amount` decimal(12,2) DEFAULT NULL,
+  `reason` varchar(500) NOT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `created_by_name` varchar(255) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  `revoked_at` datetime(3) DEFAULT NULL,
+  `revoked_by` varchar(36) DEFAULT NULL,
+  `revoked_by_name` varchar(255) DEFAULT NULL,
+  `revoked_reason` varchar(500) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_bonus_adj_month` (`tenant_id`,`for_year`,`for_month`,`revoked_at`),
+  KEY `idx_bonus_adj_payment` (`tenant_id`,`payment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

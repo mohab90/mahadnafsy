@@ -3,6 +3,7 @@
 // The sales-sheet comparison (lib/salesSheetReconcile.js) as an Arabic report: a short summary per rep, then the detailed lists — as Markdown (printable) and
 // as CSV (opens in Excel: UTF-8 with a BOM). It holds real names and phones: keep it off the repository.
 
+const BOM = String.fromCharCode(0xFEFF);
 const LABELS = Object.freeze({
   MATCHED: 'مطابق', DIFFERENT: 'مختلف', REFUNDED: 'اتعمله استرداد', VOIDED: 'دفعته اتمسحت', NO_PAID_BOOKING: 'مسجل بدون حجز مدفوع',
   NOT_REGISTERED: 'مش مسجل في السيستم', OTHER_REP: 'باسم سيلز تاني',
@@ -87,7 +88,7 @@ function renderCsv(report) {
     row.tab, row.rowNumber, row.name, row.phones.join(' / '), row.course, row.day || '', row.price, row.round ?? '', LABELS[row.category], diffText(row), row.notes.join(' ؛ '),
     row.client?.code || '', row.system?.title || '', row.system?.agreed ?? '', row.system?.rep?.name || '', row.system?.day || row.system?.firstPaidOn || '',
   ])];
-  return `﻿${lines.map(line => line.map(quote).join(',')).join('\r\n')}\r\n`;
+  return `${BOM}${lines.map(line => line.map(quote).join(',')).join('\r\n')}\r\n`;
 }
 
 module.exports = { LABELS, renderMarkdown, renderCsv };
