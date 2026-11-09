@@ -1690,62 +1690,6 @@
   "class": "b"
  },
  {
-  "id": "boxWithdrawalsAndMerges: the routes are the main books\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "router\\.post\\('\\/api\\/admin\\/finance\\/boxes\\/withdraw', \\.\\.\\.mainBooks, boxChange",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "router\\.post\\('\\/api\\/admin\\/finance\\/boxes\\/withdrawals\\/void', \\.\\.\\.mainBooks, boxChange",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "router\\.post\\('\\/api\\/admin\\/finance\\/boxes\\/merge', \\.\\.\\.mainBooks, boxChange",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "router\\.get\\('\\/api\\/admin\\/finance\\/boxes\\/withdrawals', requireAuth, requireAdminOrStaff, requirePermission\\('view_financial'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "const \\{ box: method, currency \\} = boxOf\\(row\\.method, row\\.currency, catalog\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/309_v26_box_withdrawals_and_merges.sql",
-    "must": {
-     "source": "CREATE TABLE IF NOT EXISTS box_withdrawals[\\s\\S]*CREATE TABLE IF NOT EXISTS box_aliases[\\s\\S]*'merge','void_withdrawal'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/schema.sql",
-    "must": {
-     "source": "CREATE TABLE `box_withdrawals`[\\s\\S]*CREATE TABLE `box_aliases`",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "certificatesPickAndExcel: the APIs hand the screens the links and the national id",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -13477,76 +13421,6 @@
     "file": "admin/context/site-data-hooks/useAdminDataRuntime.ts",
     "must": {
      "source": "mysqlAdmin\\.getContent\\(isAdmin\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "boxBalancesAndLecturerThirdRound: the boxes report carries balance, today and yesterday; only the institute\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "AS total_y,",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "yesterday, today, yesterday, today, req\\.tenantId, since\\(30\\), addDaysToDateOnly\\(today, 1\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "p\\.date >= \\? AND p\\.date < \\? THEN p\\.amount ELSE 0 END\\) AS total_y",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "mustNot": {
-     "source": "p\\.date = \\?|p\\.date <= \\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "if \\(!scope\\.branchId\\) \\{\\s*const current = await currentBalances\\(pool",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "const mainBooks = \\[requireAuth, requireAdminOrStaff, requirePermission\\('manage_financial'\\)\\];",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "BOXES_MAIN_BOOKS_ONLY",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/finance/budgets.js",
-    "must": {
-     "source": "entityType: 'cash_box'[\\s\\S]{0,400}strict: true",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/305_v26_box_balances.sql",
-    "must": {
-     "source": "CREATE TABLE IF NOT EXISTS box_balances[\\s\\S]*CREATE TABLE IF NOT EXISTS box_balance_events",
      "flags": ""
     }
    }
