@@ -47,7 +47,12 @@ function parsePhones(cell) {
   if (isBlank(cell)) return [];
   const raw = typeof cell === 'number' ? (Number.isInteger(cell) ? String(cell) : '') : latin(cell);
   const out = [];
-  for (const part of raw.split(/[\\/،,;|\n]|\s+و\s+/)) {
+  // «01558282609-010509054780»: a dash between two numbers is a separator; inside one number («+20 10-9414446») it is not.
+  const parts = raw.split(/[\\/،,;|\n]|\s+و\s+/).flatMap(part => {
+    const pieces = part.split(/\s*-\s*/);
+    return pieces.length > 1 && pieces.every(piece => digitsOf(piece).length >= 9) ? pieces : [part];
+  });
+  for (const part of parts) {
     const groups = part.trim().split(/\s+/).filter(Boolean);
     // «01284450882 01112071194» are two numbers; «0 11 42682000» is one written in pieces.
     const pieces = groups.length > 1 && groups.every(group => digitsOf(group).length >= 9) ? groups : [part];
