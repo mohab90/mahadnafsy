@@ -34,9 +34,15 @@ const shape = row => ({
 
 /** The month's changes still in force (or, with `history`, all of them, the taken-back ones too), oldest first. */
 async function listAdjustments(db, { tenantId, year, month, history = false }) {
-  const [rows] = await db.query(
-    `SELECT * FROM bonus_adjustments WHERE tenant_id=? AND for_year=? AND for_month=? ${history ? '' : 'AND revoked_at IS NULL'} ORDER BY created_at, id`, [tenantId, year, month]);
-  return rows.map(shape);
+  try {
+    const [rows] = await db.query(
+      `SELECT * FROM bonus_adjustments WHERE tenant_id=? AND for_year=? AND for_month=? ${history ? '' : 'AND revoked_at IS NULL'} ORDER BY created_at, id`, [tenantId, year, month]);
+    return rows.map(shape);
+  } catch (error) {
+    // A database that has not had migration 383 yet has no changes to list: the comparison tools run on it before the release.
+    if (error && (error.code === 'ER_NO_SUCH_TABLE' || error.errno === 1146)) return [];
+    throw error;
+  }
 }
 
 /**

@@ -27,6 +27,10 @@ function renderMarkdown(report) {
   const { totals } = report;
   const out = [];
   out.push(`# مطابقة شيت المبيعات — ${report.month}`, '', `معهد الدراسات النفسية · الفترة ${report.from} → ${report.to} · اتعمل ${report.generatedAt.slice(0, 16).replace('T', ' ')} · قراءة فقط: مفيش حاجة اتغيّرت في السيستم.`, '');
+  const unmapped = report.tabs.filter(tab => !tab.staff);
+  if (unmapped.length) {
+    out.push('## ⚠ تابات مش مربوطة بموظف', '', `${unmapped.map(tab => `«${tab.tab}»${tab.mapError ? ` (${tab.mapError})` : ''}${tab.ambiguous.length ? ` (بيطابق أكتر من موظف: ${tab.ambiguous.join('، ')})` : ''}`).join('، ')} — من غير موظف مفيش مقارنة بالسيستم ولا مكافأة من السيستم لهذه التابات. مرّر ملف \`--map=<file.json>\` (اسم التاب ← id الموظف أو اسمه بالظبط).`, '');
+  }
   out.push('## الملخص', '', table(['', 'العدد'], [
     ['صفوف الشيت اللي اتقرت', totals.rows], ...Object.entries(LABELS).map(([key, label]) => [label, totals[key]]),
     ['حجوزات في السيستم هذا الشهر', totals.systemBookings], ['حجوزات في السيستم مش في الشيت', totals.missingFromSheet], ['صفوف مقدرناش نقراها', report.unreadable.length],

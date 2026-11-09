@@ -6,7 +6,7 @@
 const BOM = String.fromCharCode(0xFEFF);
 const LABELS = Object.freeze({
   FOUND_SAME: 'موجودة بنفس الموظف', OTHER_EMPLOYEE: 'موجودة باسم موظف تاني', TYPE_MISMATCH: 'موجودة بس النوع مختلف (شهادة ↔ كورس)',
-  DIFFERENT: 'موجودة بس المبلغ أو التاريخ مختلف', NOT_IN_SYSTEM: 'مش موجودة في السيستم', NOT_REGISTERED: 'العميل مش مسجل',
+  DIFFERENT: 'موجودة بس المبلغ أو التاريخ مختلف', NOT_IN_SYSTEM: 'مش موجودة في السيستم', UNPAID_IN_SYSTEM: 'في السيستم بس فاشلة/معلّقة', NOT_REGISTERED: 'العميل مش مسجل',
 });
 const TYPE_AR = { COURSE: 'كورس', CERTIFICATE: 'شهادة', CARNEH: 'كارنيه', BOOK: 'كتاب', CONSULTATION: 'استشارة' };
 const fmt = value => (value == null ? '—' : Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 }));
@@ -35,6 +35,10 @@ function renderMarkdown(report) {
   const { totals } = report;
   const out = [];
   out.push(`# مطابقة شيت التحصيل — ${report.month}`, '', `معهد الدراسات النفسية · الفترة ${report.from} → ${report.to} · اتعمل ${report.generatedAt.slice(0, 16).replace('T', ' ')} · قراءة فقط: مفيش حاجة اتغيّرت في السيستم.`, '');
+  const unmapped = report.tabs.filter(tab => !tab.employee);
+  if (unmapped.length) {
+    out.push('## ⚠ تابات مش مربوطة بموظف', '', `${unmapped.map(tab => `«${tab.tab}»${tab.mapError ? ` (${tab.mapError})` : ''}${tab.ambiguous.length ? ` (بيطابق أكتر من موظف: ${tab.ambiguous.join('، ')})` : ''}`).join('، ')} — من غير موظف مفيش مقارنة بالموظف ولا بإجمالي السيستم لهذه التابات. مرّر ملف \`--map=<file.json>\` (اسم التاب ← id الموظف أو اسمه بالظبط).`, '');
+  }
   out.push('## الملخص', '', table(['', 'العدد'], [
     ['دفعات الشيت اللي اتقرت', totals.rows], ...Object.entries(LABELS).map(([key, label]) => [label, totals[key]]),
     ['منها عليها اختلاف نوع (شهادة ↔ كورس)', totals.TYPE_FLAGS], ['صفوف تاريخها خارج الشهر', totals.outsideMonth],
@@ -43,10 +47,10 @@ function renderMarkdown(report) {
   ]), '');
 
   out.push('## كل موظف تحصيل', '', table(
-    ['التاب', 'الموظف', 'دفعات', 'بنفس الموظف', 'موظف تاني', 'نوع مختلف', 'مبلغ/تاريخ مختلف', 'مش في السيستم', 'عميل مش مسجل', 'إجمالي الشيت', 'إجمالي السيستم', 'الفرق', 'في السيستم مش في التاب'],
+    ['التاب', 'الموظف', 'دفعات', 'بنفس الموظف', 'موظف تاني', 'نوع مختلف', 'مبلغ/تاريخ مختلف', 'مش في السيستم', 'فاشلة/معلّقة', 'عميل مش مسجل', 'إجمالي الشيت', 'إجمالي السيستم', 'الفرق', 'في السيستم مش في التاب'],
     report.perCollector.map(item => [
       item.tab, item.employee ? item.employee.name : 'مفيش موظف بالاسم ده', item.rows, item.counts.FOUND_SAME, item.counts.OTHER_EMPLOYEE, item.counts.TYPE_MISMATCH, item.counts.DIFFERENT,
-      item.counts.NOT_IN_SYSTEM, item.counts.NOT_REGISTERED, fmt(item.sheetTotal), item.employee ? fmt(item.systemTotal) : '—', item.difference == null ? '—' : fmt(item.difference),
+      item.counts.NOT_IN_SYSTEM, item.counts.UNPAID_IN_SYSTEM, item.counts.NOT_REGISTERED, fmt(item.sheetTotal), item.employee ? fmt(item.systemTotal) : '—', item.difference == null ? '—' : fmt(item.difference),
       `${item.missingFromTab.count} (${fmt(item.missingFromTab.amount)})`,
     ])), '');
   for (const item of report.perCollector) {
@@ -71,6 +75,7 @@ function renderMarkdown(report) {
   section('دفعات مبلغها أو تاريخها مختلف', 'DIFFERENT', [...HEAD, 'تفاصيل'], row => [...rowLine(row), detailOf(row)]);
   section('شهادة مسجلة كأنها كورس (أو العكس)', 'TYPE_MISMATCH', [...HEAD, 'تفاصيل'], row => [...rowLine(row), detailOf(row)]);
   section('دفعات مش موجودة في السيستم', 'NOT_IN_SYSTEM', [...HEAD, 'كود العميل · ملاحظات'], row => [...rowLine(row), `${row.client?.code || ''} ${detailOf(row)}`]);
+  section('دفعات في السيستم بس فاشلة أو معلّقة', 'UNPAID_IN_SYSTEM', [...HEAD, 'تفاصيل'], row => [...rowLine(row), detailOf(row)]);
   section('عملاء مش مسجلين في السيستم', 'NOT_REGISTERED', [...HEAD, 'ملاحظات'], row => [...rowLine(row), detailOf(row)]);
 
   const noted = report.rows.filter(row => row.category === 'FOUND_SAME' && row.notes.length);

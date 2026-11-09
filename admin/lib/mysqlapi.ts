@@ -351,7 +351,7 @@ export interface MonthlyBonuses {
 }
 
 /** POST /admin/hr/collection-sheet-reconciliation — the collection employees' sheet against the system's payments (api/lib/collectionSheetReconcile.js). */
-export type CollectionCategory = 'FOUND_SAME' | 'OTHER_EMPLOYEE' | 'TYPE_MISMATCH' | 'DIFFERENT' | 'NOT_IN_SYSTEM' | 'NOT_REGISTERED';
+export type CollectionCategory = 'FOUND_SAME' | 'OTHER_EMPLOYEE' | 'TYPE_MISMATCH' | 'DIFFERENT' | 'NOT_IN_SYSTEM' | 'UNPAID_IN_SYSTEM' | 'NOT_REGISTERED';
 export interface CollectionSheetReport {
   month: string; from: string; to: string;
   totals: Record<CollectionCategory | 'rows' | 'TYPE_FLAGS' | 'outsideMonth' | 'missingFromSheet' | 'systemPayments' | 'sheetAmount' | 'systemAmount', number>;

@@ -159,7 +159,7 @@ router.post('/api/admin/hr/sales-sheet-reconciliation', ...managePay, async (req
     if (!buffer.length || buffer.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'الملف لازم يكون أقل من 8 ميجا' });
     const sheet = readSalesSheet(buffer, { month: `${year}-${String(month).padStart(2, '0')}` });
     if (!sheet.rows) return res.status(400).json({ error: 'مفيش صفوف حجوزات اتقرت من الشيت ده', unreadable: sheet.unreadable });
-    const report = await reconcileSalesSheet(pool, { tenantId: req.tenantId, sheet, year, month });
+    const report = await reconcileSalesSheet(pool, { tenantId: req.tenantId, sheet, year, month, tabMap: req.body?.map });
     res.set('Cache-Control', 'no-store');
     res.json({ ok: true, report, markdown: renderMarkdown(report), csv: renderCsv(report) });
   } catch (error) {
@@ -180,7 +180,7 @@ router.post('/api/admin/hr/collection-sheet-reconciliation', ...managePay, async
     if (!buffer.length || buffer.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'الملف لازم يكون أقل من 8 ميجا' });
     const sheet = readCollectionSheet(buffer, { month: `${year}-${String(month).padStart(2, '0')}` });
     if (!sheet.rows) return res.status(400).json({ error: 'مفيش دفعات اتقرت من الشيت ده', unreadable: sheet.unreadable });
-    const report = await reconcileCollectionSheet(pool, { tenantId: req.tenantId, sheet, year, month });
+    const report = await reconcileCollectionSheet(pool, { tenantId: req.tenantId, sheet, year, month, tabMap: req.body?.map });
     res.set('Cache-Control', 'no-store');
     res.json({ ok: true, report, markdown: collectionReport.renderMarkdown(report), csv: collectionReport.renderCsv(report) });
   } catch (error) {

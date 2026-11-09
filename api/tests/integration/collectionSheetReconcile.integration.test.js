@@ -21,7 +21,7 @@ const ENABLED = !!(process.env.DB_USER && process.env.DB_NAME);
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-0123456789';
 const skip = !ENABLED && 'no DB_* configured';
 const T = 'tenant-collrec-it';
-let pool; let report; let render; let before_;
+let pool; let report; let render; let before_; let reconcileLib; let sheetUsed;
 
 let seq = 0;
 const stamp = day => (typeof day === 'string' ? day : `2026-10-${String(day).padStart(2, '0')}`) + ' 12:00:00';
@@ -50,11 +50,12 @@ before(async () => {
   if (!ENABLED) return;
   ({ pool } = require('../../lib/db'));
   const reconcile = require('../../lib/collectionSheetReconcile');
+  reconcileLib = reconcile;
   render = require('../../lib/collectionSheetReport');
   await clean();
   await staff('coll-a', 'آلاء تجريبية تحصيل'); await staff('coll-b', 'بيان تجريبية تحصيل'); await staff('coll-c', 'جنى تجريبية تحصيل');
   const phone = n => `0110000${String(n).padStart(4, '0')}`;
-  for (let n = 601; n <= 619; n++) await client(`k${n - 600}`, phone(n), n === 609 ? 'عميل تحصيل بالاسم' : undefined);
+  for (let n = 601; n <= 620; n++) await client(`k${n - 600}`, phone(n), n === 609 ? 'عميل تحصيل بالاسم' : undefined);
   await pool.query("INSERT INTO leads (id, tenant_id, name, phone, source, status) VALUES ('lead-cr', ?, 'مهتمة تجريبية', '01100000999', 'test', 'new')", [T]);
   const a = 'coll-a'; const b = 'coll-b';
   await pay({ client: 'k1', amount: 1250, staff: a, day: 5 });
@@ -74,6 +75,7 @@ before(async () => {
   await pay({ client: 'k15', amount: 500, staff: a, day: 19 });                      // the system has it, the tab lacks it
   await pay({ client: 'k16', amount: 400, staff: 'coll-c', day: 20 });               // employee c has no tab
   await pay({ client: 'k17', amount: 1100, staff: a, day: 18 });
+  await pay({ client: 'k20', amount: 450, staff: a, day: 18, status: 'failed' });     // a payment the system has, and it failed
   await pay({ client: 'k18', amount: 300, day: 21 });                                // the site's own: no employee
   await pay({ client: 'k19', amount: 650, staff: b, day: '2026-09-20' });            // September
 
@@ -98,11 +100,12 @@ before(async () => {
     srow('بيان', 2, { name: 'اسم لا يطابق احدا', senderPhones: ['1100000610'], amount: 1200, day: '2026-10-13' }),
     srow('بيان', 3, { phones: ['1100000611'], text: 'قسط معالج /شهادة الازهر', kinds: ['CERTIFICATE', 'COURSE'], amount: 3500, day: '2026-10-14' }),
   ];
-  const tabX = [srow('غريبة', 1, { phones: ['1100000614'], amount: 600, day: '2026-10-18' })];
+  const tabX = [srow('غريبة', 1, { phones: ['1100000614'], amount: 600, day: '2026-10-18' }), srow('غريبة', 2, { phones: ['1100000620'], amount: 450, day: '2026-10-18' })];
   const sheet = {
     collectors: [{ tab: 'آلاء', rows: tabA }, { tab: 'بيان', rows: tabB }, { tab: 'غريبة', rows: tabX }],
     unreadable: [{ tab: 'آلاء', rowNumber: 40, reason: 'مفيش مبلغ', cells: ['عميل'] }],
   };
+  sheetUsed = sheet;
   before_ = (await pool.query('SELECT COUNT(*) AS n FROM payments WHERE tenant_id=?', [T]))[0][0].n;
   report = await reconcile.reconcileCollectionSheet(pool, { tenantId: T, sheet, year: 2026, month: 10 });
 });
@@ -111,9 +114,9 @@ after(async () => { if (!ENABLED) return; await clean(); await pool.end(); });
 const row = (tab, number) => report.rows.find(item => item.tab === tab && item.rowNumber === number);
 
 test('every row lands in its category and the totals add up', { skip }, () => {
-  assert.equal(report.rows.length, 18);
-  assert.deepEqual([report.totals.rows, report.totals.FOUND_SAME, report.totals.OTHER_EMPLOYEE, report.totals.TYPE_MISMATCH, report.totals.DIFFERENT, report.totals.NOT_IN_SYSTEM, report.totals.NOT_REGISTERED],
-    [18, 7, 1, 2, 2, 4, 2]);
+  assert.equal(report.rows.length, 19);
+  assert.deepEqual([report.totals.rows, report.totals.FOUND_SAME, report.totals.OTHER_EMPLOYEE, report.totals.TYPE_MISMATCH, report.totals.DIFFERENT, report.totals.NOT_IN_SYSTEM, report.totals.UNPAID_IN_SYSTEM, report.totals.NOT_REGISTERED],
+    [19, 7, 1, 2, 2, 3, 2, 2]);
   assert.deepEqual(report.totals.outsideMonth, 1);
   assert.deepEqual(report.totals.TYPE_FLAGS, 2);
 });
@@ -150,11 +153,17 @@ test('found but the amount or the date differs: which one', { skip }, () => {
   assert.deepEqual(date.diffs, [{ field: 'date', sheet: '2026-10-20', system: '2026-10-10', gap: -10 }]);
 });
 
-test('not in the system: a voided payment, a still-pending one and a client with no payment are said; not registered: a lead is said', { skip }, () => {
+test('not in the system: a voided payment and a client with no payment are said; a payment that is there but pending or failed is its own category; not registered: a lead is said', { skip }, () => {
   assert.match(row('آلاء', 7).notes.join(' '), /لكنها ممسوحة/);
-  assert.match(row('آلاء', 13).notes.join(' '), /لكنها معلّقة/);
   assert.match(row('آلاء', 8).notes.join(' '), /مفيش له أي دفعة/);
-  assert.deepEqual([7, 8, 13].map(number => row('آلاء', number).category), ['NOT_IN_SYSTEM', 'NOT_IN_SYSTEM', 'NOT_IN_SYSTEM']);
+  assert.deepEqual([7, 8].map(number => row('آلاء', number).category), ['NOT_IN_SYSTEM', 'NOT_IN_SYSTEM']);
+  const pending = row('آلاء', 13);
+  assert.equal(pending.category, 'UNPAID_IN_SYSTEM');
+  assert.match(pending.notes.join(' '), /لكنها معلّقة/);
+  assert.equal(pending.payments[0].id.startsWith('pay-cr-'), true, 'the payment that is there is shown');
+  const failed = row('غريبة', 2);
+  assert.equal(failed.category, 'UNPAID_IN_SYSTEM');
+  assert.match(failed.notes.join(' '), /لكنها فاشلة/);
   const stranger = row('آلاء', 9);
   assert.equal(stranger.category, 'NOT_REGISTERED');
   assert.match(stranger.notes.join(' '), /lead فقط: مهتمة تجريبية/);
@@ -192,7 +201,7 @@ test('totals per collector: sheet vs system, and the difference in exact pieces'
   const a = report.perCollector.find(item => item.tab === 'آلاء');
   assert.deepEqual([a.sheetTotal, a.sheetOutsideMonth, a.systemTotal, a.difference], [19950, 200, 16350, 3600]);
   const pieces = Object.fromEntries(a.reasons.map(reason => [reason.kind, [reason.rows, reason.amount]]));
-  assert.deepEqual(pieces, { NOT_REGISTERED: [1, 300], NOT_IN_SYSTEM: [4, 3500], OTHER_EMPLOYEE: [1, 1000], PAIRED_GAP: [7, -100], MISSING_FROM_TAB: [2, -1100] });
+  assert.deepEqual(pieces, { NOT_REGISTERED: [1, 300], NOT_IN_SYSTEM: [3, 2800], UNPAID_IN_SYSTEM: [1, 700], OTHER_EMPLOYEE: [1, 1000], PAIRED_GAP: [7, -100], MISSING_FROM_TAB: [2, -1100] });
   assert.equal(a.reasons.reduce((total, reason) => total + reason.amount, 0), a.difference, 'every pound of the difference is explained');
   const b = report.perCollector.find(item => item.tab === 'بيان');
   assert.deepEqual([b.sheetTotal, b.systemTotal, b.difference], [5500, 6500, -1000]);
@@ -208,11 +217,37 @@ test('nothing was written', { skip }, async () => {
 test('the Arabic report and the CSV hold every row', { skip }, () => {
   const markdown = render.renderMarkdown(report);
   for (const heading of ['## الملخص', '## كل موظف تحصيل', '## دفعات موجودة باسم موظف تاني (1)', '## دفعات مبلغها أو تاريخها مختلف (2)', '## شهادة مسجلة كأنها كورس (أو العكس) (2)',
-    '## دفعات مش موجودة في السيستم (4)', '## عملاء مش مسجلين في السيستم (2)', '## دفعات في السيستم للمحصّلين مش في الشيت (4)', '## صفوف ما اتقراتش (1)']) {
+    '## دفعات مش موجودة في السيستم (3)', '## دفعات في السيستم بس فاشلة أو معلّقة (2)', '## عملاء مش مسجلين في السيستم (2)', '## دفعات في السيستم للمحصّلين مش في الشيت (4)', '## صفوف ما اتقراتش (1)']) {
     assert.ok(markdown.includes(heading), heading);
   }
   assert.ok(markdown.includes('معهد الدراسات النفسية'));
   const csv = render.renderCsv(report);
   assert.ok(csv.startsWith(String.fromCharCode(0xFEFF)));
   assert.equal(csv.trim().split('\r\n').length, 1 + report.rows.length);
+});
+
+test('staff named in Latin letters and tabs in Arabic: the tabs are mapped by an explicit map (an id, or the exact name); without it they are reported unmapped, loudly', { skip }, async () => {
+  await pool.query("UPDATE staff SET name='Alaa  Tajribia' WHERE id='coll-a' AND tenant_id=?", [T]);
+  await pool.query("UPDATE staff SET name='bayan tajribia' WHERE id='coll-b' AND tenant_id=?", [T]);
+  try {
+    const bare = await reconcileLib.reconcileCollectionSheet(pool, { tenantId: T, sheet: sheetUsed, year: 2026, month: 10 });
+    assert.deepEqual(bare.tabs.map(item => [item.tab, item.employee, item.via]), [['آلاء', null, null], ['بيان', null, null], ['غريبة', null, null]], 'no fuzzy match across scripts');
+    assert.ok(render.renderMarkdown(bare).startsWith('# مطابقة شيت التحصيل') && render.renderMarkdown(bare).includes('## ⚠ تابات مش مربوطة بموظف'), 'said at the top of the report');
+
+    const mapped = await reconcileLib.reconcileCollectionSheet(pool, {
+      tenantId: T, sheet: sheetUsed, year: 2026, month: 10,
+      // an id; the exact name with its spaces collapsed and another case; a tab name with stray spaces; an entry that matches no one
+      tabMap: { ' آلاء ': 'coll-a', 'بيان': 'Bayan   TAJRIBIA', 'غريبة': 'nobody by that name' },
+    });
+    assert.deepEqual(mapped.tabs.map(item => [item.tab, item.employee?.id || null, item.via]), [['آلاء', 'coll-a', 'map'], ['بيان', 'coll-b', 'map'], ['غريبة', null, null]]);
+    assert.match(mapped.tabs[2].mapError, /ما طابقش أي موظف/);
+    assert.match(render.renderMarkdown(mapped), /غريبة.*التعيين «nobody by that name» ما طابقش أي موظف/);
+    const same = key => mapped.rows.find(item => `${item.tab}|${item.rowNumber}` === key);
+    assert.equal(same('آلاء|1').category, 'FOUND_SAME', 'the comparison runs on the mapped employee');
+    assert.equal(same('آلاء|2').category, 'OTHER_EMPLOYEE');
+    assert.equal(mapped.perCollector.find(item => item.tab === 'آلاء').systemTotal, 16350);
+  } finally {
+    await pool.query("UPDATE staff SET name='آلاء تجريبية تحصيل' WHERE id='coll-a' AND tenant_id=?", [T]);
+    await pool.query("UPDATE staff SET name='بيان تجريبية تحصيل' WHERE id='coll-b' AND tenant_id=?", [T]);
+  }
 });

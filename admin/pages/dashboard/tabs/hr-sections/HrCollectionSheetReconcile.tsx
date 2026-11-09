@@ -7,11 +7,11 @@ type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 const n = (value: number | null | undefined) => (value == null ? '—' : Number(value).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 }));
 const LABEL: Record<CollectionCategory, string> = {
   FOUND_SAME: 'موجودة بنفس الموظف', OTHER_EMPLOYEE: 'باسم موظف تاني', TYPE_MISMATCH: 'النوع مختلف (شهادة ↔ كورس)', DIFFERENT: 'المبلغ أو التاريخ مختلف',
-  NOT_IN_SYSTEM: 'مش في السيستم', NOT_REGISTERED: 'العميل مش مسجل',
+  NOT_IN_SYSTEM: 'مش في السيستم', UNPAID_IN_SYSTEM: 'في السيستم بس فاشلة/معلّقة', NOT_REGISTERED: 'العميل مش مسجل',
 };
 const TONE: Record<CollectionCategory, string> = {
   FOUND_SAME: 'bg-emerald-50 text-emerald-700', OTHER_EMPLOYEE: 'bg-indigo-50 text-indigo-700', TYPE_MISMATCH: 'bg-amber-50 text-amber-700',
-  DIFFERENT: 'bg-amber-50 text-amber-700', NOT_IN_SYSTEM: 'bg-rose-50 text-rose-700', NOT_REGISTERED: 'bg-gray-100 text-gray-700',
+  DIFFERENT: 'bg-amber-50 text-amber-700', NOT_IN_SYSTEM: 'bg-rose-50 text-rose-700', UNPAID_IN_SYSTEM: 'bg-orange-50 text-orange-700', NOT_REGISTERED: 'bg-gray-100 text-gray-700',
 };
 const TYPE_AR: Record<string, string> = { COURSE: 'كورس', CERTIFICATE: 'شهادة', CARNEH: 'كارنيه', BOOK: 'كتاب', CONSULTATION: 'استشارة' };
 
@@ -99,7 +99,7 @@ export default function HrCollectionSheetReconcile({ notify, defaultMonth }: { n
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-xs text-gray-500">
                 <tr><th className="p-2 text-right">التاب</th><th className="p-2 text-right">الموظف</th><th className="p-2 text-right">دفعات</th><th className="p-2 text-right">بنفس الموظف</th>
-                  <th className="p-2 text-right">موظف تاني</th><th className="p-2 text-right">نوع مختلف</th><th className="p-2 text-right">مبلغ/تاريخ مختلف</th><th className="p-2 text-right">مش في السيستم</th>
+                  <th className="p-2 text-right">موظف تاني</th><th className="p-2 text-right">نوع مختلف</th><th className="p-2 text-right">مبلغ/تاريخ مختلف</th><th className="p-2 text-right">مش في السيستم</th><th className="p-2 text-right">فاشلة/معلّقة</th>
                   <th className="p-2 text-right">مش مسجل</th><th className="p-2 text-right">إجمالي الشيت</th><th className="p-2 text-right">إجمالي السيستم</th><th className="p-2 text-right">الفرق</th></tr>
               </thead>
               <tbody>
@@ -109,13 +109,13 @@ export default function HrCollectionSheetReconcile({ notify, defaultMonth }: { n
                       <td className="p-2 font-bold">{item.tab}</td>
                       <td className="p-2 text-xs">{item.employee ? item.employee.name : <span className="text-rose-600">مفيش موظف بالاسم ده</span>}</td>
                       <td className="p-2">{n(item.rows)}</td><td className="p-2">{n(item.counts.FOUND_SAME)}</td><td className="p-2">{n(item.counts.OTHER_EMPLOYEE)}</td>
-                      <td className="p-2">{n(item.counts.TYPE_MISMATCH)}</td><td className="p-2">{n(item.counts.DIFFERENT)}</td><td className="p-2">{n(item.counts.NOT_IN_SYSTEM)}</td>
+                      <td className="p-2">{n(item.counts.TYPE_MISMATCH)}</td><td className="p-2">{n(item.counts.DIFFERENT)}</td><td className="p-2">{n(item.counts.NOT_IN_SYSTEM)}</td><td className="p-2">{n(item.counts.UNPAID_IN_SYSTEM)}</td>
                       <td className="p-2">{n(item.counts.NOT_REGISTERED)}</td>
                       <td className="p-2 font-bold">{n(item.sheetTotal)}</td><td className="p-2 font-bold">{item.employee ? n(item.systemTotal) : '—'}</td>
                       <td className={`p-2 font-extrabold ${item.difference ? 'text-rose-600' : 'text-emerald-700'}`}>{item.difference == null ? '—' : n(item.difference)}</td>
                     </tr>
                     {item.reasons.length > 0 && (
-                      <tr><td colSpan={12} className="bg-gray-50 px-3 py-1.5 text-[11px] text-gray-600">
+                      <tr><td colSpan={13} className="bg-gray-50 px-3 py-1.5 text-[11px] text-gray-600">
                         تفصيل الفرق: {item.reasons.map(reason => `${reason.label}: ${reason.rows} (${reason.amount > 0 ? '+' : ''}${n(reason.amount)})`).join(' · ')}
                       </td></tr>
                     )}

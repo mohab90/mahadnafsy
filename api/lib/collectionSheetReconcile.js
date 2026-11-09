@@ -10,7 +10,8 @@
 //   OTHER_EMPLOYEE     found, recorded by someone else (named; «بدون موظف» for the site's own)
 //   TYPE_MISMATCH      found under the same employee, but a certificate recorded as course money, or the reverse (a carnet, a book, a consultation too)
 //   DIFFERENT          the client has the payment, but not for that amount, or not on that date (±3 days): which one is said
-//   NOT_IN_SYSTEM      the client is registered and has no such payment (a voided, refunded or still-pending one is said)
+//   NOT_IN_SYSTEM      the client is registered and has no such payment (a voided or refunded one is said)
+//   UNPAID_IN_SYSTEM   the system has the payment — same amount, within the days — but FAILED or still PENDING: not paid
 //   NOT_REGISTERED     no client by that phone or name (a lead is said)
 //   and the other way round: every paid payment of the month recorded by a collector that no row claims, per collector, with the totals sheet vs system.
 
@@ -18,7 +19,7 @@ const { cairoDayOf } = require('./dates');
 const { monthBounds } = require('./monthlyBonuses');
 const { mapTabsToStaff, loadClients, pickByPhone, pickByName } = require('./salesSheetReconcile');
 
-const CATEGORIES = Object.freeze(['FOUND_SAME', 'OTHER_EMPLOYEE', 'TYPE_MISMATCH', 'DIFFERENT', 'NOT_IN_SYSTEM', 'NOT_REGISTERED']);
+const CATEGORIES = Object.freeze(['FOUND_SAME', 'OTHER_EMPLOYEE', 'TYPE_MISMATCH', 'DIFFERENT', 'NOT_IN_SYSTEM', 'UNPAID_IN_SYSTEM', 'NOT_REGISTERED']);
 const DAY_WINDOW = 3;
 const money = value => Math.round((Number(value) || 0) * 100) / 100;
 const dayNumber = day => Math.round(Date.parse(`${day}T00:00:00Z`) / 86400000);
@@ -51,12 +52,12 @@ function payingSet(amount, candidates) {
  * @param db     a pool or connection (only SELECTs are run)
  * @param sheet  what lib/collectionSheet.js parseCollectionSheet returns
  */
-async function reconcileCollectionSheet(db, { tenantId, sheet, year, month }) {
+async function reconcileCollectionSheet(db, { tenantId, sheet, year, month, tabMap = null }) {
   const bounds = monthBounds(year, month);
   const start = new Date(bounds.start); const end = new Date(bounds.end);
   const [staff] = await db.query('SELECT id, name, role, is_active, bonus_scheme FROM staff WHERE tenant_id=? AND deleted_at IS NULL', [tenantId]);
   const staffById = new Map(staff.map(member => [member.id, member]));
-  const mapping = mapTabsToStaff(sheet.collectors.map(tab => tab.tab), staff);
+  const mapping = mapTabsToStaff(sheet.collectors.map(tab => tab.tab), staff, tabMap);
   const staffOfTab = new Map(mapping.map(item => [item.tab, item.staff]));
   const describe = id => (id ? { id, name: staffById.get(id)?.name || '—' } : null);
 
@@ -180,8 +181,14 @@ async function reconcileCollectionSheet(db, { tenantId, sheet, year, month }) {
       }
       result.category = 'NOT_IN_SYSTEM';
       const unlive = all.filter(payment => row.day && Math.abs(dayNumber(payment.day) - dayNumber(row.day)) <= DAY_WINDOW && isAmount(row.amount, payment) && !(payment.status === 'paid' && !payment.deleted_at));
-      if (unlive.length) {
-        const state = unlive[0].deleted_at ? 'ممسوحة' : (unlive[0].status === 'refunded' ? 'مستردّة' : (unlive[0].status === 'failed' ? 'فاشلة' : 'معلّقة (مش مدفوعة)'));
+      // a payment that is there but FAILED or PENDING is its own answer: not paid, rather than not there
+      const waiting = unlive.find(payment => !payment.deleted_at && ['pending', 'failed'].includes(payment.status));
+      if (waiting) {
+        result.category = 'UNPAID_IN_SYSTEM';
+        result.notes.push(`في السيستم دفعة بنفس المبلغ والتاريخ لكنها ${waiting.status === 'failed' ? 'فاشلة' : 'معلّقة'} (مش مدفوعة)`);
+        result.payments = [shapePayment(waiting)];
+      } else if (unlive.length) {
+        const state = unlive[0].deleted_at ? 'ممسوحة' : 'مستردّة';
         result.notes.push(`في السيستم دفعة بنفس المبلغ والتاريخ لكنها ${state}`);
         result.payments = [shapePayment(unlive[0])];
       } else if (!all.length) result.notes.push('العميل مسجل ومفيش له أي دفعة');
@@ -239,6 +246,7 @@ async function reconcileCollectionSheet(db, { tenantId, sheet, year, month }) {
       reasons: member ? [
         { kind: 'NOT_REGISTERED', label: 'عملاء مش مسجلين', rows: by('NOT_REGISTERED').length, amount: sum(by('NOT_REGISTERED')) },
         { kind: 'NOT_IN_SYSTEM', label: 'دفعات مش في السيستم', rows: by('NOT_IN_SYSTEM').length, amount: sum(by('NOT_IN_SYSTEM')) },
+        { kind: 'UNPAID_IN_SYSTEM', label: 'دفعات في السيستم بس فاشلة/معلّقة', rows: by('UNPAID_IN_SYSTEM').length, amount: sum(by('UNPAID_IN_SYSTEM')) },
         { kind: 'OTHER_EMPLOYEE', label: 'دفعات في السيستم باسم موظف تاني', rows: by('OTHER_EMPLOYEE').length, amount: sum(by('OTHER_EMPLOYEE')) },
         { kind: 'PAIRED_GAP', label: 'فرق المبالغ في الدفعات الموجودة', rows: paired.length, amount: money(sum(paired) - pairedSystem) },
         { kind: 'MISSING_FROM_TAB', label: 'دفعات في السيستم باسمه مش في التاب', rows: unpairedSystem.length, amount: -money(unpairedSystem.reduce((total, payment) => total + egpOf(payment), 0)) },
@@ -253,7 +261,7 @@ async function reconcileCollectionSheet(db, { tenantId, sheet, year, month }) {
       TYPE_FLAGS: results.filter(item => item.flags.includes('TYPE_MISMATCH')).length, outsideMonth: results.filter(item => item.inMonth === false).length,
       missingFromSheet: missing.length, systemPayments: monthPayments.length, sheetAmount: sum(results), systemAmount: money(monthPayments.reduce((total, payment) => total + egpOf(payment), 0)),
     },
-    tabs: mapping.map(item => ({ tab: item.tab, employee: item.staff ? { id: item.staff.id, name: item.staff.name } : null, ambiguous: item.ambiguous })),
+    tabs: mapping.map(item => ({ tab: item.tab, employee: item.staff ? { id: item.staff.id, name: item.staff.name } : null, ambiguous: item.ambiguous, via: item.via, mapError: item.mapError || null })),
     rows: results, missingFromSheet: missing, perCollector, unreadable: sheet.unreadable,
   };
 }

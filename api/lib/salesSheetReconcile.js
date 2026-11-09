@@ -32,18 +32,33 @@ const sharedWords = (a, b) => { const second = new Set(b); return a.filter(word 
 const digits = value => String(value ?? '').replace(/[^0-9]/g, '');
 const itemKeyOf = payment => (payment.bundle_id ? `bundle:${payment.bundle_id}` : payment.course_id);
 
-/** Every tab to the staff member it is named for: all its words are words (or starts of words) of the name; active staff and the same first name first. */
-function mapTabsToStaff(tabNames, staff) {
+const spaced = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+/**
+ * Every tab to the staff member it is named for. First the explicit map (`tabMap`: tab name → a staff id, or a staff name exactly — spaces trimmed and doubled spaces
+ * collapsed, case ignored — for staff whose names are in another script than the tabs'), then the fuzzy match: all the tab's words are words (or starts of words) of
+ * the name; active staff and the same first name first. `via` says which; a map entry that matches no one is `mapError`, not a silent fall-through.
+ * @returns {{ tab, staff: object|null, ambiguous: string[], via: 'map'|'name'|null, mapError?: string }[]}
+ */
+function mapTabsToStaff(tabNames, staff, tabMap = null) {
+  const explicit = new Map(Object.entries(tabMap && typeof tabMap === 'object' && !Array.isArray(tabMap) ? tabMap : {})
+    .map(([tab, wanted]) => [normalizeArabicName(spaced(tab)), spaced(wanted)]));
   return tabNames.map(tab => {
+    const key = normalizeArabicName(spaced(tab));
+    if (explicit.has(key)) {
+      const wanted = explicit.get(key);
+      const hit = staff.find(member => member.id === wanted) || staff.find(member => spaced(member.name).toLowerCase() === wanted.toLowerCase());
+      return hit ? { tab, staff: hit, ambiguous: [], via: 'map' } : { tab, staff: null, ambiguous: [], via: null, mapError: `التعيين «${wanted}» ما طابقش أي موظف` };
+    }
     const words = wordsOf(tab);
     const candidates = words.length ? staff.map(member => {
       const theirs = wordsOf(member.name);
       const covered = words.every(word => theirs.some(other => other === word || (word.length >= 3 && other.startsWith(word))));
       return covered ? { member, score: (member.is_active ? 100 : 0) + (theirs[0] === words[0] ? 10 : 0) - (theirs.length - words.length) } : null;
     }).filter(Boolean).sort((a, b) => b.score - a.score) : [];
-    if (!candidates.length) return { tab, staff: null, ambiguous: [] };
+    if (!candidates.length) return { tab, staff: null, ambiguous: [], via: null };
     const tied = candidates.filter(candidate => candidate.score === candidates[0].score);
-    return tied.length === 1 ? { tab, staff: candidates[0].member, ambiguous: [] } : { tab, staff: null, ambiguous: tied.map(candidate => candidate.member.name) };
+    return tied.length === 1 ? { tab, staff: candidates[0].member, ambiguous: [], via: 'name' } : { tab, staff: null, ambiguous: tied.map(candidate => candidate.member.name), via: null };
   });
 }
 
@@ -107,14 +122,14 @@ function pickByName(row, everyone) {
  * @param db         a pool or connection (only SELECTs are run)
  * @param sheet      what lib/salesSheet.js parseSalesSheet returns
  */
-async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
+async function reconcileSalesSheet(db, { tenantId, sheet, year, month, tabMap = null }) {
   const bounds = monthBounds(year, month);
   const start = new Date(bounds.start); const end = new Date(bounds.end);
   const inMonth = payment => { const at = new Date(payment.date); return at >= start && at < end; };
   const plan = await loadPlan(db, tenantId);
   const [staff] = await db.query('SELECT id, name, role, is_active, bonus_scheme, booking_first_target FROM staff WHERE tenant_id=? AND deleted_at IS NULL', [tenantId]);
   const staffById = new Map(staff.map(member => [member.id, member]));
-  const mapping = mapTabsToStaff(sheet.reps.map(rep => rep.tab), staff);
+  const mapping = mapTabsToStaff(sheet.reps.map(rep => rep.tab), staff, tabMap);
   const staffOfTab = new Map(mapping.map(item => [item.tab, item.staff]));
 
   const rows = sheet.reps.flatMap(rep => rep.rows);
@@ -386,7 +401,7 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
   return {
     month: `${year}-${String(month).padStart(2, '0')}`, from: bounds.first, to: bounds.last, generatedAt: new Date().toISOString(),
     totals: { rows: results.length, ...Object.fromEntries(CATEGORIES.map(category => [category, results.filter(item => item.category === category).length])), missingFromSheet: missing.length, systemBookings: monthBookings.length },
-    tabs: mapping.map(item => ({ tab: item.tab, staff: item.staff ? { id: item.staff.id, name: item.staff.name } : null, ambiguous: item.ambiguous })),
+    tabs: mapping.map(item => ({ tab: item.tab, staff: item.staff ? { id: item.staff.id, name: item.staff.name } : null, ambiguous: item.ambiguous, via: item.via, mapError: item.mapError || null })),
     rows: results, missingFromSheet: missing, perRep, unreadable: sheet.unreadable, courseNames,
     plan: { salesPeriod: plan.salesPeriod },
   };
