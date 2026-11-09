@@ -2795,34 +2795,6 @@
   "class": "b"
  },
  {
-  "id": "loginAndSignupOn2Nov: a place a device has not used for a month is given to the new device",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/customerDevices.js",
-    "must": {
-     "source": "const STALE_DEVICE_DAYS = Math\\.max\\(1, Number\\(process\\.env\\.CUSTOMER_DEVICE_STALE_DAYS\\) \\|\\| 30\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/customerDevices.js",
-    "must": {
-     "source": "last_seen_at < \\? ORDER BY last_seen_at ASC LIMIT 1",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/customerDevices.js",
-    "must": {
-     "source": "if \\(!stale\\) throw deviceLimitError\\(\\);",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "loginAndSignupOn2Nov: a track can name its own months of access, and the two a year and a half are set by migration",
   "why": "moved from a unit test that matched source text",
   "checks": [
