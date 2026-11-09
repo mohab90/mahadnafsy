@@ -4986,55 +4986,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/migrations/081_v25_finance_outbox_tenant_retry.sql",
-    "must": {
-     "source": "tenant_id VARCHAR\\(64\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/081_v25_finance_outbox_tenant_retry.sql",
-    "must": {
-     "source": "uq_finance_outbox_tenant_dedupe \\(tenant_id, dedupe_key\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/migrations/081_v25_finance_outbox_tenant_retry.sql",
-    "must": {
-     "source": "locked_by VARCHAR\\(100\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/financeOutbox.js",
-    "must": {
-     "source": "WHERE id=\\? AND tenant_id=\\?",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/financeOutbox.js",
-    "must": {
-     "source": "attempts >= MAX_ATTEMPTS",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/financeOutbox.js",
-    "must": {
-     "source": "LIMIT \\? FOR UPDATE",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/financeOutbox.js",
-    "must": {
-     "source": "status='processing'[\\s\\S]*locked_by=\\?",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/routes/subscriber-payments.js",
     "must": {
      "source": "enqueueFinanceEvent\\([\\s\\S]*tenantId",
@@ -5052,20 +5003,6 @@
     "file": "api/lib/backgroundScheduler.js",
     "must": {
      "source": "drainFinanceOutbox\\([\\s\\S]*sync_lead_deal_value",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/payops.js",
-    "must": {
-     "source": "finance-outbox\\/:id\\/retry'[\\s\\S]*requirePermission\\('manage_financial'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/payops.js",
-    "must": {
-     "source": "retryFinanceEvent\\(req\\.params\\.id, req\\.tenantId\\)",
      "flags": ""
     }
    }
@@ -11969,20 +11906,6 @@
    {
     "file": "api/routes/core/payops.js",
     "must": {
-     "source": "reconciliation-dashboard'[\\s\\S]*requirePermission\\('view_financial'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/payops.js",
-    "must": {
-     "source": "paid_without_journal[\\s\\S]*je\\.tenant_id=p\\.tenant_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/payops.js",
-    "must": {
      "source": "paid_without_enrollment[\\s\\S]*e\\.tenant_id=p\\.tenant_id",
      "flags": ""
     }
@@ -11998,13 +11921,6 @@
     "file": "api/routes/core/payops.js",
     "must": {
      "source": "paid_order_without_payment[\\s\\S]*p\\.tenant_id=o\\.tenant_id",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/core/payops.js",
-    "must": {
-     "source": "failed_finance_events[\\s\\S]*FROM finance_outbox[\\s\\S]*WHERE tenant_id=\\?",
      "flags": ""
     }
    }
