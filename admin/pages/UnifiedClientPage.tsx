@@ -22,6 +22,7 @@ import { useUnifiedClientPaymentProofs } from './unified-client/useUnifiedClient
 import { useUnifiedClientPermissions } from './unified-client/useUnifiedClientPermissions';
 import { useUnifiedClientEditState } from './unified-client/useUnifiedClientEditState';
 import { useUnifiedClientCommunications } from './unified-client/useUnifiedClientCommunications';
+import { useSavedContacts } from './unified-client/useSavedContacts';
 import { useUnifiedClientCourseAccess } from './unified-client/useUnifiedClientCourseAccess';
 import { useUnifiedClientPayments } from './unified-client/useUnifiedClientPayments';
 import { useUnifiedClientLifecycleActions } from './unified-client/useUnifiedClientLifecycleActions';
@@ -39,10 +40,7 @@ import {
   UnifiedClientSidebarProfileCard,
   UnifiedClientSidebarQuickActions,
 } from './unified-client/UnifiedClientSidebarCards';
-import {
-  LeadItem, SubscriberItem, CommunicationRecord,
-  UserSessionData,
-} from '../types';
+import { LeadItem, SubscriberItem, CommunicationRecord, UserSessionData } from '../types';
 import { useToast } from '../../shared/ui/Toast';
 import { cairoDay } from '../../shared/cairoDate';
 
@@ -202,17 +200,11 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     reloadSubscribers,
   });
 
-  // A contact saved from the dialog is the server's at once; the client's list is only re-read on a reload, so the page keeps what it was just told
-  // (the hero's «آخر تواصل» and the tab's count) until the list brings the same contact itself.
-  const [savedContacts, setSavedContacts] = useState<CommunicationRecord[]>([]);
-  useEffect(() => { setSavedContacts([]); }, [subscriber?.id]);
-  const rememberSavedContact = (entry: { id: string; type: string; date: string; notes?: string | null; outcome?: string | null; nextFollowUp?: string | null }) => setSavedContacts(held => [...held, {
-    id: entry.id, type: entry.type as CommunicationRecord['type'], date: entry.date, notes: entry.notes || '', outcome: entry.outcome || undefined, nextFollowUp: entry.nextFollowUp || undefined,
-  }]);
+  const { pending: savedContacts, remember: rememberSavedContact } = useSavedContacts(subscriber?.id, subscriber?.communications || []);
   const allComms: CommunicationRecord[] = [
     ...((lead?.communications       || []).map(c => ({ ...c, _src: 'lead'       as const }))),
     ...((subscriber?.communications || []).map(c => ({ ...c, _src: 'subscriber' as const }))),
-    ...savedContacts.filter(saved => !(subscriber?.communications || []).some(c => c.id === saved.id)).map(c => ({ ...c, _src: 'subscriber' as const })),
+    ...savedContacts.map(c => ({ ...c, _src: 'subscriber' as const })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   // consultations
