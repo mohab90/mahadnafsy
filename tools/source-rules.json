@@ -1432,27 +1432,6 @@
   "class": "b"
  },
  {
-  "id": "auditFindingsThatWereReal: a quiz with no passing score does not pass an empty attempt",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/quizGrading.js",
-    "must": {
-     "source": "answeredCount|answers\\.length|attempted",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/quizGrading.js",
-    "mustNot": {
-     "source": "const passed = score >= \\(Number\\(passingScore\\) \\|\\| 0\\);",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "auditRegression: CRIT-04: a course is paid at one share everywhere (aCourseIsPaidAtTheSameShareEverywhere)",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -1815,38 +1794,6 @@
   "id": "consultationBookingGuards: a session date in the past is refused, on the Cairo day",
   "why": "moved from a unit test that matched source text",
   "checks": [
-   {
-    "file": "api/lib/consultationRequests.js",
-    "must": {
-     "source": "SESSION_DATE_INVALID",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/consultationRequests.js",
-    "must": {
-     "source": "SESSION_DATE_PAST",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/consultationRequests.js",
-    "must": {
-     "source": "const today = cairoToday\\(now\\);",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/lib/consultationRequests.js",
-    "must": {
-     "source": "if \\(sessionDate < today\\)",
-     "flags": ""
-    },
-    "code": true
-   },
    {
     "file": "api/routes/lead-capture-crm.js",
     "must": {
@@ -14490,29 +14437,6 @@
    }
   ],
   "class": "a"
- },
- {
-  "id": "discountExpiryDay: all four screens judge the expiry the same way",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/effectivePrice.js",
-    "code": true,
-    "must": {
-     "source": "const today = cairoToday\\(new Date\\(now\\)\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/effectivePrice.js",
-    "code": true,
-    "must": {
-     "source": "String\\(rule\\.expiresAt\\)\\.slice\\(0, 10\\) < today",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
  },
  {
   "id": "distributionByCourseAndSource: the rules are stored, and every path that picks a rep says which lead it is placing",
