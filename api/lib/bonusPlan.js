@@ -30,6 +30,7 @@ const roundLabels = (splitDay, lastDay) => [`1–${splitDayOf(splitDay) - 1}`, `
 
 const SCHEMES = Object.freeze(['NONE', 'SALES_BOOKINGS', 'COLLECTION', 'COLLECTION_BOOKINGS']);
 const num = value => (value === '' || value == null ? NaN : Number(value));
+const numOrNull = value => (value === '' || value == null ? null : Number(value));
 const cents = value => Math.round(value * 100);
 const money = value => cents(value) / 100;
 
@@ -111,6 +112,22 @@ function normalizeLevels(raw) {
   return checked.sort((a, b) => a.from - b.from);
 }
 
+/**
+ * An employee's bonus scheme as a screen sends it { bonusScheme, bookingFirstTarget, collectionLevels }, checked: the scheme, where a rep's ladder starts (a sales rep needs
+ * one) and a collector's levels (a collector needs them). Throws a 400 saying what is missing.
+ */
+function parseSchemeInput(body) {
+  const fail = message => Object.assign(new Error(message), { statusCode: 400 });
+  const scheme = String(body.bonusScheme || 'NONE').toUpperCase();
+  if (!SCHEMES.includes(scheme)) throw fail('نظام المكافأة لازم يكون: بدون / حجوزات / تحصيل / تحصيل وحجوزات');
+  const firstTarget = numOrNull(body.bookingFirstTarget);
+  if (firstTarget !== null && !(firstTarget > 0)) throw fail('أول تارجيت لازم يكون عدد حجوزات أكبر من صفر');
+  if (scheme === 'SALES_BOOKINGS' && firstTarget === null) throw fail('حدد أول تارجيت للموظف (مثلاً 10 أو 15 أو 20 حجز)');
+  const levels = normalizeLevels(body.collectionLevels || []);
+  if (scheme.startsWith('COLLECTION') && !levels.length) throw fail('حدد ليفلات التحصيل للموظف (من كام، ونسبة أو مبلغ)');
+  return { scheme, firstTarget: scheme === 'SALES_BOOKINGS' ? firstTarget : null, levels: scheme.startsWith('COLLECTION') ? levels : [] };
+}
+
 /** The collection bonus: the level the collected EGP reaches, applied to the whole of it. */
 function collectionBonus(levels, collectedEgp) {
   const collected = Math.max(0, Number(collectedEgp) || 0);
@@ -126,4 +143,4 @@ function courseBonusAmount(bonus, priceEgp) {
   return bonus.type === 'percent' ? money((Number(priceEgp) || 0) * Math.min(100, Number(bonus.value)) / 100) : money(Number(bonus.value));
 }
 
-module.exports = { DEFAULT_SPLIT_DAY, MIN_SPLIT_DAY, MAX_SPLIT_DAY, splitDayOf, roundOfDay, roundLabels, SCHEMES, normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount };
+module.exports = { parseSchemeInput, DEFAULT_SPLIT_DAY, MIN_SPLIT_DAY, MAX_SPLIT_DAY, splitDayOf, roundOfDay, roundLabels, SCHEMES, normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount };

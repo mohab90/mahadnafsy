@@ -17,7 +17,7 @@ const { uuidv4 } = require('../../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { hasPermission } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
-const { SCHEMES, normalizeLevels } = require('../../lib/bonusPlan');
+const { normalizeLevels, parseSchemeInput } = require('../../lib/bonusPlan');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_hr')];
@@ -151,16 +151,7 @@ router.put('/api/admin/hr/staff/:staffId/pay', ...managePay, async (req, res) =>
       return res.status(400).json({ error: 'حدد قيمة التارجيت الشهري' });
     }
     // The bonus scheme is sent only by a screen that shows it; one that does not leaves it as it is.
-    const bonus = req.body?.bonusScheme === undefined ? null : (() => {
-      const scheme = String(req.body.bonusScheme || 'NONE').toUpperCase();
-      if (!SCHEMES.includes(scheme)) throw Object.assign(new Error('نظام المكافأة لازم يكون: بدون / حجوزات / تحصيل / تحصيل وحجوزات'), { statusCode: 400 });
-      const firstTarget = num(req.body.bookingFirstTarget);
-      if (firstTarget !== null && !(firstTarget > 0)) throw Object.assign(new Error('أول تارجيت لازم يكون عدد حجوزات أكبر من صفر'), { statusCode: 400 });
-      if (scheme === 'SALES_BOOKINGS' && firstTarget === null) throw Object.assign(new Error('حدد أول تارجيت للموظف (مثلاً 10 أو 15 أو 20 حجز)'), { statusCode: 400 });
-      const levels = normalizeLevels(req.body.collectionLevels || []);
-      if (scheme.startsWith('COLLECTION') && !levels.length) throw Object.assign(new Error('حدد ليفلات التحصيل للموظف (من كام، ونسبة أو مبلغ)'), { statusCode: 400 });
-      return { scheme, firstTarget, levels };
-    })();
+    const bonus = req.body?.bonusScheme === undefined ? null : parseSchemeInput(req.body);
 
     const [result] = await pool.query(
       `UPDATE staff SET base_salary=?, commission_type=?, commission_rate=?, monthly_target=?${bonus ? ', bonus_scheme=?, booking_first_target=?, collection_levels_json=?' : ''}
@@ -204,7 +195,8 @@ const TARGET_TYPES = new Set(['clients', 'bookings', 'egp']);
 router.get('/api/admin/hr/staff-basics', ...view, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, role, branch_id, base_salary, biometric_user_no, monthly_target, monthly_target_type, monthly_bonus, free_days_per_month
+      `SELECT id, name, role, branch_id, base_salary, biometric_user_no, monthly_target, monthly_target_type, monthly_bonus, free_days_per_month,
+            bonus_scheme, booking_first_target, collection_levels_json
          FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL ORDER BY name`, [req.tenantId]);
     res.json(rows.map(r => ({
       id: r.id, name: r.name, role: r.role, branchId: r.branch_id,
@@ -215,6 +207,10 @@ router.get('/api/admin/hr/staff-basics', ...view, async (req, res) => {
       targetBonus: r.monthly_bonus == null ? null : Number(r.monthly_bonus),
       // Free days a month for this employee; null = the HR policy's (one, once six months are worked).
       freeDays: r.free_days_per_month == null ? null : Number(r.free_days_per_month),
+      // «نظام المكافآت»: the half-month rounds replace the old flat target (targetType / targetValue / targetBonus stay on the row, unshown, for the old reports).
+      bonusScheme: r.bonus_scheme || 'NONE',
+      bookingFirstTarget: r.booking_first_target == null ? null : Number(r.booking_first_target),
+      collectionLevels: (() => { try { return normalizeLevels(r.collection_levels_json); } catch { return []; } })(),
     })));
   } catch (error) {
     logger.error('[staff-basics/get]', error.message);
@@ -249,6 +245,17 @@ router.put('/api/admin/hr/staff-basics', ...manage, async (req, res) => {
         return res.status(400).json({ error: 'الأرقام لازم تكون موجبة' });
       }
       fields[column] = value;
+    }
+    // The bonus scheme is pay, so it is the financial permission's like the salary; the three fields travel together.
+    if (row.bonusScheme !== undefined) {
+      if (!canPay) return res.status(403).json({ error: 'تعديل نظام المكافآت محتاج صلاحية الحسابات' });
+      let scheme;
+      try { scheme = parseSchemeInput(row); } catch (error) { return res.status(400).json({ error: error.message }); }
+      fields.bonus_scheme = scheme.scheme;
+      fields.booking_first_target = scheme.firstTarget;
+      fields.collection_levels_json = scheme.levels.length ? JSON.stringify(scheme.levels) : null;
+    } else if (row.bookingFirstTarget !== undefined || row.collectionLevels !== undefined) {
+      return res.status(400).json({ error: 'حدد نظام المكافأة مع أول تارجيت أو الليفلات' });
     }
     if (row.freeDays !== undefined) {
       const days = row.freeDays === '' || row.freeDays === null ? null : Number(row.freeDays);

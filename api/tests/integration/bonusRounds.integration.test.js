@@ -309,3 +309,33 @@ test('over HTTP the employee reads their own round, not another\'s; HR reads any
   const none = await app.call('GET', '/api/admin/hr/staff/plain/round-progress', { session: plain });
   assert.deepEqual([none.status, none.body.onRounds, none.body.scheme], [200, false, 'NONE']);
 });
+
+// ───────────── the employee's scheme on the staff data screen (staff-basics) ─────────────
+
+test('the staff data screen reads and sets the bonus scheme and the starting step; the old target columns stay as they are; only the financial permission changes it', { skip }, async () => {
+  await pool.query("UPDATE staff SET monthly_target=5000, monthly_target_type='egp', monthly_bonus=700 WHERE id='rep-b' AND tenant_id=?", [T]);
+  const put = (session, row) => app.call('PUT', '/api/admin/hr/staff-basics', { session, body: { rows: [{ id: 'rep-b', ...row }] } });
+  const read = async () => (await app.call('GET', '/api/admin/hr/staff-basics', { session: who.hr })).body.find(row => row.id === 'rep-b');
+
+  let b = await read();
+  assert.deepEqual([b.bonusScheme, b.bookingFirstTarget, b.collectionLevels], ['SALES_BOOKINGS', 10, []]);
+
+  assert.equal((await put(who.hr, { bonusScheme: 'SALES_BOOKINGS', bookingFirstTarget: 20 })).status, 403, 'HR without the financial permission cannot change pay');
+  assert.equal((await put(who.hr, { biometricNo: '77' })).status, 200, 'the rest of the screen is still HR\'s');
+  assert.equal((await put(who.owner, { bonusScheme: 'SALES_BOOKINGS', bookingFirstTarget: 20 })).status, 200);
+  b = await read();
+  assert.deepEqual([b.bonusScheme, b.bookingFirstTarget], ['SALES_BOOKINGS', 20]);
+  const [[old]] = await pool.query("SELECT monthly_target, monthly_target_type, monthly_bonus FROM staff WHERE id='rep-b' AND tenant_id=?", [T]);
+  assert.deepEqual([Number(old.monthly_target), old.monthly_target_type, Number(old.monthly_bonus)], [5000, 'egp', 700], 'the old target data is kept');
+  assert.equal(of(await compute(9), 'rep-b').ladder.firstTarget, 20, 'the next month\'s figures start the ladder at the new step');
+
+  assert.equal((await put(who.owner, { bonusScheme: 'SALES_BOOKINGS' })).status, 400, 'a rep needs a starting step');
+  assert.equal((await put(who.owner, { bonusScheme: 'COLLECTION' })).status, 400, 'a collector needs levels');
+  assert.equal((await put(who.owner, { bonusScheme: 'EVERYTHING' })).status, 400);
+  assert.equal((await put(who.owner, { bookingFirstTarget: 15 })).status, 400, 'a step alone says nothing');
+  assert.equal((await put(who.owner, { bonusScheme: 'COLLECTION', collectionLevels: [{ from: 50000, kind: 'percent', value: 2 }] })).status, 200);
+  b = await read();
+  assert.deepEqual([b.bonusScheme, b.bookingFirstTarget, b.collectionLevels], ['COLLECTION', null, [{ from: 50000, kind: 'percent', value: 2 }]]);
+  assert.equal((await put(who.owner, { bonusScheme: 'SALES_BOOKINGS', bookingFirstTarget: 10 })).status, 200);
+  assert.deepEqual((await read()).collectionLevels, [], 'a rep keeps no collector levels');
+});
