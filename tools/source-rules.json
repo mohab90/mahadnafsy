@@ -15608,20 +15608,6 @@
   "class": "b"
  },
  {
-  "id": "htmlEscaping: the public certificate escapes every value a customer controls",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/certificateHtml.js",
-    "must": {
-     "source": "completed \\$\\{escapeHtml\\(text\\)\\} of training",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "importantAccountsSignInWithAnEmailedCode: both doors — password and WhatsApp — owe the code, and the app, its routes and its screens are gone",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -16015,29 +16001,6 @@
     "code": true,
     "must": {
      "source": "if \\(isInterestedLeadStatus\\(status\\)\\) score \\+= Number\\(W\\.status_interested\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "leadStatusGrouping: grouping lives in one module, so a new status is classified once",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/leadStatuses.js",
-    "code": true,
-    "must": {
-     "source": "TERMINAL_LEAD_STATUSES",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/leadStatuses.js",
-    "code": true,
-    "must": {
-     "source": "INTERESTED_LEAD_STATUSES",
      "flags": ""
     }
    }
@@ -16902,41 +16865,6 @@
     "file": "api/routes/subscriber-payments.js",
     "must": {
      "source": ": \\(requestedStaffId \\|\\| req\\.staffRecord\\?\\.id \\|\\| null\\);",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "messagingPushTicketsLeads: a course page tells a search engine it is a course, with no price and nothing that closes the script",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/seoPages.js",
-    "must": {
-     "source": "'@type': 'Course'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/seoPages.js",
-    "must": {
-     "source": "const provider = site => \\(\\{\\s*'@type': 'EducationalOrganization'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/seoPages.js",
-    "must": {
-     "source": "provider: provider\\(site\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/seoPages.js",
-    "must": {
-     "source": "\\.replace\\(/<\\\\//g, '<\\\\\\\\/'\\)",
      "flags": ""
     }
    }
@@ -26194,22 +26122,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "admin/lib/rangeStart.ts",
-    "code": true,
-    "must": {
-     "source": "case '7d':\\s*\\n\\s*case 'week': return cairoDaysAgo\\(7\\);",
-     "flags": ""
-    }
-   },
-   {
-    "file": "admin/lib/rangeStart.ts",
-    "code": true,
-    "must": {
-     "source": "case 'month': return `\\$\\{cairoMonthOnly\\(\\)\\}-01`;",
-     "flags": ""
-    }
-   },
-   {
     "file": "shared/cairoDate.ts",
     "code": true,
     "must": {
@@ -27201,20 +27113,6 @@
   "class": "b"
  },
  {
-  "id": "displayTimeZone: and that zone is the institute\\",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "shared/cairoDate.ts",
-    "must": {
-     "source": "export const CAIRO_TIME_ZONE = 'Africa\\/Cairo';",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "dokkiClients: the endpoints are the schedule\\",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -27516,45 +27414,6 @@
     "to": "contentHubSubTab === 'about_page'",
     "must": {
      "source": "<DashboardHomeOfferPanel fields=\\{homeOfferFields\\} notify=\\{notify\\} \\/>",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "htmlEscaping: the public certificate escapes every value a customer controls",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/certificateHtml.js",
-    "from": "function certificateHtml",
-    "must": {
-     "source": "\\$\\{escapeHtml\\(studentName\\)\\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/certificateHtml.js",
-    "from": "function certificateHtml",
-    "must": {
-     "source": "\\$\\{escapeHtml\\(courseName\\)\\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/certificateHtml.js",
-    "from": "function certificateHtml",
-    "must": {
-     "source": "\\$\\{escapeHtml\\(certCode\\)\\}",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/certificateHtml.js",
-    "from": "function certificateHtml",
-    "must": {
-     "source": "\\$\\{escapeHtml\\(trainer\\)\\}",
      "flags": ""
     }
    }
