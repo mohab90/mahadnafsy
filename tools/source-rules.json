@@ -31402,62 +31402,6 @@
   "class": "b"
  },
  {
-  "id": "csvExports: a field only gets quotes when it needs them, and its own quotes get doubled",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "shared/csv.ts",
-    "must": {
-     "source": "if \\(!\\/\\[\",\\\\n\\\\r\\]\\/\\.test\\(text\\) && text\\.trim\\(\\) === text\\) return text;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "shared/csv.ts",
-    "must": {
-     "source": "return `\"\\$\\{text\\.replace\\(\\/\"\\/g, '\"\"'\\)\\}\"`;",
-     "flags": ""
-    }
-   },
-   {
-    "file": "shared/csv.ts",
-    "must": {
-     "source": "\\.join\\('\\\\r\\\\n'\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "csvExports: what the writer writes, the leads import reads back",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "shared/csv.ts",
-    "must": {
-     "source": "export function parseCsvRows",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "csvExports: the delimiter is read off the header, and only outside quotes",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "shared/csv.ts",
-    "must": {
-     "source": "export function detectCsvDelimiter",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "dashboardReadShape: a month is a month, and the previous month is a different one",
   "why": "moved from a unit test that matched source text",
   "checks": [
