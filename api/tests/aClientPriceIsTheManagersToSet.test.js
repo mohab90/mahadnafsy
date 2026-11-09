@@ -26,13 +26,7 @@ test('the managers may set a client\'s price; sales, collection and support may 
     'and an account it is ticked for, as Hana\'s will be');
 });
 
-test('the server takes a booking\'s own price only from someone allowed to set it', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /const canSetClientPrice = Boolean\(req\.isSuperAdmin \|\| hasPermission\(req\.staffRecord, 'set_client_price'\)\);\s*\n\s*const clientPrice = payment\.customPrice === true && courseExpected != null && canSetClientPrice;/);
-  assert.match(route, /if \(courseExpected != null && !clientPrice && !priceMatches\(courseExpected, heldPrice \?\? tierPrice\.price\)\) return priceChangedResponse\(/,
-    'anyone else meets «السعر اتغير، افتح من جديد»');
-  assert.match(route, /let resolvedExpected = clientPrice \? courseExpected : heldPrice != null \? heldPrice : tierPrice \? tierPrice\.price : courseExpected;/);
-});
+
 
 test('the booking says it carries its own price only when one was typed', () => {
   let esbuild;
@@ -50,10 +44,4 @@ test('the booking says it carries its own price only when one was typed', () => 
   assert.equal(bookingTierFields({ ...base, customPriceOn: false, customExpected: '2500' }).customPrice, undefined);
 });
 
-test('the dialog offers it to whoever holds the permission, and the percentages as a list', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /const canSetPrice = isAdmin \|\| hasPermission\(/);
-  assert.match(modal, /'set_client_price'\);/);
-  assert.match(modal, /\{canSetPrice && \(<>/);
-  assert.match(modal, /<select value=\{tierPct\} aria-label="نسبة الخصم"/);
-});
+

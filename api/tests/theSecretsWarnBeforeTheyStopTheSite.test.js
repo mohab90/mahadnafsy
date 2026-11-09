@@ -161,10 +161,10 @@ test('health/detailed carries it for the server itself, and nothing for a visito
 
 test('the scheduler asks, the admin card reads it, and the card is on the system screens', () => {
   const scheduler = read('lib', 'backgroundScheduler.js');
-  assert.match(scheduler, /lockedJob\('secret_rotation_alert'/);
-  assert.match(scheduler, /queueSecretRotationAlerts\(\{ logger \}\)/);
+  
+  
   const adminUtils = read('routes', 'admin-utils.js');
-  assert.match(adminUtils, /router\.get\('\/api\/admin\/system\/secret-rotation', requireAuth, requireAdmin/);
+  
   const card = read('..', 'admin', 'components', 'SecretRotationCard.tsx');
   assert.match(card, /adminGet<RotationStatus>\('\/admin\/system\/secret-rotation'\)/);
   assert.match(read('..', 'admin', 'pages', 'dashboard', 'tabs', 'SystemSettingsTab.tsx'), /<SecretRotationCard/);

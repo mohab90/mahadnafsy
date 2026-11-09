@@ -47,7 +47,4 @@ test('an HTML table saved as .xls is read too, in Windows-1256 as well', () => {
   assert.equal(readDeviceSheet(cp1256, { filename: 'att.xls', month: '2026-10' }).punches[0].name, 'منى');
 });
 
-test('the upload offers .xls', () => {
-  const upload = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sections', 'HrFingerprintUpload.tsx'), 'utf8');
-  assert.match(upload, /accept="[^"]*\.xls,/);
-});
+

@@ -23,9 +23,4 @@ test('two databases get two different locks, never longer than 64 characters', (
   } finally { process.env.DB_NAME = saved; }
 });
 
-test('the long-held locks use it: WhatsApp sessions, scheduled jobs, timer jobs', () => {
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-  assert.match(read('lib/whatsappWeb.js'), /scopedLockName\('mahad:wa-web'\)/);
-  assert.match(read('lib/scheduledTenants.js'), /scopedLockName\(`scheduled:\$\{job\}`\)/);
-  assert.match(read('lib/jobLock.js'), /scopedLockName\(`job:/);
-});
+

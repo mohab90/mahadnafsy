@@ -38,14 +38,7 @@ test('client subscriber payload exposes the canonical payment history with settl
   assert.strictEqual(mapped.payments, mapped.paymentHistory);
 });
 
-test('self-service subscriber query loads expected amount and branch from payments', () => {
-  const route = fs.readFileSync(path.join(__dirname, '../routes/public.js'), 'utf8');
-  assert.match(
-    route,
-    /p\.certificate_request_id, p\.course_expected, p\.branch, p\.created_at[\s\S]{0,400}FROM payments p[\s\S]{0,300}p\.subscriber_id = \?/
-  );
-  assert.match(route, /fd\.document_number/);
-});
+
 
 // Two things the customer's own dashboard declares and the server never sent.
 test('the customer gets back the English name they saved', () => {

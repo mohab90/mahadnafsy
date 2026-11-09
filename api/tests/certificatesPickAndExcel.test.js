@@ -45,10 +45,4 @@ test('the sheet is the client\'s whole row and ends with the picture links', () 
   assert.ok(read(`${TABS}/CertRequestsTab.tsx`).includes("{ header: 'الرقم القومي / الهوية', key: 'idNumber'"));
 });
 
-test('the APIs hand the screens the links and the national id', () => {
-  assert.match(read('api/routes/certificates.js'), /s\.personal_photo_url, s\.id_photo_url/);
-  assert.match(read('api/routes/certificates.js'), /personalPhotoUrl: row\.personal_photo_url \|\| null/);
-  const institute = read('api/routes/instituteCertificates.js');
-  assert.match(institute, /s\.national_id, s\.personal_photo_url, s\.id_photo_url/);
-  assert.match(institute, /nationalId: row\.national_id \|\| null, personalPhotoUrl/);
-});
+

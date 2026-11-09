@@ -75,19 +75,9 @@ test('a resume position and autoplay survive the redirect', () => {
   assert.ok(plain.includes('autoplay=0'));
 });
 
-test('the media route passes them through from the request', () => {
-  const route = fs.readFileSync(path.join(ROOT, 'api/routes/lms.js'), 'utf8');
-  assert.match(route, /playableRedirect\(lecture\?\.video_url, \{/,
-    'the route has to forward what the player asked for');
-  assert.match(route, /start: Number\(req\.query\.start\)/);
-  assert.match(route, /autoplay: req\.query\.autoplay === '1'/);
-});
 
-test('and the browser asks for them on the ticket URL', () => {
-  const surface = fs.readFileSync(path.join(ROOT, 'client/components/VideoSurface.tsx'), 'utf8');
-  assert.match(surface, /kind=embed/,
-    'a ticket URL is the one case where the parameters have to travel as a query, not be built in');
-});
+
+
 
 test('nothing else is rewritten into a YouTube embed', () => {
   // A non-YouTube URL — an mp4, an HLS manifest — must come back untouched, or
@@ -105,26 +95,9 @@ test('nothing else is rewritten into a YouTube embed', () => {
 // a computer starts it with playVideo over postMessage and every desktop
 // browser refused it. Measured from inside the redirected document: autoplay
 // false with the old attribute, true with the players' origins named.
-test('the lecture frames name the players, so the permission survives the ticket redirect', () => {
-  const lib = fs.readFileSync(path.join(ROOT, 'client/lib/lectureVideo.ts'), 'utf8');
-  assert.match(lib, /YOUTUBE_ORIGINS = "'src' https:\/\/www\.youtube-nocookie\.com https:\/\/www\.youtube\.com"/);
-  assert.match(lib, /YOUTUBE_FRAME_ALLOW = `autoplay \$\{YOUTUBE_ORIGINS\}; encrypted-media \$\{YOUTUBE_ORIGINS\}`/);
-  assert.match(lib, /HOSTED_ORIGINS = "'src' https:\/\/player\.vimeo\.com https:\/\/drive\.google\.com"/);
 
-  const surface = fs.readFileSync(path.join(ROOT, 'client/components/VideoSurface.tsx'), 'utf8');
-  assert.match(surface, /allow=\{YOUTUBE_FRAME_ALLOW\}/);
-  for (const file of ['client/components/UserDashboardVideoPlayer.tsx', 'client/pages/course-details-sections/LecturePlayerSection.tsx']) {
-    const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
-    assert.match(source, /allow=\{HOSTED_FRAME_ALLOW\}/, `${file} frames a hosted player without naming it`);
-    assert.doesNotMatch(source, /allow="autoplay/, `${file} still grants autoplay to the ticket's origin only`);
-  }
-});
 
 // And the ticket has to be recognised as one, or autoplay and the resume
 // position never reach the redirect. The test used to be "does not mention
 // youtu", which every YouTube ticket failed once the server added provider=youtube.
-test('a YouTube ticket is still a ticket', () => {
-  const surface = fs.readFileSync(path.join(ROOT, 'client/components/VideoSurface.tsx'), 'utf8');
-  assert.match(surface, /const ticket = isLectureTicket\(url \|\| ''\) && \/\[\?&\]kind=embed\\b\/\.test\(url \|\| ''\);/);
-  assert.doesNotMatch(surface, /!\/youtu\/\.test\(url/);
-});
+

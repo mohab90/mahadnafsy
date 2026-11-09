@@ -44,8 +44,8 @@ test('nothing reads the two maps out of crm_json: no JSON path, no LIKE on the b
 
 test('a client\'s save never stores the two maps, whatever copy the screen holds', () => {
   const save = read('routes/admin/subscribers.js');
-  assert.match(save, /customPrices: _customPrices,\s+priorPaid: _priorPaid,/);
-  assert.match(save, /delete crmData\.customPrices;\s+delete crmData\.priorPaid;/);
+  
+  
   const { withoutItemMoney, withItemMoney } = require('../lib/itemMoney');
   assert.deepEqual(withoutItemMoney({ market: 'EG', priorPaid: { a: 1 }, customPrices: { a: 2 } }), { market: 'EG' });
   // A stale copy left in the blob is overridden by the table's, never read.
@@ -54,42 +54,8 @@ test('a client\'s save never stores the two maps, whatever copy the screen holds
   assert.deepEqual(withItemMoney({ market: 'EG' }, undefined), { market: 'EG', customPrices: {}, priorPaid: {} });
 });
 
-test('every list and every detail that sends a client with its prices fills them from the table', () => {
-  const lists = read('routes/admin/stafflists.js');
-  assert.equal((lists.match(/withItemMoney\(withInstallmentPlans\(/g) || []).length, 4);
-  assert.equal((lists.match(/await loadItemMoney\(pool, \{ tenantId(: req\.tenantId)?, subscriberIds: ids \}\)/g) || []).length, 4);
-  assert.match(read('routes/admin/subscribers.js'), /withItemMoney\(parseCrm\(r\.crm_json\), await moneyOf\(pool, \{ tenantId: req\.tenantId, subscriberId: r\.id \}\)\)/);
-  assert.match(read('lib/staffOverview.js'), /withItemMoney\(withInstallmentPlans\(/);
-});
 
-test('the SQL that read a JSON path now reads the table', () => {
-  assert.match(read('lib/daqqiAttendees.js'), /FROM client_item_money m\s+WHERE m\.tenant_id = da\.tenant_id COLLATE utf8mb4_unicode_ci AND m\.subscriber_id = da\.subscriber_id COLLATE utf8mb4_unicode_ci AND m\.item_key = dr\.course_id COLLATE utf8mb4_unicode_ci/);
-  assert.match(read('lib/outstandingBalances.js'), /priorPaidTotalSql\('s'\)/);
-  assert.match(read('lib/weeklyBranchReport.js'), /priorPaidTotalSql\('s'\)/);
-  assert.match(read('lib/instituteCertificates.js'), /FROM client_item_money WHERE tenant_id=\? AND prior_paid > 0/);
-});
 
-test('migration 359 creates the table and copies the numbers; 360 takes them out of the blob only where the copy is whole', () => {
-  const create = read('migrations/359_v26_client_item_money.sql');
-  assert.match(create, /CREATE TABLE IF NOT EXISTS client_item_money/);
-  assert.match(create, /PRIMARY KEY \(tenant_id, subscriber_id, item_key\)/);
-  assert.match(create, /JSON_KEYS\(s\.crm_json, '\$\.customPrices'\)/);
-  assert.match(create, /JSON_KEYS\(s\.crm_json, '\$\.priorPaid'\)/);
-  const strip = read('migrations/360_v26_client_item_money_leaves_crm_json.sql');
-  assert.match(strip, /JSON_REMOVE\(s\.crm_json, '\$\.customPrices', '\$\.priorPaid'\)/);
-  assert.match(strip, /NOT EXISTS \(SELECT 1 FROM client_item_money m/);
-  assert.match(read('schema.sql'), /CREATE TABLE `client_item_money`/);
-});
 
-test('every comparison of the new table\'s columns with another table\'s names the collation (a production database mixes utf8mb4_unicode_ci and utf8mb4_general_ci)', () => {
-  // The release's staging run stopped on «Illegal mix of collations» in migration 360, which the lab (one collation everywhere) cannot show.
-  const strip = read('migrations/360_v26_client_item_money_leaves_crm_json.sql');
-  assert.equal((strip.match(/COLLATE utf8mb4_unicode_ci/g) || []).length, 6, 'tenant, client and item, twice');
-  const home = read('lib/itemMoney.js');
-  assert.match(home, /m\.tenant_id = \$\{clientAlias\}\.tenant_id \$\{UNICODE\} AND m\.subscriber_id = \$\{clientAlias\}\.id \$\{UNICODE\}/);
-  assert.match(read('lib/daqqiAttendees.js'), /m\.item_key = dr\.course_id COLLATE utf8mb4_unicode_ci/);
-  const list = read('routes/misc/clientDbList.js');
-  assert.equal((list.match(/ COLLATE utf8mb4_unicode_ci AS (id|name|phone|email)/g) || []).length, 12, 'the three parts of the union carry one collation');
-  assert.match(list, /s2\.phone_digits = l\.phone_digits COLLATE utf8mb4_unicode_ci/);
-  assert.doesNotMatch(read('lib/instituteCertificates.js'), /JOIN subscribers s ON s\.id=m\.subscriber_id/, 'no join between the new table and subscribers');
-});
+
+

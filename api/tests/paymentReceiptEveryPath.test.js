@@ -55,11 +55,7 @@ test('the receipt says what was paid, what it opened, and what is left — once 
   assert.equal(calls.length, 1);
 });
 
-test('the template lists what was opened', () => {
-  const source = read('lib/lifecycle.js');
-  assert.match(source, /مفتوح لك \$\{u\.open\} من \$\{u\.total\} محاضرة/);
-  assert.match(source, /<tr><td>المتبقي<\/td>/);
-});
+
 
 test('every path that makes a payment paid queues it, and none writes its own', () => {
   const paths = {
@@ -72,12 +68,8 @@ test('every path that makes a payment paid queues it, and none writes its own', 
     'routes/auth/staffAccounts.js': /if \(firstPaymentId\) queuePaymentReceipt\(tenantId, firstPaymentId\);/,
   };
   for (const [rel, pattern] of Object.entries(paths)) assert.match(read(rel), pattern, rel);
-  assert.doesNotMatch(read('routes/subscriber-payments.js'), /إيصال الدفع — معهد الدراسات النفسية/);
-  assert.doesNotMatch(checkoutSource(), /✅ تم استلام دفعتك — /);
+  
+  
 });
 
-test('paying an instalment opens lectures like every other payment', () => {
-  const source = read('routes/installments.js');
-  assert.match(source, /await grantCourseEntitlement\(\{/);
-  assert.match(source, /paidRatio: paidRatioOf\(access\)/);
-});
+

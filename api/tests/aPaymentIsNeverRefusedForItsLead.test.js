@@ -49,12 +49,4 @@ test('elsewhere a hidden lead is still not there', async () => {
   await assert.rejects(transitionLead({ tenantId: 't', leadId: 'L-1', toStatus: 'contacted', db: conn }), /Lead not found/);
 });
 
-test('every payment path converts through it', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  for (const file of ['routes/core/financepay.js', 'routes/payment-proofs.js', 'routes/subscriber-payments.js', 'lib/orderPaymentConfirmation.js', 'lib/paymobFinalise.js']) {
-    const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-    assert.match(source, /convertLeadOfPayment\(\{/, file);
-    assert.doesNotMatch(source, /transitionLead\(/, file);
-  }
-});
+

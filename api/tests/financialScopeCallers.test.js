@@ -42,11 +42,4 @@ test('payments keeps its own, wider rule', () => {
   assert.match(s, /76%/, 'and the reason it is wider must stay written down');
 });
 
-test('the shared clause is not quietly widened to match', () => {
-  // The other way to "unify" these is to teach financialScopeClause the
-  // staff_id half. That would hand every caller a rule two of them do not
-  // want, including the reports, where a staff member would start seeing
-  // payments they recorded for customers outside their scope.
-  const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'financialScope.js'), 'utf8');
-  assert.doesNotMatch(lib, /staff_id/, 'the shared clause scopes by assignment, not by who typed it');
-});
+

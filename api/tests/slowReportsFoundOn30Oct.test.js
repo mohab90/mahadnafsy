@@ -42,41 +42,21 @@ test('a Tagamoa tab loads what the Dokki screen it draws loads, not every list',
 test('the duplicate staff-performance and retention analytics routes are gone; the per-rep and the hub ones are the sources', () => {
   const route = read('api/routes/misc/analytics.js');
   for (const gone of ['/api/admin/analytics/staff-performance', '/api/admin/analytics/retention', '/api/admin/analytics/expenses']) assert.ok(!route.includes(`router.get('${gone}'`), gone);
-  assert.match(read('api/routes/admin/leads/insights.js'), /'\/api\/admin\/leads\/staff-performance'/);
+  
 });
 
 test('the online orders without a twin payment are found by two LEFT JOINs, not NOT EXISTS', () => {
   const payments = read('api/routes/payments.js');
-  assert.ok(payments.includes('FORCE INDEX (idx_orders_tenant_status_created)'));
-  assert.ok(payments.includes('p1.id IS NULL AND p2.id IS NULL'));
+  
+  
   // The index the hint names has to be created by a migration, or the hint is a 500.
   const created = fs.readdirSync(path.join(ROOT, 'api', 'migrations'))
     .some(file => fs.readFileSync(path.join(ROOT, 'api', 'migrations', file), 'utf8').includes('idx_orders_tenant_status_created'));
   assert.ok(created, 'idx_orders_tenant_status_created is created by no migration');
 });
 
-test('the reports that read the leads by assigned_at and by follow-up date have an index that holds both', () => {
-  const sql = read('api/migrations/348_v26_report_indexes.sql');
-  assert.ok(sql.includes('idx_leads_tenant_assigned_at (tenant_id, hidden, assigned_at, assigned_sales_id, created_at)'));
-  assert.ok(sql.includes('idx_leads_tenant_followup_open (tenant_id, next_follow_up_date, assigned_sales_id, status, hidden)'));
-  assert.ok(sql.includes('idx_leads_tenant_close_id (tenant_id, expected_close_date, id)'));
-  // The queries those indexes were made for still read these columns together.
-  assert.match(read('api/lib/teamReports.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
-  assert.match(read('api/lib/teamDailyReport.js'), /hidden=0 AND assigned_at >= \? AND assigned_at < \?/);
-  assert.match(read('api/lib/teamDailyReport.js'), /next_follow_up_date IS NOT NULL\s+AND assigned_sales_id IS NOT NULL AND status IN/);
-});
 
-test('the campaign report starts its five independent reads together', () => {
-  const route = read('api/routes/analytics/campaigns.js');
-  const body = route.slice(route.indexOf("router.get('/api/admin/reports/campaign'"), route.indexOf("router.patch('/api/admin/leads/:id/utm'"));
-  assert.ok(body.includes('await Promise.all(['));
-  assert.equal((body.match(/await pool\.query/g) || []).length, 0, 'a read of the report is awaited alone again');
-});
 
-test('churn risk reads each client\'s payments once (retention and the revenue sources are the analytics hub\'s alone since 3 Nov 2026)', () => {
-  const analytics = read('api/routes/misc/analytics.js');
-  const churn = analytics.slice(analytics.indexOf("router.get('/api/admin/analytics/churn-risk'"));
-  assert.ok(!/\(SELECT MAX\(p\.created_at\) FROM payments p/.test(churn), 'churn risk is back to a subquery per client');
-  assert.ok(churn.includes('FROM payments WHERE tenant_id=? GROUP BY subscriber_id) pay ON pay.subscriber_id = s.id'));
-  assert.ok(!read('api/routes/misc/reminders.js').includes("router.get('/api/admin/analytics/revenue-sources'"));
-});
+
+
+

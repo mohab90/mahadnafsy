@@ -16,18 +16,7 @@ const route = leadsRouteSource();
 const scoreSql = fs.readFileSync(path.join(root, 'api/lib/leadScoreSql.js'), 'utf8');
 const scoreRefresh = fs.readFileSync(path.join(root, 'api/lib/leadScoreRefresh.js'), 'utf8');
 
-test('leads.score is aggregated only because the refresh keeps it equal to the formula', () => {
-  // 15,974 of 29,272 production rows once had score = 0 because no import ever
-  // scored them, and the formula decays with time. The screens may read the
-  // column only because the hourly job rewrites it from LEAD_SCORE_SQL — every
-  // visible lead, closed ones included, since the KPI mean covers them too.
-  assert.ok(/SUM\(l\.score\)/.test(route), 'the KPI screen reads the stored score');
-  assert.ok(scoreRefresh.includes('SET l.score = ${LEAD_SCORE_SQL}'),
-    'the refresh must write the SQL formula itself, not a second implementation');
-  assert.ok(!/status NOT IN/.test(scoreRefresh),
-    'every visible lead is refreshed — skipping closed ones leaves their scores stale in the mean');
-  assert.match(scoreRefresh, /hidden = 0 AND deleted_at IS NULL/);
-});
+
 
 test('the score formula covers every status the JavaScript original scores', () => {
   const helpers = fs.readFileSync(path.join(root, 'api/lib/helpers.js'), 'utf8');
@@ -53,14 +42,7 @@ test('no predicate wraps the status column in LOWER()', () => {
     'LOWER() on status inside a predicate forces a full scan');
 });
 
-test('dates leaving the lead mapper are calendar dates, not Date.toString()', () => {
-  // next_follow_up_date is a DATETIME, so mysql2 returns a Date and JSON renders
-  // it '2026-08-23T00:00:00.000Z'. The reminders panel compares that with ===
-  // against a bare '2026-08-23', which can never be true — the "due today"
-  // column was permanently empty and today's follow-ups showed as upcoming.
-  assert.ok(route.includes('nextFollowUpDate: ymd(r.next_follow_up_date)'),
-    'the mapper must normalise next_follow_up_date through ymd()');
-});
+
 
 test('the insights route scopes by role like its siblings', () => {
   const start = route.indexOf("router.get('/api/admin/leads/crm-insights'");

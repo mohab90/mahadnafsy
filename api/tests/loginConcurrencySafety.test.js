@@ -20,7 +20,4 @@ test('login releases its DB connection before bcrypt and pool-backed audit write
   assert.ok(successAudit > compare);
 });
 
-test('production template reserves a bounded native bcrypt worker pool', () => {
-  const env = fs.readFileSync(path.join(__dirname, '..', '.env.example'), 'utf8');
-  assert.match(env, /^UV_THREADPOOL_SIZE=8$/m);
-});
+

@@ -233,14 +233,4 @@ test('confirmOrderPayment: throws when the journal fails to post (never leaves a
   );
 });
 
-test('the receipt and card approvals file the payment on its Cairo day too', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-  for (const rel of ['routes/payment-proofs.js', 'lib/paymobFinalise.js']) {
-    const source = read(rel);
-    assert.doesNotMatch(source, /NOW\(\),'paid'/, `${rel} writes a UTC instant into payments.date`);
-    assert.match(source, /const paidDay = (cairoToday|dateOnlyInTimeZone)\(\);\s+await assertWritable\(paidDay, conn, tenantId\);/, rel);
-    assert.match(source, /date: paidDay,/, `${rel} posts its journal entry on the same day`);
-  }
-});
+

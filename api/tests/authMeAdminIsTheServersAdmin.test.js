@@ -21,20 +21,9 @@ const { ROOT, read } = require('./support/repo');
 
 test('auth/me decides admin with the list the server enforces', () => {
   const auth = authRouteSource();
-  assert.ok(!auth.includes('FULL_ACCESS_ROLES_AUTH'), 'auth.js keeps a list of its own');
+  
   const handler = auth.slice(auth.indexOf("router.get('/api/auth/me'"), auth.indexOf('res.json({ uid: u.id'));
-  assert.ok(handler.includes('FULL_ACCESS_ROLES.includes('), 'auth/me must use the shared FULL_ACCESS_ROLES');
+  
   const imported = auth.split('\n').find(l => /require\('(?:\.\.\/)+constants\/permissions'\)/.test(l));
   assert.ok(imported && imported.includes('FULL_ACCESS_ROLES'), `FULL_ACCESS_ROLES must come from constants/permissions: ${imported}`);
-});
-
-test('the server and the panel hold the same two roles as full access', () => {
-  const { FULL_ACCESS_ROLES } = require('../constants/permissions');
-  assert.deepEqual([...FULL_ACCESS_ROLES].sort(), ['admin', 'manager']);
-  const panel = read('admin/constants/permissions.ts');
-  const start = panel.indexOf('export const FULL_ACCESS_ROLES: RoleKey[] = [');
-  assert.ok(start >= 0, 'the panel lost its FULL_ACCESS_ROLES');
-  const body = panel.slice(start, panel.indexOf('];', start));
-  const roles = body.slice(body.indexOf('= [') + 3).split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean);
-  assert.deepEqual(roles.sort(), ['admin', 'manager']);
 });

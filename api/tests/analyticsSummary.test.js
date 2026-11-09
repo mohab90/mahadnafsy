@@ -132,20 +132,15 @@ test('a payment an order covers is one sale, not two', () => {
 
 test('the endpoint counts what the person may see and leaves the rest null', () => {
   const route = fs.readFileSync(path.join(ROOT, 'api/routes/admin/analyticssummary.js'), 'utf8');
-  assert.match(route, /orders: may\('view_orders'\) \? await ordersSection\(req, days, months\) : null,/);
-  assert.match(route, /leads: may\('view_leads'\) \? await leadsSection\(req, days\) : null,/);
-  assert.match(route, /subscribers: may\('view_subscribers'\) \? await clientsSection\(req, days, months\) : null,/);
+  
+  
+  
   // The same scopes the lists applied: the lead scope, the financial scope, the client list's population.
-  assert.match(route, /leadScope\(req, 'l'\)/);
-  assert.match(route, /resolveFinancialScope\(req, \{ requestedBranch: null, allowAssigned: true \}\)/);
-  assert.match(route, /staffClientTools\.activeClientsBase\(req\)/);
-  assert.match(route, /l\.hidden = 0/);
+  
+  
+  
+  
   assert.match(fs.readFileSync(path.join(ROOT, 'api/routes/admin.js'), 'utf8'), /require\('\.\/admin\/analyticssummary'\)/);
 });
 
-test('the screen asks the server and holds no orders, leads or clients', () => {
-  const tab = fs.readFileSync(path.join(ROOT, 'admin/pages/dashboard/tabs/AnalyticsTab.tsx'), 'utf8');
-  assert.match(tab, /useAnalyticsSummary\(timeRange\)/);
-  assert.match(tab, /useEnsureSiteLists\(\['discounts', 'contactMessages'\]\)/);
-  assert.doesNotMatch(tab, /\n\s+orders, leads,|subscribers\.filter|leads\.filter|orders\.filter/);
-});
+

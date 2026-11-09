@@ -143,9 +143,11 @@ export function ClientContactDialog({ subscriber, notify, onClose, onSaved, init
 }
 
 /** The client page's «التواصل» tab for a client: the timeline, and a way to add to it. */
-export function ClientContactsPanel({ subscriber, notify, dialogOpen, setDialogOpen }: {
+export function ClientContactsPanel({ subscriber, notify, dialogOpen, setDialogOpen, onSaved }: {
   subscriber: { id: string; name: string };
   notify: Notify;
+  /** Told when a contact is saved, so the rest of the page (the hero, the tab's count) follows without a reload. */
+  onSaved?: (entry: ContactEntry) => void;
   dialogOpen: boolean;
   setDialogOpen: (open: boolean) => void;
 }) {
@@ -163,7 +165,7 @@ export function ClientContactsPanel({ subscriber, notify, dialogOpen, setDialogO
       </button>
       <ContactTimeline entries={entries} loading={loading} />
       {dialogOpen && (
-        <ClientContactDialog subscriber={subscriber} notify={notify} onClose={() => { setDialogOpen(false); void reload(); }} onSaved={() => void reload()} />
+        <ClientContactDialog subscriber={subscriber} notify={notify} onClose={() => { setDialogOpen(false); void reload(); }} onSaved={entry => { onSaved?.(entry); void reload(); }} />
       )}
     </div>
   );

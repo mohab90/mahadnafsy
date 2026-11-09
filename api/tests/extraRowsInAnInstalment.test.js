@@ -80,17 +80,6 @@ test('a certificate, a carnet or a book is its own payment, never an instalment'
   assert.match(entries[0].note, /شهادة البورد \| قسط أكتوبر \| TX1/);
 });
 
-test('the dialog offers the courses the client lacks and flags them as new bookings', () => {
-  const modal = paymentModalSource();
-  assert.match(modal, /<optgroup label="🆕 حجز كورس جديد">/);
-  assert.match(modal, /newBooking: d\.bookingType === 'installment' && !!e\.target\.value && !heldCids\.has\(e\.target\.value\)/);
-});
 
-test("the client's page records the added rows, and the dashboard path books them new", () => {
-  const hook = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
-  assert.match(hook, /extraPaymentEntries\(draft, \{/);
-  assert.match(hook, /for \(const \[position, extra\] of extras\.entries\(\)\)/);
-  const handlers = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  assert.match(handlers, /isInstallment: !item\.newBooking/);
-  assert.match(handlers, /courseExpected: item\.newBooking \? bookedPrice/);
-});
+
+

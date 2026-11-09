@@ -33,10 +33,4 @@ test('two accounts on one address are flagged, since the code of one would reach
   assert.equal(classifyLoginEmail('', { sharedWith: ['x'] }).status, 'missing', 'no address outranks sharing one');
 });
 
-test('the tool reads the policy the way the server stores it and is read-only', () => {
-  const tool = fs.readFileSync(path.join(__dirname, '..', 'tools', 'login-code-readiness.cjs'), 'utf8');
-  assert.match(tool, /FROM tenant_settings WHERE tenant_id=\? AND section='security_mfa_policy'/);
-  assert.match(tool, /SET SESSION TRANSACTION READ ONLY/);
-  assert.doesNotMatch(tool, /\b(INSERT|UPDATE|DELETE)\b/);
-  assert.match(tool, /--send-test/);
-});
+

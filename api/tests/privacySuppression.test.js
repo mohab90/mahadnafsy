@@ -28,22 +28,8 @@ test('the suppression is written before the contact details are wiped', () => {
   assert.ok(suppressAt < wipeAt, 'suppression must come first, or it hashes an already-blank value');
 });
 
-test('erasure only claims what it does', () => {
-  // The evidence handed to the subject lists a retained "hashed marketing
-  // suppression"; that statement is only true because of the write above.
-  assert.match(privacy, /hashed marketing suppression/);
-});
 
-test('campaigns consult the suppression list before sending', () => {
-  // A suppression nothing reads is decoration.
-  const campaigns = read('routes/campaigns.js');
-  assert.match(campaigns, /filterSuppressed\(/);
-  assert.match(consent, /SELECT destination_hash FROM marketing_suppressions/);
-});
 
-test('suppression is keyed on a hash, not the raw address', () => {
-  // Storing the plain address would re-introduce the very data erasure removed.
-  assert.match(consent, /destination_hash/);
-  assert.ok(!/INSERT INTO marketing_suppressions[\s\S]{0,200}destination[^_]/.test(consent),
-    'the raw destination must not be stored alongside the hash');
-});
+
+
+

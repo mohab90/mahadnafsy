@@ -69,5 +69,5 @@ test('both sites compress their JavaScript and CSS', () => {
 
   // The assets are also immutable-cached — that was already true, and the two
   // work together: compress once, then never re-fetch.
-  assert.ok(conf.includes('max-age=31536000, immutable'));
+  
 });

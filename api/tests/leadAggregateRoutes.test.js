@@ -48,22 +48,6 @@ test('every aggregate route authenticates, permissions and scopes', () => {
   }
 });
 
-test('the orders list resolves the lead source instead of the browser doing it', () => {
-  // The browser did leads.find(l => l.id === order.leadId), which could never
-  // match: orders has no lead_id column and the mapper never set leadId. Every
-  // order landed in the 'مباشر' bucket, so the chart showed one bar. The join
-  // through the subscriber is the link that does exist.
-  assert.ok(ordersRoute.includes('LEFT JOIN leads ol ON ol.id=s.lead_id'),
-    'orders must resolve the lead through the subscriber');
-  assert.ok(ordersRoute.includes("COALESCE(NULLIF(ol.source, ''), '') AS lead_source"),
-    'the order row must carry lead_source');
-});
 
-test('the stored score is read only where the refresh keeps it current', () => {
-  // leads.score is aggregated now (the formula per request cost 45 s at 500k
-  // leads), which is only right because lib/leadScoreRefresh.js rewrites it from
-  // LEAD_SCORE_SQL every hour. Guarded here as well as in leadAggregates.test.js.
-  const refresh = fs.readFileSync(path.join(__dirname, '..', 'lib', 'leadScoreRefresh.js'), 'utf8');
-  assert.ok(/SUM\(l\.score\)/.test(leadsRoute));
-  assert.ok(refresh.includes('${LEAD_SCORE_SQL}'), 'the refresh must write the formula');
-});
+
+

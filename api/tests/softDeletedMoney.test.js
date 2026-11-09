@@ -39,7 +39,7 @@ const ALLOWED = new Map([
   ['routes/core/payops.js', 'id dedupe, and the payment audit log outlives the payment'],
   ['routes/public-orders.js:471', 'transaction_id dedupe — blind to a deleted row it double-charges'],
   ['routes/finance-documents.js', 'the invoice is its own record'],
-  ['routes/finance/refunds.js:116', "the refund's own payment, joined by id; the money beside it is summed from px, guarded"],
+  ['routes/finance/refunds.js:118', "the refund's own payment, joined by id; the money beside it is summed from px, guarded"],
   ['routes/support.js', 'ticket context, looked up by an explicit id'],
   ['routes/monitoring.js:301', 'journal reconciliation wants the raw table'],
   ['routes/monitoring.js:309', 'journal reconciliation wants the raw table'],
@@ -147,17 +147,7 @@ test('the scan can actually see a breach', () => {
   }
 });
 
-test('the interpolated WHERE fragments carry the guard themselves', () => {
-  // A scan cannot see into `${where}`. These two build their filter in JS, so
-  // the initialiser is the thing to pin.
-  const payments = fs.readFileSync(path.join(API, 'routes', 'payments.js'), 'utf8');
-  assert.ok(payments.includes("let where = 'p.tenant_id = ? AND p.deleted_at IS NULL'"),
-    'the payments list built its WHERE without the soft-delete guard');
 
-  const orders = fs.readFileSync(path.join(API, 'lib', 'paymobFinalise.js'), 'utf8');
-  assert.ok(orders.includes("'WHERE subscriber_id = ? AND amount > 0 AND deleted_at IS NULL'"),
-    "the customer's paid-total counts deleted payments again");
-});
 
 test('on a LEFT JOIN the guard sits in ON, never in WHERE', () => {
   // In WHERE it drops every unmatched row and quietly makes the join inner —

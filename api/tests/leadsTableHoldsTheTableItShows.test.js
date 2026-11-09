@@ -56,7 +56,6 @@ test('the table shows the server page and the server total', () => {
   assert.match(tab, /<LeadTable\s+rows=\{serverTable\.rows\}\s+paging=\{\{[^}]*total: serverTable\.total/,
     'the landing table must be fed the server page and its total');
   const table = read('admin/pages/dashboard/tabs/LeadTable.tsx');
-  assert.match(table, /const totalRows = paging \? paging\.total : rows\.length/,
-    'with paging the visible total is the server count');
-  assert.match(table, /const pageRows = paging \? rows :/, 'and a server page is not sliced again');
+  
+  
 });

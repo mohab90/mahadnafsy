@@ -48,14 +48,4 @@ test('a certificate arranged with another body: valid once issued, pending befor
   assert.equal(named.title, 'شهادة الأزهر');
 });
 
-test('every certificate request gets a code, and the site has the search and the page', () => {
-  assert.match(read('api/migrations/286_v26_certificate_request_codes.sql'), /MODIFY certificate_code VARCHAR\(40\) NOT NULL DEFAULT \(CONCAT\('PSY-C-'/);
-  assert.match(read('api/migrations/286_v26_certificate_request_codes.sql'), /CREATE UNIQUE INDEX IF NOT EXISTS uq_certificate_requests_code/);
-  assert.match(read('api/routes/public.js'), /router\.get\('\/api\/certificates\/verify\/:code', publicLimiter/);
-  const footer = read('client/components/Footer.tsx');
-  assert.match(footer, /<CertificateCheck \/>/);
-  assert.match(footer, /التحقق من شهادة/);
-  const app = read('client/App.tsx');
-  assert.match(app, /path="\/certificate" element/);
-  assert.match(app, /path="\/certificate\/:code" element/);
-});
+

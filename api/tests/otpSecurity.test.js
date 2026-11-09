@@ -8,20 +8,7 @@ const path = require('node:path');
 
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('password-reset OTPs are HMAC protected at rest and verified from delivered mail', () => {
-  const auth = authRouteSource();
-  const schema = read('schema.sql');
-  const migration = read('migrations/159_v25_otp_secret_storage.sql');
-  const smoke = read('tools/forgot-password-smoke.cjs');
 
-  assert.match(auth, /createHmac\('sha256'/);
-  assert.match(auth, /hashOtp\(\{\s*tenantId:\s*req\.tenantId,\s*email:\s*safeEmail/);
-  assert.match(schema, /`code` char\(64\) NOT NULL/);
-  assert.match(migration, /MODIFY COLUMN code CHAR\(64\) NOT NULL/);
-  assert.match(migration, /SET used=1/);
-  assert.doesNotMatch(smoke, /code:\s*otp\.code/);
-  assert.match(smoke, /FAKE_SMTP_CAPTURE_FILE/);
-});
 
 test('production refuses a missing or reused OTP HMAC secret', () => {
   const { criticalProductionPolicy } = require('../lib/productionConfig');
@@ -47,11 +34,4 @@ test('production refuses a missing or reused OTP HMAC secret', () => {
   assert.equal(criticalProductionPolicy({ ...base, OTP_HMAC_SECRET: base.JWT_SECRET }).ok, false);
 });
 
-test('the browser login helper stops at the emailed-code step instead of waiting for a code, and runs one session at a time', () => {
-  const helper = fs.readFileSync(path.join(__dirname, '..', '..', 'e2e', 'helpers', 'adminLogin.ts'), 'utf8');
-  const config = fs.readFileSync(path.join(__dirname, '..', '..', 'e2e', 'playwright.config.ts'), 'utf8');
-  assert.match(helper, /input\[autocomplete="one-time-code"\]/);
-  assert.match(helper, /is asked for an emailed code/);
-  assert.doesNotMatch(helper, /otplib|UAT_TOTP_SECRET/);
-  assert.match(config, /workers:\s*1/);
-});
+

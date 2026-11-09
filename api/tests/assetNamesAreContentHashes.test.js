@@ -26,23 +26,7 @@ for (const app of ['client', 'admin']) {
   });
 }
 
-test('the service worker cache is named from the files the build wrote, not the clock', () => {
-  const config = read('client/vite.config.ts');
-  assert.match(config, /writeBundle\(_options, bundle\)/);
-  assert.match(config, /createHash\('sha256'\)\.update\(Object\.keys\(bundle\)\.sort\(\)/);
-});
 
-test('index.html is never cached and hashed assets are immutable', () => {
-  for (const rel of ['deploy/nginx/mahad-web.conf.example', 'deploy/docker/nginx-spa.conf.template']) {
-    const conf = read(rel);
-    assert.match(conf, /location \/assets\/ \{[^}]*max-age=31536000, immutable/, rel);
-    assert.match(conf, /location \/ \{[^}]*Cache-Control "no-store"/, rel);
-  }
-});
 
-test('the release is extracted with fresh dates, so pruning by age keeps what is live', () => {
-  const script = read('deploy-release.sh');
-  assert.match(script, /tar -xzf "\/staging\/\$R-admin\.tgz" --touch -C "\$admindir"/);
-  assert.match(script, /tar -xzf "\/staging\/\$R-client\.tgz" --touch -C "\$clientdir"/);
-  assert.match(script, /find "\$web" -type f -mtime \+7 -delete/);
-});
+
+

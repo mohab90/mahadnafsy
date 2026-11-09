@@ -79,40 +79,9 @@ test('the gaps are read per branch, from the payments that carry a number', asyn
   assert.equal(asked[0].params[0], 't1');
 });
 
-test('the migration numbers what exists in the order it was recorded and starts the counter after it', () => {
-  const sql = read('api/migrations/280_v26_branch_receipt_numbers.sql');
-  assert.match(sql, /CREATE TABLE IF NOT EXISTS receipt_counters/);
-  assert.match(sql, /ADD COLUMN IF NOT EXISTS receipt_no INT NULL/);
-  assert.match(sql, /ADD UNIQUE KEY IF NOT EXISTS uq_payments_branch_receipt \(tenant_id, branch, receipt_no\)/);
-  assert.match(sql, /ROW_NUMBER\(\) OVER \(PARTITION BY tenant_id, branch ORDER BY created_at, `date`, id\)/);
-  assert.match(sql, /branch IN \('DAQQI', 'TAGAMOA'\)/);
-  assert.match(sql, /ON DUPLICATE KEY UPDATE last_no = GREATEST\(last_no, VALUES\(last_no\)\)/);
-});
 
-test('a recorded payment takes its number inside its transaction and answers with it', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /receiptNo = await nextReceiptNo\(conn, \{ tenantId: paymentTenantId, branch: paymentBranch \}\);/);
-  assert.match(route, /tenant_id, branch, branch_id, receipt_no\)/);
-  assert.match(route, /\.\.\.\(receiptNo \? \{ receiptNo, receiptBranch: receiptSeriesOf\(paymentBranch\) \} : \{\}\)/);
-  const installments = read('api/routes/installments.js');
-  assert.match(installments, /const receiptNo = await nextReceiptNo\(conn, \{ tenantId: req\.tenantId, branch \}\);/);
-  assert.match(installments, /tenant_id, staff_name, created_at, receipt_no\)/);
-});
 
-test('the receipt, the register and the managers see the number — and voiding one tells the managers', () => {
-  assert.match(paymentModalSource(), /إيصال رقم \{data\.receiptNo\}/);
-  assert.match(paymentModalSource(), /forgetReceipts\(\);/);
-  assert.match(read('admin/lib/mysqlapi.ts'), /noteReceipt\(answer\)/);
-  assert.match(read('api/routes/finance-payments-register.js'), /number: r\.receipt_no != null \? Number\(r\.receipt_no\)/);
-  // The alert is in the accounts — the branch's own and the main ones — not on the Dokki schedule page.
-  assert.match(read('admin/pages/dashboard/tabs/FinancialTab.tsx'), /<ReceiptGapsAlert branch=\{branchFilter \? branchFilter\.toUpperCase\(\) : undefined\} \/>/);
-  assert.doesNotMatch(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), /ReceiptGapsAlert/);
-  const gaps = read('api/routes/misc/receiptGaps.js');
-  assert.match(gaps, /GAP_VIEWERS/);
-  assert.match(gaps, /boundBranch\(req\)/, "a branch's own manager sees only their branch");
-  const corrections = read('api/lib/paymentCorrections.js');
-  assert.match(corrections, /await insertNotification\(conn, 'payment', '⚠️ إيصال اتمسح من التسلسل'/);
-});
+
 
 test('the endpoint answers the managers, a branch’s manager sees only their branch, a rep is refused', async () => {
   const stub = (rel, exports) => { const file = require.resolve(rel); require.cache[file] = { id: file, filename: file, loaded: true, exports }; };

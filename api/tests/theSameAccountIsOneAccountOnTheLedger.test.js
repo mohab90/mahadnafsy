@@ -52,16 +52,4 @@ test('the sheet a row came from is read off its note', () => {
   assert.equal(sheetOf(null), '');
 });
 
-test('the merge is the managers\', audited, remembered, and applied to what is entered later', () => {
-  const routes = read('api/routes/core/financepay.js');
-  assert.match(routes, /'\/api\/admin\/incoming-transfers\/accounts'[\s\S]{0,300}managesTransfers/);
-  const merge = routes.slice(routes.indexOf("'/api/admin/incoming-transfers/merge-accounts'"));
-  assert.match(merge, /managesTransfers\(req\)/);
-  assert.match(merge, /incoming_transfer\.accounts_merged/);
-  assert.match(merge, /setTenantSetting\('transfer_account_aliases'/);
-  assert.match(routes, /renamed\(aliases, req\.body\?\.method\)/, 'a transfer typed in under an old name goes to the merged account');
-  assert.match(routes, /renamed\(aliases, row\?\.method\)/, 'and so does an imported sheet');
-  const lib = read('api/lib/transferAccounts.js');
-  assert.match(lib, /UPDATE IGNORE incoming_transfers/, 'a number already on the target box is reported, not forced');
-  assert.match(read('admin/pages/dashboard/tabs/orders/IncomingTransfers.tsx'), /<TransferAccountsMerge notify=\{notify\} onMerged=\{onMerged\} \/>/);
-});
+

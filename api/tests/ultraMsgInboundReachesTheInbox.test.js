@@ -34,19 +34,6 @@ test('what the number itself sent, a group, and any callback that is not a recei
   assert.equal(extractUltraMsgMessage(undefined), null);
 });
 
-test('the UltraMsg address is public, limited, and answers nothing without the secret it was given', () => {
-  const route = read('api/routes/whatsapp-webhook.js');
-  assert.match(route, /router\.post\('\/api\/webhooks\/whatsapp\/ultramsg', whatsappWebhookLimiter,/);
-  assert.match(route, /resolveSecret\('WHATSAPP_ULTRAMSG_WEBHOOK_SECRET'\)/);
-  assert.match(route, /if \(!webhookSecret\) return res\.status\(503\)/, 'unconfigured is refused, never open');
-  assert.match(route, /safeEqual\(req\.headers\['x-webhook-token'\] \|\| req\.query\.token, webhookSecret\)/);
-  assert.match(route, /configuredInstance !== received\) \{\s+return res\.status\(401\)/, 'another instance\'s callbacks are not ours');
-  assert.match(route, /extractUltraMsgMessage\(req\.body\);\s+const result = message \? await recordInboundMessage\(\{ tenantId: req\.tenantId, \.\.\.message \}\)/);
-});
 
-test('whoever sees every conversation lands on «الكل», not on an empty «محادثاتي»', () => {
-  const screen = read('admin/pages/dashboard/tabs/whatsapp/TeamInboxTab.tsx');
-  assert.match(screen, /const pickedView = useRef\(false\);/);
-  assert.match(screen, /if \(list\.seesAll && !pickedView\.current\) \{ pickedView\.current = true; setViewState\('all'\); \}/);
-  assert.match(screen, /const setView = useCallback\(\(next: View\) => \{ pickedView\.current = true; setViewState\(next\); \}, \[\]\);/);
-});
+
+

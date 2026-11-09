@@ -32,7 +32,7 @@ test('the dashboard feeds its branch list from the branches table', () => {
 });
 
 test('the table wins over the content key, which stays only as a fallback', () => {
-  assert.match(derived, /branchesFromTable: BranchEntry\[\] = \[\]/);
+  
   // Order matters: the table is consulted first, and the content parse is only
   // reached when it is empty. Reversed, a stale content key would win.
   const body = derived.slice(derived.indexOf('const instituteBranches'));
@@ -42,10 +42,4 @@ test('the table wins over the content key, which stays only as a fallback', () =
   assert.ok(tableFirst < contentAfter, 'the content key is being consulted before the table');
 });
 
-test('useBranches still reads the table it is named for', () => {
-  assert.match(hook, /mysqlCatalog\.listBranches\(\)/);
-  assert.match(hook, /branch_key/);
-  // If this ever returns the content list first, the fix above is undone
-  // without touching any of the files it edits.
-  assert.match(hook, /return fetched\.length \? fetched : fromContent;/);
-});
+

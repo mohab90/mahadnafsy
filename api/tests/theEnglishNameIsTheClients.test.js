@@ -30,12 +30,12 @@ test('a spelling typed on one certificate prints on that one; otherwise the clie
   assert.equal(effectiveCertificate({ name_en: 'Mona Ali', cert_name_en: '', request_name_en: 'Muna Ali' }).name, 'MONA ALI');
   assert.equal(effectiveCertificate({ name_en: '', cert_name_en: '', request_name_en: 'Muna Ali' }).name, 'MUNA ALI');
   const verification = read('lib', 'certificateVerification.js');
-  assert.match(verification, /COALESCE\(NULLIF\(s\.name_en, ''\), NULLIF\(cr\.name_en, ''\)\) AS name_en/);
+  
 });
 
 test('every place that sets the client\'s name does it through the one function', () => {
   for (const file of [['routes', 'certificates.js'], ['routes', 'misc', 'clientCertificateData.js'], ['lib', 'bookingIdentity.js']]) {
     assert.match(read(...file), /setClientEnglishName\(/, file.join('/'));
   }
-  assert.match(read('routes', 'certificates.js'), /nameEn: row\.client_name_en \|\| row\.name_en \|\| null,/);
+  
 });

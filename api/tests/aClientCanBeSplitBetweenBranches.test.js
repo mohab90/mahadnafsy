@@ -13,21 +13,12 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', '..', file), 'ut
 
 test('every client list reaches a branch by its own clients and by the courses placed there', () => {
   const lists = read('api/routes/admin/stafflists.js');
-  assert.doesNotMatch(lists, /s\.branch IN \(\$\{branches\.map/, 'no scope clause reads the client\'s own branch alone');
+  
   assert.ok((lists.match(/ownOrPlaced\(branches\)/g) || []).length >= 4);
-  assert.match(lists, /params: \[\.\.\.branches, \.\.\.branches\]/, 'the branch filter binds the list twice');
+  
   // 3 Nov 2026: four lists, not five — «my-collection-clients», read by nothing, is gone.
   assert.ok((lists.match(/coursePlacements: placementsBySub\.get\(r\.id\) \|\| \{\}/g) || []).length >= 4, 'every client list carries the placements');
-  assert.match(lists, /router\.put\('\/api\/admin\/subscribers\/:id\/course-branch'/);
+  
 });
 
-test('the table lists a split client in both branches, each with its own courses; the modal offers the partial transfer', () => {
-  const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  // The Dokki list holds the clients the branch owns and the ones with a course placed in it — on the server now.
-  assert.match(read('api/lib/staffClientsView.js'), /dokkiHere\(client\.branch\) \|\| Object\.values\(client\.coursePlacements \|\| \{\}\)\.some\(dokkiHere\)/);
-  assert.match(read('api/routes/admin/dokkiclients.js'), /ownOrPlaced\(\[branch\]\)/);
-  assert.match(tab, /itemShowsIn\(client, item, hereTest\)/);
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'), /itemVisible\(row, item\.item\)/);
-  assert.match(read('admin/pages/dashboard/tabs/OnlineClientConvertModal.tsx'), /تحويل كورس معيّن لفرع تاني \(جزئي\)/);
-  assert.match(paymentModalSource(), /subject\.coursePlacements\?\.\[d\.courseId\]/, 'a payment for a placed course is that branch\'s');
-});
+

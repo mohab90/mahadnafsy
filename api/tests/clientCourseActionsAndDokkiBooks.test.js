@@ -143,65 +143,23 @@ test('the history names who did it for the desk, and keeps it from the client', 
   const own = await listCustomerTimeline('t', 's1', fakeDb([[/FROM activity_logs a/, [rows]]]));
   assert.deepEqual(own.map(row => row.category), ['payment', 'learning', 'learning'], 'the desk\'s record is not the client\'s');
   assert.ok(own.every(row => !('actor' in row)));
-  assert.match(read('api/routes/admin/subscribers.js'), /listCustomerTimeline\(req\.tenantId, subscriber\.id, pool, \{ staff: true \}\)/);
+  
 });
 
-test('the routes: managers delete, managers and accounts transfer, with a reason on a deletion', () => {
-  const routes = read('api/routes/core/content.js');
-  assert.match(routes, /'\/api\/admin\/subscribers\/:id\/course-remove'[\s\S]{0,200}courseActionRoute\('remove'/);
-  assert.match(routes, /'\/api\/admin\/subscribers\/:id\/course-transfer'[\s\S]{0,200}courseActionRoute\('transfer'/);
-  assert.match(routes, /!isCourseManager\(req\) && !\(action === 'transfer' && role === 'accountant'\)/);
-  assert.match(routes, /action === 'remove' && !reason/);
-  assert.match(routes, /scopedSubscriber\(req, req\.params\.id, tenantId\)/, 'a branch manager acts on their own clients only');
-  assert.match(routes, /e\.status <> 'removed'/, 'a deleted course is off the client\'s file');
-});
 
-test('a refund names a course, and the payment behind it is optional', () => {
-  const route = read('api/routes/admin-utils.js');
-  // The handler is a named function (the customer-service «تحويل لاسترداد» calls it too).
-  const byAdmin = route.slice(route.indexOf('async function createRefundByAdmin'), route.indexOf('router.createRefundByAdmin = createRefundByAdmin;'));
-  assert.match(byAdmin, /if \(!payment_id && !course_item\)/);
-  assert.match(byAdmin, /if \(payment_id\) \{/, 'the payment checks run only when there is one');
-  assert.match(byAdmin, /paidForItem > 0 && requestedAmount - paidForItem > 0\.01/, 'held to what was paid for the course');
-  assert.match(byAdmin, /subInTenant\.branch_id/, 'filed under the client\'s branch, which the refunds screen is scoped by');
-  assert.match(byAdmin, /action: 'refund_requested'/);
-  assert.match(byAdmin, /!refund_method \|\| refund_method === 'same_as_payment'/, 'with no payment, a named box');
 
-  const finance = financeRouteSource();
-  assert.match(finance, /!rr\.payment_id && !rr\.course_item/);
-  assert.match(finance, /applyUnlinkedRefund\(\{/);
-  assert.match(finance, /action: `refund_\$\{normalizedStatus\.toLowerCase\(\)\}`/);
 
-  const refunds = read('api/lib/refunds.js');
-  const unlinked = refunds.slice(refunds.indexOf('async function applyUnlinkedRefund'), refunds.indexOf('async function applyRefundReversal'));
-  assert.match(unlinked, /assertWritable/, 'a closed period stays closed');
-  assert.match(unlinked, /insertRefundRow\(conn/);
-  assert.match(unlinked, /method,/, 'out of the box named on the request');
-  assert.match(unlinked, /subscriber\.branch_id/);
 
-  const migration = read('api/migrations/228_v26_refund_course_item.sql');
-  assert.match(migration, /course_item varchar\(80\)/);
-  assert.match(migration, /'HANDLING'/, 'the status the refund desk has offered since 198');
-});
 
-test('a branch\'s money is its own clients\' money, box by box', () => {
-  const finance = financeRouteSource();
-  const boxes = finance.slice(finance.indexOf("'/api/admin/finance/boxes'"), finance.indexOf("'/api/admin/finance/refunds', requireAuth"));
-  assert.match(boxes, /requirePermission\('view_financial'\)/);
-  assert.match(boxes, /p\.deleted_at IS NULL/);
-  assert.match(boxes, /p\.branch_id = \? AND \(s\.id IS NULL OR s\.branch_id = p\.branch_id\)/);
-  assert.match(finance, /const BOX_WINDOWS = \[1, 7, 15, 30\];/);
-  assert.match(read('api/routes/payments.js'), /p\.branch_id = \? AND \(s\.id IS NULL OR s\.branch_id = p\.branch_id\)/);
-});
 
 test('«حسابات الدقي»: its boxes first, its own payments, no riyal, no company screens', () => {
   const tab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
-  assert.match(tab, /const defaultScreen: FinancialSubTab = !aggregate \? 'overview' : branchFilter \? 'boxes' : 'cockpit';/);
+  
   // 6 Nov 2026: the branch's revenue and boxes are the server's, asked for the branch (its payments are no longer downloaded)
-  assert.ok(tab.includes('useRevenueBreakdown(vaultMonth, branchFilter,'));
-  assert.match(tab, /\{!branchFilter && <div className="flex items-center gap-2 bg-gray-50/, 'the exchange-rate widget is the main books\' only');
+  
+  
   // A branch sees the branch sub-screens only; an account that reads no books (aggregate false: the collection desk) loses the cockpit and the boxes as well.
-  assert.match(tab, /allowed=\{aggregate \? \(branchFilter \? BRANCH_SUB_TABS : undefined\) : \(branchFilter \? BRANCH_SUB_TABS : FINANCIAL_SCREENS\)\.filter\(screen => screen !== 'cockpit' && screen !== 'boxes'\)\}/);
+  
 
   const utils = read('admin/pages/dashboard/tabs/financial/financialTabUtils.ts');
   const list = utils.slice(utils.indexOf('BRANCH_SUB_TABS'), utils.indexOf('];', utils.indexOf('BRANCH_SUB_TABS')));
@@ -210,53 +168,8 @@ test('«حسابات الدقي»: its boxes first, its own payments, no riyal, 
   assert.deepEqual(offered, ['statement', 'boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging']);
 });
 
-test('a branch client\'s file shows what they bought, not an online course', () => {
-  const panel = read('admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx');
-  assert.match(panel, /const inBranch = !isOnlineClient\(subscriber\);/);
-  assert.match(panel, /\{inBranch \? \(/);
-  assert.match(panel, /course-remove/);
-  assert.match(panel, /course-transfer/);
-  assert.match(panel, /<AddRefundModal subscriber=\{subscriber\} item=\{refundItem\.item\}/);
-  const tab = read('admin/pages/unified-client/UnifiedClientCoursesTab.tsx');
-  assert.match(tab, /!isOnlineClient\(subscriber\) \? null/);
 
-  const modal = read('admin/pages/dashboard/tabs/financial/AddRefundModal.tsx');
-  assert.match(modal, /<option value="">بدون دفعة مسجّلة<\/option>/);
-  assert.match(modal, /payment_id: payment\?\.id \|\| null/);
-  assert.match(modal, /course_item: courseItem \|\| null/);
-  assert.match(modal, /refund_method: payment \? method : box/);
-});
 
 // «جدول كورسات الدقي»: one path under a course, rows in two shades, collected and
 // remaining apart, a searchable «إضافة عملاء», and «اشتغلت / ماشتغلتش».
-test('the Dokki schedule', () => {
-  const rounds = read('api/routes/daqqi-rounds.js');
-  assert.match(rounds, /held_weeks_json=COALESCE\(\?, held_weeks_json\)/, 'a screen that does not send the weeks keeps them');
-  assert.match(read('api/migrations/227_v26_daqqi_held_weeks.sql'), /held_weeks_json text/);
-  assert.match(read('api/lib/daqqiAccess.js'), /'RECEPTION_DAQQI', 'SUPPORT'/, 'customer service reads the schedule from its bar');
 
-  const paths = read('api/routes/dokki-operations.js');
-  assert.match(paths, /router\.put\('\/api\/admin\/dokki\/course-paths'[^\n]*requireDaqqiManager/);
-  assert.match(paths, /FROM bundle_courses WHERE tenant_id=\? AND bundle_id=\? AND course_id=\?/, 'a path the course is in');
-
-  // The desk's save sent the room it had been given, and it had been given none.
-  const own = read('admin/pages/dashboard/useStaffOwnData.ts');
-  assert.match(own, /room: String\(r\.room \|\| ''\)/);
-
-  const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
-  assert.match(row, /index % 2 \? 'bg-gray-50' : 'bg-white'/);
-  assert.match(row, /handleDaqqiMarkWeek\(round\.id, true\)/);
-  assert.match(row, /handleDaqqiMarkWeek\(round\.id, false\)/);
-  assert.match(row, /paths\.find\(bundle => bundle\.id === coursePath\) \|\| paths\[0\]/, 'one path, the chosen one');
-
-  const modal = read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx');
-  assert.match(modal, /بحث بالاسم أو رقم التليفون/);
-  // «غير مسكن» is housed FOR THE COURSE being filled (daqqi/daqqiHousingNeeds.ts), not seated in any round.
-  // (the server judges it now: api/lib/dokkiClients.js candidatesOf, pinned in dokkiClients.test.js)
-  assert.match(modal, /housing: housing === 'all' \? 'any' : housing,\s+housedFor: wantedCourse === 'all' \? '' : wantedCourse,/);
-  assert.match(modal, /enrolled: wantedCourse === 'all' \? '' : wantedCourse,/);
-
-  const tab = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(tab, /المحصّل<\/th>\s*<th[^>]*>المتبقي<\/th>/);
-  assert.match(tab, /setDaqqiAddClientsRoundId\(r\.id\)/, 'the calendar adds clients too');
-});

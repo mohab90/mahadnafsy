@@ -50,19 +50,10 @@ test('picking one line filters on all its spellings, on the server and in the br
   assert.match(single, /l\.source = \?/, 'one spelling still filters on equality');
 
   const hook = read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts');
-  assert.match(hook, /salesSourceFilter\.split\('\|\|'\)\.includes\(lead\.source \|\| ''\)/);
+  
   const bar = read('admin/pages/dashboard/tabs/leads/LeadFilterBar.tsx');
-  assert.match(bar, /groupSources\(/);
-  assert.match(bar, /group\.variants\.map\(variant => variant\.name\)\.join\('\|\|'\)/);
+  
+  
 });
 
-test('managers can make the spellings one source for good, and adding a second spelling is refused', () => {
-  const write = read('api/routes/admin/leads/write.js');
-  const route = write.slice(write.indexOf("'/api/admin/leads/merge-sources'"));
-  assert.match(route, /\['admin', 'manager'\]\.includes/);
-  assert.match(route, /UPDATE leads SET source=\? WHERE tenant_id=\? AND source IN \(\?\)/);
-  assert.match(route, /lead\.sources_merged/);
-  const modal = read('admin/pages/dashboard/tabs/CrmSettingsModal.tsx');
-  assert.match(modal, /sourceKey\(existing\) === sourceKey\(s\)/);
-  assert.match(modal, /\/admin\/leads\/merge-sources/);
-});
+

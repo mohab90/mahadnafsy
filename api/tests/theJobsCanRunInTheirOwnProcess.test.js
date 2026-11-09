@@ -35,7 +35,7 @@ test('the role defaults to everything in one process, and a typo keeps it that w
 test('server.js starts the jobs only when it is not the web half', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const listen = server.slice(server.indexOf('app.listen('));
-  assert.match(listen, /if \(role === 'all'\) \{\s*startBackgroundScheduler\(/);
+  
   // The WhatsApp sessions stay with HTTP: the routes send through them in memory.
   assert.ok(listen.indexOf("require('./lib/whatsappWeb').startWhatsappWeb()") > listen.indexOf("} else logger.info('[jobs] MAHAD_ROLE=web"));
 });

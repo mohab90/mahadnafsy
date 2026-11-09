@@ -10,6 +10,8 @@
  *     student who has paid for it and is enrolled (the dashboard opens the
  *     paid lecture);
  *   - a second published course the student has not bought (the checkout);
+ *   - a client with no course and no payment, for the specs that record payments on a client's page (they add rows, so they must
+ *     not touch the student the other journeys sign in as);
  *   - two leads for the admin's leads list;
  *   - a Paymob configuration with placeholder keys, so the site offers card
  *     payment — the specs stop at the redirect to Paymob and never reach it.
@@ -36,6 +38,7 @@ const IDS = {
   checkoutCourse: 'e2e-course-checkout',
   enrollment: 'e2e-enrollment-1', payment: 'e2e-payment-1',
   leads: ['e2e-lead-1', 'e2e-lead-2'],
+  payer: 'e2e-payer-sub',
 };
 
 function refuseUnlessDisposable() {
@@ -113,6 +116,12 @@ async function seed(pool) {
      VALUES (?, ?, ?, ?, 1500, 'EGP', 1500, 'COURSE', 'cash', 'paid', CURDATE(), 'E2E seed', 'كورس اختبار E2E المدفوع', UTC_TIMESTAMP())
      ON DUPLICATE KEY UPDATE status='paid', deleted_at=NULL`,
     [IDS.payment, TENANT, IDS.subscriber, IDS.course]);
+
+  await pool.query(
+    `INSERT INTO subscribers (id, tenant_id, client_code, name, phone, branch, is_active, source, created_at)
+     VALUES (?, ?, 'E2E-PAYER', 'عميلة الدفعات', '01099990001', 'ONLINE_EGYPT', 1, 'e2e', UTC_TIMESTAMP())
+     ON DUPLICATE KEY UPDATE is_active=1, deleted_at=NULL`,
+    [IDS.payer, TENANT]);
 
   for (const [index, id] of IDS.leads.entries()) {
     await pool.query(

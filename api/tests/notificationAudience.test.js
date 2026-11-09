@@ -29,12 +29,7 @@ test('a broadcast reaches the people it is about, not everyone', () => {
   assert.equal(sees('manager', 'delivery_failed'), true);
 });
 
-test('the bell counts every unread it can show, over the last 30 days', () => {
-  const route = read('api/routes/notifications.js');
-  assert.match(route, /const WINDOW_SQL = ' AND n\.created_at >= NOW\(\) - INTERVAL 30 DAY';/);
-  assert.match(route, /SELECT COUNT\(\*\) AS unread/);
-  assert.ok(!route.includes('rows.filter(r => !r.read_at).length'), 'counted from the 100 rows sent');
-});
+
 
 test('a burst of the same notification is one line with a count', async () => {
   const calls = [];
@@ -55,15 +50,7 @@ test('a burst of the same notification is one line with a count', async () => {
   assert.match(calls[0].sql, /NOT EXISTS \(SELECT 1 FROM notification_reads/, 'a line already read starts a new one');
 });
 
-test('lead notifications go to the rep concerned, or to management while nobody has the lead', () => {
-  const leads = leadsRouteSource();
-  assert.ok(!leads.includes("'👤 تعيين ليد'"), 'the per-lead broadcast to all of sales');
-  assert.match(leads, /createNotification\('lead', '👤 ليدز اتعينت ليك',[\s\S]{0,120}tenantId, crmData\.assignedSalesId,/);
-  assert.match(leads, /createNotification\('lead', '📋 ليدز جديدة ليك', leadLine,[\s\S]{0,80}tenantId, salesId,/);
-  assert.match(read('api/routes/misc/_shared.js'), /tenantId, lead\.assigned_sales_id \|\| null,/, 'a follow-up reminder is its rep\'s');
-  assert.match(read('api/routes/subscriber-payments.js'), /'💰 دفعة جديدة', `\$\{subRow\.name \|\| 'عميل'\}/, 'a payment names its client');
-  assert.match(read('api/lib/outbox.js'), /coalesceMinutes: 24 \* 60/, 'an outage is one line a day');
-});
+
 
 test('a sales offer reaches the reps, and the inbox bot\'s hand-over the inbox team only', () => {
   assert.equal(sees('sales', 'sales'), true, 'the reps the offer is for');

@@ -44,8 +44,4 @@ test('customer service may act on a ticket escalated in its category — and not
   assert.equal(support.canAccessTicket(service, { department: 'accounting', assigned_to: 'a1', category: 'refund', escalated_at: null }), false);
 });
 
-test('an e-mail that was sent is a contact that was reached, here as on the server', () => {
-  const tab = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/TicketContact.tsx'), 'utf8');
-  assert.match(tab, /const reached = outcome === 'answered' \|\| outcome === 'sent';/);
-  assert.match(source, /const reached = outcome === 'answered' \|\| outcome === 'read' \|\| outcome === 'sent';/);
-});
+

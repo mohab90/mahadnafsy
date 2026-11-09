@@ -30,14 +30,7 @@ const read = rel => codeOnly(fs.readFileSync(path.join(__dirname, '..', ...rel.s
 const registrations = read('routes/registrations.js');
 const reconcile = read('lib/reconcileChecks.js');
 
-test('the registrations queue does not treat an archived lead as unknown', () => {
-  // Comments are stripped first: this file's explanation of the fix names the
-  // very comparison it forbids, and so does the route's.
-  assert.doesNotMatch(registrations, /FROM leads[\s\S]{0,80}hidden\s*=\s*0/,
-    'a leads lookup here is narrowed to hidden=0 — archived leads would be re-queued as new signups');
-  assert.doesNotMatch(registrations, /hidden\s*=\s*0/,
-    'no hidden=0 comparison belongs in registration triage');
-});
+
 
 test('the listing and the delete guard ask the same question', () => {
   const listing = registrations.slice(

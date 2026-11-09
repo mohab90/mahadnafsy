@@ -23,17 +23,18 @@ async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAUL
   const when = sendAt ? new Date(sendAt) : null;
   const id = uuidv4();
   // dedupeKey (unique) makes re-enqueues within the same period a no-op.
-  const [result] = await conn.query(
+  await conn.query(
     `INSERT INTO message_outbox (id, tenant_id, channel, channel_id, recipient, subject, payload_json, next_attempt_at, dedupe_key, ref_type, ref_id)
      VALUES (?,?,?,?,?,?,?, COALESCE(?, NOW()), ?, ?, ?)
      ON DUPLICATE KEY UPDATE id = id`,
     [id, tenantId, channel, channelId, recipient, subject || null, JSON.stringify(payload || {}),
      when && !isNaN(when.getTime()) ? when : null, dedupeKey, refType, refId]
   );
-  // affectedRows is 0 only when ON DUPLICATE KEY matched an existing row and
-  // changed nothing. Anything else — including a driver or a test double that
-  // does not report it — means the insert happened and `id` is the row.
-  if (!dedupeKey || result?.affectedRows !== 0) return id;
+  // A new row is reported as affectedRows 1, but so is a duplicate on the real
+  // driver (it asks the server for matched rows, not changed ones), so the
+  // count cannot tell them apart: look the row up by its key and hand back the
+  // one that is queued. Without a key, `id` is the row.
+  if (!dedupeKey) return id;
   // Scoped to the tenant, because the key is. The unique index is on
   // (tenant_id, dedupe_key), so the row this insert collided with is this
   // tenant's — but the lookup searched the key alone, and two tenants
@@ -43,7 +44,7 @@ async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAUL
     'SELECT id FROM message_outbox WHERE tenant_id=? AND dedupe_key=? LIMIT 1',
     [tenantId, dedupeKey]
   );
-  return existing?.id || null;
+  return existing?.id || id;
 }
 
 /**

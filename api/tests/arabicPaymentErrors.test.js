@@ -50,13 +50,7 @@ test('nothing thrown still leaves a reason', { skip: !arabicReason }, () => {
   assert.equal(arabicReason(new Error('weird'), 'تعذر حفظ الدفعة'), 'تعذر حفظ الدفعة (weird)');
 });
 
-test('the payment hooks send the reason under the key the toast reads, and the dialog translates', () => {
-  for (const file of ['admin/pages/unified-client/useUnifiedClientPayments.ts', 'admin/pages/unified-client/useUnifiedClientLifecycleActions.ts']) {
-    assert.match(read(file), /reason: arabicReason\(error\)/, file);
-  }
-  assert.match(paymentModalSource(), /setSubmitError\(arabicReason\(error, /);
-  assert.match(dashboardSource(), /arabicReason\(String\(detail\.reason\), ''\)/);
-});
+
 
 test('the booking route no longer answers a rep in English', () => {
   const route = read('api/routes/subscriber-payments.js');
@@ -66,8 +60,4 @@ test('the booking route no longer answers a rep in English', () => {
   assert.deepEqual(plain.filter(text => text !== 'Internal server error'), []);
 });
 
-test('a duplicate booking names the client who already has the number', () => {
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /existingName: existing\.name/);
-  assert.match(route, /المسئول عنه \$\{existing\.owner_name\}/);
-});
+

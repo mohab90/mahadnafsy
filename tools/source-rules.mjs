@@ -75,7 +75,69 @@ export const RULES = [
       return out;
     },
   },
+  {
+    id: 'one-escapeHtml-in-the-api',
+    why: 'nine copies of escapeHtml were nine answers to «is this page escaped»; api/lib/html.js is the only declaration',
+    files: { dir: 'api', ext: ['.js'] },
+    custom: (read, list) => [...list('api/routes'), ...list('api/lib'), ...list('api/middleware')]
+      .filter(file => file !== 'api/lib/html.js' && /^const escapeHtml = |^function escapeHtml\b/m.test(read(file)))
+      .map(file => `${file} declares its own escapeHtml: use api/lib/html.js`),
+  },
+  {
+    id: 'every-payment-writer-writes-an-audit-row',
+    why: 'a file that inserts into payments must also call logPaymentAudit, or the payments it makes can never be traced to who made them (production carried 165 of 296 untraceable)',
+    files: { dir: 'api', ext: ['.js'] },
+    custom: (read, list) => [...list('api/routes'), 'api/lib/orderPaymentConfirmation.js']
+      .filter(file => /INSERT INTO payments/.test(read(file)) && !/logPaymentAudit/.test(read(file)))
+      .map(file => `${file} inserts payments and never writes a payment audit row`),
+  },
 ];
+
+// Rules that were unit tests reading an infrastructure file (a deploy script, a migration, a tool) or only forbidding something. tools/source-rules.json holds
+// them as data: { id, why, checks: [{ file, must | mustNot: { source, flags }, code?, absent? }] } — `code` matches against the file without its comments.
+const withoutComments = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+for (const entry of JSON.parse(readFileSync(join(ROOT, 'tools', 'source-rules.json'), 'utf8'))) {
+  if (entry.scan) {
+    // A scan: every file under the folders is read without its comments and must not match any `mustNot`; `minFiles` proves the scan is reading the tree, so an empty
+    // result means something. `skipSuffix` leaves out the one file that is allowed to do the forbidden thing.
+    const { dirs, exts, skipSuffix = [], mustNot, minFiles = 1 } = entry.scan;
+    RULES.push({
+      id: entry.id, why: entry.why, files: dirs.map(dir => ({ dir, ext: exts })),
+      custom: (read, list) => {
+        const files = dirs.flatMap(dir => list(dir, exts)).filter(file => !skipSuffix.some(suffix => file.endsWith(suffix)));
+        const out = files.length < minFiles ? [`only ${files.length} files scanned (expected ${minFiles}+): the scan is not reading the tree`] : [];
+        for (const file of files) {
+          const code = withoutComments(read(file));
+          for (const rule of mustNot) if (new RegExp(rule.source, rule.flags || '').test(code)) out.push(`${file}: ${rule.reason}`);
+        }
+        return out;
+      },
+    });
+    continue;
+  }
+  RULES.push({
+    id: entry.id, why: entry.why, files: [...new Set(entry.checks.flatMap(check => check.files || [check.file]))],
+    custom: read => entry.checks.flatMap(check => {
+      let text;
+      // `files` is a source assembled from several files, joined in order (the way the test helpers read a route that is split into parts)
+      const label = check.file || check.files.join(' + ');
+      try { text = check.files ? check.files.map(read).join('\n') : read(check.file); } catch { return check.absent ? [] : [`${label} is missing`]; }
+      if (check.absent) return [`${label} exists again`];
+      let body = check.code ? withoutComments(text) : text;
+      // a window of the source, the way the test cut it: from the first `from` to the first `to` (to the end when there is none)
+      if (check.from !== undefined) body = body.slice(body.indexOf(check.from), check.to !== undefined ? body.indexOf(check.to) : undefined);
+      if (check.count) {
+        const found = (body.match(new RegExp(check.count.source, check.count.flags)) || []).length;
+        const { op, n } = check.count;
+        const holds = op === '==' ? found === n : op === '>=' ? found >= n : op === '>' ? found > n : op === '<=' ? found <= n : found < n;
+        return holds ? [] : [`${label}: /${check.count.source}/ appears ${found} times, expected ${op} ${n}`];
+      }
+      if (check.must && !new RegExp(check.must.source, check.must.flags).test(body)) return [`${label} no longer matches /${check.must.source}/`];
+      if (check.mustNot && new RegExp(check.mustNot.source, check.mustNot.flags).test(body)) return [`${label} matches /${check.mustNot.source}/, which it must not`];
+      return [];
+    }),
+  });
+}
 
 /** Applies one rule to a reader `read(path) => text`; returns the violations as { rule, file, detail }. */
 const listUnder = (dir, exts = ['.js']) => walk(join(ROOT, dir), exts).map(file => relative(ROOT, file).split(sep).join('/'));

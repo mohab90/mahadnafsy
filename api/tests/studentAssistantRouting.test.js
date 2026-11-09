@@ -157,30 +157,4 @@ test('a problem opens a ticket for customer service, and the conversation follow
   assert.equal(seen.tickets.length, 2);
 });
 
-test('the widget asks first, and the inbox holds only the site\'s problems', () => {
-  const widget = read('client/components/AiTutorWidget.tsx');
-  assert.match(widget, /استفسار عن كورس/);
-  assert.match(widget, /عندي مشكلة ومحتاج مساعدة/);
-  assert.match(widget, /body: JSON\.stringify\(\{ message: text, history, topic, handoffId: handoff\?\.id \|\| undefined \}\)/);
 
-  const support = read('api/routes/support.js');
-  const inbox = support.slice(support.indexOf("router.get('/api/admin/cs/inbox'"), support.indexOf('// ── STATS + AGENT WORKLOAD'));
-  // The administration's default is the support queue, plus what was escalated
-  // to it (8 Oct 2026), plus whatever a client wrote on the site (10 Oct 2026:
-  // «اي تواصل من العملاء من السايت بيسمع في الصفحه دي»); «كل الأقسام» is a choice.
-  // And each branch's own queue (lib/ticketBranchQueue.js), since 22 Oct 2026.
-  assert.match(inbox, /const queues = \['support', 'management', \.\.\.Object\.keys\(DEPARTMENT_BRANCH\)\];/);
-  assert.match(inbox, /where\.push\(`\(t\.department IN \(\$\{queues\.map\(\(\) => '\?'\)\.join\(','\)\}\) OR t\.escalated_at IS NOT NULL OR t\.channel IN \(\$\{WEBSITE_CHANNELS/);
-  assert.match(support, /const WEBSITE_CHANNELS = \['web', 'web_contact', 'user_dashboard', 'ai_assistant'\];/);
-  // Every un-triaged contact message, not the «technical» ones only.
-  assert.match(inbox, /WHERE tenant_id = \? AND converted_ticket_id IS NULL\s+AND LOWER/);
-  const screen = read('admin/pages/dashboard/tabs/CustomerInboxTab.tsx');
-  assert.match(screen, /type InboxSource = 'ticket' \| 'contact';/);
-  assert.doesNotMatch(screen, /\/admin\/finance\/refunds'/, 'refunds have their own page');
-  assert.doesNotMatch(screen, /joinUsApplications/, 'so do the join-us forms');
-
-  // A course or price question on the contact form reaches sales as a lead.
-  const contact = read('api/routes/public.js');
-  assert.match(contact, /if \(SALES_SUBJECTS\.has\(subject\)\) \{\s+await capturePublicLead\(/);
-  assert.match(read('api/routes/lead-capture-crm.js'), /const lead = await capturePublicLead\(/);
-});

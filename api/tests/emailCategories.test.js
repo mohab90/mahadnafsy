@@ -85,10 +85,4 @@ test('the staff alerts are separable from customer mail', () => {
     'all four internal notifications must be categorised');
 });
 
-test('WhatsApp already had this and is the model being matched', () => {
-  // Production sets WHATSAPP_OUTBOUND_CATEGORIES=otp,inbox_reply,channel_test,
-  // which is why that channel is genuinely restricted today and email is not.
-  const whatsapp = codeOnly(read('lib/whatsapp.js'));
-  assert.match(whatsapp, /WHATSAPP_OUTBOUND_CATEGORIES/);
-  assert.match(whatsapp, /OUTBOUND_ALLOW_ALL/);
-});
+

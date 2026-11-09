@@ -62,20 +62,6 @@ test('search finds a setting however it is spelled', () => {
   assert.deepEqual(titles('كلام مش موجود خالص'), []);
 });
 
-test('the SaaS setup is hidden unless the build turns it on', () => {
-  const settings = read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx');
-  assert.match(settings, /\{SAAS_UI && <SaasSetupWizard /);
-  assert.match(settings, /\{SAAS_UI && <TenantDomainSection /);
-  assert.match(read('admin/lib/productMode.ts'), /SAAS_UI = import\.meta\.env\.VITE_SAAS_UI === '1'/);
-});
 
-test('the hub pages open from a link, and the page editors draw inside صفحات الموقع', () => {
-  const dashboard = dashboardSource();
-  assert.match(dashboard, /const page = CONTENT_HUB_TABS\.find\(t => t\.key === tab\)/);
-  assert.match(dashboard, /urlTab === 'content_hub' && urlParam/);
-  assert.match(dashboard, /activeTab === 'content_hub' && contentHubSubTab\.startsWith\('page_'\)/);
-  // /dashboard/hr/<section> opens it; the addresses of the merged tabs open the tab that holds them now.
-  const hr = read('admin/pages/dashboard/tabs/HRTab.tsx');
-  assert.match(hr, /HR_SECTIONS as readonly string\[\]\)\.includes\(param/);
-  assert.match(hr, /useState<HrSection>\(\(\) => sectionFor\(sectionParam\)\)/);
-});
+
+

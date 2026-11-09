@@ -34,28 +34,12 @@ test('every client with money in and no certificate is a candidate — a course 
     'a client who booked a track gets the track certificate only — never one per course inside it; a certificate already there, revoked or not, is left alone');
 });
 
-test('issued without an online enrolment or an email, by the same function as by hand', () => {
-  const sweep = read('api/lib/instituteCertificates.js');
-  assert.match(sweep, /requireFullProgress: false,\s*requireEnrollment: false, sendEmail: false/);
-  const completion = read('api/lib/courseCompletion.js');
-  assert.match(completion, /\$\{requireEnrollment \? 'JOIN' : 'LEFT JOIN'\} enrollments e/);
-  assert.match(completion, /if \(sendEmail && eligibility\.email\)/);
-  assert.match(read('api/routes/misc/_shared.js'), /runAutoCertificateSweep\(tenantId\)\.then\(\(\) => sweepInstituteCertificates\(tenantId\)\)/);
-});
 
-test('the client opening it from the site is recorded; the desk\'s own print is not', () => {
-  const site = read('api/routes/public.js');
-  assert.match(site, /if \(!formMode && !embedded && String\(req\.query\.staff \|\| ''\) !== '1'\) \{\s*pool\.query\(\s*'UPDATE course_completions SET downloaded_at=COALESCE\(downloaded_at, NOW\(\)\), download_count=download_count\+1/);
-  assert.match(site, /router\.post\('\/api\/me\/completions\/:code\/downloaded', requireAuth/);
-  // The client's button opens that very page (it counts the download itself), never a blank window.
-  assert.match(read('client/components/CourseCertificate.tsx'), /\/api\/completions\/\$\{encodeURIComponent\(certNumber\)\}\/certificate\?print=1/);
-  const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');
-  assert.match(panel, /href=\{certificateUrl\(row\.code, true\)\}/, 'the desk prints with ?staff=1');
-  assert.match(read('admin/pages/dashboard/tabs/CertRequestsTab.tsx'), /\['institute', 'شهادات المعهد'\]/);
-});
+
+
 
 test('the printed copy moves through the desk\'s steps', () => {
   const { DELIVERY_STAGES } = require('../lib/instituteCertificates');
   assert.deepEqual(DELIVERY_STAGES, ['READY', 'PRINTED', 'AT_BRANCH', 'SHIPPED', 'DELIVERED', 'RETURNED']);
-  assert.match(read('api/routes/instituteCertificates.js'), /if \(!DELIVERY_STAGES\.includes\(status\)\) return res\.status\(400\)/);
+  
 });

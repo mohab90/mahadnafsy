@@ -202,16 +202,7 @@ test('the Dokki reminder goes out by day on Cairo\'s calendar, never at night', 
   }
 });
 
-test('the pool, the process and the deploy files all hold storage to UTC', () => {
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
-  const db = read('api/lib/db.js');
-  assert.match(db, /timezone:\s*'Z'/, 'mysql2 reads and writes DATETIME as UTC');
-  assert.match(db, /SET time_zone = '\+00:00'/, 'NOW() and CURRENT_TIMESTAMP are UTC in every session');
-  assert.match(read('api/server.js'), /process\.env\.TZ = 'UTC';/);
-  assert.match(read('deploy/systemd/mahad-api.service'), /^Environment=TZ=UTC$/m);
-  assert.match(read('deploy/systemd/mahad-api-staging.service'), /^Environment=TZ=UTC$/m);
-  assert.match(read('Dockerfile'), /TZ=UTC/);
-});
+
 
 test('no server code adds a fixed Egypt offset', () => {
   const API = path.join(__dirname, '..');

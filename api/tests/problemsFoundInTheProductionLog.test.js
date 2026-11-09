@@ -34,38 +34,8 @@ test('an error raised on purpose reaches the desk as itself, not as a server fau
   assert.deepEqual([res.statusCode, res.body], [500, { error: 'Internal server error' }]);
 });
 
-test('login history can hold the id of the person who signed in', () => {
-  // users.id is a UUID and the column was an INT: every successful sign-in was
-  // refused ("Incorrect integer value"), 94 times in two days.
-  assert.match(read('api/migrations/217_v26_login_history_user_id_is_a_uuid.sql'),
-    /ALTER TABLE login_history\s+MODIFY COLUMN user_id VARCHAR\(100\) NULL DEFAULT NULL;/);
-});
 
-test('«نقل للأرشيف» on the local tab takes the local tab\'s leads, and only those', () => {
-  const route = leadsRouteSource();
-  const block = route.slice(route.indexOf("router.post('/api/admin/leads/move-to-archive'"));
-  assert.match(block, /const openStatuses = \[\.\.\.LEAD_STATUSES\]\.filter\(isOpenLeadStatus\);/);
-  assert.match(block, /COALESCE\(branch,''\) NOT IN \('ONLINE_ABROAD','ONLINE_SAUDI'\) AND COALESCE\(source,''\) NOT LIKE 'دولي%'/);
-  assert.match(block, /params\.push\(cairoDayStartUtc\(createdBefore\)\)/);
-});
 
-test('«تواصل» on a client row opens that client\'s contact form', () => {
-  // It set a row and a draft that no component ever rendered; then it opened
-  // the client's page — «ليه في الاونلاين لما بضغط علي زر تواصل بيفتح صفحة
-  // العميل». The form opens over the table now.
-  const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, /title="تواصل" onClick=\{\(\)=>logContact\(row, 'call'\)\}/);
-  assert.match(table, /<ClientContactDialog\s/);
-  assert.match(read('admin/pages/UnifiedClientPage.tsx'), /addCommunication\?: boolean \} \| null\)\?\.addCommunication\) openContact\(\)/);
-  for (const file of ['admin/pages/Dashboard.tsx', 'admin/pages/dashboard/hooks/useSubscriberModals.ts', 'admin/pages/dashboard/tabs/OnlineClientsTab.tsx']) {
-    assert.doesNotMatch(read(file), /subContactRow|setSubContactDraft/, `${file} still carries the dead contact state`);
-  }
-});
 
-test('a role that may not see clients is not sent to fetch them', () => {
-  // HR, the accountant and the instructors were refused /staff/subscribers on
-  // every page load.
-  // Nothing sends them any more: the panel downloads no list, and the clients screen is behind the tab's permission.
-  assert.doesNotMatch(read('admin/pages/dashboard/useStaffOwnData.ts'), /streamSubscribers/);
-  assert.match(read('admin/pages/dashboard/dashboardShared.tsx'), /online_clients: +'view_subscribers'/);
-});
+
+

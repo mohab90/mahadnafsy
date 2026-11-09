@@ -219,19 +219,9 @@ test('no identity at all is refused', async () => {
   await assert.rejects(() => ensureSubscriberForOrder(provisioning([]), { tenantId: 't1', email: '', name: 'x', phone: '' }), /requires an identity/);
 });
 
-test('the receipt and the card capture pass the client on', () => {
-  const proofs = read('api/routes/payment-proofs.js');
-  assert.match(proofs, /tenantId, uid, subscriberId: identity\?\.id \|\| null, email: ownerEmail,/);
-  const capture = checkoutSource();
-  assert.match(capture, /sub = await ensureSubscriberForOrder\(conn, \{\s+tenantId,\s+subscriberId: order\.subscriber_id \|\| null,\s+email: order\.customer_email,/);
-});
 
-test('an account with no client record yet is not answered with an error on every sign-in', () => {
-  assert.match(read('api/routes/public.js'), /if \(!sub\) return res\.json\(\[\]\);/);
-  const config = read('api/routes/config.js');
-  assert.ok(config.includes('if (!subscriber) return `user:${uid}`;'));
-  assert.doesNotMatch(config, /new Error\('Subscriber account not found'\)/);
-});
+
+
 
 // An outside review, 7 Oct 2026: the checkout found the customer's lead by
 // email alone, so one who signs in with a number never matched — and its

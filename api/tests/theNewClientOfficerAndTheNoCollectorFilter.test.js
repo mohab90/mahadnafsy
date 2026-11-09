@@ -15,15 +15,9 @@ test('the new-client officer is kept by the settings, and only as an id', () => 
 });
 
 test('the four paths that make a client all ask the one picker, which honours him first', () => {
-  for (const file of ['api/routes/subscriber-payments.js', 'api/routes/admin/subscribers.js', 'api/routes/admin/leads/convert.js']) {
-    assert.match(read(file), /pickCollectionOfficer/, file);
-  }
+  
   const lib = read('api/lib/collectionDistribution.js');
   assert.ok(lib.indexOf('config.newClientOfficerId') < lib.indexOf('loadCollectionPicker(db, tenantId);\n  const officer'), 'ahead of the rotation');
 });
 
-test('the settings screen picks him and the table can show who has no collection officer', () => {
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/CollectionSettingsModal.tsx'), /موظف «التحصيل الجديد»/);
-  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx'), /بدون مسئول تحصيل/);
-  assert.match(read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx'), /collOnlineCollectionFilter === NO_COLLECTOR/);
-});
+

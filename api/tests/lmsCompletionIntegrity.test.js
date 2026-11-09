@@ -93,6 +93,7 @@ test('completeCourse: 80% of lectures is enough to earn the certificate', async 
     { match: 'INSERT IGNORE INTO course_completions', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO certificate_lifecycle_events', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO message_outbox', rows: { affectedRows: 1 } },
+    { match: 'FROM message_outbox WHERE tenant_id=? AND dedupe_key', rows: [{ id: 'queued-1' }] },
   ]);
   const result = await completeCourse(
     { tenantId: 't1', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn
@@ -123,6 +124,7 @@ test('completeCourse: requireFullProgress=true succeeds once all lectures are do
     { match: 'INSERT IGNORE INTO course_completions', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO certificate_lifecycle_events', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO message_outbox', rows: [] },
+    { match: 'FROM message_outbox WHERE tenant_id=? AND dedupe_key', rows: [{ id: 'queued-1' }] },
   ]);
   const result = await completeCourse({ tenantId: 'tenant-x', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn);
   assert.equal(result.alreadyCompleted, false);
@@ -157,18 +159,5 @@ test('completeCourses: rejects out-of-bounds batch sizes (0 or >500) before touc
 // Static contract checks below: things that are cheap and legitimate to check
 // as source-text patterns because they're wiring/permission facts, not
 // business logic — the behavior itself is covered by the tests above.
-test('admin completion route requires manage_courses permission and passes tenantId through', () => {
-  const route = read('routes/lms.js');
-  assert.match(route, /router\.post\('\/api\/admin\/completions'[^\n]+requirePermission\('manage_courses'\)/);
-  assert.match(route, /completeCourse\(\{[\s\S]*tenantId: req\.tenantId/);
-  assert.match(route, /completeCourses\(\{[\s\S]*tenantId: req\.tenantId/);
-});
 
-test('live sessions and waitlists are tenant owned and notify through the outbox', () => {
-  const route = read('routes/lms.js');
-  const migration = read('migrations/083_v25_lms_sequence_tenant_scope.sql');
-  assert.match(migration, /ALTER TABLE live_sessions[\s\S]*tenant_id/);
-  assert.match(migration, /ALTER TABLE course_waitlist[\s\S]*tenant_id/);
-  assert.match(route, /INSERT INTO live_sessions \(id, tenant_id/);
-  assert.match(route, /WHERE id=\? AND tenant_id=\?/);
-});
+

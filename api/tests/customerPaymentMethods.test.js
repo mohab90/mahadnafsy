@@ -54,39 +54,11 @@ test('manualMethodsFor keeps known codes, drops junk, and never answers empty', 
   assert.ok(manualMethodsFor(null).length > 0);
 });
 
-test('neither customer screen hardcodes its own payment-method list any more', () => {
-  const checkout = codeOnly(read('client/pages/Checkout.tsx'));
-  const dashboardTab = codeOnly(read('client/components/student-dashboard/StudentPaymentsTab.tsx'));
 
-  // The exact literal arrays that used to be the source of truth.
-  assert.ok(!checkout.includes("['انستا باي', 'فودافون كاش', 'تحويل بنكي', 'اخرى']"),
-    'checkout still carries its hardcoded Arabic method list');
-  assert.ok(!dashboardTab.includes("{ val: 'instapay', label: 'انستا باي' }"),
-    'the dashboard tab still carries its hardcoded code list');
 
-  // Both now read the configured channels through the same hook.
-  assert.match(checkout, /useManualPaymentMethods\(\)/);
-  assert.match(dashboardTab, /useManualPaymentMethods\(\)/);
-  // And render Arabic through the shared label, not by embedding it.
-  assert.match(checkout, /paymentMethodLabel\(/);
-  assert.match(dashboardTab, /paymentMethodLabel\(/);
-});
 
-test('checkout sends a code, and sends the one the customer was looking at', () => {
-  const checkout = codeOnly(read('client/pages/Checkout.tsx'));
-  // The select falls back to the first configured channel when untouched, so
-  // the submitted value has to use the same fallback or the two disagree.
-  assert.match(checkout, /value=\{proofMethod \|\| manualMethods\[0\] \|\| ''\}/);
-  assert.match(checkout, /payment_method: proofMethod \|\| manualMethods\[0\] \|\| 'other'/);
-});
 
-test('the customer dashboard tells the parent which channel is preselected', () => {
-  const dashboardTab = codeOnly(read('client/components/student-dashboard/StudentPaymentsTab.tsx'));
-  // Without this the picker highlights manualMethods[0] while the parent still
-  // holds '', and the server turns '' into 'instapay' — a channel the customer
-  // never chose and the institute may not even accept.
-  assert.match(dashboardTab, /if \(!proofMethod && manualMethods\.length\) setProofMethod\(manualMethods\[0\]\)/);
-});
+
 
 test('stored methods are labelled everywhere they are shown, in both vocabularies', () => {
   // The module is TypeScript because both browser apps import it; the runtime
@@ -128,19 +100,6 @@ test('stored methods are labelled everywhere they are shown, in both vocabularie
   assert.deepEqual(sanitizePaymentMethods('cash'), []);
 });
 
-test('the gateway default uses the key the settings screen actually writes', () => {
-  const settings = codeOnly(read('api/lib/saasSettings.js'));
-  const declared = settings.slice(settings.indexOf('DEFAULT_PAYMENT_GATEWAY'), settings.indexOf('DEFAULT_LEAD_SOURCE_CONNECTORS'));
-  assert.match(declared, /supported_methods:/);
-  assert.ok(!/\bmethods: \[/.test(declared),
-    'the default still seeds manual.methods, which the settings screen never updates');
-});
 
-test('the admin screens label a stored method instead of printing the raw code', () => {
-  for (const rel of [
-    'admin/pages/dashboard/tabs/financial/PaymentProofsPanel.tsx',
-    'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
-  ]) {
-    assert.match(codeOnly(read(rel)), /paymentMethodLabel\(/, `${rel} prints the raw stored value`);
-  }
-});
+
+

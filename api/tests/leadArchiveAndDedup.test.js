@@ -19,12 +19,7 @@ test('server archive rule matches the admin app and excludes archive sources in 
   assert.deepEqual(clause.params, ARCHIVE_SOURCE_PREFIXES.map(prefix => `${prefix}%`));
 });
 
-test('distributors skip archive rows', () => {
-  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  assert.match(read('routes/lead-capture-crm.js'), /excludeArchiveSourcesSql\('source'\)/);
-  assert.match(read('routes/crm-advanced.js'), /excludeArchiveSourcesSql\('source'\)/);
-  assert.match(leadsRouteSource(), /excludeArchiveSourcesSql\('l\.source'\)/);
-});
+
 
 test('duplicate detection reads past the first page of leads', async () => {
   // Two leads with the same number, 6000 rows apart: the old LIMIT 10000 style

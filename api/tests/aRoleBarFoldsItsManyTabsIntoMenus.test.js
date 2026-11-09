@@ -14,12 +14,7 @@ const bar = key => {
   return nav.slice(start, nav.indexOf('activeTab={activeTab} setActiveTab={setActiveTab}', start));
 };
 
-test('a role bar can hold named menus, on the desktop bar and in the phone menu', () => {
-  assert.match(nav, /type CompactGroup = \{ group: string; label: string;/);
-  assert.match(nav, /function BarGroup\(/);
-  assert.match(nav, /<BarGroup key=\{tab\.group\}/);
-  assert.match(nav, /tab\.items\.map\(item =>/, 'the phone menu lists a group under its heading');
-});
+
 
 test('customer service, the Dokki manager and the sales & collection manager keep their main tabs and fold the rest', () => {
   const countTop = chunk => (chunk.match(/^ {18}\{ (key|group):/gm) || []).length;

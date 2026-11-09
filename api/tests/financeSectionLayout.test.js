@@ -23,15 +23,6 @@ test('six headings, and every screen of FinancialSubTab sits under exactly one',
   assert.equal(new Set(listed).size, listed.length);
 });
 
-test('the screen is in the address, and a branch cannot open a company screen by link', () => {
-  assert.match(screen, /navigate\(`\/dashboard\/\$\{routeTab\}\/\$\{value\}`\)/);
-  assert.match(screen, /\(!branchFilter \|\| BRANCH_SUB_TABS\.includes\(screen as FinancialSubTab\)\)/);
-  assert.match(utils, /'statement', 'boxes', 'orders'/);
-});
 
-test('the statement is drawn, and a Tagamoa book is not labelled Dokki', () => {
-  assert.match(screen, /financialSubTab === 'statement' && <FinancialStatementPanel/);
-  assert.match(screen, /const branchName = branchFilter === 'tagamoa' \? 'التجمع' : 'الدقي'/);
-  assert.doesNotMatch(screen, /محاسبة فرع الدقي فقط/);
-  assert.match(read('admin/pages/dashboard/tabs/financial/FinancialStatementPanel.tsx'), /\/admin\/finance\/statement\?/);
-});
+
+

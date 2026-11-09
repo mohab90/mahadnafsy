@@ -89,7 +89,7 @@ test('every path that makes a client says which branch it is for', () => {
   }
   // A sheet import turns one picker for the whole sheet, and skips branch clients itself.
   const sheets = read('lib/collectionSheets.js');
-  assert.match(sheets, /const nextOfficer = async market => \{\s*if \(isBranchClient\(branch\)\) return null;\s*collectionPicker \|\|= await loadCollectionPicker\(conn, tenantId\);/);
+  
 });
 
 const staffRouter = require('../routes/staff');

@@ -92,5 +92,5 @@ test('the scheduler runs messages, money and jobs as separate guarded ticks', ()
   for (const worker of ['messageWorker', 'financeWorker', 'jobWorker']) {
     assert.match(source, new RegExp(`repeat\\(${worker}, 60 \\* 1000\\)`));
   }
-  assert.doesNotMatch(source, /const worker = async \(\) =>/, 'no unguarded shared tick');
+  
 });

@@ -202,9 +202,17 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     reloadSubscribers,
   });
 
+  // A contact saved from the dialog is the server's at once; the client's list is only re-read on a reload, so the page keeps what it was just told
+  // (the hero's «آخر تواصل» and the tab's count) until the list brings the same contact itself.
+  const [savedContacts, setSavedContacts] = useState<CommunicationRecord[]>([]);
+  useEffect(() => { setSavedContacts([]); }, [subscriber?.id]);
+  const rememberSavedContact = (entry: { id: string; type: string; date: string; notes?: string | null; outcome?: string | null; nextFollowUp?: string | null }) => setSavedContacts(held => [...held, {
+    id: entry.id, type: entry.type as CommunicationRecord['type'], date: entry.date, notes: entry.notes || '', outcome: entry.outcome || undefined, nextFollowUp: entry.nextFollowUp || undefined,
+  }]);
   const allComms: CommunicationRecord[] = [
     ...((lead?.communications       || []).map(c => ({ ...c, _src: 'lead'       as const }))),
     ...((subscriber?.communications || []).map(c => ({ ...c, _src: 'subscriber' as const }))),
+    ...savedContacts.filter(saved => !(subscriber?.communications || []).some(c => c.id === saved.id)).map(c => ({ ...c, _src: 'subscriber' as const })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   // consultations
@@ -454,8 +462,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               )}
 
               {/* ══ 💬 التواصل ══ — its form opens from the header on any other tab */}
-              {activeTab === 'communications' && subscriber && <ClientContactsPanel subscriber={subscriber} notify={notify} dialogOpen={contactDialogOpen} setDialogOpen={setContactDialogOpen} />}
-              {subscriber && contactDialogOpen && activeTab !== 'communications' && <ClientContactDialog subscriber={subscriber} notify={notify} onClose={() => setContactDialogOpen(false)} />}
+              {activeTab === 'communications' && subscriber && <ClientContactsPanel subscriber={subscriber} notify={notify} onSaved={rememberSavedContact} dialogOpen={contactDialogOpen} setDialogOpen={setContactDialogOpen} />}
+              {subscriber && contactDialogOpen && activeTab !== 'communications' && <ClientContactDialog subscriber={subscriber} notify={notify} onClose={() => setContactDialogOpen(false)} onSaved={rememberSavedContact} />}
               {activeTab === 'communications' && !subscriber && (
                 <UnifiedClientCommunicationsPanel
                   communications={allComms}

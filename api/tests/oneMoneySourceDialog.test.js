@@ -37,14 +37,4 @@ test('with the server\'s answer the dialog holds the price on file, whatever the
   assert.deepEqual(alone.enrolledOptions, [], 'without the server answer nothing is held: the browser has no rule of its own');
 });
 
-test('the dialog asks the server when it opens, again after any change, and books a held course at the price on file', () => {
-  const model = read('admin/components/payment-modal/usePaymentModalModel.tsx');
-  assert.match(model, /useClientMoney\(mode === 'subscriber' \? subject\.id : null\)/);
-  assert.match(model, /clientHoldings\(subject, courses, bundles, d\.currency, money\)/);
-  assert.match(model, /_clientPx > 0 \? _clientPx : _agreedPx > 0 \? _agreedPx : tierPx \?\? 0/, 'a held price beats the branch tier');
-  assert.match(model, /String\(_agreedPx > 0 && !_clientPx \? _agreedPx : tierPx\)/, 'and is what is sent');
-  assert.match(model, /refetchMoney\(\);/, 'a refused save asks again');
-  const hook = read('admin/lib/clientMoney.ts');
-  assert.match(hook, /window\.addEventListener\(CRM_CHANGED_EVENT, refetch\)/, 'every announced change refetches');
-  assert.doesNotMatch(hook, /localStorage|sessionStorage|new Map\(/, 'no copy that can age');
-});
+

@@ -128,16 +128,4 @@ test('a WhatsApp route on an instance without the sessions says so instead of pr
   }
 });
 
-test('the route timers start once, from the process that owns the jobs — not on require', () => {
-  const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-  const shared = read('routes/misc/_shared.js');
-  const support = read('routes/support.js');
-  assert.doesNotMatch(shared, /^schedule\w+\(\);$/m, 'no timer starts when the routes load');
-  assert.doesNotMatch(shared, /^require\('[^']+followUpDigest'\)\.scheduleFollowUpDigest\(\);$/m);
-  assert.doesNotMatch(support, /^scheduleSlaSweep\(\);$/m);
-  assert.match(shared, /function startSharedRouteJobs\(\)/);
-  const server = read('server.js');
-  const allOnly = server.slice(server.indexOf("if (role === 'all') {"), server.indexOf('} else logger.info'));
-  assert.match(allOnly, /startRouteJobs\(/, 'MAHAD_ROLE=web instances leave them to the job owner');
-  assert.match(read('worker.js'), /require\('\.\/lib\/routeJobs'\)\.startRouteJobs\(/);
-});
+

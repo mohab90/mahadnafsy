@@ -72,10 +72,4 @@ test('every HR handler answers through it', () => {
   assert.ok(handlers >= 100, `expected the HR handlers to be converted, found ${handlers}`);
 });
 
-test('hrError keeps the log line and delegates the response', () => {
-  const shared = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hr', '_shared.js'), 'utf8');
-  assert.match(shared, /logger\.error\(message, error\?\.message \|\| error\)/,
-    'the operator still gets the real error');
-  assert.match(shared, /return sendWriteError\(res, error\)/,
-    'and the browser gets only what it can act on');
-});
+

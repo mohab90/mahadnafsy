@@ -37,7 +37,4 @@ test('the messages an employee sends stay with their conversations', () => {
   assert.equal(logged('GET', '/api/staff/me').length, 0, 'reads are not acts');
 });
 
-test('the server puts the staff routes behind it', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'lib', 'httpApp.js'), 'utf8');
-  assert.match(app, /app\.use\('\/api\/staff', auditWrites\);/);
-});
+

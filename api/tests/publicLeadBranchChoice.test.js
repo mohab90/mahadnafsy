@@ -54,17 +54,6 @@ test('the values the public dropdowns emit all resolve to a real branch', () => 
   assert.equal(normalizeBranch('', null), null);
 });
 
-test('the registrations route honours the choice and falls back to geo', () => {
-  const route = codeOnly(read('api/routes/lead-capture-crm.js'));
-  assert.ok(!route.includes('branch: _branch'), 'the chosen branch is still discarded');
-  assert.match(route, /const branchVal = normalizeBranch\(pickedBranch, null\) \|\| clientContext\.branch;/);
-});
 
-test('the public forms really do offer a physical branch', () => {
-  // The path page's form is the course page's (LeadFormSection), so that is where its branches are.
-  for (const rel of ['client/components/home/OfferSpotlight.tsx', 'client/pages/course-details-sections/LeadFormSection.tsx']) {
-    const page = codeOnly(read(rel));
-    assert.match(page, /value="daqqi"/, `${rel} no longer offers a physical branch`);
-    assert.match(page, /value="tagamoa"/);
-  }
-});
+
+

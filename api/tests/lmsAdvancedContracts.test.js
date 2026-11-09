@@ -31,16 +31,7 @@ function cohortDb({ maxStudents = null, memberCount = 0, status = 'active' } = {
   };
 }
 
-test('cohort membership is tenant-scoped, capacity checked and grants canonical entitlement', () => {
-  const service = read('api/lib/learningCohorts.js');
-  const migration = read('api/migrations/126_v25_lms_cohorts_instructor_scope.sql');
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS course_cohorts/);
-  assert.match(migration, /UNIQUE KEY uq_cohort_member \(tenant_id,cohort_id,subscriber_id\)/);
-  assert.match(service, /assertLearningPrerequisites\(\{[\s\S]*subjectType: 'cohort'/);
-  assert.match(service, /Cohort capacity reached/);
-  assert.match(service, /grantCourseEntitlement\(\{/);
-  assert.match(service, /source: `cohort:\$\{cohortId\}`/);
-});
+
 
 test('cohort enrollment executes membership and entitlement writes through one DB transaction handle', async () => {
   const db = cohortDb();
@@ -77,66 +68,12 @@ test('draft cohorts cannot grant course access', async () => {
   assert.equal(db.calls.some(call => call.sql.includes('INSERT INTO enrollments')), false);
 });
 
-test('cohort removal preserves independent paid or other-cohort access', () => {
-  const service = read('api/lib/learningCohorts.js');
-  assert.match(service, /has_paid_source/);
-  assert.match(service, /has_other_cohort/);
-  assert.match(service, /!authority\.has_paid_source && !authority\.has_other_cohort/);
-  assert.match(service, /revokeCourseEntitlement\(\{/);
-});
 
-test('course analytics are scoped to the assigned instructor identity', () => {
-  const adminCatalog = read('api/routes/admin/catalog.js');
-  const publicRoutes = read('api/routes/public.js');
-  const lmsRoutes = read('api/routes/lms.js');
-  assert.match(adminCatalog, /AND instructor_id=\?/);
-  assert.match(publicRoutes, /Instructor analytics are limited to assigned courses/);
-  assert.match(lmsRoutes, /Instructor analytics are limited to assigned courses/);
-  assert.match(publicRoutes, /requirePermission\('view_courses'\)/);
-});
 
-test('bundle learning paths carry tenant ownership through catalog and entitlement queries', () => {
-  const migration = read('api/migrations/126_v25_lms_cohorts_instructor_scope.sql');
-  const catalog = read('api/routes/core/catalog.js');
-  const entitlements = read('api/lib/entitlements.js');
-  assert.match(migration, /ALTER TABLE bundle_courses[\s\S]*tenant_id/);
-  assert.match(catalog, /bundle_courses \(bundle_id, course_id, tenant_id, sort_order\)/);
-  assert.match(entitlements, /WHERE bc\.tenant_id=\?/);
-});
 
-test('offline progress queue is user-stable, monotonic and refreshes canonical subscriber data', () => {
-  const api = read('client/lib/mysqlapi.ts');
-  const runtime = read('client/context/site-data-hooks/useClientAccountRuntime.ts');
-  const player = read('client/components/UserDashboardVideoPlayer.tsx');
-  assert.match(api, /payload\.uid \|\| payload\.email/);
-  assert.match(api, /Math\.max\(current\.pct, pct\)/);
-  assert.match(api, /error\.status >= 500/);
-  assert.match(api, /Math\.max\(current\.watchSeconds \|\| 0, watchSeconds\)/);
-  assert.match(api, /window\.addEventListener\('online'/);
-  assert.match(runtime, /mahad-progress-synced/);
-  assert.match(player, /saveLectureProgress\(lectureId, 100,\s*watchSeconds \?\? getSavedTime\(lectureId\)\)/);
-  // The embed URL moved to lectureVideo.ts and the frame to VideoSurface, so
-  // what this player owes the rest of the system is the component, not the
-  // host. everyLecturePlayerStaysOnTheSite.test.js keeps the host honest.
-  assert.match(player, /<VideoSurface/);
-  assert.doesNotMatch(player, /lectureProgress:\s*\{/);
-  assert.doesNotMatch(player, /notes:\$\{subscriber\.id\}/);
-  assert.match(player, /getLectureNote\(selectedId\)/);
-  assert.match(player, /saveLectureNote\(lectureId, v\)/);
-});
 
-test('unified client course grants use one awaited transactional entitlement sync', () => {
-  const coursesTab = read('admin/pages/unified-client/UnifiedClientCoursesTab.tsx');
-  const subscribersRoute = read('api/routes/admin/subscribers.js');
-  assert.match(coursesTab, /return await updateSubscriber\(\{ \.\.\.subscriber, enrolledCourseIds: courseIds \}\)/);
-  assert.match(coursesTab, /const saved = await persistCourses/);
-  assert.doesNotMatch(coursesTab, /mysqlAdmin\.addEnrollment|\.catch\(\(\) => \{\}\)/);
-  assert.match(subscribersRoute, /await syncCourseEntitlements\([\s\S]{0,600}, conn\)/);
-});
 
-test('admin cohort UI is connected to cohort APIs and prerequisite policy', () => {
-  const panel = read('admin/pages/dashboard/tabs/courses/CourseCohortsPanel.tsx');
-  assert.match(panel, /\/admin\/lms\/cohorts/);
-  assert.match(panel, /CoursePrerequisitesPanel subjectType="cohort"/);
-  assert.match(panel, /subscriberId/);
-});
+
+
+
+

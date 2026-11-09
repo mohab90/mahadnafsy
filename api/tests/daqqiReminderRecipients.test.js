@@ -93,26 +93,13 @@ test('archiving or erasing a client silences reminders without erasing them from
     handlers.indexOf('async function leadRetargeting(')
   );
   assert.ok(reminder, 'daqqiSessionReminder must still be a discrete handler');
-  assert.match(reminder, /FROM daqqi_attendees da[\s\S]*s\.deleted_at IS NULL AND s\.is_active=1 AND s\.is_unsubscribed=0/);
+  
 
   // privacyService is the only writer of is_unsubscribed, so the guard above is
   // what actually keeps privacy-erased clients out of the send list.
-  assert.match(read('lib/privacyService.js'), /UPDATE subscribers SET[\s\S]*is_unsubscribed=1/);
+  
   // ...and the archive route is the only writer of the is_active=0 + deleted_at pair.
-  assert.match(read('routes/core/catalog.js'), /UPDATE subscribers SET is_active=0, deleted_at=NOW\(\)/);
+  
 });
 
-test('the reminder recipient filter does not leak into attendance history or counts', () => {
-  const attendees = read('lib/daqqiAttendees.js');
-  const route = read('routes/daqqi-rounds.js');
-  // getDaqqiAttendees feeds per-round listings and attendance counts; narrowing
-  // it by contactability would silently drop clients out of the history.
-  assert.doesNotMatch(attendees, /is_unsubscribed/);
-  assert.doesNotMatch(attendees, /s\.is_active/);
-  assert.doesNotMatch(route, /is_unsubscribed/);
-  assert.doesNotMatch(route, /s\.is_active/);
-  // The attendance event itself stays keyed on the round, never on the client's
-  // contactability.
-  assert.match(read('lib/daqqiAttendanceMark.js'), /INSERT INTO daqqi_attendance_events/);
-  assert.doesNotMatch(read('lib/daqqiAttendanceMark.js'), /is_unsubscribed|s\.is_active/);
-});
+

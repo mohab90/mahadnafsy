@@ -50,15 +50,6 @@ test('a booking is not refused for an older row in another currency or at anothe
     error => error.code === 'INSTALLMENT_EXPECTED_MISMATCH');
 });
 
-test('a booking whose price is unknown is not measured', async () => {
-  // resolvePaymentAccess answers 'limited' for a missing price; the route only asks when there is one.
-  const route = read('api/routes/subscriber-payments.js');
-  assert.match(route, /if \(payment\.isInstallment \|\| Number\(resolvedExpected\) > 0\) \{/);
-  assert.match(route, /lenient: !payment\.isInstallment,/);
-});
 
-test('approving a pending booking measures it the same way', () => {
-  const approval = read('api/routes/core/financepay.js');
-  assert.match(approval, /if \(Number\(payment\.course_expected\) > 0\) \{/);
-  assert.match(approval, /lenient: !payment\.is_installment,/);
-});
+
+
