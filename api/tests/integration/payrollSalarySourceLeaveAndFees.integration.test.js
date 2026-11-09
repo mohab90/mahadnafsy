@@ -161,3 +161,52 @@ test('a teaching fee is never marked paid by hand, never approved by whoever mad
   assert.equal((await del('if-5')).statusCode, 200, 'a pending one can be');
   assert.equal((await pool.query("SELECT id FROM instructor_fees WHERE id='if-5'"))[0].length, 0);
 });
+
+test('the run\'s detail shows the persisted bonus and instructor earnings, and the run records the staff id of who calculated it', { skip }, async () => {
+  await pool.query("INSERT INTO employee_bonuses (id, tenant_id, staff_id, amount, type, status, currency, for_month, for_year) VALUES ('bn-ps-1', ?, 'ps-a', 250, 'bonus', 'APPROVED', 'EGP', 10, 2026)", [T]);
+  await pool.query("INSERT INTO instructor_fees (id, tenant_id, staff_id, fee_type, total_amount, currency, period_month, period_year, status) VALUES ('if-oct', ?, 'ps-a', 'lecture', 400, 'EGP', 10, 2026, 'approved')", [T]);
+  const run = await call('post', '/api/admin/hr/payroll/calculate', { actor: 'hr-calc', staff: { id: 'st-calc-1', name: 'منى', role: 'hr' }, body: { month: 10, year: 2026, skip_missing_salary: true } });
+  assert.equal(run.statusCode, 200, JSON.stringify(run.body));
+  const detail = await call('get', '/api/admin/hr/payroll/:runId', { actor: 'hr-calc', params: { runId: run.body.run.id } });
+  assert.equal(detail.statusCode, 200);
+  const a = detail.body.items.find(entry => entry.staff_id === 'ps-a');
+  assert.deepEqual([a.bonus_amount, a.instructor_earnings], [250, 400], 'read back from the stored line, not as zeros');
+  assert.equal(a.net_salary, 3000 + 250 + 400);
+  const [[stored]] = await pool.query('SELECT calculated_by FROM payroll_runs WHERE id=?', [run.body.run.id]);
+  assert.equal(stored.calculated_by, 'st-calc-1', 'a staff id, not a login id');
+});
+
+test('overriding a deduction on a line brings the statutory split with it, is not for one\'s own line, and not for an approved run', { skip }, async () => {
+  await pool.query("INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at) VALUES ('ps-e', ?, 'هـ', 'ps-e@x.t', '1018000005', 'SALES', 1, '2025-01-01')", [T]);
+  await pool.query(
+    `INSERT INTO salary_structures (id, tenant_id, staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed,
+       deduction_social_insurance, deduction_tax, currency, status, effective_from) VALUES ('ss-e1', ?, 'ps-e', 5000, 0, 0, 0, 0, 200, 100, 'EGP', 'APPROVED', '2026-01-01')`, [T]);
+  const run = await call('post', '/api/admin/hr/payroll/calculate', { actor: 'hr-calc', body: { month: 11, year: 2026, skip_missing_salary: true } });
+  assert.equal(run.statusCode, 200, JSON.stringify(run.body));
+  const e = line(run, 'ps-e');
+  assert.equal(e.other_deductions, 300, 'insurance and tax withheld');
+  const override = (item, body, staff = null) => call('put', '/api/admin/hr/payroll/items/:itemId', { actor: 'hr-x', staff, params: { itemId: item.id }, body });
+  assert.equal((await override(e, { other_deductions: 50 }, { id: 'ps-e', name: 'هـ', role: 'sales' })).body.code, 'HR_SELF_MUTATION', 'not one\'s own line');
+  const done = await override(e, { other_deductions: 150, deductions_note: 'تسوية' });
+  assert.equal(done.statusCode, 200, JSON.stringify(done.body));
+  assert.equal(done.body.net_salary, 5000 - 150);
+  const [[row]] = await pool.query('SELECT calculation_details, is_manual_override FROM payroll_items WHERE id=?', [e.id]);
+  const details = typeof row.calculation_details === 'string' ? JSON.parse(row.calculation_details) : row.calculation_details;
+  assert.deepEqual([details.dedSocial, details.dedTax, details.statutoryCappedByOverride], [100, 50, true], 'the withheld part cannot exceed the deduction taken: 200/100 become 100/50');
+  assert.equal(Number(row.is_manual_override), 1);
+  assert.equal((await pool.query('SELECT total_amount FROM payroll_runs WHERE id=?', [run.body.run.id]))[0][0].total_amount > 0, true);
+  assert.equal((await setStatus('fin-approve', run.body.run.id, 'APPROVED')).statusCode, 200);
+  assert.equal((await override(e, { other_deductions: 0 })).statusCode, 409, 'an approved run is not edited');
+});
+
+test('a foreign-currency salary with no usable exchange rate stops the run instead of guessing one', { skip }, async () => {
+  await pool.query("INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at) VALUES ('ps-f', ?, 'و', 'ps-f@x.t', '1018000006', 'SALES', 1, '2025-01-01')", [T]);
+  await pool.query(
+    `INSERT INTO salary_structures (id, tenant_id, staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed,
+       deduction_social_insurance, deduction_tax, currency, status, effective_from) VALUES ('ss-f1', ?, 'ps-f', 2000, 0, 0, 0, 0, 0, 0, 'SAR', 'APPROVED', '2026-01-01')`, [T]);
+  const refused = await calculate({ month: 12, skip_missing_salary: true });
+  assert.ok(refused.statusCode >= 400, JSON.stringify(refused.body));
+  assert.equal(refused.body.code, 'FX_SNAPSHOT_UNAVAILABLE');
+  assert.equal((await pool.query('SELECT id FROM payroll_items WHERE tenant_id=? AND staff_id=\'ps-f\'', [T]))[0].length, 0, 'nothing was written');
+  await pool.query("UPDATE staff SET is_active=0 WHERE id='ps-f'");
+});

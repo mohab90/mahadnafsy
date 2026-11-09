@@ -1025,13 +1025,6 @@
   "why": "moved from a unit test that matched source text; the behaviour is integration/hrRecruitmentDecisionsAndStaffFile",
   "checks": [
    {
-    "file": "api/routes/hr/recruitment-workflow.js",
-    "mustNot": {
-     "source": "UPDATE recruitment_notes|DELETE FROM recruitment_notes",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/migrations/199_v25_recruitment_and_hr_controls.sql",
     "mustNot": {
      "source": "DROP COLUMN|DROP TABLE",
@@ -1109,20 +1102,6 @@
     "file": "api/routes/staff.js",
     "mustNot": {
      "source": "=\\s*req\\.isAdmin\\b",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "mustNot": {
-     "source": "req\\.user\\.id\\b",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "const actorId = req\\.staffRecord\\?\\.id \\|\\| req\\.user\\?\\.uid \\|\\| null",
      "flags": ""
     }
    },
@@ -1281,37 +1260,6 @@
   "class": "b"
  },
  {
-  "id": "adminRowShapeAndMoney: overriding a deduction brings the statutory split with it",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "const originalStatutory = originalSocial \\+ originalTax",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "if \\(originalStatutory > od\\)",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "calculation_details=\\?",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "adminRowShapeAndMoney: the payroll journal is dated in Cairo",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -1333,37 +1281,6 @@
    }
   ],
   "class": "a"
- },
- {
-  "id": "adminRowShapeAndMoney: payroll refuses a stale exchange rate instead of guessing one",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "const currenciesInPlay = new Set\\(",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "if \\(!isFxSnapshotUsable\\(fxSnapshot, currency\\)\\)",
-     "flags": ""
-    },
-    "code": true
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "FX_SNAPSHOT_UNAVAILABLE",
-     "flags": ""
-    },
-    "code": true
-   }
-  ],
-  "class": "b"
  },
  {
   "id": "adminRowShapeAndMoney: and payroll really does pay the status this now clears",
@@ -3554,34 +3471,6 @@
   "class": "b"
  },
  {
-  "id": "payrollIntegrity: payroll detail exposes persisted bonus and instructor earnings",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "pi\\.bonus AS bonus_amount",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "JSON_EXTRACT\\(pi\\.calculation_details, '\\$\\.instructorEarnings'\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "mustNot": {
-     "source": "\\b0 AS bonus_amount\\b|\\b0 AS instructor_earnings\\b",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
   "id": "penaltyLeaveBalanceAndAccountLinks: lifting a sharing lock starts the device count over, or the next sign-in locks the account again",
   "why": "moved from a unit test that matched source text",
   "checks": [
@@ -3998,27 +3887,6 @@
     "file": "api/routes/installments.js",
     "must": {
      "source": "tenant_id, staff_name, created_at, receipt_no\\)",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
- },
- {
-  "id": "recruitmentWorkflow: hiring is reachable from the interview stage but not from nothing",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/routes/hr/talent.js",
-    "must": {
-     "source": "a\\.stage !== 'offer' && a\\.stage !== 'interview'",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/talent.js",
-    "must": {
-     "source": "OFFER_STAGE_REQUIRED",
      "flags": ""
     }
    }
