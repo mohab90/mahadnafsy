@@ -186,9 +186,10 @@ test('the target system on both sides: the sheet\'s round 1 has 15 bookings, the
   const rim = report.perRep.find(item => item.tab === 'ريم');
   assert.equal(rim.staff.firstTarget, 10);
   assert.deepEqual(rim.rowsByRound, { 1: 15, 2: 8 });
-  assert.deepEqual(rim.sheet.byMarker.rounds, [{ label: '1–15', bookings: 15, amount: 1500 }, { label: '16–آخر الشهر', bookings: 10.5, amount: 1000 }]);
+  assert.deepEqual(rim.sheet.byMarker.rounds, [{ label: '1–18', bookings: 15, amount: 1500 }, { label: '19–31', bookings: 10.5, amount: 1000 }]);
   assert.equal(rim.sheet.byMarker.amount, 2500);
-  assert.deepEqual(rim.system.rounds.map(round => [round.bookings, round.amount]), [[10, 1000], [14, 1000]]);
+  assert.equal(rim.suggestedSplit.day, 19, 'the first date after the marker');
+  assert.deepEqual(rim.system.rounds.map(round => [round.label, round.bookings, round.amount]), [['1–18', 11.5, 1000], ['19–31', 12.5, 1000]], 'the system\'s side is drawn on the sheet\'s line: the booking of the 18th is in round 1');
   assert.equal(rim.system.amount, 2000);
   assert.equal(rim.difference, 500);
   const reasons = Object.fromEntries(rim.reasons.map(reason => [reason.kind, [reason.rows, reason.weight]]));

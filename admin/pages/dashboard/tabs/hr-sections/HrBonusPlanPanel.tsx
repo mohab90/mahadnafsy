@@ -7,7 +7,7 @@ import { cairoDateTime, cairoMonthOnly } from '../../../../../shared/cairoDate';
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Item = { kind: 'course' | 'track'; id: string; title: string; priceEgp: number; weight: number };
 /** A change to the month being written: what it is about, and the reason (required). */
-type Draft = { kind: BonusAdjustmentKind; label: string; staffId?: string; paymentId?: string; toStaffId: string; weight: string; amount: string; reason: string };
+type Draft = { kind: BonusAdjustmentKind; label: string; staffId?: string; paymentId?: string; toStaffId: string; weight: string; amount: string; splitDay: string; reason: string };
 
 const n = (value: number | null | undefined) => (value == null ? '—' : Number(value).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 }));
 const input = 'w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm';
@@ -68,7 +68,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
 
   // The owner's changes to the month (manage_financial): written with a reason, the month worked out again with them, taken back the same way.
   const startDraft = (kind: BonusAdjustmentKind, label: string, ids: { staffId?: string; paymentId?: string }, preset: Partial<Draft> = {}) =>
-    setDraft({ kind, label, ...ids, toStaffId: '', weight: '', amount: '', reason: '', ...preset });
+    setDraft({ kind, label, ...ids, toStaffId: '', weight: '', amount: '', splitDay: '', reason: '', ...preset });
   const submitDraft = async () => {
     if (!draft) return;
     if (draft.reason.trim().length < 3) { notify('error', 'اكتب سبب التعديل'); return; }
@@ -77,6 +77,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
       await mysqlAdmin.addBonusAdjustment({
         month, kind: draft.kind, reason: draft.reason.trim(), staffId: draft.staffId, paymentId: draft.paymentId,
         toStaffId: draft.kind === 'REASSIGN_BOOKING' ? draft.toStaffId : undefined,
+        splitDay: draft.kind === 'ROUND_SPLIT' ? Number(draft.splitDay) : undefined,
         weight: draft.kind === 'WEIGHT_BOOKING' ? Number(draft.weight) : undefined, amount: draft.kind === 'TOTAL_OVERRIDE' ? Number(draft.amount) : undefined,
       });
       setDraft(null);
@@ -128,7 +129,15 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                         <td className="p-2 font-bold">
                           <button type="button" onClick={() => setOpen(open === item.staffId ? null : item.staffId)} className="text-right hover:underline">{item.name}</button>
                         </td>
-                        <td className="p-2 text-xs text-gray-600">{item.schemeLabel}</td>
+                        <td className="p-2 text-xs text-gray-600">
+                          {item.schemeLabel}
+                          {item.splitDay != null && (
+                            <div className="text-[11px] text-gray-500">
+                              الروند التاني من يوم {item.splitDay}
+                              {canEditPlan && <button type="button" className="mr-1 font-bold text-indigo-600" onClick={() => startDraft('ROUND_SPLIT', `يوم بداية الروند التاني لـ${item.name}`, { staffId: item.staffId }, { splitDay: String(item.splitDay) })}>غيّر</button>}
+                            </div>
+                          )}
+                        </td>
                         <td className="p-2 text-xs text-gray-700">{item.summary}</td>
                         <td className="p-2 font-extrabold text-emerald-700">
                           {n(item.total)}
@@ -190,6 +199,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                     </select>
                   )}
                   {draft.kind === 'WEIGHT_BOOKING' && <label>يتحسب <input type="number" min="0" max="20" step="0.5" dir="ltr" value={draft.weight} onChange={e => setDraft({ ...draft, weight: e.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1" /> حجز</label>}
+                  {draft.kind === 'ROUND_SPLIT' && <label>الروند التاني يبدأ يوم <input type="number" min="2" max="28" step="1" dir="ltr" value={draft.splitDay} onChange={e => setDraft({ ...draft, splitDay: e.target.value })} className="w-16 rounded-lg border border-gray-200 px-2 py-1" /></label>}
                   {draft.kind === 'TOTAL_OVERRIDE' && <label>الإجمالي <input type="number" min="0" dir="ltr" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} className="w-28 rounded-lg border border-gray-200 px-2 py-1" /> ج.م</label>}
                   <input value={draft.reason} onChange={e => setDraft({ ...draft, reason: e.target.value })} placeholder="السبب (مطلوب)" maxLength={500} className="min-w-[14rem] flex-1 rounded-lg border border-gray-200 px-2 py-1" />
                   <button type="button" onClick={submitDraft} disabled={working || draft.reason.trim().length < 3} className="rounded-lg bg-amber-600 px-3 py-1 font-bold text-white disabled:opacity-40">نفّذ</button>
@@ -208,6 +218,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                         {adjustment.kind === 'TOTAL_OVERRIDE' && `${adjustment.staffName}: ${n(adjustment.amount)} ج.م`}
                         {adjustment.kind === 'EXCLUDE_BOOKING' && `${adjustment.client} (${adjustment.item}) من ${adjustment.staffName}`}
                         {adjustment.kind === 'REASSIGN_BOOKING' && `${adjustment.client} (${adjustment.item}): من ${adjustment.staffName || '—'} إلى ${adjustment.toStaffName}`}
+                        {adjustment.kind === 'ROUND_SPLIT' && `${adjustment.staffName}: الروند التاني من يوم ${adjustment.splitDay}`}
                         {adjustment.kind === 'WEIGHT_BOOKING' && `${adjustment.client} (${adjustment.item}): ${n(adjustment.weight)} حجز`}
                       </span>
                       <span className="text-gray-600">— {adjustment.reason}</span>

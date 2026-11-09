@@ -17,10 +17,10 @@
 const { normalizeArabicName } = require('./linkSiteAccounts');
 const { matchingSpellings } = require('./phoneNumber');
 const { agreedPrice } = require('./agreedPrice');
-const { bookingWeight, ladderBonus } = require('./bonusPlan');
+const { bookingWeight, ladderBonus, DEFAULT_SPLIT_DAY, roundOfDay, roundLabels } = require('./bonusPlan');
 const { monthBounds, loadPlan, bookingsOf, computeMonthlyBonuses } = require('./monthlyBonuses');
 const { cairoDayOf } = require('./dates');
-const { courseSimilarity } = require('./salesSheet');
+const { courseSimilarity, suggestRoundSplit } = require('./salesSheet');
 
 const CATEGORIES = Object.freeze(['MATCHED', 'DIFFERENT', 'REFUNDED', 'VOIDED', 'NO_PAID_BOOKING', 'NOT_REGISTERED', 'OTHER_REP']);
 const money = value => Math.round((Number(value) || 0) * 100) / 100;
@@ -46,11 +46,15 @@ function mapTabsToStaff(tabNames, staff) {
   });
 }
 
-/** The ladder on a rep's sheet rows (or system bookings): { bookings, amount, rounds } — per half month when the plan says so. `roundOf(item)` is 1 or 2. */
-function ladderOver(plan, items, firstTarget, roundOf) {
+/**
+ * The ladder on a rep's sheet rows (or system bookings): { bookings, amount, rounds } — per half month when the plan says so. `roundOf(item)` is 1 or 2; the rounds are
+ * named for the split day and the month's last day («1–12» / «13–31»).
+ */
+function ladderOver(plan, items, firstTarget, roundOf, { splitDay = DEFAULT_SPLIT_DAY, lastDay = 31 } = {}) {
   const sum = list => Math.round(list.reduce((total, item) => total + item.weight, 0) * 100) / 100;
+  const [firstLabel, secondLabel] = roundLabels(splitDay, lastDay);
   const groups = plan.salesPeriod === 'HALF_MONTH'
-    ? [['1–15', items.filter(item => roundOf(item) !== 2)], ['16–آخر الشهر', items.filter(item => roundOf(item) === 2)]]
+    ? [[firstLabel, items.filter(item => roundOf(item) !== 2)], [secondLabel, items.filter(item => roundOf(item) === 2)]]
     : [['الشهر', items]];
   const rounds = groups.map(([label, list]) => ({ label, bookings: sum(list), ...ladderBonus(plan, sum(list), firstTarget) }));
   return { bookings: sum(items), amount: money(rounds.reduce((total, round) => total + round.amount, 0)), firstTarget, rounds: rounds.map(({ label, bookings, amount }) => ({ label, bookings, amount })) };
@@ -303,14 +307,18 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
   // 5. the target system, twice.
   const system = await computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustments: false });
   const employeeOf = new Map(system.employees.map(employee => [employee.staffId, employee]));
+  const lastDay = Number(bounds.last.slice(8, 10));
   const perRep = sheet.reps.map(rep => {
     const mine = results.filter(item => item.tab === rep.tab);
     const member = staffOfTab.get(rep.tab) || null;
+    // Where the owner's marker puts this rep's second round: the system's side is worked out with it (the sheet's side is the marker itself).
+    const suggestion = suggestRoundSplit(rep.rows);
+    const splitDay = suggestion.day || DEFAULT_SPLIT_DAY;
     const firstTarget = member && Number(member.booking_first_target) > 0 ? Number(member.booking_first_target) : null;
     const sheetItems = mine.map(item => ({ weight: item.weight, round: item.round, roundByDate: item.roundByDate }));
-    const sheetSide = ladderOver(plan, sheetItems, firstTarget, item => item.round);
-    const sheetByDate = ladderOver(plan, sheetItems, firstTarget, item => item.roundByDate ?? item.round);
-    const sheetFirst = Object.fromEntries([10, 15, 20].map(target => [target, ladderOver(plan, sheetItems, target, item => item.round).amount]));
+    const sheetSide = ladderOver(plan, sheetItems, firstTarget, item => item.round, { splitDay, lastDay });
+    const sheetByDate = ladderOver(plan, sheetItems, firstTarget, item => item.roundByDate ?? item.round, { lastDay });
+    const sheetFirst = Object.fromEntries([10, 15, 20].map(target => [target, ladderOver(plan, sheetItems, target, item => item.round, { splitDay, lastDay }).amount]));
     const counts = Object.fromEntries(CATEGORIES.map(category => [category, mine.filter(item => item.category === category).length]));
     const weightOf = list => Math.round(list.reduce((total, item) => total + item.weight, 0) * 100) / 100;
     let systemSide = null;
@@ -319,10 +327,11 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
       const employee = employeeOf.get(member.id);
       const owned = monthBookings.filter(booking => ownerOf(booking) === member.id).map(booking => ({ weight: bookingWeight(plan, booking.priceEgp), day: booking.day, booking }));
       systemItems = owned;
-      const here = ladderOver(plan, owned, firstTarget, item => (Number(item.day.slice(8, 10)) <= 15 ? 1 : 2));
+      // The system's bookings on the rep's rounds as the sheet draws them (the 16th when the sheet gives no line).
+      const here = ladderOver(plan, owned, firstTarget, item => roundOfDay(item.day, splitDay), { splitDay, lastDay });
       systemSide = employee
-        ? { ...here, amount: employee.ladder ? employee.ladder.amount : here.amount, total: employee.total, onScheme: true, rounds: employee.ladder?.rounds?.length ? employee.ladder.rounds.map(({ label, bookings, amount }) => ({ label, bookings, amount })) : here.rounds }
-        : { ...here, total: here.amount, onScheme: false };
+        ? { ...here, total: money(employee.total - (employee.ladder ? employee.ladder.amount : 0) + here.amount), onScheme: true, splitDay }
+        : { ...here, total: here.amount, onScheme: false, splitDay };
     }
     const reasons = [];
     if (systemSide) {
@@ -351,7 +360,8 @@ async function reconcileSalesSheet(db, { tenantId, sheet, year, month }) {
       }
     }
     return {
-      tab: rep.tab, staff: member ? { id: member.id, name: member.name, firstTarget, active: Boolean(member.is_active), scheme: member.bonus_scheme } : null,
+      tab: rep.tab, suggestedSplit: { ...suggestion, day: suggestion.day, used: splitDay, staffId: member ? member.id : null },
+      staff: member ? { id: member.id, name: member.name, firstTarget, active: Boolean(member.is_active), scheme: member.bonus_scheme } : null,
       rowsByRound: { 1: mine.filter(item => item.round === 1).length, 2: mine.filter(item => item.round === 2).length },
       rows: mine.length, counts, sheetWeight: weightOf(mine),
       sheet: { byMarker: sheetSide, byDate: sheetByDate, byFirstTarget: sheetFirst },

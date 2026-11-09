@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount } = require('../lib/bonusPlan');
+const { normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount, splitDayOf, roundOfDay, roundLabels } = require('../lib/bonusPlan');
 
 const seeded = fs.readFileSync(path.join(__dirname, '..', 'migrations', '381_v26_bonus_plan.sql'), 'utf8').match(/'bonus_plan', '(\{.*\})', 0/)[1];
 const PLAN = normalizePlan(JSON.parse(seeded));
@@ -55,4 +55,18 @@ test('the plan is checked: a band with no price, a ladder repeating a tier, a le
   assert.throws(() => normalizeLevels([{ from: 0, kind: 'percent', value: 120 }]), /ليفل/);
   assert.equal(PLAN.courseSalesBonusEnabled, false, 'the course page\'s sales bonus stays, switched off');
   assert.deepEqual(normalizePlan(null).bookingLadder, [], 'no plan pays nothing');
+});
+
+test('the rep\'s rounds: round 1 is the days before the split day, round 2 from it; the 16th unless another day (2–28) is set', () => {
+  assert.equal(splitDayOf(undefined), 16);
+  assert.equal(splitDayOf(null), 16);
+  assert.deepEqual([1, 28, 29, 'x', 2.5, '13'].map(splitDayOf), [16, 28, 16, 16, 16, 13], 'a day outside 2–28, or not a whole day, is the 16th');
+  const roundsOn = split => [1, 12, 13, 15, 16, 17, 31].map(day => roundOfDay(day, split));
+  assert.deepEqual(roundsOn(), [1, 1, 1, 1, 2, 2, 2], 'no split set: the 16th');
+  assert.deepEqual(roundsOn(13), [1, 1, 2, 2, 2, 2, 2], 'split on the 13th: the 13th to the 15th are in round 2');
+  assert.deepEqual(roundsOn(2), [1, 2, 2, 2, 2, 2, 2]);
+  assert.equal(roundOfDay('2026-10-12', 13), 1);
+  assert.equal(roundOfDay('2026-10-13', 13), 2);
+  assert.deepEqual(roundLabels(12, 31), ['1–11', '12–31']);
+  assert.deepEqual(roundLabels(undefined, 30), ['1–15', '16–30']);
 });

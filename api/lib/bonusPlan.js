@@ -14,6 +14,20 @@
 //   collection       a collector's levels («من 50,000: 2%», «من 80,000: 3%» or a fixed amount): the level the month's collected money reaches applies to
 //                    the whole of it.
 
+// The rep's two rounds of the month (salesPeriod HALF_MONTH): round 1 is the days before the split day, round 2 from the split day on. The split is the 16th unless the
+// owner set another day for that rep and month (a ROUND_SPLIT change, lib/bonusAdjustments.js — 9 Nov 2026: «الفاصل في الشيت هو اللي بيحدد الروند»).
+const DEFAULT_SPLIT_DAY = 16;
+const MIN_SPLIT_DAY = 2;
+const MAX_SPLIT_DAY = 28;
+const splitDayOf = value => (Number.isInteger(Number(value)) && Number(value) >= MIN_SPLIT_DAY && Number(value) <= MAX_SPLIT_DAY ? Number(value) : DEFAULT_SPLIT_DAY);
+/** 1 or 2: the round a day of the month (a number, or «YYYY-MM-DD») falls in, for a split day. */
+function roundOfDay(day, splitDay = DEFAULT_SPLIT_DAY) {
+  const number = typeof day === 'string' ? Number(day.slice(8, 10)) : Number(day);
+  return number < splitDayOf(splitDay) ? 1 : 2;
+}
+/** The two rounds' names for a split day and the month's last day: «1–12» and «13–31». */
+const roundLabels = (splitDay, lastDay) => [`1–${splitDayOf(splitDay) - 1}`, `${splitDayOf(splitDay)}–${lastDay}`];
+
 const SCHEMES = Object.freeze(['NONE', 'SALES_BOOKINGS', 'COLLECTION', 'COLLECTION_BOOKINGS']);
 const num = value => (value === '' || value == null ? NaN : Number(value));
 const cents = value => Math.round(value * 100);
@@ -112,4 +126,4 @@ function courseBonusAmount(bonus, priceEgp) {
   return bonus.type === 'percent' ? money((Number(priceEgp) || 0) * Math.min(100, Number(bonus.value)) / 100) : money(Number(bonus.value));
 }
 
-module.exports = { SCHEMES, normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount };
+module.exports = { DEFAULT_SPLIT_DAY, MIN_SPLIT_DAY, MAX_SPLIT_DAY, splitDayOf, roundOfDay, roundLabels, SCHEMES, normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount };

@@ -4,6 +4,8 @@
 --   REASSIGN_BOOKING  a booking counts for another rep              (staff_id = who it counted for, to_staff_id = who it counts for now)
 --   WEIGHT_BOOKING    a booking counts as this many bookings        (payment_id, weight)
 --   TOTAL_OVERRIDE    the employee's month total is this amount     (staff_id, amount) — the computed figure is shown beside it
+--   ROUND_SPLIT       the day this rep's second round starts (2–28)  (staff_id, split_day); with none set it is the 16th — the owner's sheet says where
+--                     its «النص التانى» falls, and that line, not the 16th, is the rep's round (9 Nov 2026)
 -- A change is taken back (revoked_at) and never deleted, so the month's history reads whole; a newer change to the same thing replaces the older one.
 CREATE TABLE IF NOT EXISTS bonus_adjustments (
   id VARCHAR(36) NOT NULL,
@@ -16,6 +18,7 @@ CREATE TABLE IF NOT EXISTS bonus_adjustments (
   to_staff_id VARCHAR(36) NULL,
   weight DECIMAL(5,2) NULL,
   amount DECIMAL(12,2) NULL,
+  split_day TINYINT NULL,
   reason VARCHAR(500) NOT NULL,
   created_by VARCHAR(36) NULL,
   created_by_name VARCHAR(255) NULL,

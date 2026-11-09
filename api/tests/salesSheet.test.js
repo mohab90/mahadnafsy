@@ -5,7 +5,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseSalesSheet, parsePhones, parseDayMonth, serialToDay, dayToSerial, courseSimilarity } = require('../lib/salesSheet');
+const { parseSalesSheet, parsePhones, parseDayMonth, serialToDay, dayToSerial, courseSimilarity, suggestRoundSplit } = require('../lib/salesSheet');
 
 const D = day => 46295 + day; // Excel serial of 2026-10-<day>
 const MARK = 'النص التانى';
@@ -180,4 +180,28 @@ test('phones, dates and course names on their own', () => {
   assert.ok(courseSimilarity('صحه', 'الصحة النفسية') === 1);
   assert.ok(courseSimilarity('علم نفس اكلينكي', 'علم النفس المتكامل') === 0);
   assert.ok(courseSimilarity('صحة نفسية', 'علم نفس متكامل') === 0, 'sharing «نفس» is not sharing a course');
+});
+
+test('the suggested split is the first date at or after the marker; dates on both sides of the line are said', () => {
+  const split = layout => suggestRoundSplit(tabIn(layout).rows);
+  assert.deepEqual(split(layoutA), { day: 12, overlap: 0, note: null }, 'the 12th, 13th and 20th follow the marker; the 3rd and 10th precede it');
+  assert.equal(split(layoutB).day, 18);
+  assert.equal(split(layoutC).day, 13);
+  assert.equal(split(layoutD).day, 22);
+  assert.equal(split(layoutE).day, 18, 'the earliest date after the marker, whatever the order of the rows');
+  assert.equal(split(layoutF).day, 16);
+  const overlapping = only([{ name: 'ريب ط', rows: [
+    ['عميل تجريبي اول', 1100000081, 'علم نفس متكامل', D(3), 4600, 900, 'الدقي'],
+    ['عميل تجريبي ثاني', 1100000082, 'علم نفس متكامل', D(14), 4600, 900, 'الدقي'],
+    [null, MARK, null, null, null, null, null],
+    ['عميل تجريبي ثالث', 1100000083, 'علم نفس متكامل', D(12), 4600, 900, 'الدقي'],
+    ['عميل تجريبي رابع', 1100000084, 'علم نفس متكامل', D(20), 4600, 900, 'الدقي'],
+  ] }, layoutA, layoutB]);
+  const found = suggestRoundSplit(overlapping.rows);
+  assert.equal(found.day, 12);
+  assert.equal(found.overlap, 1, 'the row dated the 14th sits before the marker');
+  assert.match(found.note, /متداخلة/);
+  assert.equal(suggestRoundSplit(tabIn(layoutA).rows.map(row => ({ ...row, roundByMarker: null }))).day, null, 'no marker: no suggestion');
+  assert.equal(suggestRoundSplit(tabIn(layoutA).rows.map(row => ({ ...row, roundByMarker: row.roundByMarker === 2 ? 1 : row.roundByMarker }))).day, null, 'nothing after the marker');
+  assert.equal(suggestRoundSplit([{ roundByMarker: 1, day: '2026-10-03' }, { roundByMarker: 2, day: '2026-10-30' }]).day, null, 'a split can only be the 2nd to the 28th');
 });

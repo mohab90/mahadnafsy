@@ -235,6 +235,28 @@ function parseSalesSheet(tabs, { month }) {
   };
 }
 
+/**
+ * Where a rep's second round starts, from their tab: the first date at or after the «النص التانى» row (9 Nov 2026: the owner's marker, not the 16th, is the rep's
+ * round). `day` is null when the tab has no marker, no dated row after it, or that date is outside what a split can be (2–28). `overlap` counts the rows BEFORE the
+ * marker dated on or after the split day — dates on both sides of the line, which by date would be in the second round.
+ * @param rows a tab's rows as readTab returns them
+ */
+function suggestRoundSplit(rows) {
+  const dayOf = row => (row.day ? Number(row.day.slice(8, 10)) : null);
+  const hasMarker = rows.some(row => row.roundByMarker != null);
+  const after = rows.filter(row => row.roundByMarker === 2).map(dayOf).filter(day => day != null);
+  const before = rows.filter(row => row.roundByMarker === 1).map(dayOf).filter(day => day != null);
+  if (!hasMarker) return { day: null, overlap: 0, note: 'مفيش فاصل «النص التانى» في التاب: الروند التاني من يوم 16' };
+  if (!after.length) return { day: null, overlap: 0, note: 'مفيش صفوف بتاريخ بعد الفاصل: الروند التاني من يوم 16' };
+  const first = Math.min(...after);
+  if (first < 2 || first > 28) return { day: null, overlap: 0, note: `أول تاريخ بعد الفاصل يوم ${first} (التقسيم من يوم 2 لـ28): الروند التاني من يوم 16` };
+  const overlap = before.filter(day => day >= first).length;
+  return {
+    day: first, overlap,
+    note: overlap ? `${overlap} صف قبل الفاصل بتاريخ يوم ${first} أو بعده: التواريخ على الجهتين متداخلة` : null,
+  };
+}
+
 /** Reads an .xlsx buffer. */
 function readSalesSheet(buffer, options) {
   return parseSalesSheet(readXlsx(buffer), options);
@@ -265,4 +287,4 @@ function courseSimilarity(a, b) {
   return shared.length / new Set([...first, ...second]).size;
 }
 
-module.exports = { readSalesSheet, parseSalesSheet, parsePhones, parseDayMonth, serialToDay, dayToSerial, monthOf, courseWords, courseSimilarity, branchOf };
+module.exports = { suggestRoundSplit, readSalesSheet, parseSalesSheet, parsePhones, parseDayMonth, serialToDay, dayToSerial, monthOf, courseWords, courseSimilarity, branchOf };

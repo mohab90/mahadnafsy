@@ -7,15 +7,17 @@
 //   REASSIGN_BOOKING  a booking counts for another rep
 //   WEIGHT_BOOKING    a booking counts as this many bookings
 //   TOTAL_OVERRIDE    the employee's month total is this amount (the computed figure is shown beside it)
+//   ROUND_SPLIT       the day this rep's second round starts (2–28; none set: the 16th)
 //
 // A change is revoked, never deleted; a newer change to the same thing revokes the older. Only the month's bookings can be changed, and only a rep on the
 // booking scheme can have one counted for them.
 
 const { uuidv4 } = require('./id');
+const { MIN_SPLIT_DAY, MAX_SPLIT_DAY } = require('./bonusPlan');
 
-const KINDS = Object.freeze(['EXCLUDE_BOOKING', 'REASSIGN_BOOKING', 'WEIGHT_BOOKING', 'TOTAL_OVERRIDE']);
+const KINDS = Object.freeze(['EXCLUDE_BOOKING', 'REASSIGN_BOOKING', 'WEIGHT_BOOKING', 'TOTAL_OVERRIDE', 'ROUND_SPLIT']);
 const KIND_LABEL = Object.freeze({
-  EXCLUDE_BOOKING: 'استبعاد حجز', REASSIGN_BOOKING: 'نقل حجز لسيلز تاني', WEIGHT_BOOKING: 'تعديل عدد الحجوزات اللي الحجز بيتحسب بيها', TOTAL_OVERRIDE: 'تعديل إجمالي مكافأة الموظف',
+  EXCLUDE_BOOKING: 'استبعاد حجز', REASSIGN_BOOKING: 'نقل حجز لسيلز تاني', WEIGHT_BOOKING: 'تعديل عدد الحجوزات اللي الحجز بيتحسب بيها', TOTAL_OVERRIDE: 'تعديل إجمالي مكافأة الموظف', ROUND_SPLIT: 'يوم بداية الروند التاني',
 });
 const MIN_REASON = 3;
 
@@ -24,7 +26,7 @@ const refuse = (message, code = 'BONUS_ADJUSTMENT_INVALID', statusCode = 400) =>
 const shape = row => ({
   id: row.id, year: row.for_year, month: row.for_month, kind: row.kind, kindLabel: KIND_LABEL[row.kind] || row.kind,
   staffId: row.staff_id || null, paymentId: row.payment_id || null, toStaffId: row.to_staff_id || null,
-  weight: row.weight == null ? null : Number(row.weight), amount: row.amount == null ? null : Number(row.amount),
+  weight: row.weight == null ? null : Number(row.weight), splitDay: row.split_day == null ? null : Number(row.split_day), amount: row.amount == null ? null : Number(row.amount),
   reason: row.reason, by: row.created_by_name || null, byId: row.created_by || null, at: row.created_at,
   revokedAt: row.revoked_at || null, revokedBy: row.revoked_by_name || null, revokedReason: row.revoked_reason || null,
 });
@@ -51,9 +53,16 @@ async function addAdjustment(db, { tenantId, year, month, input, actor, context 
     const member = staffById.get(id);
     return Boolean(member && member.bonus_scheme !== 'NONE' && (!scheme || member.bonus_scheme === scheme));
   };
-  const record = { kind, staffId: null, paymentId: null, toStaffId: null, weight: null, amount: null };
+  const record = { kind, staffId: null, paymentId: null, toStaffId: null, weight: null, amount: null, splitDay: null };
 
-  if (kind !== 'TOTAL_OVERRIDE') {
+  if (kind === 'ROUND_SPLIT') {
+    const staffId = String(input.staffId || '');
+    if (!onScheme(staffId, 'SALES_BOOKINGS')) throw refuse('الموظف لازم يكون على نظام «حجوزات (سيلز)»');
+    const day = Number(input.splitDay ?? input.day);
+    if (!Number.isInteger(day) || day < MIN_SPLIT_DAY || day > MAX_SPLIT_DAY) throw refuse(`يوم بداية الروند التاني لازم يكون رقم من ${MIN_SPLIT_DAY} لـ${MAX_SPLIT_DAY}`);
+    record.staffId = staffId;
+    record.splitDay = day;
+  } else if (kind !== 'TOTAL_OVERRIDE') {
     const booking = context.bookings.find(item => item.paymentId === String(input.paymentId || ''));
     if (!booking) throw refuse('الحجز ده مش من حجوزات الشهر ده');
     record.paymentId = booking.paymentId;
@@ -82,16 +91,16 @@ async function addAdjustment(db, { tenantId, year, month, input, actor, context 
   }
 
   // One live change per thing: the older one about the same booking (and rep, for an exclusion) or the same employee's total is taken back.
-  const same = kind === 'EXCLUDE_BOOKING' ? ['payment_id', 'staff_id'] : (kind === 'TOTAL_OVERRIDE' ? ['staff_id'] : ['payment_id']);
+  const same = kind === 'EXCLUDE_BOOKING' ? ['payment_id', 'staff_id'] : (['TOTAL_OVERRIDE', 'ROUND_SPLIT'].includes(kind) ? ['staff_id'] : ['payment_id']);
   await db.query(
     `UPDATE bonus_adjustments SET revoked_at=NOW(3), revoked_by=?, revoked_by_name=?, revoked_reason='استُبدل بتعديل أحدث'
       WHERE tenant_id=? AND for_year=? AND for_month=? AND kind=? AND revoked_at IS NULL AND ${same.map(column => `${column} <=> ?`).join(' AND ')}`,
     [actor?.id || null, actor?.name || null, tenantId, year, month, kind, ...same.map(column => ({ payment_id: record.paymentId, staff_id: record.staffId })[column])]);
   const id = uuidv4();
   await db.query(
-    `INSERT INTO bonus_adjustments (id, tenant_id, for_year, for_month, kind, staff_id, payment_id, to_staff_id, weight, amount, reason, created_by, created_by_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, tenantId, year, month, kind, record.staffId, record.paymentId, record.toStaffId, record.weight, record.amount, reason, actor?.id || null, actor?.name || null]);
+    `INSERT INTO bonus_adjustments (id, tenant_id, for_year, for_month, kind, staff_id, payment_id, to_staff_id, weight, amount, split_day, reason, created_by, created_by_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, tenantId, year, month, kind, record.staffId, record.paymentId, record.toStaffId, record.weight, record.amount, record.splitDay, reason, actor?.id || null, actor?.name || null]);
   return { id, ...record, reason };
 }
 

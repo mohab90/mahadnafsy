@@ -234,3 +234,75 @@ test('a viewer reads and nothing else; an account with neither permission is ref
   assert.equal((await app.call('PUT', '/api/admin/hr/bonus-plan', { session: who.nobody, body: { plan } })).status, 403);
   assert.equal((await app.call('GET', '/api/admin/hr/bonus-plan')).status, 401, 'signed out');
 });
+
+// ───────────── the rep's second round starts on the day the owner's sheet says (ROUND_SPLIT) ─────────────
+
+test('the second round starts on the rep\'s split day: the 13th to the 15th move into round 2 and the bonus follows', { skip }, async () => {
+  const settings = require('../../lib/tenantSettings');
+  const plan = await settings.getTenantSetting('bonus_plan', { tenantId: T });
+  await settings.setTenantSetting('bonus_plan', { ...plan, salesPeriod: 'HALF_MONTH' }, { tenantId: T });
+  await staff('rep-c');
+  // six on the 5th, and six on the 13th, 13th, 14th, 14th, 15th, 15th: twelve (c1, one booking each)
+  const days = [5, 5, 5, 5, 5, 5, 13, 13, 14, 14, 15, 15];
+  for (const [index, day] of days.entries()) { await client(`c${index}`, 'rep-c'); await pay({ client: `c${index}`, course: 'c1', amount: 1000, staff: 'rep-c', day }); }
+  const rep = async () => of(await compute(), 'rep-c');
+  const rounds = employee => employee.ladder.rounds.map(round => [round.label, round.bookings, round.amount]);
+  try {
+    let c = await rep();
+    assert.equal(c.splitDay, 16, 'no split set: the 16th');
+    assert.deepEqual(rounds(c), [['1–15', 12, 1000], ['16–30', 0, 0]]);
+    assert.equal(c.total, 1000);
+
+    const thirteenth = await add({ kind: 'ROUND_SPLIT', staffId: 'rep-c', splitDay: 13, reason: 'من شيت المبيعات' });
+    c = await rep();
+    assert.equal(c.splitDay, 13);
+    assert.deepEqual(rounds(c), [['1–12', 6, 0], ['13–30', 6, 0]], 'the 13th to the 15th are round 2');
+    assert.deepEqual([c.total, c.computedTotal], [0, 0]);
+    assert.deepEqual(c.bookings.filter(b => b.day === '2026-09-13').map(b => b.round), ['13–30', '13–30']);
+
+    await add({ kind: 'ROUND_SPLIT', staffId: 'rep-c', splitDay: 15, reason: 'الفاصل اتنقل' });
+    c = await rep();
+    assert.deepEqual(rounds(c), [['1–14', 10, 1000], ['15–30', 2, 0]], 'a newer split replaces the older one');
+    assert.equal(c.total, 1000);
+    assert.equal((await compute()).adjustments.filter(item => item.kind === 'ROUND_SPLIT').length, 1);
+    assert.equal((await adjustments.listAdjustments(pool, { tenantId: T, year: 2026, month: 9, history: true })).filter(item => item.kind === 'ROUND_SPLIT').length, 2);
+    assert.equal((await compute({ applyAdjustments: false })).employees.find(e => e.staffId === 'rep-c').splitDay, 16, 'the system\'s own figure keeps the 16th');
+    assert.ok(thirteenth.id);
+
+    const refused = async (input, pattern) => assert.rejects(() => add({ kind: 'ROUND_SPLIT', ...input }), error => error.statusCode === 400 && pattern.test(error.message));
+    await refused({ staffId: 'rep-c', splitDay: 29, reason: 'سبب' }, /من 2 لـ28/);
+    await refused({ staffId: 'rep-c', splitDay: 1, reason: 'سبب' }, /من 2 لـ28/);
+    await refused({ staffId: 'rep-c', splitDay: 13.5, reason: 'سبب' }, /من 2 لـ28/);
+    await refused({ staffId: 'rep-c', splitDay: 13, reason: ' ' }, /سبب/);
+    await refused({ staffId: 'plain', splitDay: 13, reason: 'سبب' }, /حجوزات \(سيلز\)/);
+    await refused({ staffId: 'desk-x', splitDay: 13, reason: 'سبب' }, /حجوزات \(سيلز\)/);
+  } finally {
+    await pool.query("DELETE FROM bonus_adjustments WHERE tenant_id=? AND staff_id='rep-c'", [T]);
+    await pool.query("DELETE FROM payments WHERE tenant_id=? AND staff_id='rep-c'", [T]);
+    await pool.query("DELETE FROM subscribers WHERE tenant_id=? AND assigned_sales_id='rep-c'", [T]);
+    await pool.query("DELETE FROM staff WHERE tenant_id=? AND id='rep-c'", [T]);
+    await settings.setTenantSetting('bonus_plan', plan, { tenantId: T });
+  }
+});
+
+test('splits for several reps at once are the financial permission\'s, with a reason, all or none', { skip }, async () => {
+  const body = reason => ({ month: '2026-09', reason, splits: [{ staffId: 'rep-a', day: 13 }, { staffId: 'rep-b', day: 14 }] });
+  const splitRows = async () => (await adjustments.listAdjustments(pool, { tenantId: T, year: 2026, month: 9, history: true })).filter(item => item.kind === 'ROUND_SPLIT').length;
+  const before = await splitRows();
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.hr, body: body('من شيت المبيعات') })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.viewer, body: body('من شيت المبيعات') })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.nobody, body: body('من شيت المبيعات') })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments', { session: who.hr, body: { month: '2026-09', kind: 'ROUND_SPLIT', staffId: 'rep-a', splitDay: 13, reason: 'سبب' } })).status, 403);
+  assert.equal((await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.owner, body: body('') })).status, 400, 'no reason');
+  const bad = await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.owner, body: { ...body('من شيت المبيعات'), splits: [{ staffId: 'rep-a', day: 13 }, { staffId: 'rep-b', day: 40 }] } });
+  assert.equal(bad.status, 400);
+  assert.equal(await splitRows(), before, 'none of a refused batch was written');
+  const owner = await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.owner, body: body('من شيت المبيعات') });
+  assert.equal(owner.status, 200, owner.text);
+  assert.equal(owner.body.adjustments.length, 2);
+  const financial = await app.call('POST', '/api/admin/hr/bonus-adjustments/round-splits', { session: who.financial, body: { ...body('من شيت المبيعات'), splits: [{ staffId: 'rep-a', day: 12 }] } });
+  assert.equal(financial.status, 200, financial.text);
+  const live = (await app.call('GET', '/api/admin/hr/bonus-adjustments?month=2026-09', { session: who.hr })).body.adjustments.filter(item => item.kind === 'ROUND_SPLIT');
+  assert.deepEqual(live.map(item => [item.staffId, item.splitDay, item.reason]).sort(), [['rep-a', 12, 'من شيت المبيعات'], ['rep-b', 14, 'من شيت المبيعات']]);
+  for (const item of live) assert.equal((await app.call('POST', `/api/admin/hr/bonus-adjustments/${item.id}/revoke`, { session: who.owner, body: {} })).status, 200);
+});

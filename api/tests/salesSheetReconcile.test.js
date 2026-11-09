@@ -24,7 +24,8 @@ test('the ladder over rows: per half month when the plan says so, each round on 
   const month = normalizePlan({ ...seeded, salesPeriod: 'MONTH' });
   const items = [...Array(10).fill({ weight: 1, round: 1 }), ...Array(5).fill({ weight: 1, round: 2 })];
   const roundOf = item => item.round;
-  assert.deepEqual(ladderOver(half, items, 10, roundOf).rounds, [{ label: '1–15', bookings: 10, amount: 1000 }, { label: '16–آخر الشهر', bookings: 5, amount: 0 }]);
+  assert.deepEqual(ladderOver(half, items, 10, roundOf).rounds, [{ label: '1–15', bookings: 10, amount: 1000 }, { label: '16–31', bookings: 5, amount: 0 }]);
+  assert.deepEqual(ladderOver(half, items, 10, roundOf, { splitDay: 13, lastDay: 30 }).rounds.map(round => round.label), ['1–12', '13–30'], 'the rounds are named for the split');
   assert.equal(ladderOver(half, items, 10, roundOf).amount, 1000);
   assert.equal(ladderOver(month, items, 10, roundOf).amount, 1500, 'the same fifteen bookings in one month');
   assert.equal(ladderOver(half, items, 15, roundOf).amount, 0, 'a first target of 15 in neither round');

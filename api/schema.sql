@@ -6683,6 +6683,7 @@ CREATE TABLE `bonus_adjustments` (
   `to_staff_id` varchar(36) DEFAULT NULL,
   `weight` decimal(5,2) DEFAULT NULL,
   `amount` decimal(12,2) DEFAULT NULL,
+  `split_day` tinyint(4) DEFAULT NULL,
   `reason` varchar(500) NOT NULL,
   `created_by` varchar(36) DEFAULT NULL,
   `created_by_name` varchar(255) DEFAULT NULL,

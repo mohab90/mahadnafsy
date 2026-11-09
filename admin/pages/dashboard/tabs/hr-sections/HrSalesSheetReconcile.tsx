@@ -46,6 +46,8 @@ export default function HrSalesSheetReconcile({ notify, defaultMonth }: { notify
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<{ report: SalesSheetReport; markdown: string; csv: string } | null>(null);
   const [show, setShow] = useState<SheetCategory | 'MISSING' | null>(null);
+  // «اعتمد تقسيم الشيت»: the reps whose second-round day is being confirmed (one, or all), with the reason the owner can edit.
+  const [approving, setApproving] = useState<{ staffIds: string[]; reason: string } | null>(null);
 
   const run = async () => {
     if (!file) return;
@@ -59,6 +61,17 @@ export default function HrSalesSheetReconcile({ notify, defaultMonth }: { notify
   };
 
   const report = answer?.report;
+  const splittable = (report?.perRep ?? []).filter(rep => rep.staff?.scheme === 'SALES_BOOKINGS' && rep.suggestedSplit.day != null);
+  const approve = async () => {
+    if (!report || !approving) return;
+    const splits = splittable.filter(rep => approving.staffIds.includes(rep.staff!.id)).map(rep => ({ staffId: rep.staff!.id, day: rep.suggestedSplit.day as number }));
+    setBusy(true);
+    try {
+      await mysqlAdmin.saveRoundSplits({ month: report.month, reason: approving.reason.trim(), splits });
+      notify('success', `اتسجّل تقسيم ${splits.length} سيلز: الروند التاني من اليوم اللي في الشيت. احسب الشهر تاني من «حساب مكافآت الشهر».`);
+      setApproving(null);
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذّر تسجيل التقسيم'); } finally { setBusy(false); }
+  };
   const shownRows = report && show && show !== 'MISSING' ? report.rows.filter(row => row.category === show) : [];
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -111,6 +124,14 @@ export default function HrSalesSheetReconcile({ notify, defaultMonth }: { notify
                       <td className="p-2 font-bold">{rep.system ? <>{n(rep.system.amount)} <span className="text-[11px] font-normal text-gray-400">({n(rep.system.bookings)} حجز)</span></> : '—'}</td>
                       <td className={`p-2 font-extrabold ${rep.difference ? 'text-rose-600' : 'text-emerald-700'}`}>{rep.difference == null ? '—' : n(rep.difference)}</td>
                     </tr>
+                    <tr><td colSpan={11} className="px-3 py-1.5 text-[11px] text-gray-700">
+                      {rep.suggestedSplit.day != null ? <>تقسيم الشيت المقترح: الروند التاني من يوم <b>{rep.suggestedSplit.day}</b></> : <>تقسيم الشيت: {rep.suggestedSplit.note}</>}
+                      {rep.suggestedSplit.day != null && rep.suggestedSplit.note && <span className="mr-2 font-bold text-amber-700">⚠ {rep.suggestedSplit.note}</span>}
+                      {rep.suggestedSplit.day != null && rep.staff?.scheme === 'SALES_BOOKINGS' && (
+                        <button type="button" disabled={busy} onClick={() => setApproving({ staffIds: [rep.staff!.id], reason: 'من شيت المبيعات' })} className="mr-3 rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700 disabled:opacity-40">اعتمد تقسيم الشيت</button>
+                      )}
+                      {rep.suggestedSplit.day != null && rep.staff && rep.staff.scheme !== 'SALES_BOOKINGS' && <span className="mr-3 text-gray-400">(الموظف مش على نظام «حجوزات (سيلز)»)</span>}
+                    </td></tr>
                     {rep.reasons.length > 0 && (
                       <tr><td colSpan={11} className="bg-gray-50 px-3 py-1.5 text-[11px] text-gray-600">
                         سبب الفرق: {rep.reasons.map(reason => `${reason.label}: ${reason.rows} صف${reason.weight ? ` (${reason.weight > 0 ? '+' : ''}${n(reason.weight)} حجز)` : ''}`).join(' · ')}
@@ -124,6 +145,22 @@ export default function HrSalesSheetReconcile({ notify, defaultMonth }: { notify
               <p className="mt-2 text-xs text-rose-700">تابات ما اتطابقتش مع موظف: {report.tabs.filter(tab => !tab.staff).map(tab => `${tab.tab}${tab.ambiguous.length ? ` (بيطابق: ${tab.ambiguous.join('، ')})` : ''}`).join('، ')}</p>
             )}
           </div>
+
+          {splittable.length > 1 && !approving && (
+            <button type="button" disabled={busy} onClick={() => setApproving({ staffIds: splittable.map(rep => rep.staff!.id), reason: 'من شيت المبيعات' })} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 disabled:opacity-40">اعتمد تقسيم الشيت للكل ({splittable.length})</button>
+          )}
+          {approving && (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+              <div className="font-extrabold text-amber-900">
+                تسجيل بداية الروند التاني: {splittable.filter(rep => approving.staffIds.includes(rep.staff!.id)).map(rep => `${rep.staff!.name} يوم ${rep.suggestedSplit.day}`).join('، ')}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={approving.reason} onChange={e => setApproving({ ...approving, reason: e.target.value })} placeholder="السبب (مطلوب)" maxLength={500} className="min-w-[14rem] flex-1 rounded-lg border border-gray-200 px-2 py-1" />
+                <button type="button" onClick={approve} disabled={busy || approving.reason.trim().length < 3} className="rounded-lg bg-amber-600 px-3 py-1 font-bold text-white disabled:opacity-40">تأكيد</button>
+                <button type="button" onClick={() => setApproving(null)} className="rounded-lg border border-gray-200 bg-white px-3 py-1 font-bold">رجوع</button>
+              </div>
+            </div>
+          )}
 
           {show && show !== 'MISSING' && (
             <div className="max-h-96 overflow-auto rounded-xl border border-gray-100">
