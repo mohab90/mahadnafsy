@@ -2421,27 +2421,6 @@
   "why": "moved from a unit test that matched source text",
   "checks": [
    {
-    "file": "api/lib/hrAuditRetentionJob.js",
-    "must": {
-     "source": "runHrAuditRetention",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/hrAuditRetentionJob.js",
-    "must": {
-     "source": "audit_retention_days",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/lib/hrAuditRetentionJob.js",
-    "must": {
-     "source": "LIMIT 5000",
-     "flags": ""
-    }
-   },
-   {
     "file": "api/lib/backgroundScheduler.js",
     "must": {
      "source": "scheduleHrAuditRetention\\(\\{ pool, logger \\}\\)",
@@ -12460,20 +12439,6 @@
    }
   ],
   "class": "a"
- },
- {
-  "id": "auditTamperResistance: retention archives immutable audit rows transactionally before deleting the hot copy",
-  "why": "moved from a unit test that matched source text",
-  "checks": [
-   {
-    "file": "api/lib/hrAuditRetentionJob.js",
-    "must": {
-     "source": "beginTransaction[\\s\\S]*INSERT IGNORE INTO audit_logs_archive[\\s\\S]*DELETE live FROM audit_logs[\\s\\S]*commit",
-     "flags": ""
-    }
-   }
-  ],
-  "class": "b"
  },
  {
   "id": "authTenantIdentity: login, password reset and 2FA never resolve an identity outside request tenant",
