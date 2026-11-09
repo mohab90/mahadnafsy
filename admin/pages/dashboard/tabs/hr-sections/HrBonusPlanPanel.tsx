@@ -3,12 +3,14 @@ import { Award, Calculator, Loader2, Save } from 'lucide-react';
 import { mysqlAdmin, type BonusAdjustmentKind, type BonusPlan, type MonthlyBonuses } from '../../../../lib/mysqlapi';
 import HrSalesSheetReconcile from './HrSalesSheetReconcile';
 import HrCollectionSheetReconcile from './HrCollectionSheetReconcile';
+import HrLateBookings from './HrLateBookings';
+import { forgetBonusPlan } from './BonusSchemeFields';
 import { cairoDateTime, cairoMonthOnly } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Item = { kind: 'course' | 'track'; id: string; title: string; priceEgp: number; weight: number };
 /** A change to the month being written: what it is about, and the reason (required). */
-type Draft = { kind: BonusAdjustmentKind; label: string; staffId?: string; paymentId?: string; toStaffId: string; weight: string; amount: string; splitDay: string; reason: string };
+type Draft = { kind: BonusAdjustmentKind; label: string; staffId?: string; paymentId?: string; round?: number; toStaffId: string; weight: string; amount: string; splitDay: string; reason: string };
 
 const n = (value: number | null | undefined) => (value == null ? '—' : Number(value).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 }));
 const input = 'w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm';
@@ -48,6 +50,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
     setSavingPlan(true);
     try {
       await mysqlAdmin.saveBonusPlan(plan);
+      forgetBonusPlan();
       notify('success', 'اتحفظ نظام المكافآت');
       await load();
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذّر الحفظ'); } finally { setSavingPlan(false); }
@@ -68,7 +71,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
   };
 
   // The owner's changes to the month (manage_financial): written with a reason, the month worked out again with them, taken back the same way.
-  const startDraft = (kind: BonusAdjustmentKind, label: string, ids: { staffId?: string; paymentId?: string }, preset: Partial<Draft> = {}) =>
+  const startDraft = (kind: BonusAdjustmentKind, label: string, ids: { staffId?: string; paymentId?: string; round?: number }, preset: Partial<Draft> = {}) =>
     setDraft({ kind, label, ...ids, toStaffId: '', weight: '', amount: '', splitDay: '', reason: '', ...preset });
   const submitDraft = async () => {
     if (!draft) return;
@@ -76,10 +79,10 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
     setWorking(true);
     try {
       await mysqlAdmin.addBonusAdjustment({
-        month, kind: draft.kind, reason: draft.reason.trim(), staffId: draft.staffId, paymentId: draft.paymentId,
+        month, kind: draft.kind, reason: draft.reason.trim(), staffId: draft.staffId, paymentId: draft.paymentId, round: draft.kind === 'ROUND_OVERRIDE' ? draft.round : undefined,
         toStaffId: draft.kind === 'REASSIGN_BOOKING' ? draft.toStaffId : undefined,
         splitDay: draft.kind === 'ROUND_SPLIT' ? Number(draft.splitDay) : undefined,
-        weight: draft.kind === 'WEIGHT_BOOKING' ? Number(draft.weight) : undefined, amount: draft.kind === 'TOTAL_OVERRIDE' ? Number(draft.amount) : undefined,
+        weight: draft.kind === 'WEIGHT_BOOKING' ? Number(draft.weight) : undefined, amount: draft.kind === 'TOTAL_OVERRIDE' || draft.kind === 'ROUND_OVERRIDE' ? Number(draft.amount) : undefined,
       });
       setDraft(null);
       notify('success', 'اتسجّل التعديل واتحسب الشهر من جديد');
@@ -123,7 +126,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
         {result && (
           <div className="mt-4 overflow-x-auto">
             {result.employees.length === 0 ? (
-              <p className="text-sm text-gray-500">مفيش موظف متحدد له نظام مكافأة. حدده من ملف الموظف ← «الراتب والعمولة» ← «المكافأة الشهرية».</p>
+              <p className="text-sm text-gray-500">مفيش موظف متحدد له نظام مكافأة. حدده من «بيانات الموظفين» (نظام المكافأة وأول خطوة) أو من ملف الموظف.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500">
@@ -158,12 +161,23 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                       </tr>
                       {open === item.staffId && item.bookings.length > 0 && (
                         <tr><td colSpan={4} className="bg-gray-50 p-2">
+                          {canEditPlan && item.ladder?.rounds && item.ladder.rounds.length > 1 && (
+                            <p className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                              {item.ladder.rounds.map(round => (
+                                <span key={round.round} className="rounded-lg bg-white px-2 py-1 ring-1 ring-gray-200">
+                                  الروند {round.label}: {n(round.bookings)} حجز ← <b>{n(round.amount)}</b>
+                                  {round.override && <span className="mr-1 text-gray-400 line-through" title="المحسوب من السيستم">{n(round.computedAmount)}</span>}
+                                  <button type="button" className="mr-2 font-bold text-indigo-600" onClick={() => startDraft('ROUND_OVERRIDE', `مكافأة ${item.name} في الروند ${round.label} (المحسوب ${n(round.computedAmount)})`, { staffId: item.staffId, round: round.round }, { amount: String(round.amount) })}>عدّل</button>
+                                </span>
+                              ))}
+                            </p>
+                          )}
                           <table className="w-full text-xs">
                             <thead className="text-gray-500"><tr><th className="p-1 text-right">اليوم</th>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <th className="p-1 text-right">الروند</th>}<th className="p-1 text-right">العميل</th><th className="p-1 text-right">الكورس / المسار</th><th className="p-1 text-right">السعر</th><th className="p-1 text-right">بالمصري</th><th className="p-1 text-right">{item.scheme === 'SALES_BOOKINGS' ? 'يتحسب حجز' : 'مكافأة الكورس'}</th>{canEditPlan && <th className="p-1 text-right">تعديل</th>}</tr></thead>
                             <tbody>
                               {item.bookings.map(booking => (
                                 <tr key={booking.paymentId} className="border-t border-gray-100">
-                                  <td className="p-1" dir="ltr">{booking.day}</td>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <td className="p-1">{booking.round}</td>}<td className="p-1">{booking.client} {booking.clientCode && <span className="text-gray-400">({booking.clientCode})</span>}</td>
+                                  <td className="p-1" dir="ltr">{booking.day}{booking.movedIn && <span className="mr-1 rounded bg-sky-50 px-1 text-[10px] font-bold text-sky-700" title="الدفعة نفسها ما اتغيرتش">اتدفع {booking.movedIn.paidDay}</span>}</td>{item.ladder?.rounds && item.ladder.rounds.length > 1 && <td className="p-1">{booking.round}</td>}<td className="p-1">{booking.client} {booking.clientCode && <span className="text-gray-400">({booking.clientCode})</span>}</td>
                                   <td className="p-1">{booking.title}</td><td className="p-1">{n(booking.price)} {booking.currency}</td><td className="p-1">{n(booking.priceEgp)}</td>
                                   <td className="p-1 font-bold">
                                     {item.scheme === 'SALES_BOOKINGS' ? n(booking.weight) : n(booking.deskBonus)}
@@ -191,6 +205,9 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                 </tbody>
               </table>
             )}
+            {result.movedOut && result.movedOut.length > 0 && (
+              <p className="mt-2 text-[11px] text-sky-800">اتدفعت في الشهر ده واتحسبت في شهر تاني للسيلز: {result.movedOut.map(b => `${b.client} (${b.title}) ← ${b.staffName || '—'} في ${b.countedElsewhere?.month}`).join('، ')}</p>
+            )}
             <p className="mt-2 text-[11px] text-gray-500">
               الحجز = أول دفعة مدفوعة للعميل في الكورس أو المسار في الشهر، بسعر العميل المتفق عليه محوّل للمصري بسعر الصرف وقت الدفعة. التحصيل = فلوس الكورسات والمسارات اللي سجّلها الموظف (مش الشهادات).
               «سجّلها» بتعمل مكافأة واحدة لكل موظف مستنية الاعتماد؛ لو اتحسبت تاني قبل الاعتماد بتتبدّل، والمعتمدة ما بتتغيرش.
@@ -207,6 +224,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                   )}
                   {draft.kind === 'WEIGHT_BOOKING' && <label>يتحسب <input type="number" min="0" max="20" step="0.5" dir="ltr" value={draft.weight} onChange={e => setDraft({ ...draft, weight: e.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1" /> حجز</label>}
                   {draft.kind === 'ROUND_SPLIT' && <label>الروند التاني يبدأ يوم <input type="number" min="2" max="28" step="1" dir="ltr" value={draft.splitDay} onChange={e => setDraft({ ...draft, splitDay: e.target.value })} className="w-16 rounded-lg border border-gray-200 px-2 py-1" /></label>}
+                  {draft.kind === 'ROUND_OVERRIDE' && <label>مكافأة الروند <input type="number" min="0" dir="ltr" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} className="w-28 rounded-lg border border-gray-200 px-2 py-1" /> ج.م</label>}
                   {draft.kind === 'TOTAL_OVERRIDE' && <label>الإجمالي <input type="number" min="0" dir="ltr" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} className="w-28 rounded-lg border border-gray-200 px-2 py-1" /> ج.م</label>}
                   <input value={draft.reason} onChange={e => setDraft({ ...draft, reason: e.target.value })} placeholder="السبب (مطلوب)" maxLength={500} className="min-w-[14rem] flex-1 rounded-lg border border-gray-200 px-2 py-1" />
                   <button type="button" onClick={submitDraft} disabled={working || draft.reason.trim().length < 3} className="rounded-lg bg-amber-600 px-3 py-1 font-bold text-white disabled:opacity-40">نفّذ</button>
@@ -214,6 +232,7 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                 </div>
               </div>
             )}
+            {canEditPlan && <HrLateBookings month={month} notify={notify} onChanged={() => void work()} />}
             {result.adjustments.length > 0 && (
               <div className="mt-4">
                 <h4 className="mb-1 text-xs font-extrabold text-gray-800">تعديلات الشهر (المحسوب من السيستم {n(result.computedTotal)} ← بعد التعديل {n(result.total)})</h4>
@@ -226,6 +245,8 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
                         {adjustment.kind === 'EXCLUDE_BOOKING' && `${adjustment.client} (${adjustment.item}) من ${adjustment.staffName}`}
                         {adjustment.kind === 'REASSIGN_BOOKING' && `${adjustment.client} (${adjustment.item}): من ${adjustment.staffName || '—'} إلى ${adjustment.toStaffName}`}
                         {adjustment.kind === 'ROUND_SPLIT' && (adjustment.staffName ? `استثناء ${adjustment.staffName}: الروند التاني من يوم ${adjustment.splitDay}` : `كل السيلز: الروند التاني من يوم ${adjustment.splitDay}`)}
+                        {adjustment.kind === 'ROUND_OVERRIDE' && `${adjustment.staffName}: مكافأة الروند ${adjustment.round === 1 ? 'الأول' : 'التاني'} ${n(adjustment.amount)} ج.م`}
+                        {adjustment.kind === 'COUNT_IN_MONTH' && `${adjustment.client} (${adjustment.item}) اتحسب في الشهر ده لـ${adjustment.staffName}`}
                         {adjustment.kind === 'WEIGHT_BOOKING' && `${adjustment.client} (${adjustment.item}): ${n(adjustment.weight)} حجز`}
                       </span>
                       <span className="text-gray-600">— {adjustment.reason}</span>

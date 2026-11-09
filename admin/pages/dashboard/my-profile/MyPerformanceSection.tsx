@@ -5,6 +5,7 @@ import { cairoMonthProgress, CAIRO_TIME_ZONE } from '../../../../shared/cairoDat
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useStaffHomeSummary } from '../useStaffHomeSummary';
 import MyWorkRecordPanel from '../staff-settings/MyWorkRecordPanel';
+import StaffRoundProgress, { useRoundProgress } from '../../staff-profile/StaffRoundProgress';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
@@ -120,8 +121,11 @@ export function MyPerformanceSection({ staff, notify }: {
   staff: StaffMember; notify: Notify;
 }) {
   const role = String(staff.role || '').toLowerCase();
+  // A rep on the half-month rounds sees the current round first: its dates, the bookings so far, the next step and what is left to reach it.
+  const roundProgress = useRoundProgress(staff.id);
   return (
     <div className="space-y-5">
+      {roundProgress && <StaffRoundProgress progress={roundProgress} />}
       {role === 'collection'
         ? <CollectionFigures staff={staff} />
         : <ConversionTarget staff={staff} />}
