@@ -38,16 +38,22 @@ function actor(req) {
   };
 }
 
+// Whose rows the team report may show this caller, by DATA SCOPE (lib/leadAccess.js), not by role name: whoever sees only their own leads
+// — a rep, a collection officer, a custom role on «assigned» scope — sees only their own row. It was `role === 'sales'`, so every other
+// role with that scope read the whole team's figures. A scope of nothing sees no rows (an id that matches no rep).
+function ownRepOnly(req) {
+  const { scope, none } = leadScope(req, 'l');
+  if (none) return String(req.staffRecord?.id || '__none__');
+  return scope === 'assigned_sales' || scope === 'assigned_cs' ? String(req.staffRecord.id) : null;
+}
+
 // GET /api/admin/crm/team-report?from=YYYY-MM-DD&to=YYYY-MM-DD — «أداء الفريق»'s
-// daily report, per rep, over Cairo days (lib/teamDailyReport.js). A rep sees
-// their own row only.
+// daily report, per rep, over Cairo days (lib/teamDailyReport.js). Someone
+// whose data scope is their own leads sees their own row only.
 router.get('/api/admin/crm/team-report', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const range = reportRange(req.query);
-    const isSales = String(req.staffRecord?.role || '').toLowerCase() === 'sales';
-    res.json(await buildTeamDailyReport({
-      tenantId: req.tenantId, ...range, onlyRepId: isSales ? req.staffRecord.id : null,
-    }));
+    res.json(await buildTeamDailyReport({ tenantId: req.tenantId, ...range, onlyRepId: ownRepOnly(req) }));
   } catch (e) {
     routeError(res, e, 'crm team report failed');
   }
@@ -71,8 +77,7 @@ router.get('/api/admin/crm/my-pulse', requireAuth, requireAdminOrStaff, requireP
 router.get('/api/admin/crm/team-report/received', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const range = reportRange(req.query);
-    const isSales = String(req.staffRecord?.role || '').toLowerCase() === 'sales';
-    const repId = isSales ? req.staffRecord.id : String(req.query.rep || '');
+    const repId = ownRepOnly(req) || String(req.query.rep || '');
     if (!repId) return res.status(400).json({ error: 'rep is required' });
     res.json({ ...range, rows: await listReceivedLeads({ tenantId: req.tenantId, repId, ...range }) });
   } catch (e) {
@@ -221,7 +226,11 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
     const type = sanitize(String(req.body?.type || 'note').trim().toLowerCase(), 80) || 'note';
     const notes = sanitize(String(req.body?.notes || req.body?.description || '').trim(), 2000);
     const outcome = sanitize(String(req.body?.outcome || '').trim(), 200);
-    const date = req.body?.date || null;
+    // An entry with no date of its own is stamped now. The entry's id is derived from lead, date, type and
+    // text when none is given (lib/leadInteractions.js), so «تم» — the same note, no date — got one id for the
+    // lead's whole life: the second time it was pressed the INSERT IGNORE found its own earlier row, nothing
+    // was written, the follow-up stayed open, and the answer was still «ok».
+    const date = req.body?.date || new Date().toISOString();
     const nextFollowUp = req.body?.nextFollowUp || null;
     const closeFollowUp = req.body?.closeFollowUp === true;
     if (!notes) return res.status(400).json({ error: 'notes required' });
@@ -251,12 +260,6 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
         actor: actor(req),
         db: conn,
       });
-    }
-    if (requestedStatus === 'not_interested_hidden') {
-      await conn.query(
-        'UPDATE leads SET hidden=1,updated_at=NOW() WHERE tenant_id=? AND id=?',
-        [loaded.tenantId, loaded.lead.id]
-      );
     }
     await conn.commit();
     res.json({ ok: true, id: result.id, leadId: loaded.lead.id, status: requestedStatus || loaded.lead.status });

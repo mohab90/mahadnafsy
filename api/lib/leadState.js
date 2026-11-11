@@ -3,8 +3,10 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { findLeadById } = require('./leadRepository');
-const { LEAD_STATUSES, normalizeLeadStatus } = require('./leadStatuses');
+const { LEAD_STATUSES, CONVERTED_LEAD_STATUSES, normalizeLeadStatus } = require('./leadStatuses');
 const { validateTransition } = require('./leadPipeline');
+
+const HIDING_STATUS = 'not_interested_hidden';
 
 async function transitionLead({
   tenantId,
@@ -52,6 +54,9 @@ async function transitionLead({
     }
     const fromStatus = String(lead.status || '').toLowerCase();
     if (fromStatus === status) {
+      // «مش مهتم ومخفي» means hidden, whoever asks: a lead already at that status but showing (a form brought it back, someone unhid
+      // it) is hidden again by the same request.
+      if (status === HIDING_STATUS) await conn.query('UPDATE leads SET hidden=1 WHERE id=? AND tenant_id=? AND hidden=0', [leadId, tenantId]);
       if (ownsConnection) await conn.commit();
       return { changed: false, fromStatus, toStatus: status };
     }
@@ -78,7 +83,9 @@ async function transitionLead({
     // because they are not always the same: the payment-proof path converts on
     // proof.lead_id while the subscriber it activates may have been linked by
     // identity rather than by that column.
-    if (status === 'converted') {
+    // 'won' is a sale as well (CONVERTED_LEAD_STATUSES — every report counts it with 'converted'), so it needs the
+    // same customer behind it: PUT /crm/leads/:id/status took it from anyone with no check at all.
+    if (CONVERTED_LEAD_STATUSES.has(status)) {
       const claimed = metadata?.subscriberId ? String(metadata.subscriberId) : null;
       const [[customer]] = await conn.query(
         `SELECT id FROM subscribers
@@ -93,8 +100,10 @@ async function transitionLead({
     }
 
     await conn.query(
-      'UPDATE leads SET status=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
-      [status, leadId, tenantId]
+      // The status that says «hidden» hides the lead here, in the one function every writer goes through — the rule used to live in a
+      // single route, so the same status set from the bulk edit, the lead's own save or a sheet import left the lead on the list.
+      'UPDATE leads SET status=?, hidden=IF(?, 1, hidden), updated_at=NOW() WHERE id=? AND tenant_id=?',
+      [status, status === HIDING_STATUS ? 1 : 0, leadId, tenantId]
     );
     await conn.query(
       `INSERT INTO lead_timeline (id,tenant_id,lead_id,event_type,description,meta_json,at)

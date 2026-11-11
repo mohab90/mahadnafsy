@@ -67,7 +67,6 @@ test('a rep asking sees their own row and no one else\'s money', async () => {
   assert.deepEqual(report.reps.map(rep => rep.id), ['s2']);
   assert.equal(report.unattributed, null);
   assert.equal(report.team.moneyEgp, 0);
-  assert.match(read('api/routes/crm-advanced.js'), /onlyRepId: isSales \? req\.staffRecord\.id : null/);
 });
 
 test('«أداء المبيعات» opens on the report; the quality review is a button', () => {

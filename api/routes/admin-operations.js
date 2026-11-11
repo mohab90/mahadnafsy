@@ -24,6 +24,7 @@ const { loadExpenseCategories, expenseCategory, expenseCategoryLabel } = require
 const { canonicalChannel } = require('../lib/paymentChannels');
 const { applyAlias } = require('../lib/boxAliases');
 const { loadBoxCatalog } = require('../lib/boxCatalog');
+const { cleanIdempotencyKey, isDuplicateKey } = require('../lib/idempotency');
 const { advanceToInterview, convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
 const { requireRecruiting, joinUsReachSql, joinUsInReach, outOfRecruitReach } = require('../lib/branchHr');
@@ -199,6 +200,18 @@ router.get('/api/admin/expense-categories', requireAuth, requireAdminOrStaff, re
   } catch (e) { routeError(res, e); }
 });
 
+// What the first request answered, rebuilt from the row it wrote — for the repeat of a request that carried the same idempotency key (migration 386).
+async function savedExpenseAnswer(db, tenantId, key) {
+  const [[row]] = await db.query(
+    'SELECT id, branch_id, category, expense_no, created_by_name FROM expenses WHERE tenant_id=? AND idempotency_key=? LIMIT 1', [tenantId, key]);
+  if (!row) return null;
+  return {
+    ok: true, id: row.id, expenseNo: row.expense_no != null ? Number(row.expense_no) : null, receiptBranch: expenseSeriesOf(row.branch_id),
+    category: expenseCategoryLabel(row.category, await loadExpenseCategories(tenantId)), branchType: branchForId(row.branch_id),
+    staffName: row.created_by_name || null, repeated: true,
+  };
+}
+
 router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
@@ -206,6 +219,12 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     const e2 = req.body;
     const id = uuidv4();
     const tenantId = scopedTenantId(req);
+    // The same form pressed twice carries one key: the second press is answered with the first expense and writes nothing (two expenses typed apart carry two keys).
+    const idempotencyKey = cleanIdempotencyKey(e2.idempotencyKey ?? e2.idempotency_key);
+    if (idempotencyKey) {
+      const earlier = await savedExpenseAnswer(pool, tenantId, idempotencyKey);
+      if (earlier) return res.json(earlier);
+    }
     const scope = resolveFinancialScope(req, { requestedBranch: e2.branchType || e2.branch || null });
     const branchCode = scope.branch || defaultDigitalBranch(e2.branchType || e2.branch);
     const branchId = scope.branchId || branchIdForBranch(branchCode);
@@ -229,11 +248,11 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     // (confirmed: expenses table was empty in prod). Accept either field name.
     await conn.query(
       `INSERT INTO expenses
-         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, expense_no, box_method, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, expense_no, box_method, idempotency_key, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [id, tenantId, branchId, expDate, String(e2.description || '').trim().slice(0, 2000),
        amount, currency, category, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null, e2.note ?? e2.notes ?? null,
-       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150), expenseNo, boxMethod]
+       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150), expenseNo, boxMethod, idempotencyKey]
     );
     const journalId = await postExpenseJournal(
       { id, tenant_id: tenantId, branch_id: branchId, date: expDate, description: e2.description, amount, currency, category },
@@ -245,6 +264,17 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     res.json({ ok: true, id, expenseNo, receiptBranch: expenseSeriesOf(branchId), category: expenseCategoryLabel(category, await loadExpenseCategories(tenantId)), branchType: branchForId(branchId), staffName: looksLikeAddress(actorName) ? 'المدير' : actorName });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
+    // Two presses at the same instant: the unique key let one in; the other gets that one's answer (its expense number was rolled back with it).
+    // The loser is not always told «duplicate»: when both reach the insert together the database may end the wait as a deadlock or a lock timeout instead,
+    // and that came back as a 500 for a press whose twin had saved. Either way the twin's row is the answer; it may still be committing, so look a few times.
+    const key = cleanIdempotencyKey(req.body?.idempotencyKey ?? req.body?.idempotency_key);
+    if (key && (isDuplicateKey(e) || ['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'].includes(e?.code))) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const earlier = await savedExpenseAnswer(pool, scopedTenantId(req), key).catch(() => null);
+        if (earlier) return res.json(earlier);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
     if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
     routeError(res, e);
   } finally { conn.release(); }

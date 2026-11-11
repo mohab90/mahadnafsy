@@ -20,7 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { readXlsx } = require('../lib/xlsxRead');
-const { computePayrollLine } = require('../lib/payrollCalc');
+const { computePayrollLine, UNEXCUSED_ABSENCE_DAYS } = require('../lib/payrollCalc');
 
 const HEADINGS = {
   salary: 'الراتب الاساسى', hours: 'عدد ساعات العمل', forgot: 'نسيان بصمة', late: 'تاخير بصمة', permission: 'خصم اذن وتاخير',
@@ -63,6 +63,7 @@ function compareTab(tab) {
         baseSalary: salary, workdayMinutes: hours * 60,
         attendance: {
           absent_days: number(row, 'absentExcused') + number(row, 'absentTwice'), unexcused_absent_days: number(row, 'absentTwice'),
+          absent_charged_days: number(row, 'absentExcused') + number(row, 'absentTwice') * UNEXCUSED_ABSENCE_DAYS,
           late_minutes: Math.round(lateHours * 60),
         },
         advanceDeduction: number(row, 'advance'), deduction: columns.deductions.reduce((sum, index) => sum + (Number(row[index]) || 0), 0) + number(row, 'penalties'),

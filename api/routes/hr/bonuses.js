@@ -1,4 +1,5 @@
 'use strict';
+const { isSelfMutation } = require('../../lib/hrSelfMutation');
 /**
  * «نظام المكافآت» (8 Nov 2026): the plan's rules (lib/bonusPlan.js, kept in tenant_settings 'bonus_plan'), what each course counts as for the reps, and a
  * month's bonuses worked out from the payments (lib/monthlyBonuses.js) — shown, and when HR says so written as bonuses awaiting approval.
@@ -11,6 +12,7 @@ const { pool } = require('../../lib/db');
 const { requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOrSelf } = require('../../middleware/auth');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { normalizePlan, bookingWeight } = require('../../lib/bonusPlan');
+const { normalizeCommissionSettings } = require('../../lib/payrollCommission');
 const { computeMonthlyBonuses, saveMonthlyBonuses, adjustmentContext } = require('../../lib/monthlyBonuses');
 const { listAdjustments, listCountedElsewhere, addAdjustment, revokeAdjustment } = require('../../lib/bonusAdjustments');
 const { readSalesSheet } = require('../../lib/salesSheet');
@@ -64,6 +66,34 @@ router.put('/api/admin/hr/bonus-plan', ...managePay, async (req, res) => {
   } catch (error) {
     if (error.statusCode === 400) return res.status(400).json({ error: error.message, code: error.code });
     logger.error('[bonus-plan/put]', error.message);
+    hrError(res, error);
+  }
+});
+
+// GET /api/admin/hr/payroll-commission — whether payroll adds a sales commission of its own, and by which rule for the team, a department or an employee
+// (lib/payrollCommission.js; off unless switched on), with the departments and employees a rule can be set for.
+router.get('/api/admin/hr/payroll-commission', ...view, async (req, res) => {
+  try {
+    const settings = normalizeCommissionSettings(await getTenantSetting('payroll_commission', { tenantId: req.tenantId, fallback: {} }));
+    const [departments] = await pool.query('SELECT id, name FROM hr_departments WHERE tenant_id=? ORDER BY name', [req.tenantId]);
+    const [staff] = await pool.query('SELECT id, name, department_id FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL ORDER BY name', [req.tenantId]);
+    res.json({ settings, departments, staff });
+  } catch (error) {
+    logger.error('[payroll-commission/get]', error.message);
+    hrError(res, error);
+  }
+});
+
+// PUT /api/admin/hr/payroll-commission — the whole settings, checked (a 400 says what is wrong). It changes what the next payroll calculation pays.
+router.put('/api/admin/hr/payroll-commission', ...managePay, async (req, res) => {
+  try {
+    const settings = normalizeCommissionSettings(req.body?.settings || req.body);
+    await setTenantSetting('payroll_commission', settings, { tenantId: req.tenantId, actorId: req.staffRecord?.id || null });
+    await writeAuditEvent({ action: 'hr.payroll_commission_saved', entityType: 'tenant_settings', entityId: 'payroll_commission', severity: 'warning', metadata: settings, req }).catch(() => {});
+    res.json({ ok: true, settings });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
+    logger.error('[payroll-commission/put]', error.message);
     hrError(res, error);
   }
 });
@@ -160,6 +190,10 @@ router.post('/api/admin/hr/bonus-adjustments', ...managePay, async (req, res) =>
   const conn = await pool.getConnection();
   try {
     const { year, month } = monthOf(req.body?.month);
+    // A change to a month's bonuses is not made on one's own (or in one's own favour: a booking moved to oneself).
+    if ([req.body?.staffId, req.body?.toStaffId].some(id => isSelfMutation(req, id))) {
+      return res.status(409).json({ error: 'لا يجوز تعديل مكافآتك بنفسك', code: 'HR_SELF_MUTATION' });
+    }
     await conn.beginTransaction();
     const context = await adjustmentContext(conn, { tenantId: req.tenantId, year, month });
     const made = await addAdjustment(conn, { tenantId: req.tenantId, year, month, input: req.body || {}, actor: actorOf(req), context });

@@ -274,7 +274,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
         'SELECT id, branch_id, assigned_sales_id, assigned_cs_id FROM subscribers WHERE tenant_id=? AND id=? LIMIT 1',
         [req.tenantId, order.subscriber_id]
       )
-      : [null];
+      : [[null]];
     const scope = resolveFinancialScope(req, { allowAssigned: true });
     if (!financialRecordMatches(scope, subscriber || order)) {
       await conn.rollback();
@@ -335,7 +335,8 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
     res.json({ ok: true, paymentId });
   } catch (e) {
     await conn.rollback().catch(() => {});
-    const refused = Number(e.statusCode);
+    // statusCode from the refusals of the order path, status from a closed accounting period (lib/periodLock.js).
+    const refused = Number(e.statusCode || e.status);
     if (refused >= 400 && refused < 500) return res.status(refused).json({ error: e.message });
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -384,13 +385,26 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdminOrStaff, requireP
       await conn.rollback();
       return res.status(409).json({ error: 'Financial order status must change through payment or refund workflow' });
     }
+    // The reconciliation link is checked BEFORE anything is written: it must be a transfer of this tenant that
+    // confirms no payment and no other order yet (the body used to be written as it came, so a made-up or
+    // foreign id was stored and the unique key answered a clash with a 500).
+    const hasLink = Object.prototype.hasOwnProperty.call(req.body, 'linked_transfer_id');
+    const linkId = hasLink && req.body.linked_transfer_id ? String(req.body.linked_transfer_id).slice(0, 36) : null;
+    if (linkId) {
+      const [[transfer]] = await conn.query(
+        'SELECT id, payment_id FROM incoming_transfers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [linkId, req.tenantId]);
+      if (!transfer) { await conn.rollback(); return res.status(404).json({ error: 'التحويل مش موجود' }); }
+      const [[taken]] = await conn.query(
+        'SELECT id FROM orders WHERE linked_transfer_id=? AND tenant_id=? AND id<>? LIMIT 1', [linkId, req.tenantId, req.params.id]);
+      if (transfer.payment_id || taken) { await conn.rollback(); return res.status(409).json({ error: 'التحويل ده متربط بدفعة تانية بالفعل' }); }
+    }
     await conn.query(
       'UPDATE orders SET status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL',
       [newStatus, req.params.id, req.tenantId]
     );
     // Record the transfer↔payment reconciliation link when the accountant matches them.
-    if (Object.prototype.hasOwnProperty.call(req.body, 'linked_transfer_id')) {
-      await conn.query('UPDATE orders SET linked_transfer_id=? WHERE id=? AND tenant_id=?', [req.body.linked_transfer_id || null, req.params.id, req.tenantId]);
+    if (hasLink) {
+      await conn.query('UPDATE orders SET linked_transfer_id=? WHERE id=? AND tenant_id=?', [linkId, req.params.id, req.tenantId]);
     }
     await conn.commit();
     logPaymentAudit(req.params.id, 'order_status', order.status, newStatus, null, order.subscriber_id || null, req.user?.email || req.user?.uid, req.tenantId).catch(() => {});

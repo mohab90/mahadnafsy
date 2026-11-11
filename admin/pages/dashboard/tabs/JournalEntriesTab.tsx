@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { FileText, Loader2, Plus, Save, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { newIdempotencyKey } from '../../../lib/idempotencyKey';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -17,6 +18,9 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  // One key per entry being written: a second press on «ترحيل» posts nothing twice; a new entry gets a new key.
+  const entryKey = useRef(newIdempotencyKey());
+  const posting = useRef(false);
   const [draft, setDraft] = useState({
     date: cairoDateOnly(),
     description: '',
@@ -62,9 +66,12 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
     if (!draft.description.trim() || validLines.length < 2) return notify('error', 'أدخل وصف القيد وسطرين صحيحين على الأقل');
     if (Math.abs(debit - credit) > 0.01 || debit <= 0) return notify('error', 'القيد غير متوازن');
 
+    if (posting.current) return;
+    posting.current = true;
     setSaving(true);
     try {
-      await mysqlAdmin.adminPost('/admin/accounting/journal-entries', { date: draft.date, description: draft.description, lines: validLines });
+      await mysqlAdmin.adminPost('/admin/accounting/journal-entries', { date: draft.date, description: draft.description, lines: validLines, idempotencyKey: entryKey.current });
+      entryKey.current = newIdempotencyKey();
       notify('success', 'تم ترحيل قيد اليومية');
       setShowAdd(false);
       setDraft({ date: cairoDateOnly(), description: '', lines: [{ account_code: '', account_name: '', debit: '', credit: '' }, { account_code: '', account_name: '', debit: '', credit: '' }] });
@@ -72,6 +79,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
     } catch (error: any) {
       notify('error', error?.error || 'فشل حفظ القيد');
     } finally {
+      posting.current = false;
       setSaving(false);
     }
   };

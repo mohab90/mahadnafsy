@@ -110,7 +110,7 @@ router.get('/api/admin/finance/salary-advances', requireAuth, requireAdminOrStaf
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
     const branchSql = scope.branchId ? ' AND s.branch_id=?' : '';
     const [rows] = await pool.query(
-      `SELECT a.id,a.staff_id,a.amount,a.currency,a.reason,a.status,
+      `SELECT a.id,a.staff_id,a.amount,a.recovered_amount,a.currency,a.reason,a.status,
               a.deduct_month,a.deduct_year,a.approved_at,a.disbursed_at,
               a.journal_entry_id,a.created_at,s.name AS staff_name,
               -- staff carries branch_id, not a branch name column; selecting

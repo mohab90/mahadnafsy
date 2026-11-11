@@ -70,13 +70,23 @@ test('the bot hands a conversation to the rep who owns its lead before the whole
   notification.createNotification = async (...args) => { sent.push(args); };
   try {
     const { handOff } = require('../lib/inboxBot');
-    const db = { query: async sql => (/FROM leads l/.test(sql) ? [[{ assigned_sales_id: 'rep-1' }]] : [{ affectedRows: 1 }]) };
+    // The lead's rep is told; with no owner, the people who triage (everyone whose scope is «everything», plus the named ones) — never a broadcast.
+    const db = { query: async sql => {
+      if (/FROM leads WHERE/.test(sql)) return [[{ assigned_sales_id: 'rep-1', assigned_cs_id: null }]];
+      if (/is_active=1 AND deleted_at IS NULL AND id IN/.test(sql)) return [[{ id: 'rep-1' }]];
+      return [{ affectedRows: 1 }];
+    } };
     await handOff(db, 't', { id: 'th-1', lead_id: 'lead-1', assigned_staff_id: null }, 'سؤال');
     assert.equal(sent[0][0], 'inbox');
     assert.equal(sent[0][5], 'rep-1');
-    const orphan = { query: async sql => (/FROM leads l/.test(sql) ? [[]] : [{ affectedRows: 1 }]) };
+    sent.length = 0;
+    const orphan = { query: async sql => {
+      if (/FROM leads WHERE/.test(sql)) return [[]];
+      if (/SELECT id, role, data_scope/.test(sql)) return [[{ id: 'boss', role: 'admin', data_scope: 'all', permissions_json: null }, { id: 'rep-9', role: 'sales', data_scope: null, permissions_json: null }]];
+      return [{ affectedRows: 1 }];
+    } };
     await handOff(orphan, 't', { id: 'th-2', lead_id: 'lead-2', assigned_staff_id: null }, 'سؤال');
-    assert.equal(sent[1][5], null, 'nobody owns it: the inbox team, by type');
+    assert.deepEqual(sent.map(row => row[5]), ['boss'], 'nobody owns it: the people who triage it, one notice each, not every rep');
   } finally {
     notification.createNotification = original;
   }

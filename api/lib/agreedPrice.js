@@ -20,8 +20,8 @@
 // they have paid everywhere a balance is shown, and is not revenue: no payment
 // row, no journal.
 
-const { resolveCatalogPrice } = require('./catalogPrice');
-const { moneyOf, setItemMoney, priorPaidTotals } = require('./itemMoney');
+const { resolveCatalogPrice, resolveCatalogPrices } = require('./catalogPrice');
+const { moneyOf, loadItemMoney, setItemMoney, priorPaidTotals } = require('./itemMoney');
 const { logClientEvent } = require('./clientHistory');
 const { clientCurrency } = require('./clientMarket');
 const { safeDateOnly } = require('./dates');
@@ -57,6 +57,43 @@ async function agreedPriceDetail(db, { tenantId, subscriberId, courseId = null, 
 }
 
 const agreedPrice = async (db, options) => (await agreedPriceDetail(db, options)).price;
+
+/**
+ * The agreed price of many items at once, by the same rule as agreedPriceDetail (the client's own price, else what their booking recorded, else the catalogue) in a
+ * fixed number of queries whatever the number of items — the month's bonus prices every booking of the month.
+ * @param {{ subscriberId: string, courseId?: string|null, bundleId?: string|null, currency?: string }[]} items
+ * @returns {Promise<(number|null)[]>} one price per item, in the same order
+ */
+async function agreedPrices(db, { tenantId, items }) {
+  const wanted = items.map(({ subscriberId, courseId = null, bundleId = null, currency = 'EGP' }) => ({ subscriberId, courseId: courseId || null, bundleId: bundleId || null, currency, key: itemKey({ courseId, bundleId }) }));
+  const priced = wanted.filter(item => item.courseId || item.bundleId);
+  const money = await loadItemMoney(db, { tenantId, subscriberIds: priced.map(item => item.subscriberId) });
+  const own = item => Number(money.get(item.subscriberId)?.customPrices[item.key]) || 0;
+  const needBooking = priced.filter(item => !(own(item) > 0));
+  const booked = new Map();
+  const subscribers = [...new Set(needBooking.map(item => item.subscriberId))];
+  for (let i = 0; i < subscribers.length; i += 1000) {
+    const [rows] = await db.query(
+      `SELECT subscriber_id, course_id, bundle_id, currency, MAX(course_expected) AS price,
+              SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) AS paid FROM payments
+        WHERE tenant_id=? AND subscriber_id IN (?) AND deleted_at IS NULL AND status IN ('paid','pending')
+          AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER'))
+        GROUP BY subscriber_id, course_id, bundle_id, currency`, [tenantId, subscribers.slice(i, i + 1000)]);
+    for (const row of rows) booked.set(`${row.subscriber_id}|${row.course_id || ''}|${row.bundle_id || ''}|${String(row.currency).toUpperCase()}`, row);
+  }
+  const bookedOf = item => booked.get(`${item.subscriberId}|${item.courseId || ''}|${item.bundleId || ''}|${String(item.currency).toUpperCase()}`);
+  const needCatalogue = needBooking.filter(item => !(Number(bookedOf(item)?.price) > 0));
+  const catalogue = needCatalogue.length
+    ? await resolveCatalogPrices(db, { tenantId, entries: needCatalogue.map(item => ({ type: item.bundleId ? 'bundle' : 'course', itemId: item.bundleId || item.courseId, currency: item.currency })) }).catch(() => new Map())
+    : new Map();
+  return wanted.map(item => {
+    if (!(item.courseId || item.bundleId)) return null;
+    if (own(item) > 0) return own(item);
+    const row = bookedOf(item);
+    const fromCatalogue = Number(row?.price) > 0 ? 0 : catalogue.get(`${item.bundleId ? 'bundle' : 'course'}|${item.bundleId || item.courseId}|${String(item.currency).toUpperCase()}`) || null;
+    return resolveAgreedDetail({ booked: row?.price, paid: row?.paid, catalogue: fromCatalogue }).price;
+  });
+}
 
 /**
  * Every item one client holds or has paid for, with its currency, the price
@@ -236,4 +273,4 @@ const isItemPaymentType = type => !type || ITEM_PAYMENT_TYPES.includes(String(ty
 // The same rule for SQL, written for the alias `p`: the payments that are the course's (or track's) own money.
 const ITEM_PAYMENT_SQL = "COALESCE(p.payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER')";
 
-module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, agreedPriceDetail, itemBalances, balanceFor, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, resolveAgreedDetail, setAgreedPrice, setPriorPaid };
+module.exports = { ITEM_PAYMENT_TYPES, ITEM_PAYMENT_SQL, isItemPaymentType, agreedPrice, agreedPrices, agreedPriceDetail, itemBalances, balanceFor, itemKey, priorPaidTotals, releaseItemMoney, resolveAgreed, resolveAgreedDetail, setAgreedPrice, setPriorPaid };

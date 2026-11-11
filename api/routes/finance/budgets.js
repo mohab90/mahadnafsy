@@ -1,6 +1,7 @@
 'use strict';
 // Budgets and the cash boxes.
 // One part of routes/finance.js, which puts the parts back together in order.
+const { createHash } = require('node:crypto');
 const { Router } = require('express');
 const {
   uuidv4,
@@ -18,8 +19,8 @@ const {
 const { requireAnyPermission } = require('../../middleware/auth');
 const { loadExpenseCategories, expenseCategoryLabel } = require('../../lib/expenseCategories');
 const { hasPermission } = require('../../constants/permissions');
-const { CATCH_ALL, boxOf, loadBoxCatalog } = require('../../lib/boxCatalog');
-const { GENERAL, currentBalances, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
+const { boxOf, loadBoxCatalog } = require('../../lib/boxCatalog');
+const { GENERAL, listBoxes, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, totalOf } = require('../../lib/boxBalances');
 const { PARTNERS, listWithdrawals, voidWithdrawal, withdraw } = require('../../lib/boxWithdrawals');
 
 const router = Router();
@@ -200,22 +201,17 @@ router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, require
       box.yesterday.count += Number(row.count_y) || 0;
       merged.set(`${method}|${currency}`, box);
     }
-    // The institute's boxes carry a balance; a branch sees only its own clients' money, which has none (lib/boxBalances.js).
+    // The institute's boxes carry a balance; a branch sees only its own clients' money, which has none (lib/boxBalances.js). The box list is listBoxes': one source for every screen.
     let balances = null;
     if (!scope.branchId) {
-      const current = await currentBalances(pool, { tenantId: req.tenantId });
+      const listed = await listBoxes(pool, { tenantId: req.tenantId, catalog });
       const currencyOf = key => key.slice(key.lastIndexOf('|') + 1);
-      // Every box there is, at zero or not: one that has balance history, and one the settings list names.
-      for (const [key, value] of current) {
-        if (key.startsWith(`${GENERAL}|`)) continue;
-        if (!merged.has(key)) merged.set(key, emptyBox(key.slice(0, key.lastIndexOf('|')), currencyOf(key)));
-        merged.get(key).balance = value.balance;
+      for (const box of listed.boxes) {
+        const key = `${box.method}|${box.currency}`;
+        if (!merged.has(key)) merged.set(key, emptyBox(box.method, box.currency));
+        Object.assign(merged.get(key), { balance: box.balance, listed: box.listed, unlisted: box.unlisted });
       }
-      // Every box in the settings list is here, at zero or not; with a list, «أخرى» (pounds) is too.
-      for (const entry of catalog.entries) {
-        if (!merged.has(`${entry.key}|${entry.currency}`)) merged.set(`${entry.key}|${entry.currency}`, { ...emptyBox(entry.key, entry.currency), balance: 0 });
-      }
-      if (catalog.active && !merged.has(`${CATCH_ALL}|EGP`)) merged.set(`${CATCH_ALL}|EGP`, { ...emptyBox(CATCH_ALL, 'EGP'), balance: 0 });
+      const current = listed.balances;
       const currencies = [...new Set([...merged.values()].map(box => box.currency).concat([...current.keys()].map(currencyOf)))];
       balances = {
         canManage: Boolean(req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_financial')),
@@ -250,19 +246,9 @@ router.get('/api/admin/finance/box-options', requireAuth, requireAdminOrStaff, r
       const scope = resolveFinancialScope(req, { requestedBranch: null });
       seesBalances = scope.kind === 'all' && !scope.branchId;
     } catch { seesBalances = false; }
-    const current = await currentBalances(pool, { tenantId: req.tenantId });
-    const options = new Map();
-    for (const [key, value] of current) {
-      if (key.startsWith(`${GENERAL}|`)) continue;
-      const cut = key.lastIndexOf('|');
-      options.set(key, { method: key.slice(0, cut), currency: key.slice(cut + 1), balance: seesBalances ? value.balance : null });
-    }
-    const catalog = await loadBoxCatalog(pool, req.tenantId);
-    for (const entry of catalog.entries) {
-      if (!options.has(`${entry.key}|${entry.currency}`)) options.set(`${entry.key}|${entry.currency}`, { method: entry.key, currency: entry.currency, balance: seesBalances ? 0 : null });
-    }
-    if (catalog.active && !options.has(`${CATCH_ALL}|EGP`)) options.set(`${CATCH_ALL}|EGP`, { method: CATCH_ALL, currency: 'EGP', balance: seesBalances ? 0 : null });
-    res.json([...options.values()].sort((a, b) => a.method.localeCompare(b.method, 'ar') || a.currency.localeCompare(b.currency)));
+    const { boxes: every } = await listBoxes(pool, { tenantId: req.tenantId });
+    const options = every.map(box => ({ method: box.method, currency: box.currency, balance: seesBalances ? box.balance : null, unlisted: box.unlisted }));
+    res.json(options.sort((a, b) => a.method.localeCompare(b.method, 'ar') || a.currency.localeCompare(b.currency)));
   } catch (e) {
     logger.error('[finance/box-options]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -276,13 +262,23 @@ const mainBooks = [requireAuth, requireAdminOrStaff, requirePermission('manage_f
 function boxChange(work, action) {
   return async (req, res) => {
     const conn = await pool.getConnection();
+    let lockName = null;
     try {
       const scope = resolveFinancialScope(req, { requestedBranch: null });
       if (scope.branchId || scope.kind !== 'all') return res.status(403).json({ error: 'الخزائن بتتعدّل من الحسابات الرئيسية بس', code: 'BOXES_MAIN_BOOKS_ONLY' });
+      // One box change at a time per institute. A balance is read, checked and then written, and when the box has no stored row there is
+      // nothing for FOR UPDATE to lock: two withdrawals of 800 sent together from a box holding 1,000 both read 1,000 and both went through.
+      lockName = `boxes:${createHash('sha256').update(String(req.tenantId)).digest('hex').slice(0, 48)}`;
+      const [[lock]] = await conn.query('SELECT GET_LOCK(?, 10) AS acquired', [lockName]);
+      if (Number(lock?.acquired) !== 1) {
+        lockName = null;
+        return res.status(409).json({ error: 'في تعديل تاني على الخزائن شغال دلوقتي — استنى ثواني وجرّب تاني.', code: 'BOXES_BUSY' });
+      }
       await conn.beginTransaction();
       const actor = req.staffRecord?.name || req.user?.email || 'system';
       const result = await work(conn, { tenantId: req.tenantId, actor, body: req.body || {} });
-      await logFinancialAudit({
+      // A repeated request (same idempotency key) changed nothing, so it audits nothing.
+      if (!result.repeated) await logFinancialAudit({
         entityType: 'cash_box',
         entityId: String(req.body?.method || req.body?.currency || 'all'),
         action,
@@ -301,7 +297,10 @@ function boxChange(work, action) {
       const status = e.statusCode || e.status || 500;
       if (status >= 500) logger.error(`[finance/boxes ${action}]`, e.message);
       res.status(status).json({ error: status < 500 ? e.message : 'Internal server error', code: e.code });
-    } finally { conn.release(); }
+    } finally {
+      if (lockName) await conn.query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
+      conn.release();
+    }
   };
 }
 router.post('/api/admin/finance/boxes/reset', ...mainBooks, boxChange((db, { tenantId, actor, body }) => resetBox(db, { tenantId, method: body.method, currency: body.currency, note: body.note, actor }), 'box_reset'));

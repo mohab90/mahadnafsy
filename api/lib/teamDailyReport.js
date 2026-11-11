@@ -12,6 +12,7 @@
 const { pool } = require('./db');
 const { addDaysToDateOnly, cairoDayStartUtc, cairoToday, isValidDateOnly } = require('./dates');
 const { LEAD_STATUSES, isOpenLeadStatus } = require('./leadStatuses');
+const { salesPaymentSql } = require('./salesMoney');
 
 const MAX_DAYS = 93;
 
@@ -102,7 +103,7 @@ async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = nul
        FROM payments p
        LEFT JOIN subscribers sub ON sub.id=p.subscriber_id AND sub.tenant_id=p.tenant_id
        LEFT JOIN leads l ON l.id=sub.lead_id AND l.tenant_id=sub.tenant_id
-      WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid')
+      WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND ${salesPaymentSql('p')}
         AND p.date >= ? AND p.date < ?
       GROUP BY rep`,
     [tenantId, from, dayAfter]

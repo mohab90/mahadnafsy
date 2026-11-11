@@ -59,9 +59,9 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   leads: [],
   // The reps' revenue is the database's (revenueEgp of GET /api/admin/leads/staff-performance; «أداء فريق المبيعات» gets the same figure from /reports/sales-performance), so
   // these three no longer download the newest 500 orders and payments to add it up.
-  sales_hub: ['leads', 'subscribers'],
-  sales_team: ['leads'],
-  staff_performance: ['leads'],
+  sales_hub: ['leads'], // the board's figures are the server's; only its «المتابعات» list of each rep's leads still reads the loaded page
+  sales_team: [], // the server's per-rep report alone; no lead table, no fallback to count from it
+  staff_performance: [], // the server's per-rep figures alone (GET /api/admin/leads/staff-performance); no page of leads to count from
   sales_daqqi_schedule: [],
   marketing_hub: ['discounts', 'automationWorkflows'], // the audiences («الشرائح») are the server's (GET /api/admin/leads/segments); the overview its own aggregate
   campaigns: [], // the messaging hub reads its own server routes

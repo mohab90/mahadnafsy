@@ -210,7 +210,7 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     );
 
     if (normalizedStatus === 'APPROVED' && rr.payment_id) {
-      await applyRefundReversal({
+      const reversed = await applyRefundReversal({
         paymentId: rr.payment_id,
         subscriberId: rr.subscriber_id,
         refundAmount: refundedAmount,
@@ -222,6 +222,9 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
         // Without this it read «استرداد جزئي من دفعة <id>» and stopped there.
         reason: decisionNote || rr.reason || null,
       }, conn);
+      // No payment to reverse (it was voided or deleted after the request was made): approving would mark the request granted with
+      // nothing in the books, and the payout screen would then confirm cash that no entry accounts for.
+      if (!reversed) throw Object.assign(new Error('الدفعة اللي الاسترداد عليها اتمسحت أو مش موجودة — اقفل الطلب بالرفض أو بالمعالجة'), { status: 409 });
     } else if (normalizedStatus === 'APPROVED') {
       await applyUnlinkedRefund({
         subscriberId: rr.subscriber_id, item: rr.course_item, refundAmount: refundedAmount,

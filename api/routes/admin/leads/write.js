@@ -258,7 +258,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
            next_follow_up_date)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
          [id, tenantId, code, safeName||'', safeEmail||'', safePhone||null, safeSource||null, normalizedRequestedStatus,
-         safeNotes||null, hidden||0, salesId, salesName, csId, csName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
+         safeNotes||null, normalizedRequestedStatus === 'not_interested_hidden' ? 1 : (hidden||0), salesId, salesName, csId, csName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
          followUpDay]
       );
     } else {

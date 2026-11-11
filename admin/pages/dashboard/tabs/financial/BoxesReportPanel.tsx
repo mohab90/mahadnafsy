@@ -11,7 +11,7 @@ import { PartnerWithdrawalsTable } from './PartnerWithdrawalsTable';
 type Window = 1 | 7 | 15 | 30;
 type Box = {
   method: string; currency: string; totals: Record<Window, number>; counts: Record<Window, number>;
-  yesterday: { total: number; count: number }; balance?: number;
+  yesterday: { total: number; count: number }; balance?: number; unlisted?: boolean;
 };
 type Balances = { canManage: boolean; totals: Record<string, number>; general: Record<string, number>; partners?: { key: string; name: string }[] };
 type BoxesReport = { branch: string | null; today: string; yesterday: string; windows: Record<Window, string>; boxes: Box[]; balances: Balances | null };
@@ -168,7 +168,7 @@ export function BoxesReportPanel({ branch }: { branch?: string }) {
                 );
                 return (
                   <tr key={`${box.method}:${box.currency}`} className={`${index % 2 ? 'bg-gray-50' : 'bg-white'} border-t border-gray-100`}>
-                    <td className="px-3 py-2 font-bold text-gray-800">{box.method}</td>
+                    <td className="px-3 py-2 font-bold text-gray-800">{box.method}{box.unlisted && <div className="text-[10px] font-normal text-amber-700">فلوس خزن مش مضافة في الإعدادات (أو دفعات قديمة)</div>}</td>
                     {balances && (
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className={`text-base font-extrabold ${(box.balance ?? 0) < 0 ? 'text-red-600' : 'text-gray-900'}`}>{num(box.balance ?? 0)} {unit(box.currency)}</span>

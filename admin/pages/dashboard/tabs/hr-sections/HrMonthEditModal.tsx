@@ -7,6 +7,7 @@ import { Modal } from '../../../../../shared/ui/Modal';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { mysqlAdmin, type BonusLevel } from '../../../../lib/mysqlapi';
 import { fmtMoney } from './hrFormat';
+import { deductionAfterStatusChange, deductionHelp, deductionToSend, mostDeduction, takesDeduction } from './monthEditDeduction';
 import BonusSchemeFields, { schemeDraftOf, schemePayload, type SchemeDraft } from './BonusSchemeFields';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
@@ -23,7 +24,7 @@ type Basics = {
 
 const STATUS_OPTIONS: [string, string][] = [
   ['PRESENT', 'حاضر'], ['LATE', 'متأخر'], ['ABSENT', 'غياب بدون إذن (يخصم يومين)'], ['ABSENT_EXCUSED', 'غياب بإذن (يخصم يوم)'], ['LEAVE_BALANCE', 'غياب من رصيد الإجازات (بدون خصم)'],
-  ['HALF_DAY', 'نص يوم'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'], ['OVERTIME', 'أوفر تايم (اشتغل في الإجازة الأسبوعية)'],
+  ['HALF_DAY', 'نص يوم (بيخصم نص يوم من المرتب)'], ['FREE_DAY', 'يوم إجازة مجاني'], ['REMOTE', 'عن بعد'], ['HOLIDAY', 'عطلة'], ['OVERTIME', 'أوفر تايم (اشتغل في الإجازة الأسبوعية)'],
 ];
 // A weekly day off (Friday) with nothing on it comes from the server as WEEKLY_OFF (not stored); worked, it is OVERTIME at 1, 1.5, 2 … days' pay.
 const WEEKLY_OPTIONS: [string, string][] = [['WEEKLY_OFF', 'إجازة أسبوعية'], ['OVERTIME', 'أوفر تايم (اشتغل في الإجازة الأسبوعية)']];
@@ -76,7 +77,8 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
 
   const draftOf = (log: Log): DayDraft => days[dateOnly(log.date)] || {
     status: statusOf(log), check_in: hhmm(log.check_in), check_out: hhmm(log.check_out),
-    deduction: log.deduction_days == null ? '' : String(Number(log.deduction_days)), notes: log.status === 'WEEKLY_OFF' ? '' : log.notes || '',
+    // An absence with nothing typed is charged by the rule (two days, one with permission): the box stays empty and shows that figure, not a zero.
+    deduction: log.deduction_days == null || (log.status === 'ABSENT' && !Number(log.deduction_days)) ? '' : String(Number(log.deduction_days)), notes: log.status === 'WEEKLY_OFF' ? '' : log.notes || '',
     overtime: Number(log.overtime_days) > 0 ? String(Number(log.overtime_days)) : '1',
   };
   const editDay = (log: Log, patch: Partial<DayDraft>) => setDays(current => ({ ...current, [dateOnly(log.date)]: { ...draftOf(log), ...patch } }));
@@ -86,7 +88,7 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
     try {
       await mysqlAdmin.adminPost('/admin/hr/attendance', {
         staff_id: staffId, date, status: draft.status, check_in: draft.check_in || undefined, check_out: draft.check_out || undefined,
-        notes: draft.notes || undefined, deduction_days: draft.status === 'OVERTIME' || draft.deduction === '' ? undefined : Number(draft.deduction),
+        notes: draft.notes || undefined, deduction_days: deductionToSend(draft.status, draft.deduction),
         overtime_days: draft.status === 'OVERTIME' ? Number(draft.overtime || 1) : undefined,
       });
       notify('success', `اتعدل يوم ${date}`);
@@ -142,8 +144,9 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
         <div className="space-y-6" dir="rtl">
           <section>
             <h4 className="mb-2 text-sm font-extrabold text-gray-900">أيام الشهر</h4>
-            <p className="mb-2 text-xs text-gray-500">أي يوم تعدله هنا بيتحسب «تسجيل يدوي» ورفع شيت البصمة تاني ما بيغيّروش. سيب الخصم فاضي ويتحسب من السياسة، أو اكتب رقم من 0 ليوم كامل (0.25 = ربع يوم). الجمعة «إجازة أسبوعية»؛ لو حد اشتغلها اختار «أوفر تايم» وحدد بكام يوم (يوم، يوم ونص، يومين…) وبيتضاف على المرتب.</p>
+            <p className="mb-2 text-xs text-gray-500">أي يوم تعدله هنا بيتحسب «تسجيل يدوي» ورفع شيت البصمة تاني ما بيغيّروش. سيب الخصم فاضي ويتحسب من السياسة، أو اكتب رقم من 0 ليوم كامل (0.25 = ربع يوم). الغياب بدون إذن بيقبل لحد يومين (0.5 أو 1 أو 2) وبيحل محل الخصم العادي بتاعه؛ الغياب بإذن لحد يوم. الجمعة «إجازة أسبوعية»؛ لو حد اشتغلها اختار «أوفر تايم» وحدد بكام يوم (يوم، يوم ونص، يومين…) وبيتضاف على المرتب.</p>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <p className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-600">خانة «خصم (يوم)»: فاضية أو صفر معناها الخصم بالقاعدة (الغياب بدون إذن يومين، وبإذن يوم). اكتب 0.5 أو 1 أو 2 لو عايز رقم تاني. «نص يوم» بيخصم نص يوم من المرتب بالقاعدة (إلا لو اتعمله إذن نص يوم معتمد)، واكتب رقم هنا لو عايز خصم تاني.</p>
               <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-gray-50 text-right text-xs font-bold text-gray-500">
                   <tr><th className="px-2 py-2">اليوم</th><th className="px-2 py-2">الحالة</th><th className="px-2 py-2">حضور</th><th className="px-2 py-2">انصراف</th><th className="px-2 py-2">خصم (يوم)</th><th className="px-2 py-2">ملاحظة</th><th className="px-2 py-2" /></tr>
@@ -158,13 +161,13 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
                     return (
                       <tr key={log.id || `off-${date}`} className={days[date] ? 'bg-amber-50/40' : weekly ? 'bg-gray-50/60' : ''}>
                         <td className="px-2 py-1.5 text-gray-800">{weekday(date)}{log.source === 'MANUAL_ENTRY' && <span className="mr-1 text-[10px] text-indigo-600">يدوي</span>}{log.source === 'AUTO_ABSENCE' && <span className="mr-1 text-[10px] text-gray-500">تلقائي</span>}{locked && <span className="mr-1 text-[10px] text-sky-600">إجازة معتمدة</span>}</td>
-                        <td className="px-2 py-1.5"><select disabled={locked} className={field} value={draft.status} onChange={e => editDay(log, { status: e.target.value })}>{(offDay ? WEEKLY_OPTIONS : STATUS_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
+                        <td className="px-2 py-1.5"><select disabled={locked} className={field} value={draft.status} onChange={e => editDay(log, { status: e.target.value, deduction: deductionAfterStatusChange(e.target.value, draft.deduction) })}>{(offDay ? WEEKLY_OPTIONS : STATUS_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
                         <td className="px-2 py-1.5"><input type="time" disabled={locked} className={field} value={draft.check_in} onChange={e => editDay(log, { check_in: e.target.value })} /></td>
                         <td className="px-2 py-1.5"><input type="time" disabled={locked} className={field} value={draft.check_out} onChange={e => editDay(log, { check_out: e.target.value })} /></td>
                         <td className="px-2 py-1.5">{draft.status === 'OVERTIME'
                           ? <select className={`${field} w-24`} value={draft.overtime || '1'} onChange={e => editDay(log, { overtime: e.target.value })} title="الأوفر تايم بكام يوم">{OVERTIME_DAYS.map(value => <option key={value} value={value}>+{value} يوم</option>)}</select>
                           : draft.status === 'WEEKLY_OFF' ? <span className="text-xs text-gray-400">—</span>
-                          : <input type="number" min={0} max={1} step={0.25} disabled={locked} className={`${field} w-20`} value={draft.deduction} onChange={e => editDay(log, { deduction: e.target.value })} />}</td>
+                          : <input type="number" min={0} max={mostDeduction(draft.status)} step={0.25} disabled={locked || !takesDeduction(draft.status)} title={deductionHelp(draft.status)} className={`${field} w-20`} placeholder={draft.status === 'ABSENT' ? '2' : draft.status === 'ABSENT_EXCUSED' ? '1' : undefined} value={draft.deduction} onChange={e => editDay(log, { deduction: e.target.value })} />}</td>
                         <td className="px-2 py-1.5"><input className={field} disabled={locked} value={draft.notes} onChange={e => editDay(log, { notes: e.target.value })} /></td>
                         <td className="px-2 py-1.5">{days[date] && draft.status !== 'WEEKLY_OFF' && <button type="button" disabled={busy === `day:${date}`} onClick={() => void saveDay(date, draft)} className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={12} /> حفظ</button>}</td>
                       </tr>
@@ -174,11 +177,12 @@ export default function HrMonthEditModal({ staffId, name, month, canEditSalary, 
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-gray-50 p-3 md:grid-cols-6">
+            <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-gray-50 p-3 md:grid-cols-7">
               <input type="date" className={field} min={`${month}-01`} value={newDay.date} onChange={e => setNewDay(v => ({ ...v, date: e.target.value }))} />
-              <select className={field} value={newDay.status} onChange={e => setNewDay(v => ({ ...v, status: e.target.value }))}>{STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+              <select className={field} value={newDay.status} onChange={e => setNewDay(v => ({ ...v, status: e.target.value, deduction: deductionAfterStatusChange(e.target.value, v.deduction) }))}>{STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
               <input type="time" className={field} value={newDay.check_in} onChange={e => setNewDay(v => ({ ...v, check_in: e.target.value }))} />
               <input type="time" className={field} value={newDay.check_out} onChange={e => setNewDay(v => ({ ...v, check_out: e.target.value }))} />
+              <input type="number" min={0} max={mostDeduction(newDay.status)} step={0.25} className={field} placeholder="خصم (يوم)" title={deductionHelp(newDay.status)} disabled={!takesDeduction(newDay.status)} value={newDay.deduction} onChange={e => setNewDay(v => ({ ...v, deduction: e.target.value }))} />
               <input className={field} placeholder="ملاحظة" value={newDay.notes} onChange={e => setNewDay(v => ({ ...v, notes: e.target.value }))} />
               <button type="button" disabled={busy === `day:${newDay.date}` || !newDay.date.startsWith(month)} onClick={() => void saveDay(newDay.date, newDay)} className="flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Plus size={12} /> إضافة يوم</button>
             </div>

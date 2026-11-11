@@ -91,7 +91,7 @@ test('a transfer carries access, the money paid and what was paid before the sys
   const db = fakeDb([
     [/FROM enrollments .* FOR UPDATE/, [[{ id: 'e1', course_id: 'c1', status: 'active', access_type: 'limited', lecture_limit: 4 }]]],
     [/FROM courses/, params => [[{ title: params[0] === 'c2' ? 'الكورس الجديد' : 'الكورس القديم' }]]],
-    [/SELECT COALESCE\(SUM\(amount\),0\) AS total/, [[{ total: 2000, currency: 'EGP' }]]],
+    [/SELECT currency, COALESCE\(SUM\(amount\),0\) AS total/, [[{ total: 2000, currency: 'EGP' }, { total: 150, currency: 'SAR' }]]],
     [/UPDATE payments SET course_id/, [{ affectedRows: 2 }]],
     [/FROM client_item_money WHERE/, [[{ subscriber_id: 's1', item_key: 'c1', agreed_price: null, prior_paid: 300 }]]],
   ]);
@@ -111,7 +111,8 @@ test('a transfer carries access, the money paid and what was paid before the sys
   const label = logged(db)[5];
   assert.match(label, /الكورس القديم/);
   assert.match(label, /الكورس الجديد/);
-  assert.match(label, /2,000 EGP/);
+  assert.match(label, /2,000 EGP \+ 150 SAR/, 'each currency named — not 2,150 of whichever sorts last');
+  assert.deepEqual(result.paid, { EGP: 2000, SAR: 150 });
   assert.equal(logged(db)[6], 'الحسابات');
 });
 

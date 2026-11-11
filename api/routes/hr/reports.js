@@ -1,4 +1,5 @@
 'use strict';
+const { repMoneySql } = require('../../lib/repRevenue');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
@@ -134,6 +135,7 @@ router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff
              FROM payments
             WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL
               AND date>=? AND date<?
+              AND ${repMoneySql('payments')}
             GROUP BY staff_id
          ) p ON p.staff_id=s.id
          LEFT JOIN (
@@ -277,7 +279,7 @@ router.get('/api/staff/me/hr', requireAuth, async (req, res) => {
              AND status IN ${CONVERTED_SQL} AND created_at>=? AND created_at<?) leads_converted,
          (SELECT COALESCE(SUM(amount_egp),0) FROM payments
            WHERE tenant_id=? AND deleted_at IS NULL AND status='paid' AND staff_id=?
-             AND date>=? AND date<?) revenue_generated`,
+             AND date>=? AND date<? AND ${repMoneySql('payments')}) revenue_generated`,
       [req.tenantId, staff.id, periodStart, periodEnd,
         req.tenantId, staff.id, periodStart, periodEnd,
         req.tenantId, staff.id, periodStart, periodEnd]

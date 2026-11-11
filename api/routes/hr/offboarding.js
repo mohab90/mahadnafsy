@@ -316,12 +316,15 @@ router.put('/api/admin/hr/offboarding/:id', requireAuth, requireAdminOrStaff, re
       'SELECT id,email FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? FOR UPDATE',
       [req.tenantId, String(row.email || '').toLowerCase().trim()]
     );
+    // The last working day is the day the employee stops being paid for (lib/payrollProration.js: the month's pay runs to that day), not the day HR closes the checklist.
+    const lastDayText = String((last_working_day !== undefined ? last_working_day : row.last_working_day) || '');
+    const lastDay = /^\d{4}-\d{2}-\d{2}/.test(lastDayText) ? lastDayText.slice(0, 10) : null;
     await conn.query(
       `UPDATE staff
           SET is_active=0,
-              termination_date=COALESCE(termination_date,${sqlCairoToday()})
+              termination_date=COALESCE(termination_date,?,${sqlCairoToday()})
         WHERE id=? AND tenant_id=?`,
-      [row.staff_id, req.tenantId]
+      [lastDay, row.staff_id, req.tenantId]
     );
     if (users.length) {
       await conn.query(

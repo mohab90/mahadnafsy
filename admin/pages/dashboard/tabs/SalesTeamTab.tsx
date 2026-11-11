@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Users } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -27,24 +26,26 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
   salesTargets?: SalesTarget[];
   onOpenStaffProfile?: (staffId: string) => void;
 }) {
-  const { staffMembers, leads } = useSiteData();
+  const { staffMembers } = useSiteData();
   const [roleFilter, setRoleFilter] = useState('all');
   const [searchQ, setSearchQ] = useState('');
   // This month's figures per rep, computed in SQL. Counting them here out of
   // the leads and orders arrays meant the smallest way to show somebody the
   // team's numbers was to hand them the pipeline — and somebody holding only
-  // view_perf_sales has neither array, so the screen read zeros.
+  // view_perf_sales has neither array, so the screen read zeros. There is no
+  // fallback to the browser's own lead table any more (it downloaded up to
+  // 50,000 leads to redo the count): when the report fails the screen says so.
   const [perf, setPerf] = useState<SalesPerformanceRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
+    setFailed(false);
     mysqlAdmin.getSalesTeamPerformance()
       .then(data => { if (live) setPerf(data.staff); })
-      .catch(() => { if (live) setPerf(null); });
+      .catch(() => { if (live) { setPerf(null); setFailed(true); } });
     return () => { live = false; };
-  }, []);
-
-  const MONTH = cairoMonthOnly();
-  const monthStart = `${MONTH}-01`;
+  }, [attempt]);
 
   const filtered = useMemo(() =>
     staffMembers.filter(s =>
@@ -57,17 +58,13 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
 
   const stats = useMemo(() => filtered.map(s => {
     const counted = perf?.find(row => String(row.id) === String(s.id));
-    const monthLeads = counted
-      ? counted.total_leads
-      : leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart).length;
-    const monthConverted = counted
-      ? counted.converted_leads
-      : leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart && l.status === 'converted').length;
+    const monthLeads = Number(counted?.total_leads) || 0;
+    const monthConverted = Number(counted?.converted_leads) || 0;
     const monthRevenue = Number(counted?.revenue_egp) || 0; // the database's figure; nothing is added up from a list of orders any more
     const target = salesTargets.find(t => t.staffId === s.id);
     const targetPct = target?.monthlyTarget ?? target?.targetEGP ? Math.min(100, Math.round((monthRevenue / (target.monthlyTarget ?? target.targetEGP)) * 100)) : null;
     return { ...s, monthLeads, monthConverted, monthRevenue, targetPct, target };
-  }), [filtered, leads, salesTargets, monthStart, perf]);
+  }), [filtered, salesTargets, perf]);
 
   const roles = [...new Set(staffMembers.map(s => s.role))];
 
@@ -78,6 +75,13 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
         <h2 className="text-xl font-bold flex items-center gap-2"><Users size={22} />فريق المبيعات والتشغيل</h2>
         <p className="text-blue-100 text-sm mt-1">عرض الفريق كاملاً، الأداء الشهري، والأهداف</p>
       </div>
+
+      {failed && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-sm text-red-700" role="alert">
+          <span>تعذر تحميل أرقام الفريق من السيرفر — الأرقام المعروضة غير محدثة.</span>
+          <button onClick={() => setAttempt(n => n + 1)} className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-bold">إعادة المحاولة</button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-wrap gap-3 items-center">

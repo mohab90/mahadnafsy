@@ -15,6 +15,7 @@ const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
 const { sqlCairoToday, cairoToday, cairoClock, addDaysToDateOnly, cairoDayStartUtc } = require('../lib/dates');
 const { itemBalances, balanceFor, itemKey } = require('../lib/agreedPrice');
+const { weeklyMoney } = require('../lib/weeklySummary');
 const { itemTitle, parseItem } = require('../lib/clientCourseActions');
 const { logClientEvent } = require('../lib/clientHistory');
 
@@ -840,11 +841,8 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     const weekAgo = addDaysToDateOnly(today, -7);
     const weekAgoUtc = cairoDayStartUtc(weekAgo);
 
-    // Revenue (last 7 days)
-    const [[{ revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS revenue FROM payments
-       WHERE tenant_id=? AND date >= ? AND status = 'paid' AND deleted_at IS NULL`, [DEFAULT_TENANT_ID, weekAgo]
-    ).catch(() => [[{ revenue: 0 }]]);
+    // The week's money, in pounds (lib/weeklySummary.js): riyals and dollars at their stored pound value, certificates apart.
+    const money = await weeklyMoney(pool, { tenantId: DEFAULT_TENANT_ID, today }).catch(() => ({ totalEgp: 0, courseEgp: 0, certificateEgp: 0, previousTotalEgp: 0, changePct: null, unconverted: 0 }));
 
     // New leads
     const [[{ newLeads }]] = await pool.query(
@@ -874,18 +872,10 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
       ? topStaff.map((s, i) => `<li>${['🥇','🥈','🥉'][i]} <strong>${s.name || 'غير معروف'}</strong> — ${Number(s.earned).toLocaleString()} ج</li>`).join('')
       : '<li>لا توجد بيانات</li>';
 
-    // Previous week comparison
-    const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const [[{ prevRevenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS prevRevenue FROM payments
-       WHERE tenant_id=? AND date >= ? AND date < ? AND status = 'paid' AND deleted_at IS NULL`,
-      [DEFAULT_TENANT_ID, twoWeeksAgo, weekAgo]
-    ).catch(() => [[{ prevRevenue: 0 }]]);
-
-    const revenueChange = prevRevenue > 0
-      ? ((revenue - prevRevenue) / prevRevenue * 100).toFixed(1)
-      : 'N/A';
-    const revenueArrow = revenue >= prevRevenue ? '📈' : '📉';
+    const revenueChange = money.changePct === null ? 'N/A' : money.changePct.toFixed(1);
+    const revenueArrow = money.totalEgp >= money.previousTotalEgp ? '📈' : '📉';
+    const moneySplit = `كورسات ${Number(money.courseEgp).toLocaleString()} · شهادات ${Number(money.certificateEgp).toLocaleString()}`
+      + (money.unconverted ? ` · ${money.unconverted} دفعة بعملة أجنبية من غير قيمة بالجنيه مش محسوبة` : '');
 
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean);
     if (!adminEmails.length) return;
@@ -900,8 +890,9 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         <table style="width:100%;border-collapse:collapse">
           <tr>
             <td style="padding:12px;background:#fff;border-radius:8px;text-align:center;width:25%">
-              <div style="font-size:24px;font-weight:900;color:#10b981">${Number(revenue).toLocaleString()}</div>
-              <div style="font-size:11px;color:#64748b">إيراد الأسبوع (ج)</div>
+              <div style="font-size:24px;font-weight:900;color:#10b981">${Number(money.totalEgp).toLocaleString()}</div>
+              <div style="font-size:11px;color:#64748b">تحصيل الأسبوع (ج)</div>
+              <div style="font-size:11px;color:#64748b">${moneySplit}</div>
               <div style="font-size:11px">${revenueArrow} ${revenueChange}% من الأسبوع السابق</div>
             </td>
             <td style="width:8px"></td>

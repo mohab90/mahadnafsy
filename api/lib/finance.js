@@ -66,6 +66,12 @@ async function logFinancialAudit({ entityType, entityId, action, oldData, newDat
   }
 }
 
+// A journal amount at the precision it is stored in (DECIMAL(12,2)); NaN and Infinity stay what they are so the line is refused.
+const toPiastres = value => {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? Math.round(n * 100 + 1e-7) / 100 : n;
+};
+
 // Chart of accounts:
 //  1100 = نقدية وبنوك      (Cash / Bank)
 //  4100 = إيرادات كورسات   (Course Revenue)
@@ -93,8 +99,11 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
   const normalizedLines = Array.isArray(lines) ? lines.map(line => ({
     account_code: String(line?.account_code || '').trim(),
     account_name: String(line?.account_name || '').trim(),
-    debit: Number(line?.debit || 0),
-    credit: Number(line?.credit || 0),
+    // To the piastre BEFORE the balance is judged: the column holds two decimals, so what is checked must be
+    // what is stored (a debit of 100.006 against a credit of 100 passed the old 0.01 tolerance and then
+    // landed as 100.01 against 100.00 — a ledger out by a piastre).
+    debit: toPiastres(line?.debit),
+    credit: toPiastres(line?.credit),
   })) : [];
   const invalidLine = normalizedLines.some(line =>
     !line.account_code || !line.account_name
@@ -108,7 +117,7 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
   const totalCredit = Number(normalizedLines.reduce((sum, line) => sum + line.credit, 0).toFixed(2));
   if (!refType || !tenantId || !isRealDate(date)
     || normalizedLines.length < 2 || invalidLine || totalDebit <= 0
-    || Math.abs(totalDebit - totalCredit) >= 0.01) {
+    || Math.round(totalDebit * 100) !== Math.round(totalCredit * 100)) {
     logger.warn('[journal] rejected invalid or unbalanced journal entry', { refType, refId, tenantId });
     return null;
   }
@@ -428,6 +437,7 @@ async function postExpenseJournal(expense, sign, actor, db = pool, tenantId = ex
 
 module.exports = {
   getVatPercent,
+  toPiastres,
   logPaymentAudit,
   logFinancialAudit,
   postJournalEntry,

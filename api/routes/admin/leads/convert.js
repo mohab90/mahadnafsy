@@ -41,12 +41,13 @@ const router = Router();
 // GET /api/admin/leads/:id/timeline
 router.get('/api/admin/leads/:id/timeline', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
-    // SALES staff can only see timeline for their own leads
-    if (String(req.staffRecord?.role || '').toLowerCase() === 'sales') {
-      const [[lead]] = await pool.query('SELECT assigned_sales_id FROM leads WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
-      if (!lead || lead.assigned_sales_id !== req.staffRecord.id) {
-        return res.status(403).json({ error: 'غير مصرح' });
-      }
+    // Within the caller's own data scope, whatever the role. Only «sales» was held to its own leads, so a collection
+    // officer or a branch desk read any lead's timeline (calls, notes, who it was handed to) by its id.
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.status(403).json({ error: 'غير مصرح' });
+    if (scope.sql) {
+      const [[visible]] = await pool.query(`SELECT l.id FROM leads l WHERE l.tenant_id=? AND l.id=?${scope.sql} LIMIT 1`, [req.tenantId, req.params.id, ...scope.params]);
+      if (!visible) return res.status(403).json({ error: 'غير مصرح' });
     }
     const [rows] = await pool.query(
       'SELECT id, lead_id, event_type, description, meta_json, at FROM lead_timeline WHERE tenant_id=? AND lead_id=? ORDER BY at ASC LIMIT 200',

@@ -28,6 +28,8 @@ function world({ payments = [], chart = [] } = {}) {
       if (/^SELECT method, currency, opening_amount, baseline_at FROM box_balances/.test(text)) {
         return [[...state.balances].map(([k, v]) => ({ method: k.split('|')[0], currency: k.split('|')[1], opening_amount: v.opening, baseline_at: v.baseline }))];
       }
+      // No accounting period is closed (lib/periodLock.js asks before any withdrawal is recorded).
+      if (/^SELECT id, period_label, status FROM accounting_periods/.test(text)) return [[]];
       if (/^SELECT alias, target FROM box_aliases/.test(text)) return [[...state.aliases].map(([alias, target]) => ({ alias, target }))];
       if (/^INSERT INTO box_aliases/.test(text)) { state.aliases.set(params[1], params[2]); return [{ affectedRows: 1 }]; }
       if (/^UPDATE box_aliases SET target = \?/.test(text)) { for (const [alias, target] of state.aliases) if (target === params[2]) state.aliases.set(alias, params[0]); return [{ affectedRows: 1 }]; }

@@ -70,7 +70,8 @@ router.get('/api/admin/financial/pnl', requireAuth, requireAdminOrStaff, require
     res.json({
       from, to, branch, branchId, totalRevenue, totalExpenses, netProfit,
       margin: totalRevenue > 0 ? parseFloat((netProfit / totalRevenue * 100).toFixed(1)) : 0,
-      expensesByCategory: expRows,
+      // DECIMAL columns arrive as strings; a screen that adds `total` up concatenated them.
+      expensesByCategory: expRows.map(row => ({ ...row, total: Number(row.total) || 0, count: Number(row.count) || 0 })),
       monthly: monthly.map(m => ({ ...m, revenue: Number(m.revenue), expenses: Number(m.expenses), net: Number(m.revenue) - Number(m.expenses) })),
     });
   } catch (e) {

@@ -16,9 +16,12 @@ type Day = {
 type Leave = { id: string; type: string; status: string; from: string; to: string; startTime: string | null; endTime: string | null; totalDays: number; reason: string | null; adminNote: string | null };
 type Bonus = { id: string; type: string; amount: number; currency: string; status: string; note: string | null; targetValue: number | null; achievedValue: number | null; targetUnit: string | null };
 type PayLine = { id: string | null; label: string; amount: number; reason: string | null };
+type PayAdvance = { id: string; currency: string; amount: number; dueMonth: number | null; dueYear: number | null; applied: number; owedAfter: number };
 type Payslip = {
-  status: string; base: number; allowances: number; commission: number; overtime: number; bonus: number; bonusNote: string | null;
+  status: string; base: number; allowances: number; commission: number; overtime: number; teachingFees?: number; bonus: number; bonusNote: string | null;
   lateDeduction: number; absenceDeduction: number; advanceDeduction: number; administrativeDeduction: number; insuranceAndTax: number; otherDeduction: number; deductionsNote: string | null;
+  advances?: PayAdvance[]; advanceOwedAfter?: number;
+  proration?: { paidDays: number; monthDays: number; fromDay: number | null; toDay: number | null; fullBase: number } | null;
   bonusLines: PayLine[]; deductionLines: PayLine[]; net: number;
 };
 type MonthDetail = {
@@ -110,9 +113,10 @@ export function MyMonthDetail() {
                 <h4 className="mb-2 text-sm font-extrabold text-gray-900">كشف المرتب</h4>
                 {pay ? (
                   <>
-                    <Row label="الراتب الأساسي" value={egp(pay.base)} />
+                    <Row label={pay.proration ? `الراتب الأساسي (${num(pay.proration.paidDays)} يوم${pay.proration.fromDay ? ` من يوم ${pay.proration.fromDay}` : ''}${pay.proration.toDay ? ` لحد يوم ${pay.proration.toDay}` : ''} من ${num(pay.proration.fullBase)})` : 'الراتب الأساسي'} value={egp(pay.base)} />
                     {pay.allowances > 0 && <Row label="البدلات" value={`+${egp(pay.allowances)}`} tone="text-emerald-700" />}
                     {pay.overtime > 0 && <Row label="أوفر تايم" value={`+${egp(pay.overtime)}`} tone="text-emerald-700" />}
+                    {(pay.teachingFees ?? 0) > 0 && <Row label="أتعاب المحاضرات" value={`+${egp(pay.teachingFees ?? 0)}`} tone="text-emerald-700" />}
                     {pay.commission > 0 && <Row label="حوافز مبيعات" value={`+${egp(pay.commission)}`} tone="text-emerald-700" />}
                     {pay.bonusLines.map((line, index) => (
                       <Row key={line.id ? `${line.id}-${index}` : `bonus-${index}`} label={`${line.label}${line.reason ? ` — ${line.reason}` : ''}`} value={`${line.amount < 0 ? '−' : '+'}${egp(Math.abs(line.amount))}`} tone="text-emerald-700" />
@@ -120,6 +124,9 @@ export function MyMonthDetail() {
                     {pay.absenceDeduction > 0 && <Row label="خصم الغياب والإجازات بدون مرتب" value={`−${egp(pay.absenceDeduction)}`} tone="text-red-600" />}
                     {pay.lateDeduction > 0 && <Row label="خصم التأخير والانصراف المبكر" value={`−${egp(pay.lateDeduction)}`} tone="text-red-600" />}
                     {pay.advanceDeduction > 0 && <Row label="سلف" value={`−${egp(pay.advanceDeduction)}`} tone="text-red-600" />}
+                    {(pay.advances ?? []).map(advance => (
+                      <Row key={advance.id} label={`   سلفة ${num(advance.amount)} ${advance.currency}${advance.dueMonth ? ` (مستحقة ${advance.dueMonth}/${advance.dueYear})` : ''} — اتخصم ${num(advance.applied)}، لسه عليك ${num(advance.owedAfter)}`} value="" tone="text-gray-500" />
+                    ))}
                     {pay.deductionLines.map((line, index) => (
                       <Row key={line.id ? `${line.id}-${index}` : `deduction-${index}`} label={`${line.label}${line.reason ? ` — ${line.reason}` : ''}`} value={`−${egp(line.amount)}`} tone="text-red-600" />
                     ))}

@@ -8,8 +8,10 @@ const { writeAuditEvent } = require('../../lib/auditTrail');
 const { outOfReach, requireHr, staffInReach, staffReachSql, notifyBranchManagers } = require('../../lib/branchHr');
 const { toNumbers } = require('../../lib/mappers');
 const { sqlCairoToday, cairoToday, cairoYearMonth, cairoDayOf } = require('../../lib/dates');
-const { normalizePolicy, tierDays, toMinutes, monthDates } = require('../../lib/attendancePolicy');
-const { leaveBalanceOf } = require('../../lib/leaveBalance');
+const { normalizePolicy, tierDays, toMinutes, monthDates, manualDayDeduction } = require('../../lib/attendancePolicy');
+const { leaveBalanceOf, leaveDaysInYear } = require('../../lib/leaveBalance');
+const { repMoneySql } = require('../../lib/repRevenue');
+const { isSelfMutation } = require('../../lib/hrSelfMutation');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -296,6 +298,8 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
       return res.status(409).json({ error: 'لا يجوز للموظف اعتماد إجازته بنفسه', code: 'LEAVE_SELF_APPROVAL' });
     }
 
+    // Set below for an annual leave that will go past the year's balance: HR is told, the approval is not refused (11 Nov 2026).
+    let balanceWarning = null;
     // If approved, sync attendance record — for leave. A morning or evening
     // permission is a day the employee works: approving one wrote a LEAVE row
     // for it (a paid day away on the attendance sheet), and was refused
@@ -311,22 +315,38 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
         : await getEffectiveHrPolicy(conn, req.tenantId, leave.start_date);
       const allowance = leaveAllowance(policy, leave.type);
       if (allowance !== null) {
-        const [[used]] = await conn.query(
-          `SELECT COALESCE(SUM(total_days),0) total
-             FROM leaves
-            WHERE tenant_id=? AND staff_id=? AND type=? AND status='APPROVED'
-              AND id<>? AND YEAR(start_date)=YEAR(?)`,
-          [req.tenantId, leave.staff_id, leave.type, leave.id, leave.start_date]
-        );
-        if (Number(used.total) + Number(leave.total_days) > allowance) {
-          await conn.rollback(); transactionStarted = false;
-          return res.status(409).json({ error: `رصيد ${leave.type} غير كافٍ`, code: 'LEAVE_BALANCE_EXCEEDED' });
+        // Each calendar year the leave touches is held to its own allowance, with the leave's days that fall in that year (a leave from 28 Dec to 4 Jan spends both years).
+        const policyWeekend = (() => { const days = policy.weekend_days_json; try { return (Array.isArray(days) ? days : JSON.parse(days || '[5]')).map(Number); } catch { return [5]; } })();
+        for (let year = Number(dateOnly(leave.start_date).slice(0, 4)); year <= Number(dateOnly(leave.end_date).slice(0, 4)); year += 1) {
+          const [sameType] = await conn.query(
+            `SELECT type,start_date,end_date,total_days FROM leaves
+              WHERE tenant_id=? AND staff_id=? AND type=? AND status='APPROVED' AND id<>? AND start_date<=? AND end_date>=?`,
+            [req.tenantId, leave.staff_id, leave.type, leave.id, `${year}-12-31`, `${year}-01-01`]
+          );
+          const usedInYear = sameType.reduce((sum, other) => sum + leaveDaysInYear(other, year, policyWeekend), 0);
+          const thisLeave = leaveDaysInYear(leave, year, policyWeekend);
+          if (usedInYear + thisLeave > allowance) {
+            await conn.rollback(); transactionStarted = false;
+            return res.status(409).json({ error: `رصيد ${leave.type} غير كافٍ`, code: 'LEAVE_BALANCE_EXCEEDED' });
+          }
+          // 11 Nov 2026, «الإجازة بتترفض أوتوماتيك؟ لا»: the year's 21 days are also spent by a free day and by an absence marked «من رصيد الإجازات» (lib/leaveBalance.js).
+          // An annual leave that goes past what is left after those is not refused for it: the answer carries a warning and HR decides.
+          if (leave.type === 'ANNUAL' && !balanceWarning) {
+            const balance = await leaveBalanceOf(conn, { tenantId: req.tenantId, staffId: leave.staff_id, year, entitlement: allowance });
+            if (thisLeave > balance.remaining) {
+              balanceWarning = { code: 'LEAVE_BALANCE_LOW', remaining: balance.remaining, requested: thisLeave, message: `الرصيد المتبقي ${balance.remaining} يوم — الإجازة هتعدّي الرصيد` };
+            }
+          }
         }
       }
+      // A day nobody punched on that was marked absent (by the daily job or by hand) is exactly what a leave approved afterwards covers: it is replaced by the
+      // leave's own day below. Without this a leave asked for after the absence was marked could never be approved — nothing deletes a day. Any other record
+      // (a punch, a free day, a half day) still blocks.
       const [[conflict]] = await conn.query(
         `SELECT id,date,status FROM attendance_logs
           WHERE tenant_id=? AND staff_id=? AND date BETWEEN ? AND ?
-            AND (leave_id IS NULL OR leave_id<>?) LIMIT 1 FOR UPDATE`,
+            AND (leave_id IS NULL OR leave_id<>?)
+            AND NOT (status='ABSENT' AND leave_id IS NULL AND check_in IS NULL AND check_out IS NULL) LIMIT 1 FOR UPDATE`,
         [req.tenantId, leave.staff_id, leave.start_date, leave.end_date, leave.id]
       );
       if (conflict) {
@@ -347,6 +367,10 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
       for (const date = start; date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
         if (leave.type !== 'MATERNITY' && weekends.has(date.getUTCDay())) continue;
         const attendanceStatus = leave.type === 'PERMISSION' ? 'HALF_DAY' : 'LEAVE';
+        await conn.query(
+          "DELETE FROM attendance_logs WHERE tenant_id=? AND staff_id=? AND date=? AND status='ABSENT' AND leave_id IS NULL AND check_in IS NULL AND check_out IS NULL",
+          [req.tenantId, leave.staff_id, date.toISOString().slice(0, 10)]
+        );
         await conn.query(
           `INSERT INTO attendance_logs
             (id,tenant_id,staff_id,date,status,notes,source,leave_id)
@@ -382,7 +406,7 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
     createNotification('hr', `${answer} طلبك: ${LEAVE_LABELS_AR[leave.type] || 'إجازة'}`,
       `${dateOnly(leave.start_date)}${leave.start_time ? ` من ${leave.start_time} لـ ${leave.end_time}` : ` إلى ${dateOnly(leave.end_date)}`}${admin_note ? ` — ${String(admin_note).slice(0, 300)}` : ''}`,
       { leave_id: leave.id, tab: 'staff_home' }, req.tenantId, leave.staff_id).catch(() => {});
-    res.json({ ok: true });
+    res.json(balanceWarning ? { ok: true, warning: balanceWarning } : { ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     hrError(res, e);
@@ -396,7 +420,7 @@ router.post('/api/admin/hr/salary', requireAuth, requireAdminOrStaff, requirePer
     const { staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed,
             deduction_social_insurance, deduction_tax, other_allowances_json, currency, effective_from } = req.body;
     if (!staff_id || base_salary === undefined) return res.status(400).json({ error: 'staff_id and base_salary required' });
-    if (req.staffRecord?.id === staff_id) {
+    if (isSelfMutation(req, staff_id)) {
       return res.status(409).json({ error: 'لا يجوز تعديل هيكل راتبك بنفسك', code: 'HR_SELF_MUTATION' });
     }
     if (!Number.isFinite(Number(base_salary)) || Number(base_salary) < 0) {
@@ -551,6 +575,8 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
   try {
     const { staff_id, date, check_in, check_out, status, notes } = req.body;
     if (!staff_id || !validDateOnly(date)) return res.status(400).json({ error: 'staff_id and valid date are required' });
+    // Nobody edits their own attendance: a day typed here is charged or excused by payroll.
+    if (isSelfMutation(req, staff_id)) return res.status(409).json({ error: 'لا يجوز تعديل حضورك بنفسك', code: 'HR_SELF_MUTATION' });
     if (!(await staffInReach(conn, req, staff_id))) return outOfReach(res);
     // FREE_DAY is the paid day off every employee of six months has each month: stored as a HOLIDAY marked free_day, so a fingerprint re-upload counts it.
     // 3 Nov 2026, «الغياب دا باذن او بدون او من رصيد الاجازات»: an absence is told apart on the day. ABSENT is without permission and costs two days (4 Nov 2026,
@@ -560,9 +586,6 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE','FREE_DAY','ABSENT_EXCUSED','LEAVE_BALANCE','OVERTIME'];
     if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid attendance status' });
     const manualDeduction = req.body.deduction_days === undefined || req.body.deduction_days === '' || req.body.deduction_days === null ? null : Number(req.body.deduction_days);
-    if (manualDeduction !== null && !(Number.isFinite(manualDeduction) && manualDeduction >= 0 && manualDeduction <= 1)) {
-      return res.status(400).json({ error: 'الخصم لازم يكون من صفر ليوم كامل' });
-    }
     if ((check_in && !validClockTime(check_in)) || (check_out && !validClockTime(check_out))) {
       return res.status(400).json({ error: 'Time must use HH:mm format' });
     }
@@ -600,7 +623,9 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     const judged = check_in && !overtime && !['ABSENT', 'HOLIDAY'].includes(safeStatus);
     const lateFromPolicy = judged ? Math.max(0, toMinutes(check_in) - rules.start) : 0;
     const computedDeduction = !judged && !earlyMin ? 0 : Math.min(1, tierDays(lateFromPolicy, rules.tiers) + (rules.earlyTiered ? tierDays(earlyMin, rules.tiers) : 0));
-    const deductionDays = overtime || safeStatus === 'ABSENT' || safeStatus === 'HOLIDAY' ? 0 : (manualDeduction ?? computedDeduction);
+    const charged = manualDayDeduction({ status: overtime ? 'OVERTIME' : safeStatus, typed: manualDeduction, computed: computedDeduction });
+    if (charged.error) return res.status(400).json({ error: charged.error });
+    const deductionDays = charged.days;
     const overtimeDays = overtime ? (overtimeTyped ?? rules.weekendOvertimeDays) : null;
     await conn.beginTransaction();
     transactionStarted = true;
@@ -677,8 +702,8 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND created_at>=? AND created_at<?) AS leads_assigned,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ${CONVERTED_SQL} AND updated_at>=? AND updated_at<?) AS leads_converted,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status='contacted' AND updated_at>=? AND updated_at<?) AS leads_contacted,
-        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL) AS revenue_generated,
-        (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL) AS sales_count,
+        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS revenue_generated,
+        (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS sales_count,
         (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND assigned_sales_id=? AND created_at>=? AND created_at<?) AS subscribers_enrolled
     `, Array.from({ length: 6 }, () => [req.tenantId, staffId, start, end]).flat());
 
@@ -694,7 +719,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
       SELECT MONTH(date) AS month, YEAR(date) AS year,
              COUNT(*) AS sales_count, SUM(amount_egp) AS revenue
       FROM payments
-      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(${sqlCairoToday()}, INTERVAL 6 MONTH) AND deleted_at IS NULL
+      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(${sqlCairoToday()}, INTERVAL 6 MONTH) AND deleted_at IS NULL AND ${repMoneySql('payments')}
       GROUP BY YEAR(date), MONTH(date) ORDER BY YEAR(date) DESC, MONTH(date) DESC
     `, [staffId, req.tenantId]);
 

@@ -867,20 +867,13 @@
   "class": "b"
  },
  {
-  "id": "penaltyLeaveBalanceAndAccountLinks: the month sheet names the three absences and the manager's penalty, and the payroll reads the leave balance and the commission type",
-  "why": "moved from a unit test that matched source text; the behaviour is integration/hrMonthSheetAbsenceAndPenalty",
+  "id": "penaltyLeaveBalanceAndAccountLinks: the month sheet names the three absences and the manager's penalty, and the payroll reads the leave balance",
+  "why": "moved from a unit test that matched source text; the behaviour is integration/hrMonthSheetAbsenceAndPenalty. The commission type on the staff row is no longer read by payroll (10 Nov 2026: lib/payrollCommission.js decides, tests/payrollCommission.test.js and integration/payrollRun)",
   "checks": [
    {
     "file": "api/routes/hr/payroll.js",
     "must": {
      "source": "leave_balance: balances\\.get\\(row\\.id\\)",
-     "flags": ""
-    }
-   },
-   {
-    "file": "api/routes/hr/payroll.js",
-    "must": {
-     "source": "s\\.commission_rate, s\\.commission_type,",
      "flags": ""
     }
    }
@@ -2231,14 +2224,14 @@
    {
     "file": "api/routes/finance/budgets.js",
     "must": {
-     "source": "for \\(const entry of catalog\\.entries\\)",
+     "source": "for \\(const box of listed\\.boxes\\)",
      "flags": ""
     }
    },
    {
     "file": "api/routes/finance/budgets.js",
     "must": {
-     "source": "if \\(!scope\\.branchId\\) \\{\\s*const current = await currentBalances",
+     "source": "if \\(!scope\\.branchId\\) \\{\\s*const listed = await listBoxes",
      "flags": ""
     }
    }
@@ -8224,7 +8217,7 @@
    {
     "file": "api/routes/analytics/sales.js",
     "must": {
-     "source": "SUM\\(amount_egp\\).*actual_revenue",
+     "source": "SUM\\(p\\.amount_egp\\).*actual_revenue",
      "flags": ""
     }
    },
@@ -14368,7 +14361,7 @@
    {
     "file": "api/routes/lead-capture-crm.js",
     "must": {
-     "source": "repTakesLead\\(rep, targets\\[i\\]\\)",
+     "source": "repTakesLead\\(rep, rows\\[i\\]\\)",
      "flags": ""
     }
    }
@@ -14886,7 +14879,7 @@
    {
     "file": "api/routes/admin-operations.js",
     "must": {
-     "source": "box_method, created_at\\)\\s+VALUES \\(\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,NOW\\(\\)\\)",
+     "source": "box_method, idempotency_key, created_at\\)\\s+VALUES \\(\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,\\?,NOW\\(\\)\\)",
      "flags": ""
     }
    },
@@ -18640,7 +18633,7 @@
    {
     "file": "api/routes/admin/leads/assignment.js",
     "must": {
-     "source": "await rotation\\.flush\\(conn, req\\.tenantId\\);",
+     "source": "rotation\\.flush\\(db, req\\.tenantId\\)",
      "flags": ""
     }
    },
@@ -20494,14 +20487,14 @@
    {
     "file": "api/routes/team-inbox.js",
     "must": {
-     "source": "if \\(!mayOpenThread\\(\\{ seesAll: seesAll\\(req\\), me: me\\(req\\), thread, settings \\}\\)\\) \\{",
+     "source": "if \\(!mayOpenThread\\(\\{ seesAll: access\\.wide, me: me\\(req\\), thread, settings: access\\.settings \\}\\)\\) \\{",
      "flags": ""
     }
    },
    {
     "file": "api/routes/team-inbox.js",
     "must": {
-     "source": "const view = allowedView\\(\\{ seesAll: seesAll\\(req\\), requested: req\\.query\\.view, settings \\}\\);",
+     "source": "const view = allowedView\\(\\{ seesAll: access\\.wide, requested: req\\.query\\.view, settings \\}\\);",
      "flags": ""
     }
    },
@@ -27150,7 +27143,7 @@
     "from": "router.get('/api/admin/finance/box-options'",
     "to": "// ── The balances: reset a box",
     "must": {
-     "source": "balance: seesBalances \\? value\\.balance : null",
+     "source": "balance: seesBalances \\? box\\.balance : null",
      "flags": ""
     }
    },
@@ -27159,7 +27152,7 @@
     "from": "router.get('/api/admin/finance/box-options'",
     "to": "// ── The balances: reset a box",
     "must": {
-     "source": "balance: seesBalances \\? 0 : null",
+     "source": "await listBoxes\\(pool, \\{ tenantId: req\\.tenantId \\}\\)",
      "flags": ""
     }
    }

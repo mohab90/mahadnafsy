@@ -33,6 +33,7 @@ async function assertWritable(dateStr, db = pool, tenantId = 'tenant-default') {
   if (p) {
     const e = new Error(`الفترة المحاسبية ${p.period_label} مقفولة — لا يمكن إضافة/تعديل حركة بداخلها`);
     e.status = 409;
+    e.code = 'ACCOUNTING_PERIOD_CLOSED';
     throw e;
   }
 }

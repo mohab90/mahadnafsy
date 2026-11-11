@@ -33,8 +33,9 @@ const reconcile = read('lib/reconcileChecks.js');
 
 
 test('the listing and the delete guard ask the same question', () => {
+  // From the lookup the listing makes against leads (it asks for the accounts' own numbers instead of reading every lead).
   const listing = registrations.slice(
-    registrations.indexOf("router.get('/api/admin/registrations'"),
+    registrations.indexOf('const LEAD_LOOKUP_CHUNK'),
     registrations.indexOf("router.post('/api/admin/registrations/:userId/convert-online'"));
   const remove = registrations.slice(registrations.indexOf("router.delete('/api/admin/registrations/:userId'"));
 

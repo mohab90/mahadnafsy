@@ -309,19 +309,13 @@ async function answerThread({ tenantId, threadId, expectInboundAt = null }, deps
 /** The bot steps aside: it stays quiet here and the team is told. */
 async function handOff(db, tenantId, thread, why) {
   await db.query('UPDATE inbox_threads SET bot_paused=1 WHERE tenant_id=? AND id=?', [tenantId, thread.id]);
-  const { createNotification } = require('./notification');
-  // Whoever has the conversation, else the rep who owns the lead; only with
-  // neither does it go to the inbox team as a whole.
-  let to = thread.assigned_staff_id || null;
-  if (!to && thread.lead_id) {
-    const [[lead]] = await db.query(
-      `SELECT l.assigned_sales_id FROM leads l
-         JOIN staff s ON s.id=l.assigned_sales_id AND s.tenant_id=l.tenant_id AND s.is_active=1 AND s.deleted_at IS NULL
-        WHERE l.id=? AND l.tenant_id=? LIMIT 1`, [thread.lead_id, tenantId]).catch(() => [[null]]);
-    to = lead?.assigned_sales_id || null;
-  }
-  await createNotification('inbox', '🤖 البوت محتاج حد من الفريق', `${why} — افتح المحادثة في صندوق الرسائل`,
-    { threadId: thread.id, leadId: thread.lead_id || null }, tenantId, to).catch(() => {});
+  // Whoever has the conversation, else the rep who owns the lead (or the client); only with neither does it go to the people who triage
+  // unlinked conversations — never to the whole sales team (lib/inboxAccess.js).
+  await require('./inboxAccess').notifyInbox({
+    type: 'inbox', title: '🤖 البوت محتاج حد من الفريق', message: `${why} — افتح المحادثة في صندوق الرسائل`,
+    data: { threadId: thread.id, leadId: thread.lead_id || null }, tenantId,
+    thread: { assignedStaffId: thread.assigned_staff_id, leadId: thread.lead_id, subscriberId: thread.subscriber_id },
+  }, db).catch(() => {});
 }
 
 /**

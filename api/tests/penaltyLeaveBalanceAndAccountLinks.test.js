@@ -14,7 +14,9 @@ test('the leave balance is 21 days spent by annual leaves, free days and absence
   const { leaveBalances, leaveBalanceOf } = require('../lib/leaveBalance');
   const db = {
     async query(sql) {
-      if (/FROM leaves/.test(sql)) return [[{ staff_id: 'a', days: '3' }]];
+      if (/FROM hr_policy_versions/.test(sql)) return [[]];
+      // The leaves that touch the year, each priced by its days inside it (a leave inside the year is its own total_days).
+      if (/FROM leaves/.test(sql)) return [[{ staff_id: 'a', type: 'ANNUAL', start_date: '2026-03-01', end_date: '2026-03-03', total_days: 3 }]];
       return [[{ staff_id: 'a', free_days: '2', balance_days: '1' }, { staff_id: 'b', free_days: '30', balance_days: '0' }]];
     },
   };

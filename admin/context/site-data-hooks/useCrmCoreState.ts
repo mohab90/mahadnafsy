@@ -425,8 +425,16 @@ export function useCrmCoreState(
 
   const bulkRedistributeLeads = async (mode: 'unassigned' | 'all', dailyCap = 0): Promise<number> => {
     // Delegate distribution entirely to the server — avoids N parallel saveLead calls
-    const result = await mysqlAdmin.distributeLeads(mode, dailyCap);
-    const assigned = result.assigned ?? 0;
+    // A request hands out a bounded part of the pool and says how many are still waiting: call again until nothing is.
+    let assigned = 0;
+    let skip = 0;
+    for (let round = 0; round < 50; round++) {
+      const result = await mysqlAdmin.distributeLeads(mode, dailyCap, skip);
+      assigned += result.assigned ?? 0;
+      // No new lead handed out and the carry-on point did not move: nothing more can be placed.
+      if (!result.remaining || result.skip == null || ((result.assigned ?? 0) === 0 && result.skip <= skip)) break;
+      skip = result.skip;
+    }
     if (assigned === 0) return 0;
     // What the session holds follows the new assignments (fetchHeldLeads): this downloaded the whole lead table for a
     // screen (the pool) that pages from the server and holds none of it.

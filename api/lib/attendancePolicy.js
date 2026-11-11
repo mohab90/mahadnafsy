@@ -23,6 +23,8 @@
 //
 // Pure: no database. lib/attendanceImport.js feeds it and writes the result.
 
+const { UNEXCUSED_ABSENCE_DAYS } = require('./payrollCalc');
+
 const DEFAULT_TIERS = Object.freeze([
   { over: 5, days: 0.25 }, { over: 30, days: 0.5 }, { over: 130, days: 1 },
 ]);
@@ -234,4 +236,26 @@ function evaluateMonth({ policy, month, punches = {}, approvedPermits = [], skip
   };
 }
 
-module.exports = { evaluateMonth, freeDaysFor, normalizePolicy, tierDays, parseTiers, monthDates, toMinutes, DEFAULT_TIERS };
+/**
+ * The days of pay a manually entered day costs. `typed` is what HR wrote in the day's deduction box (null when blank), `computed` what the policy's tiers
+ * make of its times. An absence is charged by payroll at the policy's rate (two days without permission, one with) unless HR typed another figure: a
+ * number above zero replaces that rate (0.5, 1 or 2: a day missed without permission may cost up to UNEXCUSED_ABSENCE_DAYS); blank or zero keeps it.
+ * Any other day is capped at one. An absent day used to drop what was typed (it stored 0) and anything above one was refused, so two days was
+ * rejected and half a day or one day was saved as the full default.
+ * @returns {{ days: number } | { error: string }}
+ */
+function manualDayDeduction({ status, typed, computed }) {
+  // A free day, a leave-balance day, a holiday and overtime cost nothing whatever is typed: a figure left in the box from the day's earlier status is not an error.
+  if (status === 'HOLIDAY' || status === 'OVERTIME') return { days: 0 };
+  const absent = status === 'ABSENT';
+  const most = absent ? UNEXCUSED_ABSENCE_DAYS : 1;
+  if (typed !== null && !(Number.isFinite(typed) && typed >= 0 && typed <= most)) {
+    return { error: absent ? 'خصم الغياب لازم يكون من صفر ليومين' : 'الخصم لازم يكون من صفر ليوم كامل' };
+  }
+  if (absent) return { days: typed || 0 };
+  // A half day costs half a day (payroll's HALF_DAY_CHARGED_DAYS) unless a figure is typed; the lateness of its punches is not charged on top. A typed zero, like a blank, leaves the rule.
+  if (status === 'HALF_DAY') return { days: typed || 0 };
+  return { days: typed ?? computed };
+}
+
+module.exports = { evaluateMonth, freeDaysFor, normalizePolicy, tierDays, parseTiers, monthDates, toMinutes, manualDayDeduction, DEFAULT_TIERS };

@@ -20,6 +20,7 @@ type Day = {
 type Report = {
   employees: EmployeeSummary[];
   unmatched: { bioNo: string | null; name: string | null; punches: number }[];
+  notOnDevice?: { staffId: string; name: string }[];
   punchesRead: number; rowsRead: number; skipped: { outsideMonth: number; unreadable: number };
   policy: { start: string; end: string };
   days?: { staffId: string; name: string; days: Day[] }[];
@@ -103,6 +104,14 @@ export default function HrFingerprintUpload({ month: initialMonth, notify, onClo
                   {report.unmatched.slice(0, 30).map(u => (
                     <span key={`${u.bioNo}|${u.name}`} className="rounded-full bg-white px-2 py-0.5">{u.bioNo ? `رقم ${u.bioNo}` : ''}{u.name ? ` ${u.name}` : ''} · {u.punches} بصمة</span>
                   ))}
+                </div>
+              </div>
+            )}
+            {(report.notOnDevice?.length ?? 0) > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                <b>موظفين من غير رقم بصمة ومش في الشيت ({report.notOnDevice?.length})</b> — محدش سجّلهم حضور من الشيت ده؛ لو بيبصموا اكتب رقمهم وارفع تاني:
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {report.notOnDevice?.slice(0, 40).map(person => <span key={person.staffId} className="rounded-full bg-white px-2 py-0.5">{person.name}</span>)}
                 </div>
               </div>
             )}

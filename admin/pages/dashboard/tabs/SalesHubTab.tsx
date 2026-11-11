@@ -116,18 +116,14 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
   // ── Per-staff stats ────────────────────────────────────────────────────
   const staffStats = useMemo(() => {
     return salesTeam.map(s => {
-      const myLeads = leads.filter(l => !l.hidden && l.assignedSalesId === s.id && inRange(l.createdAt, timeRange));
       const agg = perf?.byStaff?.[s.id];
       // byStatus carries every status, so lost and active are derived from it
-      // rather than needing their own fields on the response.
-      const totalLeads = agg ? agg.leads : myLeads.length;
-      const convertedCount = agg ? agg.converted : myLeads.filter(l => l.status === 'converted').length;
-      const lostCount = agg
-        ? (agg.byStatus?.lost || 0)
-        : myLeads.filter(l => l.status === 'lost').length;
-      const activeCount = agg
-        ? Math.max(0, agg.leads - convertedCount - lostCount)
-        : myLeads.filter(l => isOpenLeadStatus(l.status)).length;
+      // rather than needing their own fields on the response. The server's figures are the only source: a rep absent from the aggregate has
+      // none in the range (counting the 500 leads the session holds showed a page as if it were the table).
+      const totalLeads = agg?.leads ?? 0;
+      const convertedCount = agg?.converted ?? 0;
+      const lostCount = agg?.byStatus?.lost || 0;
+      const activeCount = Math.max(0, totalLeads - convertedCount - lostCount);
       const convRate = percent(convertedCount, totalLeads);
 
       // What this rep collected in the range: the database's figure (paid payments, in EGP), the one «أداء فريق المبيعات» names; 0 for an account that may not see money.
@@ -138,14 +134,8 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
       const targetAmt = target?.targetEGP || 0;
       const targetPct = percent(revenue, targetAmt);
 
-      // Follow-ups due today: the server's count (api/lib/leadFollowUps.js), the
-      // loaded page of leads only until it answers.
-      const followUpsToday = agg?.followUpsToday ?? leads.filter(l =>
-        !l.hidden &&
-        l.assignedSalesId === s.id &&
-        l.nextFollowUpDate === TODAY &&
-        isOpenLeadStatus(l.status)
-      ).length;
+      // Follow-ups due today: the server's count (api/lib/leadFollowUps.js).
+      const followUpsToday = agg?.followUpsToday ?? 0;
 
       return {
         staff: s,
@@ -163,7 +153,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
   // perf belongs here: without it this memo runs once while the request is
   // still in flight, keeps the array fallback, and never recomputes when the
   // real counts arrive. Neither typecheck nor the test suite can see that.
-  }, [salesTeam, leads, salesTargets, timeRange, perf]);
+  }, [salesTeam, salesTargets, perf]);
 
   // ── Overall stats ──────────────────────────────────────────────────────
   const totals = useMemo(() => {

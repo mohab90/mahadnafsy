@@ -28,7 +28,7 @@ const RANK_ICONS = [Trophy, Award, Star];
 const RANK_COLORS = ['text-yellow-500', 'text-slate-400', 'text-amber-600'];
 
 export default function StaffPerformanceTab() {
-  const { staffMembers, leads, authUser, isAdmin, currentStaff } = useSiteData();
+  const { staffMembers, authUser, isAdmin, currentStaff } = useSiteData();
   const [range, setRange] = useState<TimeRange>('month');
   const [roleFilter, setRoleFilter] = useState('all');
 
@@ -57,18 +57,22 @@ export default function StaffPerformanceTab() {
   // Per-rep lead counts from the database. The range boundary is computed here,
   // where the range labels are defined, and sent as a plain date — the server
   // filters, it does not decide when a month starts.
+  // The server's figures are the only source (11 Nov 2026): the fallback that counted the 500 newest leads the session held, when the request
+  // failed or a rep had none in the range, showed the size of a page as if it were the table. A failure is said, not hidden.
   const [perf, setPerf] = useState<StaffLeadPerformance | null>(null);
+  const [failed, setFailed] = useState(false);
   const rangeStart = range === 'all' ? null : rangeStartDate(range);
   useEffect(() => {
     if (repPulse) return undefined;
     let cancelled = false;
     setPerf(null);
+    setFailed(false);
     void (async () => {
       try {
         const data = await mysqlAdmin.getStaffLeadPerformance(rangeStart);
         if (!cancelled) setPerf(data);
       } catch {
-        // Falls back to counting the array, which is what this screen did before.
+        if (!cancelled) setFailed(true);
       }
     })();
     return () => { cancelled = true; };
@@ -87,15 +91,9 @@ export default function StaffPerformanceTab() {
       // A rep with no leads in the range is absent from the aggregate rather
       // than present with zeroes, so the row is still built for them.
       const agg = perf?.byStaff?.[s.id];
-      const myLeadCount = agg
-        ? agg.leads
-        : leads.filter(l => l.assignedSalesId === s.id && inRange(l.createdAt, range)).length;
-      const myConvertedCount = agg
-        ? agg.converted
-        : leads.filter(l => l.assignedSalesId === s.id && l.status === 'converted' && inRange(l.createdAt, range)).length;
-      const contacted = agg
-        ? agg.contacted
-        : leads.filter(l => l.assignedSalesId === s.id && ['contacted', 'interested', 'interested_booking', 'converted'].includes(l.status) && inRange(l.updatedAt || l.createdAt, range)).length;
+      const myLeadCount = agg?.leads ?? 0;
+      const myConvertedCount = agg?.converted ?? 0;
+      const contacted = agg?.contacted ?? 0;
 
       // What this rep collected in the range: the database's figure (paid payments recorded by this rep, in EGP), the one «أداء فريق المبيعات» names. It was added
       // up here from the newest 500 orders, of every status and currency, so a busy month came out short. 0 for an account that may not see money.
@@ -103,7 +101,7 @@ export default function StaffPerformanceTab() {
       const convRate = myLeadCount > 0 ? Math.round((myConvertedCount / myLeadCount) * 100) : 0;
       return { ...s, myLeads: myLeadCount, myConverted: myConvertedCount, revenue, convRate, contacted };
     }).sort((a, b) => b.revenue - a.revenue);
-  }, [staff, leads, range, perf]);
+  }, [staff, perf]);
 
   const totals = useMemo(() => ({
     leads: stats.reduce((a, s) => a + s.myLeads, 0),

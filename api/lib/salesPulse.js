@@ -10,6 +10,7 @@
 const { pool } = require('./db');
 const { addDaysToDateOnly, cairoDayStartUtc, cairoToday } = require('./dates');
 const { PAYMENT_EGP_SQL, PAYMENT_REP_SQL, buildTeamDailyReport } = require('./teamDailyReport');
+const { salesPaymentSql } = require('./salesMoney');
 
 const num = value => Number(value) || 0;
 const daysInMonth = ymd => new Date(Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)), 0)).getUTCDate();
@@ -20,7 +21,7 @@ const asDay = value => (value instanceof Date
 const PAID_BY_REP = `FROM payments p
        LEFT JOIN subscribers sub ON sub.id=p.subscriber_id AND sub.tenant_id=p.tenant_id
        LEFT JOIN leads l ON l.id=sub.lead_id AND l.tenant_id=sub.tenant_id
-      WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid')
+      WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND ${salesPaymentSql('p')}
         AND ${PAYMENT_REP_SQL}=?`;
 
 /** Days in a row, back from today (or from yesterday, while today is still open), with a booking. */

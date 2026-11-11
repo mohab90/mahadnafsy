@@ -7,6 +7,7 @@ import { Modal } from '../../../../../shared/ui/Modal';
 import { X, Plus, Calendar, CheckCircle, XCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import type { StaffMember } from '../../../../types';
+import HrLeaveEncashmentModal from './HrLeaveEncashmentModal';
 import { LEAVE_TYPE_LABELS, LEAVE_TYPE_COLORS, LEAVE_STATUS_LABELS, LEAVE_STATUS_COLORS } from './hrLabels';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
@@ -31,6 +32,7 @@ export default function HrLeavesPanel({ notify, staff }: {
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
   const [loadingLeaves, setLoadingLeaves] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [showEncashment, setShowEncashment] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ staff_id: '', type: 'ANNUAL', start_date: '', end_date: '', reason: '' });
 
   const fetchLeaves = useCallback(async () => {
@@ -50,7 +52,10 @@ export default function HrLeavesPanel({ notify, staff }: {
         body: JSON.stringify({ status }),
       });
       if (res.ok) {
+        const answer = await res.json().catch(() => ({})) as { warning?: { message?: string } };
         notify('success', status === 'APPROVED' ? 'تمت الموافقة على الإجازة ✅' : 'تم رفض الإجازة');
+        // An annual leave past the year's balance is approved all the same; HR is told.
+        if (answer.warning?.message) notify('info', answer.warning.message);
         fetchLeaves();
       } else { const d = await res.json(); notify('error', d.error || 'فشل التحديث'); }
     } catch { notify('error', 'خطأ في الاتصال'); }
@@ -85,7 +90,8 @@ export default function HrLeavesPanel({ notify, staff }: {
               {s === 'PENDING' ? '⏳ معلق' : s === 'APPROVED' ? '✅ موافق' : s === 'REJECTED' ? '❌ مرفوض' : '📋 الكل'}
             </button>
           ))}
-          <button onClick={() => setShowLeaveForm(true)} className="mr-auto px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition flex items-center gap-2"><Plus size={14}/> طلب إجازة</button>
+          <button onClick={() => setShowEncashment(true)} className="mr-auto px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition">بدل رصيد الإجازات</button>
+          <button onClick={() => setShowLeaveForm(true)} className=" px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition flex items-center gap-2"><Plus size={14}/> طلب إجازة</button>
         </div>
 
         {loadingLeaves ? (
@@ -123,6 +129,7 @@ export default function HrLeavesPanel({ notify, staff }: {
           </div>
         )}
 
+        {showEncashment && <HrLeaveEncashmentModal notify={notify} onClose={() => setShowEncashment(false)} />}
         {/* Leave request form modal */}
         {showLeaveForm && (
     <Modal

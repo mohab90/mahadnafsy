@@ -126,3 +126,25 @@ test('the free day: one a month once six months are worked, spent on the first a
   ]);
   assert.deepEqual([r.summary.absent, r.summary.freeDaysUsed, r.summary.present], [2, 1, 1]);
 });
+
+test('a manual day: two days off an absence without permission are accepted, a day or a half day is kept (it used to be refused or dropped)', () => {
+  const { manualDayDeduction } = require('../lib/attendancePolicy');
+  assert.deepEqual(manualDayDeduction({ status: 'ABSENT', typed: 2, computed: 0 }), { days: 2 });
+  assert.deepEqual(manualDayDeduction({ status: 'ABSENT', typed: 1, computed: 0 }), { days: 1 });
+  assert.deepEqual(manualDayDeduction({ status: 'ABSENT', typed: 0.5, computed: 0 }), { days: 0.5 });
+  assert.deepEqual(manualDayDeduction({ status: 'ABSENT', typed: null, computed: 0 }), { days: 0 }, 'blank: payroll charges the policy rate');
+  assert.deepEqual(manualDayDeduction({ status: 'ABSENT', typed: 0, computed: 0 }), { days: 0 });
+  assert.ok(manualDayDeduction({ status: 'ABSENT', typed: 2.25, computed: 0 }).error, 'more than two days is refused');
+  assert.ok(manualDayDeduction({ status: 'ABSENT', typed: -1, computed: 0 }).error);
+  assert.ok(manualDayDeduction({ status: 'ABSENT', typed: NaN, computed: 0 }).error);
+});
+
+test('a manual day that is not an absence is still one day at most, and policy days cost nothing', () => {
+  const { manualDayDeduction } = require('../lib/attendancePolicy');
+  assert.ok(manualDayDeduction({ status: 'LATE', typed: 2, computed: 0.25 }).error);
+  assert.deepEqual(manualDayDeduction({ status: 'LATE', typed: 0.5, computed: 0.25 }), { days: 0.5 });
+  assert.deepEqual(manualDayDeduction({ status: 'LATE', typed: null, computed: 0.25 }), { days: 0.25 });
+  assert.deepEqual(manualDayDeduction({ status: 'PRESENT', typed: 0, computed: 0.25 }), { days: 0 });
+  assert.deepEqual(manualDayDeduction({ status: 'HOLIDAY', typed: null, computed: 1 }), { days: 0 });
+  assert.deepEqual(manualDayDeduction({ status: 'OVERTIME', typed: null, computed: 1 }), { days: 0 });
+});

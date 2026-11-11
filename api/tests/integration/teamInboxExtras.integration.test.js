@@ -76,7 +76,7 @@ test('a note shows in the conversation, and a colleague cannot open someone else
   assert.deepEqual(thread.body.notes.map(n => [n.body, n.staff_name]), [['كلّمها بكرة', 'مندوبة']]);
   assert.equal(thread.body.messages.find(m => m.id === 'cm-ix-4').by_bot, 1);
   const blocked = await call('post', '/api/admin/team-inbox/threads/:id/notes', { params: { id: 'th-ix-1' }, body: { body: 'x' }, staff: OTHER });
-  assert.equal(blocked.statusCode, 403);
+  assert.equal(blocked.statusCode, 404, 'outside a colleague scope the conversation does not exist for her');
 });
 
 test('saved answers: shortcut is unique, and only its writer edits it', { skip }, async () => {

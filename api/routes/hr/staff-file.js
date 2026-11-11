@@ -1,4 +1,5 @@
 'use strict';
+const { isSelfMutation } = require('../../lib/hrSelfMutation');
 /**
  * The employee's file: which papers HR physically holds, and what the person is
  * actually paid.
@@ -129,6 +130,8 @@ router.get('/api/admin/hr/staff/:staffId/pay', ...view, async (req, res) => {
 
 router.put('/api/admin/hr/staff/:staffId/pay', ...managePay, async (req, res) => {
   try {
+    // The salary payroll pays on the file's basic: nobody sets their own.
+    if (isSelfMutation(req, req.params.staffId)) return res.status(409).json({ error: 'لا يجوز تعديل راتبك بنفسك', code: 'HR_SELF_MUTATION' });
     const commissionType = String(req.body?.commissionType || 'NONE').toUpperCase();
     if (!COMMISSION_TYPES.has(commissionType)) {
       return res.status(400).json({ error: 'نظام العمولة لازم يكون بدون / نسبة / تارجيت' });
@@ -264,6 +267,10 @@ router.put('/api/admin/hr/staff-basics', ...manage, async (req, res) => {
     }
     if ('base_salary' in fields && !canPay) {
       return res.status(403).json({ error: 'تعديل الراتب محتاج صلاحية الحسابات' });
+    }
+    // The device number may be typed on one's own row; salary, target, bonus scheme and free days are pay and are not one's own to set.
+    if (isSelfMutation(req, id) && Object.keys(fields).some(column => column !== 'biometric_user_no')) {
+      return res.status(409).json({ error: 'لا يجوز تعديل راتبك أو تارجتك أو مكافآتك بنفسك', code: 'HR_SELF_MUTATION' });
     }
     if (Object.keys(fields).length) updates.push({ id, fields });
   }

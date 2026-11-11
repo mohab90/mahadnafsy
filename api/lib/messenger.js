@@ -305,14 +305,17 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
       .catch(error => logger.warn('[messenger] phone capture failed', error.message));
   }
 
-  if (!quiet) await createNotification(
-    platform,
-    isNewLead ? p.newTitle : p.title,
-    `${lead?.name || 'زائر'}: ${text.slice(0, 120) || 'رسالة'}`,
-    { leadId: lead?.id || null, psid, communicationId: id },
-    tenantId,
-    owner
-  );
+  if (!quiet) {
+    const title = isNewLead ? p.newTitle : p.title;
+    const message = `${lead?.name || 'زائر'}: ${text.slice(0, 120) || 'رسالة'}`;
+    const data = { leadId: lead?.id || null, psid, communicationId: id };
+    // With no owner, to the people who triage unlinked conversations — not a broadcast (lib/inboxAccess.js).
+    if (owner) await createNotification(platform, title, message, data, tenantId, owner);
+    else {
+      await require('./inboxAccess').notifyInbox({ type: platform, title, message, data, tenantId, thread: { leadId: lead?.id || null } }, db)
+        .catch(error => logger.warn('[messenger] notice failed', error.message));
+    }
+  }
 
   // The inbox bot answers a few seconds later when it is on (lib/inboxBot.js).
   // Required here, not at the top: inboxBot requires this file to send.

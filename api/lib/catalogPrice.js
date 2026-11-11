@@ -58,6 +58,30 @@ async function resolveCatalogPrice(db, { type, itemId, currency = 'EGP', tenantI
 }
 
 /**
+ * The same answer as resolveCatalogPrice for many items at once: one query for the courses and one for the bundles, whatever the number of items.
+ * @param {{ type: 'course'|'bundle', itemId: string, currency?: string }[]} entries
+ * @returns {Promise<Map<string, number|null>>} keyed `${type}|${itemId}|${CURRENCY}`
+ */
+async function resolveCatalogPrices(db, { tenantId, entries }) {
+  const out = new Map();
+  for (const [type, table] of [['course', 'courses'], ['bundle', 'bundles']]) {
+    const ids = [...new Set(entries.filter(entry => entry.type === type && entry.itemId).map(entry => String(entry.itemId)))];
+    if (!ids.length) continue;
+    const [rows] = await db.query(
+      `SELECT id, price_egp, price_sar, price_usd FROM ${table} WHERE tenant_id=? AND id IN (?) AND deleted_at IS NULL`, [tenantId, ids]);
+    const byId = new Map(rows.map(row => [String(row.id), row]));
+    for (const entry of entries.filter(item => item.type === type && item.itemId)) {
+      const currency = String(entry.currency || 'EGP').toUpperCase();
+      const column = CURRENCY_COLUMN[currency];
+      const row = byId.get(String(entry.itemId));
+      const price = row && column ? Number(row[column]) : NaN;
+      out.set(`${type}|${entry.itemId}|${currency}`, Number.isFinite(price) && price > 0 ? price : null);
+    }
+  }
+  return out;
+}
+
+/**
  * Whether a submitted amount matches the catalogue, within a currency's
  * smallest meaningful unit. Amounts arrive as floats from JSON, so an exact
  * comparison would reject 2799.999999999999.
@@ -69,4 +93,4 @@ function priceMatches(submitted, expected) {
   return Math.abs(a - b) < 0.01;
 }
 
-module.exports = { resolveCatalogPrice, priceMatches, CURRENCY_COLUMN };
+module.exports = { resolveCatalogPrice, resolveCatalogPrices, priceMatches, CURRENCY_COLUMN };

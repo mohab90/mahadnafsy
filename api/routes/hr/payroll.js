@@ -6,7 +6,8 @@ const { requireHr, staffReachSql } = require('../../lib/branchHr');
 const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/finance');
-const { computePayrollLine } = require('../../lib/payrollCalc');
+const { computePayrollLine, ABSENCE_CHARGED_DAYS_SQL, LATE_DEDUCTION_DAYS_SQL, PRESENT_DAYS_SQL } = require('../../lib/payrollCalc');
+const { STRUCTURE_FOR_MONTH_ON, structureParams } = require('../../lib/payrollSalary');
 const { dateOnlyInTimeZone, cairoYearMonth } = require('../../lib/dates');
 const { toNumbers } = require('../../lib/mappers');
 const { readDeviceSheet } = require('../../lib/attendanceSheet');
@@ -16,7 +17,12 @@ const { departmentOf } = require('../../lib/staffDepartment');
 const { leaveBalances } = require('../../lib/leaveBalance');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { computeMonthlyBonuses } = require('../../lib/monthlyBonuses');
+const { getTenantSetting } = require('../../lib/tenantSettings');
+const { normalizeCommissionSettings, commissionRuleFor, commissionOf } = require('../../lib/payrollCommission');
 const { sheetFiguresOf } = require('../../lib/roundProgress');
+const { employmentWindow } = require('../../lib/payrollProration');
+const { isSelfMutation } = require('../../lib/hrSelfMutation');
+const { dueAdvances, owedEgp, allocateAdvances, recoverAdvancesOfPaidRun } = require('../../lib/salaryAdvances');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
 // add. The panel adds four deductions together and totals the column; against
@@ -167,26 +173,27 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
 
     // Get all active staff with salary structures
     const [employees] = await conn.query(`
-      SELECT s.id AS staff_id, s.name, s.commission_rate, s.commission_type, s.bonus_scheme, s.base_salary AS staff_base_salary,
+      SELECT s.id AS staff_id, s.name, s.department_id, s.base_salary AS staff_base_salary, s.hire_date, s.termination_date, s.is_active,
         ss.base_salary, ss.housing_allowance, ss.transport_allowance,
         ss.food_allowance, ss.other_fixed, ss.deduction_social_insurance, ss.deduction_tax,
         ss.other_allowances_json,ss.currency AS salary_currency
       FROM staff s
-      LEFT JOIN salary_structures ss ON ss.staff_id=s.id AND ss.tenant_id=s.tenant_id
-        AND ss.status='APPROVED'
-        AND ss.effective_from<=LAST_DAY(STR_TO_DATE(CONCAT(?, '-', ?, '-01'),'%Y-%m-%d'))
-        AND (ss.effective_to IS NULL OR ss.effective_to>=STR_TO_DATE(CONCAT(?, '-', ?, '-01'),'%Y-%m-%d'))
-        AND NOT EXISTS (
-          SELECT 1 FROM salary_structures newer
-           WHERE newer.tenant_id=ss.tenant_id AND newer.staff_id=ss.staff_id
-             AND newer.status='APPROVED'
-             AND newer.effective_from<=LAST_DAY(STR_TO_DATE(CONCAT(?, '-', ?, '-01'),'%Y-%m-%d'))
-             AND (newer.effective_to IS NULL OR newer.effective_to>=STR_TO_DATE(CONCAT(?, '-', ?, '-01'),'%Y-%m-%d'))
-             AND newer.effective_from>ss.effective_from
-        )
-       WHERE s.is_active=1 AND s.deleted_at IS NULL AND s.tenant_id=?
+      LEFT JOIN salary_structures ss ON ${STRUCTURE_FOR_MONTH_ON}
+       WHERE s.deleted_at IS NULL AND s.tenant_id=?
          AND (?='branch-all' OR s.branch_id=?)
-    `, [y, m, y, m, y, m, y, m, tenantId, branchId, branchId]);
+         -- Someone who left during the month is paid for the days he worked (offboarding sets termination_date); one who left before it is not in the run.
+         AND (s.is_active=1 OR (s.termination_date >= ? AND s.termination_date < ?))
+    `, [...structureParams(y, m), tenantId, branchId, branchId, monthStart, nextMonthStart]);
+    // The days of the month each one belonged to (lib/payrollProration.js). Not yet hired, or gone before the month: not in this run. No hire date: the full month, said below.
+    const windows = new Map();
+    const noHireDate = [];
+    for (let i = employees.length - 1; i >= 0; i -= 1) {
+      const employee = employees[i];
+      const window = employmentWindow({ hireDate: employee.hire_date, terminationDate: employee.termination_date, isActive: employee.is_active, year: y, month: m });
+      if (!window.include) { employees.splice(i, 1); continue; }
+      windows.set(employee.staff_id, window);
+      if (window.noHireDate) noHireDate.unshift({ staffId: employee.staff_id, name: employee.name });
+    }
     // The basic salary HR types on the employee («الراتب الأساسي», staff.base_salary)
     // counts when no approved salary structure covers the month; a structure,
     // with its allowances and approval trail, wins when there is one.
@@ -218,11 +225,34 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     const empIds = employees.map(e => e.staff_id);
     let totalAmount = 0;
 
+    // The automatic sales commission is off unless the owner switched it on (lib/payrollCommission.js): each employee's rule, and the month's figures only
+    // for those a rule asks for — commission rows written at payment time, or course sales (certificate money is not course money) for a percentage.
+    const commissionSettings = normalizeCommissionSettings(await getTenantSetting('payroll_commission', { tenantId, fallback: {}, db: conn }));
+    const commissionRules = new Map(employees.map(e => [e.staff_id, commissionRuleFor(commissionSettings, { staffId: e.staff_id, departmentId: e.department_id })]));
+    const paidByRules = empIds.filter(id => commissionRules.get(id).mode === 'RULES');
+    const paidByPercent = empIds.filter(id => commissionRules.get(id).mode === 'PERCENT');
+    const [ccBatch] = paidByRules.length ? await conn.query(`
+      SELECT staff_id, COALESCE(SUM(commission_amount),0) AS amt, COUNT(*) AS cnt
+      FROM crm_commissions
+      WHERE staff_id IN (?) AND month=? AND year=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')
+      GROUP BY staff_id
+    `, [paidByRules, m, y, tenantId]) : [[]];
+    const ccMap = Object.fromEntries(ccBatch.map(r => [r.staff_id, { amt: parseFloat(r.amt) || 0, cnt: parseInt(r.cnt) || 0 }]));
+    const [salesBatch] = paidByPercent.length ? await conn.query(`
+      SELECT staff_id, COALESCE(SUM(amount_egp),0) AS total_sales
+      FROM payments
+      WHERE staff_id IN (?) AND status='paid' AND tenant_id=? AND deleted_at IS NULL
+        AND COALESCE(payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER') AND date >= ? AND date < ?
+      GROUP BY staff_id
+    `, [paidByPercent, tenantId, monthStart, nextMonthStart]) : [[]];
+    const salesMap = Object.fromEntries(salesBatch.map(r => [r.staff_id, parseFloat(r.total_sales) || 0]));
+
     // Batch attendance stats
     const [attBatch] = empIds.length ? await conn.query(`
       SELECT a.staff_id,
         COUNT(CASE WHEN a.status='ABSENT' THEN 1 END) AS absent_days,
         COUNT(CASE WHEN a.status='ABSENT' AND (a.permit_used IS NULL OR a.permit_used <> 'excused') THEN 1 END) AS unexcused_absent_days,
+        COALESCE(SUM(${ABSENCE_CHARGED_DAYS_SQL}),0) AS absent_charged_days,
         COALESCE(SUM(CASE WHEN a.leave_id IS NOT NULL AND l.type='UNPAID'
                           THEN IF(a.status='HALF_DAY',0.5,1) ELSE 0 END),0) AS unpaid_leave_days,
         -- A morning permission HR approved is lateness nobody is charged for.
@@ -232,47 +262,25 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
           THEN 0 WHEN a.deduction_days IS NOT NULL THEN 0 ELSE a.late_minutes END), 0) AS late_minutes,
         -- Days judged under the policy's tiers (fingerprint sheet import) carry
         -- their own deduction in days; only older rows are charged per minute.
-        COALESCE(SUM(a.deduction_days), 0) AS late_deduction_days,
+        COALESCE(SUM(${LATE_DEDUCTION_DAYS_SQL}), 0) AS late_deduction_days,
         -- A weekly day off that was worked, in days of pay (migration 382).
         COALESCE(SUM(a.overtime_days), 0) AS overtime_days,
-        COALESCE(SUM(CASE WHEN a.status IN ('PRESENT','LATE','REMOTE') THEN 1
-                          WHEN a.status='HALF_DAY' THEN 0.5 ELSE 0 END),0) AS present_days,
+        COALESCE(SUM(${PRESENT_DAYS_SQL}),0) AS present_days,
         COUNT(*) AS logged_days
       FROM attendance_logs a
       LEFT JOIN leaves l ON l.tenant_id=a.tenant_id AND l.id=a.leave_id
+      JOIN staff st ON st.id=a.staff_id AND st.tenant_id=a.tenant_id
       WHERE a.tenant_id=? AND a.staff_id IN (?) AND a.date >= ? AND a.date < ?
+        -- Days before the hire date or after the last working day are not absences or lateness (11 Nov 2026).
+        AND (st.hire_date IS NULL OR a.date >= st.hire_date)
+        AND (st.termination_date IS NULL OR (st.is_active=1 AND st.termination_date < ?) OR a.date <= st.termination_date)
       GROUP BY a.staff_id
-    `, [tenantId, empIds, monthStart, nextMonthStart]) : [[]];
+    `, [tenantId, empIds, monthStart, nextMonthStart, monthStart]) : [[]];
     const attMap = Object.fromEntries(attBatch.map(r => [r.staff_id, r]));
 
-    // Batch commissions — UNIFIED source: crm_commissions rows written at payment time
-    // by commission_rules (same numbers sales sees in their dashboard). Only staff with
-    // no commission rows this month fall back to flat staff.commission_rate over sales.
-    const [ccBatch] = empIds.length ? await conn.query(`
-      SELECT staff_id, COALESCE(SUM(commission_amount),0) AS amt, COUNT(*) AS cnt
-      FROM crm_commissions
-      WHERE staff_id IN (?) AND month=? AND year=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')
-      GROUP BY staff_id
-    `, [empIds, m, y, tenantId]) : [[]];
-    const ccMap = Object.fromEntries(ccBatch.map(r => [r.staff_id, { amt: parseFloat(r.amt) || 0, cnt: parseInt(r.cnt) || 0 }]));
-
-    // Fallback sales sums — grouped per currency and converted to EGP so SAR/USD
-    // payments don't get added as if they were EGP.
-    const [commBatch] = empIds.length ? await conn.query(`
-      SELECT staff_id, COALESCE(SUM(amount_egp),0) AS total_sales
-      FROM payments
-      WHERE staff_id IN (?) AND status='paid' AND tenant_id=? AND deleted_at IS NULL AND MONTH(date)=? AND YEAR(date)=?
-      GROUP BY staff_id
-    `, [empIds, tenantId, m, y]) : [[]];
-    const commMap = Object.fromEntries(commBatch.map(r => [r.staff_id, parseFloat(r.total_sales) || 0]));
-
-    // Batch advance deductions
-    const [advBatch] = empIds.length ? await conn.query(`
-      SELECT staff_id,currency,COALESCE(SUM(amount),0) AS advances
-      FROM salary_advances
-      WHERE tenant_id=? AND staff_id IN (?) AND deduct_month=? AND deduct_year=? AND status='DISBURSED'
-      GROUP BY staff_id,currency
-    `, [tenantId, empIds, m, y]) : [[]];
+    // Every disbursed advance due this month or earlier, with what is still owed on it (lib/salaryAdvances.js): one the salary could not carry last month comes round
+    // again, oldest first. Nothing is written to an advance here — only a PAID run does that.
+    const advBatch = await dueAdvances(conn, tenantId, empIds, y, m);
 
     const [bonusBatch] = empIds.length ? await conn.query(
       `SELECT staff_id,type,currency,COALESCE(SUM(amount),0) amount
@@ -315,12 +323,8 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         });
       }
     }
-    const advMap = {};
-    for (const row of advBatch) {
-      const currency = String(row.currency || 'EGP').toUpperCase();
-      advMap[row.staff_id] = (advMap[row.staff_id] || 0)
-        + Number(row.advances || 0) * Number(fxRates[currency] || 1);
-    }
+    const advancesOf = {};
+    for (const row of advBatch) (advancesOf[row.staff_id] ||= []).push(row);
     const bonusMap = {};
     for (const row of bonusBatch) {
       const amounts = bonusMap[row.staff_id] ||= { bonus: 0, deduction: 0 };
@@ -339,6 +343,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
 
     // For each employee, calculate net salary (now pure in-memory — no per-employee DB queries for att/comm/adv)
     for (const emp of employees) {
+      const window = windows.get(emp.staff_id);
       const salaryCurrency = String(emp.salary_currency || 'EGP').toUpperCase();
       const salaryFx = Number(fxRates[salaryCurrency] || 1);
       const baseSalary = (parseFloat(emp.base_salary) || 0) * salaryFx;
@@ -352,11 +357,13 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       // day. It is reported here instead of being deducted: marking absences by
       // itself would dock pay for anyone not using the check-in yet.
       if (isClosedMonth) {
-        const unmarkedDays = Math.max(0, Math.floor(Number(workDaysPerMonth) || 26) - (Number(attStats.logged_days) || 0));
+        const unmarkedDays = Math.max(0, Math.floor((Number(workDaysPerMonth) || 26) * window.paidDays / 30) - (Number(attStats.logged_days) || 0));
         if (unmarkedDays > 0) attendanceWarnings.push({ staffId: emp.staff_id, name: emp.name, unmarkedDays });
       }
       const bonusTotal = bonusMap[emp.staff_id]?.bonus || 0;
       const deductionTotal = bonusMap[emp.staff_id]?.deduction || 0;
+      const commissionRule = commissionRules.get(emp.staff_id);
+      const earned = commissionOf(commissionRule, { rules: ccMap[emp.staff_id], sales: salesMap[emp.staff_id] });
 
       // The arithmetic itself lives in lib/payrollCalc.js so it can be unit
       // tested — it used to be inline here, which is why the money-critical part
@@ -364,24 +371,26 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       const line = computePayrollLine(emp, {
         salaryFx,
         baseSalary,
+        paidDays: window.paidDays,
         workdayMinutes,
         attendance: attStats,
-        crmCommission: ccMap[emp.staff_id] || null,
-        totalSales: commMap[emp.staff_id] || 0,
-        advanceDeduction: advMap[emp.staff_id] || 0,
+        advanceDeduction: owedEgp(advancesOf[emp.staff_id] || [], fxRates),
         instructorEarnings: feeMap[emp.staff_id]?.amount || 0,
+        commission: earned.amount,
         bonus: bonusTotal,
         deduction: deductionTotal,
       });
       const {
         housing, transport, food, otherFixed, totalAllowances,
         dedSocial, dedTax, absentDays, lateMins,
-        absenceDeduction, lateDeduction, commission, commissionCount, commissionSource,
+        absenceDeduction, lateDeduction,
         advanceDeduction, advanceApplied, advanceCarried,
         instructorEarnings, grossSalary, totalDeductions, netSalary,
-        totalSales, unpaidLeaveDays,
+        unpaidLeaveDays, paidBase,
       } = line;
       totalAmount += netSalary;
+      // How the advances were taken on this payslip: which, how much, and what is still owed afterwards. A PAID run adds exactly this to the advances.
+      const advanceSplit = allocateAdvances(advancesOf[emp.staff_id] || [], advanceApplied, fxRates);
 
       const allowancesJson = JSON.stringify({ housing, transport, food, other: otherFixed });
       // calculation_details makes the payslip reconcile with net_salary (bonus &
@@ -390,10 +399,14 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         instructorEarnings,
         instructorEarningsSource: 'approved_instructor_fees',
         instructorFeeCount: feeMap[emp.staff_id]?.count || 0,
-        commissionSource, totalSalesEgp: Math.round(totalSales * 100) / 100,
+        commissionSource: earned.source, commissionRate: commissionRule.mode === 'PERCENT' ? commissionRule.rate : null,
+        totalSalesEgp: commissionRule.mode === 'PERCENT' ? Math.round((salesMap[emp.staff_id] || 0) * 100) / 100 : null,
         bonusTotal, deductionTotal, dedSocial, dedTax, unpaidLeaveDays, salaryCurrency, salaryFx,
         salarySource: emp.salary_source, unexcusedAbsentDays: line.unexcusedAbsentDays, absenceChargedDays: line.absenceChargedDays, lateDeductionDays: Number(attStats.late_deduction_days) || 0,
         overtimeDays: line.overtimeDays, overtimePay: line.overtimePay,
+        // The days of the month he was paid for, and the whole month's basic salary they were taken from (the payslip says «من يوم X» / «لحد يوم Y»).
+        proration: window.partial || window.noHireDate ? { partial: window.partial, paidDays: window.paidDays, monthDays: window.monthDays, fromDay: window.joinedInMonth ? window.fromDay : null, toDay: window.leftInMonth ? window.toDay : null, fullBase: baseSalary, noHireDate: window.noHireDate } : null,
+        advances: advanceSplit.lines.filter(a => a.owedBefore > 0), advanceOwedBefore: advanceSplit.owedBefore, advanceOwedAfter: advanceSplit.owedAfter,
         policyId: policy.id, policyVersion: policy.version,
       });
       await conn.query(`
@@ -412,20 +425,22 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
           net_salary=VALUES(net_salary), attendance_days=VALUES(attendance_days),
           absent_days=VALUES(absent_days), late_minutes=VALUES(late_minutes),
           commission_count=VALUES(commission_count), calculation_details=VALUES(calculation_details)
-      `, [runId, emp.staff_id, baseSalary, allowancesJson, totalAllowances,
-          commission, bonusTotal, lateDeduction, absenceDeduction, advanceApplied,
+      `, [runId, emp.staff_id, paidBase, allowancesJson, totalAllowances,
+          earned.amount, bonusTotal, lateDeduction, absenceDeduction, advanceApplied,
           dedSocial + dedTax + deductionTotal, netSalary, presentDays, absentDays, lateMins,
-          commissionCount, calcDetails, tenantId, branchId]);
+          earned.count, calcDetails, tenantId, branchId]);
     }
 
-    // Link consumed commissions to this run so they can't double-count next month
-    // and get settled (→ PAID) when the run is paid.
-    if (empIds.length) {
+    // Link what this run pays so it can't be counted again next month: the commission rows of the employees paid by them (settled → PAID with the run),
+    // and the teaching fees.
+    if (paidByRules.length) {
       await conn.query(
         `UPDATE crm_commissions SET status='INCLUDED_IN_PAYROLL', payroll_run_id=?
          WHERE staff_id IN (?) AND month=? AND year=? AND tenant_id=? AND status='PENDING'`,
-        [runId, empIds, m, y, tenantId]
+        [runId, paidByRules, m, y, tenantId]
       );
+    }
+    if (empIds.length) {
       await conn.query(
         `UPDATE instructor_fees SET status='included_in_payroll',payroll_run_id=?
           WHERE tenant_id=? AND staff_id IN (?) AND period_month=? AND period_year=? AND status='approved'`,
@@ -467,6 +482,8 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       // on leave. Review them before approving: none of those days was deducted.
       attendanceWarnings,
       skippedNoSalary,
+      // Paid the full month because the file has no hire date: HR fills it in and calculates again if he did not work all of it.
+      noHireDate,
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -499,7 +516,24 @@ router.get('/api/admin/hr/payroll/:runId', requireAuth, requireAdminOrStaff, req
        WHERE pi.payroll_run_id=? AND pi.tenant_id=?
       ORDER BY s.name
     `, [runId, req.tenantId]);
-    res.json({ run: toNumbers(run, PAYROLL_RUN_MONEY), items: items.map(item => toNumbers(item, PAYROLL_ITEM_MONEY)) });
+    // A run is a snapshot: an attendance day edited, or a bonus approved, after it was calculated is not in it. Said here so the screen can tell HR to recalculate
+    // (a calculated run) or that the figures moved on after approval (an approved or paid one), instead of the sheet and the payslip silently disagreeing.
+    const periodStart = `${run.year}-${String(run.month).padStart(2, '0')}-01`;
+    const [[changed]] = await pool.query(
+      `SELECT
+         (SELECT COUNT(DISTINCT a.staff_id) FROM attendance_logs a
+            JOIN payroll_items pi ON pi.staff_id=a.staff_id AND pi.tenant_id=a.tenant_id AND pi.payroll_run_id=?
+            JOIN payroll_runs pr ON pr.id=pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
+           WHERE a.tenant_id=? AND a.date >= ? AND a.date < ? + INTERVAL 1 MONTH AND a.updated_at > pr.calculated_at) AS attendance_staff,
+         (SELECT COUNT(DISTINCT b.staff_id) FROM employee_bonuses b
+            JOIN payroll_items pi ON pi.staff_id=b.staff_id AND pi.tenant_id=b.tenant_id AND pi.payroll_run_id=?
+            JOIN payroll_runs pr ON pr.id=pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
+           WHERE b.tenant_id=? AND b.for_month=? AND b.for_year=? AND b.status='APPROVED' AND COALESCE(b.approved_at, b.created_at) > pr.calculated_at) AS bonus_staff`,
+      [runId, req.tenantId, periodStart, periodStart, runId, req.tenantId, run.month, run.year]);
+    res.json({
+      run: toNumbers(run, PAYROLL_RUN_MONEY), items: items.map(item => toNumbers(item, PAYROLL_ITEM_MONEY)),
+      changedSinceCalculation: { attendanceStaff: Number(changed?.attendance_staff) || 0, bonusStaff: Number(changed?.bonus_staff) || 0 },
+    });
   } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });
 
@@ -614,43 +648,10 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
         "UPDATE instructor_fees SET status='paid',paid_by=?,paid_at=NOW() WHERE payroll_run_id=? AND tenant_id=? AND status='included_in_payroll'",
         [actorId, runId, tenantId]
       );
-      // Close only the advances the salary actually paid back.
-      //
-      // This used to mark every advance due this month DEDUCTED as soon as the
-      // run was paid, whatever the payslip could carry. An advance larger than
-      // the month's salary — the case a month of absence produces — was written
-      // off in full while the employee still owed it. computePayrollLine now
-      // records what it could absorb, so the comparison is possible: an advance
-      // set is closed when the recovered figure covers it, and otherwise stays
-      // DISBURSED and comes round again next month.
-      const [dueByStaff] = await conn.query(
-        `SELECT a.staff_id, SUM(a.amount) AS due, COALESCE(pi.advance_deductions, 0) AS recovered
-           FROM salary_advances a
-           LEFT JOIN payroll_items pi
-             ON pi.staff_id = a.staff_id AND pi.tenant_id = a.tenant_id AND pi.payroll_run_id = ?
-          WHERE a.tenant_id = ? AND a.status = 'DISBURSED'
-            AND a.deduct_month = ? AND a.deduct_year = ?
-          GROUP BY a.staff_id, pi.advance_deductions`,
-        [runId, tenantId, prevRun.month, prevRun.year]
-      );
-      // A cent of tolerance, the same the rest of the money paths allow.
-      const settled = dueByStaff
-        .filter(r => Number(r.recovered) + 0.01 >= Number(r.due))
-        .map(r => r.staff_id);
-      if (settled.length) {
-        await conn.query(
-          `UPDATE salary_advances
-              SET status='DEDUCTED', deducted_payroll_run_id=?
-            WHERE tenant_id=? AND status='DISBURSED'
-              AND deduct_month=? AND deduct_year=?
-              AND staff_id IN (${settled.map(() => '?').join(',')})`,
-          [runId, tenantId, prevRun.month, prevRun.year, ...settled]
-        );
-      }
-      const carried = dueByStaff.length - settled.length;
-      if (carried > 0) {
-        logger.warn(`[payroll] ${carried} موظف لم تستوعب رواتبهم سلفهم كاملة — بقيت مستحقة`);
-      }
+      // Take back from each advance what its payslip took (recovered_amount), and close the ones now fully recovered. What the salary could not carry stays DISBURSED
+      // and comes round in the next run. A payslip that took from an advance another paid run has already recovered cannot be paid as it is.
+      const recovery = await recoverAdvancesOfPaidRun(conn, tenantId, runId);
+      if (recovery.recovered > recovery.settled) logger.warn(`[payroll] ${recovery.recovered - recovery.settled} سلفة اتسدد جزء منها بس — الباقي هيتخصم من المرتبات الجاية`);
     }
     if (status === 'CANCELLED') {
       await conn.query(
@@ -673,6 +674,9 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
+    if (e.code === 'PAYROLL_ADVANCES_CHANGED') {
+      return res.status(409).json({ error: 'سلفة في المسير ده اتسددت في مسير تاني بعد ما المسير اتحسب — إلغي المسير واحسبه من جديد', code: e.code, advance_id: e.advanceId });
+    }
     logger.error('[hr/payroll]', e.message); hrError(res, e);
   } finally { conn.release(); }
 });
@@ -699,7 +703,7 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdminOrSta
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Not found' });
     }
-    if (String(item.staff_id) === String(req.staffRecord?.id || '')) {
+    if (isSelfMutation(req, item.staff_id)) {
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: 'لا يجوز تعديل بند راتبك بنفسك', code: 'HR_SELF_MUTATION' });
     }
@@ -1018,34 +1022,42 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
     const y = parseInt(year)  || cairoYearMonth().year;
     const [rows] = await pool.query(`
       SELECT s.id, s.name, s.role, s.image, d.name AS department_name,
-        COUNT(CASE WHEN a.status IN ('PRESENT','LATE') THEN 1 END) AS present_days,
+        COALESCE(SUM(${PRESENT_DAYS_SQL}),0) AS present_days,
         COUNT(CASE WHEN a.status='ABSENT' THEN 1 END) AS absent_days,
         COUNT(CASE WHEN a.status='ABSENT' AND a.permit_used='excused' THEN 1 END) AS excused_days,
         COUNT(CASE WHEN a.status='LATE' THEN 1 END) AS late_days,
         COALESCE(SUM(a.late_minutes),0) AS total_late_minutes,
         COUNT(CASE WHEN a.status='LEAVE' THEN 1 END) AS leave_days,
         COALESCE(SUM(a.early_leave_minutes),0) AS total_early_minutes,
-        COALESCE(SUM(a.deduction_days),0) AS deduction_days,
+        COALESCE(SUM(${LATE_DEDUCTION_DAYS_SQL}),0) AS deduction_days,
+        COALESCE(SUM(${ABSENCE_CHARGED_DAYS_SQL}),0) AS absence_charged_days,
         COALESCE(SUM(a.overtime_days),0) AS overtime_days,
         COUNT(a.review_flag) AS flagged_days,
         COUNT(CASE WHEN a.permit_used='free_day' THEN 1 END) AS free_days_used,
         COUNT(CASE WHEN a.permit_used='leave_balance' THEN 1 END) AS balance_days_used,
         s.biometric_user_no, s.base_salary, s.free_days_per_month, s.bonus_scheme, COALESCE(s.hire_date, s.joined_at) AS hired,
+        s.hire_date AS hire_date_raw, s.termination_date, s.is_active,
         COUNT(a.id) AS total_records
       FROM staff s
       LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
       LEFT JOIN attendance_logs a ON a.staff_id=s.id AND a.tenant_id=s.tenant_id
         AND a.date >= ? AND a.date < ? + INTERVAL 1 MONTH
-      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL${reach.sql}
+        -- Days outside his employment are not read (the payroll run reads the same days).
+        AND (s.hire_date IS NULL OR a.date >= s.hire_date)
+        AND (s.termination_date IS NULL OR (s.is_active=1 AND s.termination_date < ?) OR a.date <= s.termination_date)
+      WHERE s.tenant_id=? AND s.deleted_at IS NULL AND (s.is_active=1 OR (s.termination_date >= ? AND s.termination_date < ? + INTERVAL 1 MONTH))${reach.sql}
       GROUP BY s.id ORDER BY s.name
-    `, [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, req.tenantId, ...reach.params]);
+    `, [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, req.tenantId,
+      `${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, ...reach.params]);
     // The free days each employee has this month (the policy's once six months are worked, or the number HR typed on the employee).
     const monthKey = `${y}-${String(m).padStart(2, '0')}`;
     const policy = await getEffectiveHrPolicy(pool, req.tenantId, `${monthKey}-01`);
     // The year's leave balance (21 days; a free day, an annual leave and an absence marked «من رصيد الإجازات» each spend one).
     const balances = await leaveBalances(pool, { tenantId: req.tenantId, year: y, entitlement: Number(policy.annual_leave_days) || 21 });
     // The month's bonuses and extra deductions per employee, approved and still waiting (9 Nov 2026: the month sheet shows them beside the net).
-    const [bonusRows] = rows.length ? await pool.query(
+    // A branch manager reaches their branch's attendance, not its pay (lib/branchHr.js): salary, bonuses and the bonus plan's figures go only to whoever holds view_hr.
+    const seesPay = Boolean(req.hrReach?.all);
+    const [bonusRows] = rows.length && seesPay ? await pool.query(
       `SELECT staff_id, type, status, source = 'BONUS_PLAN' AS from_plan, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS n FROM employee_bonuses
         WHERE tenant_id=? AND for_year=? AND for_month=? AND status IN ('APPROVED','PENDING') AND staff_id IN (?)
         GROUP BY staff_id, type, status, from_plan`, [req.tenantId, y, m, rows.map(row => row.id)]) : [[]];
@@ -1064,21 +1076,31 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
     // The bonus plan's month for every employee on a scheme (the rounds of the reps, the collectors' level): the same figures «نظام المكافآت» shows. A failure here
     // must not take the attendance sheet down with it.
     let planOf = () => null;
-    if (rows.some(row => row.bonus_scheme && row.bonus_scheme !== 'NONE')) {
+    if (seesPay && rows.some(row => row.bonus_scheme && row.bonus_scheme !== 'NONE')) {
       try {
         const month = await computeMonthlyBonuses(pool, { tenantId: req.tenantId, year: y, month: m });
         const byStaff = new Map(month.employees.map(employee => [employee.staffId, sheetFiguresOf(employee)]));
         planOf = id => byStaff.get(id) || null;
       } catch (error) { logger.error('[hr/payroll] bonus plan month', error.message); }
     }
-    res.json(rows.map(({ hired, ...row }) => ({
+    const shown = rows
+      .map(row => ({ row, window: employmentWindow({ hireDate: row.hire_date_raw, terminationDate: row.termination_date, isActive: row.is_active, year: y, month: m }) }))
+      .filter(entry => entry.window.include);
+    res.json(shown.map(({ row: { hired, hire_date_raw: hireDate, ...row }, window }) => ({
       ...row,
-      bonuses: bonusesOf(row.id),
+      // The days of the month he belongs to, at most 30 (a full month is 30; fewer when he joined or left during it): the sheet's estimate pays only those.
+      paid_days: window.paidDays,
+      left_on: window.leftInMonth ? String(row.termination_date).slice(0, 10) : null,
+      hired_on: window.joinedInMonth ? String(hireDate).slice(0, 10) : null,
+      ...(seesPay ? {} : { bonus_scheme: null }),
+      // A SUM (half days count half): a number, not mysql2's DECIMAL string.
+      present_days: Number(row.present_days) || 0,
+      bonuses: seesPay ? bonusesOf(row.id) : null,
       bonus_plan: planOf(row.id),
       leave_balance: balances.get(row.id) || { entitlement: Number(policy.annual_leave_days) || 21, annualLeaveDays: 0, freeDays: 0, balanceDays: 0, used: 0, remaining: Number(policy.annual_leave_days) || 21 },
       // HR has not filled departments in: the job says where the employee sits (lib/staffDepartment.js).
       department_name: departmentOf({ departmentName: row.department_name, role: row.role }),
-      base_salary: row.base_salary == null ? null : Number(row.base_salary),
+      base_salary: !seesPay || row.base_salary == null ? null : Number(row.base_salary),
       free_days_allowed: freeDaysFor({ policy, month: monthKey, hired: hired ? String(hired instanceof Date ? hired.toISOString() : hired).slice(0, 10) : null, override: row.free_days_per_month }),
     })));
   } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }

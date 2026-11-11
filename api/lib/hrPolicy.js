@@ -146,13 +146,17 @@ async function createLeaveRequest(db, { tenantId, staffId, type, startDate, endD
     [tenantId, staffId]
   );
   if (!staff) throw Object.assign(new Error('Active staff record not found'), { statusCode: 404 });
-  const [[overlap]] = await db.query(
-    `SELECT id FROM leaves
+  const [sameDays] = await db.query(
+    `SELECT id,type,start_time,end_time FROM leaves
       WHERE tenant_id=? AND staff_id=? AND status IN ('PENDING','APPROVED')
-        AND start_date<=? AND end_date>=? LIMIT 1`,
+        AND start_date<=? AND end_date>=?`,
     [tenantId, staffId, endDate, startDate]
   );
-  if (overlap) throw Object.assign(new Error('فيه طلب تاني معلق أو معتمد في نفس الأيام'), { statusCode: 409 });
+  // 11 Nov 2026: a morning permission and an evening one on the same day are two requests that do not meet — only a leave, or a permission whose hours overlap, conflicts.
+  const minutes = value => { const [h, m] = String(value).split(':').map(Number); return h * 60 + m; };
+  const clashes = sameDays.filter(other => !(window.startTime && HOUR_PERMITS.has(other.type) && other.start_time && other.end_time
+    && (minutes(other.end_time) <= minutes(window.startTime) || minutes(other.start_time) >= minutes(window.endTime))));
+  if (clashes.length) throw Object.assign(new Error('فيه طلب تاني معلق أو معتمد في نفس الأيام'), { statusCode: 409 });
   return { policy, totalDays, ...window };
 }
 

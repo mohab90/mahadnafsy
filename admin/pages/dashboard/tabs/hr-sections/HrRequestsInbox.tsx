@@ -105,6 +105,7 @@ export default function HrRequestsInbox({ notify, canManage, onCount }: {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'تعذر حفظ الرد');
       notify('success', decision === 'APPROVED' ? 'اتوافق على الطلب ووصل للموظف' : 'اترفض الطلب ووصل للموظف');
+      if (payload.warning?.message) notify('info', payload.warning.message);
       await load();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر حفظ الرد');

@@ -67,14 +67,18 @@ async function collectionPace(tenantId, today) {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const dayOfMonth = Number(today.slice(8, 10));
   const [[[sum]], [[target]]] = await Promise.all([
-    pool.query(`SELECT COALESCE(SUM(p.amount_egp), 0) AS month FROM payments p WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL AND ${COURSE_MONEY} AND p.date >= ? AND p.date < ?`,
+    // Certificate money is collection, not sales (the owner, 11 Nov 2026): it counts toward «التحصيل» and is shown apart, so the course part still reads as it did.
+    pool.query(`SELECT COALESCE(SUM(CASE WHEN ${COURSE_MONEY} THEN p.amount_egp END), 0) AS course, COALESCE(SUM(CASE WHEN UPPER(p.payment_type) = 'CERTIFICATE' THEN p.amount_egp END), 0) AS certificates
+                  FROM payments p WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL AND p.date >= ? AND p.date < ?`,
       [tenantId, cairoDayStartUtc(monthStart), cairoDayStartUtc(addDaysToDateOnly(today, 1))]),
     pool.query("SELECT revenue_target FROM sales_targets WHERE tenant_id = ? AND staff_id = '__collection__' AND period = ?", [tenantId, today.slice(0, 7)]),
   ]);
   const goal = num(target?.revenue_target) || DEFAULT_COLLECTION_TARGET;
-  const collected = Math.round(num(sum.month));
+  const courseMoney = Math.round(num(sum.course));
+  const certificateMoney = Math.round(num(sum.certificates));
+  const collected = Math.round(num(sum.course) + num(sum.certificates));
   const expected = Math.round((goal * dayOfMonth) / daysInMonth);
-  return { collected, target: goal, expectedByToday: expected, belowTarget: collected < expected, pctOfPace: expected ? Math.round((collected / expected) * 100) : 100 };
+  return { collected, courseMoney, certificateMoney, target: goal, expectedByToday: expected, belowTarget: collected < expected, pctOfPace: expected ? Math.round((collected / expected) * 100) : 100 };
 }
 
 // The two counts over the backlogs (150,000 undated leads: 0.8 s; 90,000 overdue instalments: 0.3 s on the lab) are held five minutes, not dropped by writes: a backlog

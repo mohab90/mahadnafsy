@@ -65,8 +65,9 @@ test('a screen that counts rows loads the rows, or it reports the bootstrap page
   const leadTabs = setBody('fullLeadTabs');
   const crmTabs = setBody('fullCrmDataTabs');
 
-  // sales_team builds a per-rep monthly table from l.assignedSalesId.
-  assert.ok(leadTabs.includes("'sales_team'"), 'sales_team counts leads and must load them');
+  // sales_team reads the server's per-rep report alone (GET /admin/reports/sales-performance); it used to count each rep's month out of the
+  // lead table as a fallback and so downloaded up to 50,000 leads. It must not be a lead-loading tab again.
+  assert.ok(!leadTabs.includes("'sales_team'"), 'sales_team must not load the whole lead table');
   // The sales report section and the online load section read the server's figures (GET /admin/reports/sales-breakdown, /admin/online-performance), so they load nothing.
   
   

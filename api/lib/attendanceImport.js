@@ -73,7 +73,13 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
       WHERE tenant_id=? AND staff_id IN (?) AND status='APPROVED' AND type IN ('LATE_PERMIT','EARLY_LEAVE')
         AND start_date BETWEEN ? AND ?`, [tenantId, ids, monthStart, monthEnd]) : [[]];
 
-  const lastDate = monthEnd < today ? monthEnd : today;
+  // Today is judged only for who has punched on it: an export taken in the afternoon, or before the day's punches were pulled from the device, would otherwise
+  // mark everyone not in yet absent for today — two days' pay — until the next upload. Past days are final.
+  const yesterday = new Date(new Date(`${today}T12:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10);
+  const lastDateOf = punchesByDate => {
+    const last = monthEnd < today ? monthEnd : today;
+    return last === today && !punchesByDate[today]?.length ? (monthEnd < yesterday ? monthEnd : yesterday) : last;
+  };
   const staffById = new Map(staff.map(s => [s.id, s]));
   const results = [];
   for (const [staffId, punchesByDate] of perStaff) {
@@ -88,7 +94,7 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
       freeDays: Math.max(0, freeDaysFor({ policy, month, hired: who.hired ? dateOnly(who.hired) : null, override: who.free_days_per_month })
         - decided.filter(d => d.staff_id === staffId && d.permit_used === 'free_day').length),
       firstDate: hired && hired > monthStart ? hired : monthStart,
-      lastDate,
+      lastDate: lastDateOf(punchesByDate),
     });
     results.push({ staffId, name: who.name, biometricNo: who.biometric_user_no || null, days, summary });
   }
@@ -98,6 +104,8 @@ async function importAttendanceMonth(db, { tenantId, month, punches, actorId = n
     employees: results.map(r => ({ staffId: r.staffId, name: r.name, biometricNo: r.biometricNo, ...r.summary }))
       .sort((a, b) => b.deductionDays - a.deductionDays || b.absent - a.absent || a.name.localeCompare(b.name)),
     unmatched: [...unmatched.values()].sort((a, b) => b.punches - a.punches),
+    // Active employees this upload did not judge at all: no device number and nobody in the sheet matched them by name. Reported so a missing number is seen, not silently left with no attendance.
+    notOnDevice: staff.filter(s => !perStaff.has(s.id)).map(s => ({ staffId: s.id, name: s.name })),
     punchesRead: punches.length,
     policy: { start: policy.work_start_time || '11:00', end: policy.work_end_time || '18:30', version: policy.version || null },
   };

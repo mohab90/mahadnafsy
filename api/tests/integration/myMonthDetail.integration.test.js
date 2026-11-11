@@ -93,8 +93,8 @@ test('the payslip appears once the month\'s payroll is approved, with every line
      VALUES ('mm-pi', 'mm-run', 'mm-sara', ?, 6000, 0, 300, 500, 'حققت التارجت', 75, 200, 0, 0, 6525)`, [T]);
   const { body } = await detail('mm1@x.t');
   assert.deepEqual(body.payslip, {
-    status: 'APPROVED', base: 6000, allowances: 0, commission: 300, overtime: 0, bonus: 500, bonusNote: 'حققت التارجت', lateDeduction: 75, absenceDeduction: 200,
-    advanceDeduction: 0, administrativeDeduction: 0, insuranceAndTax: 0, otherDeduction: 0, deductionsNote: null,
+    status: 'APPROVED', base: 6000, allowances: 0, commission: 300, teachingFees: 0, overtime: 0, bonus: 500, bonusNote: 'حققت التارجت', lateDeduction: 75, absenceDeduction: 200,
+    advanceDeduction: 0, advances: [], advanceOwedAfter: 0, proration: null, administrativeDeduction: 0, insuranceAndTax: 0, otherDeduction: 0, deductionsNote: null,
     bonusLines: [{ id: null, kind: 'plan', label: 'مكافآت أخرى اتحسبت في المسير', amount: 500, reason: 'حققت التارجت', currency: 'EGP' }], deductionLines: [], net: 6525,
   }, 'a bonus still pending when the run was calculated is said as the difference, so the lines add up');
   const other = (await detail('mm2@x.t')).body;

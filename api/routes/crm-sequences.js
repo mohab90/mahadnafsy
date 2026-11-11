@@ -6,6 +6,7 @@ const { pool } = require('../lib/db');
 const logger = require('../lib/logger').child({ module: 'crm-sequences-route' });
 const { tryJson } = require('../lib/helpers');
 const { leadScope } = require('../lib/leadAccess');
+const { staffClientTools } = require('./admin/stafflists');
 const { logLeadEventStrict } = require('../lib/crm');
 const {
   normalizeSequenceSteps,
@@ -196,10 +197,17 @@ router.post('/api/admin/crm/sequences/:id/enroll', ...manage, async (req, res) =
       }
       recipient = lead.email || req.body?.email;
     } else {
+      // A client is enrolled only by someone whose scope holds that client — the same rule as every client list and route
+      // (routes/admin/stafflists.js subscriberScope). The lead branch above had it; this one took any client id in the tenant.
+      const scope = staffClientTools.subscriberScope(req);
+      if (scope.none || scope.forbidden) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Subscriber not found' });
+      }
       const [[subscriber]] = await conn.query(
-        `SELECT id,email FROM subscribers
-          WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
-        [subscriberId, req.tenantId]
+        `SELECT s.id,s.email FROM subscribers s
+          WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL AND ${scope.clause} LIMIT 1 FOR UPDATE`,
+        [subscriberId, req.tenantId, ...scope.params]
       );
       if (!subscriber) {
         await conn.rollback();
@@ -316,6 +324,22 @@ router.post('/api/admin/crm/sequence-enrollments/:id/actions', ...manage, async 
     if (!enrollment) {
       await conn.rollback();
       return res.status(404).json({ error: 'Enrollment not found' });
+    }
+    // The list above shows a scoped caller only the enrolments of leads inside their scope; the actions held the tenant and
+    // nothing else, so anyone with manage_leads could pause or end another rep's sequence by its id.
+    const scope = leadScope(req, 'l');
+    if (scope.none) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Enrollment not found' });
+    }
+    if (scope.sql) {
+      const [[visible]] = enrollment.lead_id
+        ? await conn.query(`SELECT l.id FROM leads l WHERE l.tenant_id=? AND l.id=?${scope.sql} LIMIT 1`, [req.tenantId, enrollment.lead_id, ...scope.params])
+        : [[null]];
+      if (!visible) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Enrollment not found' });
+      }
     }
     const transitions = {
       pause: {

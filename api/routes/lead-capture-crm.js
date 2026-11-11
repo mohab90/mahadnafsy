@@ -26,6 +26,8 @@ const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { leadPhoneClause, findLeadByContact } = require('../lib/leadMatching');
+const { bringBackReturningLead } = require('../lib/leadReturn');
+const { handOutInChunks, notifyReps } = require('../lib/leadHandout');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
@@ -100,12 +102,16 @@ router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', '
       // Whoever this returns has their id, client_code and sales assignment
       // reused for the incoming submission, so a false match merges two people
       // into one lead. It compared the last 10 digits, which is not a number —
-      // see lib/leadMatching.js.
+      // see lib/leadMatching.js. A hidden or archived lead is matched too (a visible one first): it was not,
+      // so the INSERT below met the number's unique key and updated the hidden row under a new id — the
+      // timeline entry went to a lead that does not exist and the response named it — or, in another
+      // spelling of the number, filed the person twice.
       [[existing]] = await conn.query(
-        `SELECT id, client_code, crm_json, assigned_sales_id, assigned_sales_name
+        `SELECT id, name, status, hidden, client_code, crm_json, assigned_sales_id, assigned_sales_name
            FROM leads
           WHERE tenant_id=? AND ${identityMatch.sql}
-            AND hidden=0 LIMIT 1 FOR UPDATE`,
+            AND merged_into_lead_id IS NULL
+          ORDER BY hidden ASC, created_at DESC LIMIT 1 FOR UPDATE`,
         [tenantId, ...identityMatch.params]
       );
       if (existing) id = existing.id;
@@ -135,15 +141,19 @@ router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', '
     const branchVal = normalizeBranch(pickedBranch, null) || clientContext.branch;
     let salesId = existing?.assigned_sales_id || null;
     let salesName = existing?.assigned_sales_name || null;
+    const pickRep = () => getNextSalesRep(tenantId, conn, {
+      branch: branchVal,
+      lead: {
+        source: source || 'تسجيل اهتمام',
+        courseIds: Array.isArray(crmData.interestedCourseIds) ? crmData.interestedCourseIds : [],
+      },
+      loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS,
+    });
+    // A hidden or closed lead filling the form again comes back to its rep, or to the next one when it has none (lib/leadReturn.js).
+    const returned = existing ? await bringBackReturningLead(conn, { tenantId, lead: existing, via: 'نموذج الموقع', pickRep }) : null;
+    if (returned?.reopened && returned.owner) { salesId = returned.owner.id; salesName = returned.owner.name; }
     if (!salesId) {
-      const rep = await getNextSalesRep(tenantId, conn, {
-        branch: branchVal,
-        lead: {
-          source: source || 'تسجيل اهتمام',
-          courseIds: Array.isArray(crmData.interestedCourseIds) ? crmData.interestedCourseIds : [],
-        },
-        loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS,
-      });
+      const rep = await pickRep();
       salesId = rep?.id || null;
       salesName = rep?.name || null;
     }
@@ -248,18 +258,19 @@ router.put('/api/admin/crm-settings', requireAuth, requireAdmin, async (req, res
   } catch (e) { routeError(res, e); }
 });
 
+// «توزيع الليدز»: hands the live pool to the reps switched on in «التوزيع». A request works through at most HANDOUT_CAP leads in short
+// transactions (lib/leadHandout.js) and answers `remaining` (how many are still waiting) and `skip` (send it back to carry on past
+// the leads no rep takes); the screen calls again until remaining is 0. Each lead handed out gets its «assigned» timeline event, and
+// each rep one notice for the request.
 router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req, res) => {
-  const { mode = 'unassigned' } = req.body || {};
+  const { mode = 'unassigned', skip = 0 } = req.body || {};
   const conn = await pool.getConnection();
-  let transactionStarted = false;
   let distributionLock = null;
   try {
     const tenantId = scopedTenantId(req);
     distributionLock = `crm-distribute:${tenantId}`;
     const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [distributionLock]);
-    if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead distribution is already running' });
-    await conn.beginTransaction();
-    transactionStarted = true;
+    if (Number(lock?.acquired) !== 1) { distributionLock = null; return res.status(409).json({ error: 'Lead distribution is already running' }); }
     // Two separate things have to stay out of the pool.
     //
     // Ten statuses are terminal and this excluded two of them: the auto-archiver
@@ -275,23 +286,15 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     const openPlaceholders = openStatuses.map(() => '?').join(',');
     const archive = excludeArchiveSourcesSql('source');
     const whereClause = mode === 'all'
-      ? `WHERE hidden=0 AND tenant_id=? AND status IN (${openPlaceholders})${archive.sql}`
-      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND (assigned_cs_id IS NULL OR assigned_cs_id='') AND status IN (${openPlaceholders})${archive.sql}`;
-    const [targets] = await conn.execute(
-      `SELECT id,source,interested_course_ids_json,crm_json FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
-      [tenantId, ...openStatuses, ...archive.params]
-    );
+      ? `hidden=0 AND tenant_id=? AND status IN (${openPlaceholders})${archive.sql}`
+      : `hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND (assigned_cs_id IS NULL OR assigned_cs_id='') AND status IN (${openPlaceholders})${archive.sql}`;
+    const poolParams = [tenantId, ...openStatuses, ...archive.params];
     // Same eligibility as every other distributor: the reps switched on in the
     // CRM "التوزيع" screen. This used to take every active SALES *and MANAGER*
     // straight from the staff table.
     const reps = await listDistributableReps(tenantId, conn);
     if (!reps.length) {
-      await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ ok: false, assigned: 0, error: 'لا يوجد مندوب مبيعات مفعّل للتوزيع — فعّله من إعدادات العملاء المحتملين ← التوزيع' });
-    }
-    if (!targets.length) {
-      await conn.rollback(); transactionStarted = false;
-      return res.json({ ok: true, assigned: 0 });
     }
     let rrIdx = Number(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0, db: conn })) || 0;
     // Optional ceiling on how many leads one rep may be handed in a day. Without
@@ -334,45 +337,53 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     // 1 in (reps+1) leads is deliberately left unassigned instead of force-distributing
     // every lead — those land in the "محلي جديد" tab for manual placement. (owner request)
     const totalSlots = reps.length + 1;
-    let count = 0;
     let skippedAtCap = 0;
     // Leads no rep's course and source rules take (a rep set to «دبلومة العلاج
     // النفسي» only, or to «فيسبوك ليدز» only). They stay here, in the pool.
     let unmatched = 0;
-    for (let i = 0; i < targets.length; i++) {
-      // Everyone full: stop rather than spin through the remaining leads.
-      if (reps.every(full)) { skippedAtCap += targets.length - i; break; }
-      const takes = rep => !full(rep) && repTakesLead(rep, targets[i]);
-      if (!reps.some(takes)) { unmatched++; continue; }
-      // Skip a rep who is full or does not take this lead and let the cycle
-      // carry on, so the lead goes to the next person rather than being
-      // dropped. Both ceilings count: today's cap, and the open-leads cap — the
-      // roster was filtered once, before any of these leads were handed out, so
-      // it has to stay current in the batch. The no-rep slot still leaves this
-      // lead in the pool, as it always did.
-      let rep = null;
-      for (let tries = 0; tries < totalSlots && !rep; tries++) {
-        const slot = rrIdx % totalSlots;
-        rrIdx++;
-        if (slot === reps.length) break;
-        if (takes(reps[slot])) rep = reps[slot];
-      }
-      if (!rep) continue;
-      rep.activeLeads += 1;
-      rep.taken = (rep.taken || 0) + 1;
-      await conn.execute(
-        `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=?, assigned_at=NOW() WHERE id=? AND tenant_id=?`,
-        [rep.id, rep.name, targets[i].id, tenantId]
-      );
-      if (dailyCap > 0) assignedToday.set(String(rep.id), (assignedToday.get(String(rep.id)) || 0) + 1);
-      count++;
-    }
-    await setTenantSetting('crm_rr_index', rrIdx, { tenantId, actorId: req.user?.uid, db: conn });
-    await conn.commit();
-    transactionStarted = false;
-    res.json({ ok: true, assigned: count, reps: reps.length, skippedAtCap, unmatched, dailyCap });
+    const done = await handOutInChunks({
+      conn, tenantId, label: 'توزيع تلقائي لـ', actor: req.user?.email || 'admin', skip, placedLeaveThePool: mode !== 'all',
+      readChunk: async (db, offset, limit) => (await db.query(
+        `SELECT id,source,interested_course_ids_json,crm_json FROM leads WHERE ${whereClause} ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ? FOR UPDATE`,
+        [...poolParams, limit, offset]))[0],
+      place: async rows => {
+        const placements = [];
+        for (let i = 0; i < rows.length; i++) {
+          // Everyone full: stop rather than spin through the remaining leads.
+          if (reps.every(full)) { skippedAtCap += rows.length - i; return { placements, stop: true }; }
+          const takes = rep => !full(rep) && repTakesLead(rep, rows[i]);
+          if (!reps.some(takes)) { unmatched++; continue; }
+          // Skip a rep who is full or does not take this lead and let the cycle
+          // carry on, so the lead goes to the next person rather than being
+          // dropped. Both ceilings count: today's cap, and the open-leads cap — the
+          // roster was filtered once, before any of these leads were handed out, so
+          // it has to stay current in the batch. The no-rep slot still leaves this
+          // lead in the pool, as it always did.
+          let rep = null;
+          for (let tries = 0; tries < totalSlots && !rep; tries++) {
+            const slot = rrIdx % totalSlots;
+            rrIdx++;
+            if (slot === reps.length) break;
+            if (takes(reps[slot])) rep = reps[slot];
+          }
+          if (!rep) continue;
+          rep.activeLeads += 1;
+          rep.taken = (rep.taken || 0) + 1;
+          if (dailyCap > 0) assignedToday.set(String(rep.id), (assignedToday.get(String(rep.id)) || 0) + 1);
+          placements.push({ id: rows[i].id, salesId: rep.id, salesName: rep.name });
+        }
+        return { placements };
+      },
+      afterChunk: db => setTenantSetting('crm_rr_index', rrIdx, { tenantId, actorId: req.user?.uid, db }),
+    });
+    await notifyReps(tenantId, done.perRep);
+    const [[left]] = await conn.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND ${whereClause}`, [tenantId, ...poolParams]);
+    // What a full team could not take is counted as before; leads no rep takes at the front are not work for the next request.
+    const notYetRead = Math.max(0, Number(left.n) - done.skip);
+    const remaining = done.exhausted ? 0 : notYetRead;
+    if (skippedAtCap) skippedAtCap += notYetRead;
+    res.json({ ok: true, assigned: done.assigned, reps: reps.length, skippedAtCap, unmatched, dailyCap, remaining, skip: done.skip });
   } catch (e) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
     routeError(res, e);
   } finally {
     if (distributionLock) await conn.query('SELECT RELEASE_LOCK(?)', [distributionLock]).catch(() => {});

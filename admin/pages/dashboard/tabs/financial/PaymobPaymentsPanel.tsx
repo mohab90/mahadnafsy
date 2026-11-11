@@ -20,6 +20,11 @@ type PaymobRow = {
   courseTitle?: string | null;
 };
 
+/** One status group of GET /api/admin/payments/summary: the database's figures over EVERY payment the list matches, not over the rows that came back. */
+type SummaryGroup = { count: number; totalEgp: number; certificateEgp: number; byCurrency: Record<string, number>; unconverted: number };
+type PaymentsSummary = { groups: { paid: SummaryGroup; refunded: SummaryGroup; uncollected: SummaryGroup } };
+const LIST_LIMIT = 200;
+
 const money = (value: string | number) =>
   Number(value || 0).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 
@@ -31,17 +36,22 @@ const money = (value: string | number) =>
  */
 export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
   const [rows, setRows] = useState<PaymobRow[]>([]);
+  const [summary, setSummary] = useState<PaymentsSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/payments?source=paymob&limit=200', {
-        credentials: 'include', headers: adminAuthHeaders(),
-      });
+      // The totals are the database's over every Paymob payment (the summary takes the list's own filters); the list is only its latest rows.
+      const [res, summaryRes] = await Promise.all([
+        fetch(`/api/admin/payments?source=paymob&limit=${LIST_LIMIT}`, { credentials: 'include', headers: adminAuthHeaders() }),
+        fetch('/api/admin/payments/summary?source=paymob', { credentials: 'include', headers: adminAuthHeaders() }),
+      ]);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!summaryRes.ok) throw new Error(`HTTP ${summaryRes.status}`);
       const data = await res.json();
       setRows(Array.isArray(data) ? data : (data.rows || data.payments || []));
+      setSummary(await summaryRes.json() as PaymentsSummary);
     } catch (error) {
       notify('error', error instanceof Error ? `تعذر تحميل مدفوعات باي موب: ${error.message}` : 'تعذر التحميل');
     } finally { setLoading(false); }
@@ -57,17 +67,14 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
   // together. The route merges in orders with no matching payment — abandoned
   // checkouts and refused attempts — so the split happens here.
   const collected = useMemo(() => rows.filter(row => row.status === 'paid'), [rows]);
-  const refunded = useMemo(() => rows.filter(row => row.status === 'refunded'), [rows]);
-  // "Uncollected" means the money never arrived. A refund arrived and went back,
-  // so it belongs in neither table's total and gets its own line.
   const uncollected = useMemo(
     () => rows.filter(row => row.status !== 'paid' && row.status !== 'refunded'), [rows]);
-  const refundedTotal = useMemo(
-    () => refunded.reduce((sum, row) => sum + Number(row.amount || 0), 0), [refunded]);
-  const total = useMemo(
-    () => collected.reduce((sum, row) => sum + Number(row.amount || 0), 0), [collected]);
-  const uncollectedTotal = useMemo(
-    () => uncollected.reduce((sum, row) => sum + Number(row.amount || 0), 0), [uncollected]);
+  const paidGroup = summary?.groups.paid;
+  const uncollectedGroup = summary?.groups.uncollected;
+  const total = paidGroup?.totalEgp ?? 0;
+  const uncollectedTotal = uncollectedGroup?.totalEgp ?? 0;
+  const shown = rows.length;
+  const matching = (paidGroup?.count ?? 0) + (uncollectedGroup?.count ?? 0) + (summary?.groups.refunded.count ?? 0);
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -82,11 +89,14 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
         </div>
         <div className="text-left">
           <div className="text-2xl font-extrabold font-mono">{money(total)}</div>
-          <div className="text-white/70 text-xs">إجمالي المحصّل فعلاً · {collected.length} عملية</div>
+          <div className="text-white/70 text-xs">إجمالي المحصّل فعلاً · {paidGroup?.count ?? 0} عملية</div>
+          {(paidGroup?.certificateEgp ?? 0) > 0 && <div className="text-white/70 text-[11px]">منه شهادات {money(paidGroup?.certificateEgp ?? 0)}</div>}
+          {(paidGroup?.unconverted ?? 0) > 0 && <div className="text-amber-200 text-[11px]">{paidGroup?.unconverted} عملية بعملة أجنبية من غير قيمة بالجنيه مش محسوبة</div>}
         </div>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-gray-400">{matching > shown ? `الجدول بيعرض آخر ${shown} عملية من ${matching} — الإجماليات فوق على كل العمليات.` : ''}</span>
         <button
           onClick={load}
           disabled={loading}
@@ -162,7 +172,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
             </div>
             <div className="text-left">
               <div className="text-lg font-extrabold font-mono text-amber-800">{money(uncollectedTotal)}</div>
-              <div className="text-[11px] text-amber-600">{uncollected.length} محاولة</div>
+              <div className="text-[11px] text-amber-600">{uncollectedGroup?.count ?? 0} محاولة</div>
             </div>
           </div>
           <table className="w-full bg-white text-sm">

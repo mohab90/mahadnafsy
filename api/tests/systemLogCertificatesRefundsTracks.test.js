@@ -141,14 +141,16 @@ test('«تكملة»: the course joins the track, its money with it, access unto
       [/FROM enrollments .* FOR UPDATE/, [[{ id: 'e1', course_id: 'c1', status: 'active', access_type: 'full' }]]],
       [/FROM courses/, [[{ title: 'الصحة النفسية' }]]],
       [/FROM bundles WHERE id=\?/, [[{ title: 'دبلومة علم النفس المتكامل' }]]],
-      [/SELECT COALESCE\(SUM\(amount\),0\) AS total/, [[{ total: 1200, currency: 'EGP' }]]],
+      [/SELECT currency, COALESCE\(SUM\(amount\),0\) AS total/, [[{ total: 1200, currency: 'EGP' }, { total: 100, currency: 'SAR' }]]],
       [/FROM subscribers/, [[]]],
       moneyStub({}, { c1: 300 }),
     ]);
     const result = await upgradeClientCourse(db, {
       tenantId: 't', subscriber: { id: 's1' }, item: 'c1', toItem: 'bundle:b1', actor: 'سيلز',
     });
-    assert.equal(result.carried, 1500);
+    assert.deepEqual(result.paid, { EGP: 1200, SAR: 100 }, 'per currency — never one number');
+    assert.equal(result.priorPaid, 300);
+    assert.match(find(db, /INSERT INTO activity_logs/).params[5], /1,200 EGP \+ 100 SAR \+ مدفوع قبل السيستم 300 مدفوعة/, 'the message names each currency');
     assert.deepEqual(find(db, /UPDATE enrollments SET bundle_id/).params, ['b1', 't', 'e1']);
     assert.ok(!find(db, /status='removed'/), 'the course they had stays open');
     assert.equal(granted.length, 0, 'the track opens through the payment, not the upgrade');

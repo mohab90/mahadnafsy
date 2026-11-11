@@ -20,6 +20,7 @@ const {
   hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { repMoneySql } = require('../../lib/repRevenue');
 const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday, cairoToday, sqlCairoWall } = require('../../lib/dates');
 
 const MAX_BODY = 4000;
@@ -116,7 +117,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
       pool.query(
         `SELECT DATE_FORMAT(date,'%Y-%m') ym, COUNT(*) bookings, COALESCE(SUM(amount_egp),0) revenue
            FROM payments
-          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND date>=?
+          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND date>=? AND ${repMoneySql('payments')}
           GROUP BY ym ORDER BY ym`,
         [req.tenantId, id, since]
       ),
@@ -148,9 +149,9 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
            (SELECT COUNT(*) FROM communications
              WHERE tenant_id=? AND staff_id=? AND date>=? AND date<?) AS touches_today,
            (SELECT COUNT(*) FROM payments
-             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND date>=? AND date<?) AS bookings_today,
+             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND date>=? AND date<? AND ${repMoneySql('payments')}) AS bookings_today,
            (SELECT COALESCE(SUM(amount_egp),0) FROM payments
-             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND date>=? AND date<?) AS revenue_today,
+             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND date>=? AND date<? AND ${repMoneySql('payments')}) AS revenue_today,
            (SELECT COUNT(*) FROM leads
              WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL AND created_at>=? AND created_at<?) AS leads_today`,
         [req.tenantId, id, today, tomorrow, req.tenantId, id, today, tomorrow,
@@ -168,7 +169,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
            LEFT JOIN (SELECT staff_id, SUM(amount_egp) revenue, COUNT(*) bookings
                         FROM payments
                        WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL
-                         AND date>=DATE_FORMAT(${sqlCairoToday()},'%Y-%m-01')
+                         AND date>=DATE_FORMAT(${sqlCairoToday()},'%Y-%m-01') AND ${repMoneySql('payments')}
                        GROUP BY staff_id) p ON p.staff_id=s.id
            LEFT JOIN (SELECT staff_id, COUNT(*) calls
                         FROM communications
@@ -183,13 +184,13 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
       pool.query(
         `SELECT
            (SELECT MIN(date) FROM payments
-             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL) AS first_sale_at,
+             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS first_sale_at,
            (SELECT MAX(amount_egp) FROM payments
-             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL) AS biggest_sale,
+             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS biggest_sale,
            (SELECT COUNT(*) FROM payments
-             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL) AS lifetime_bookings,
+             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS lifetime_bookings,
            (SELECT COALESCE(SUM(amount_egp),0) FROM payments
-             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL) AS lifetime_revenue,
+             WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS lifetime_revenue,
            (SELECT COUNT(*) FROM communications
              WHERE tenant_id=? AND staff_id=? AND type='CALL') AS lifetime_calls,
            (SELECT COUNT(*) FROM leads
@@ -314,7 +315,7 @@ async function buildStaffReport(tenantId, id, key) {
               COALESCE(MAX(amount_egp),0) biggest
          FROM payments
         WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
-          AND date>=? AND date<?`,
+          AND date>=? AND date<? AND ${repMoneySql('payments')}`,
       [tenantId, id, from, to]
     ),
     pool.query(
@@ -347,7 +348,7 @@ async function buildStaffReport(tenantId, id, key) {
     pool.query(
       `SELECT date, amount_egp FROM payments
         WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
-          AND date>=? AND date<?`,
+          AND date>=? AND date<? AND ${repMoneySql('payments')}`,
       [tenantId, id, from, to]
     ),
     pool.query(
@@ -906,7 +907,7 @@ router.get('/api/staff/me/targets', requireAuth, async (req, res) => {
       pool.query(
         `SELECT date, amount_egp FROM payments
           WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
-            AND date>=?`,
+            AND date>=? AND ${repMoneySql('payments')}`,
         [req.tenantId, me.id, oldest]
       ),
     ]);

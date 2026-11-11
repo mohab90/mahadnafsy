@@ -75,6 +75,22 @@ async function dropEnrolments(db, { tenantId, subscriberId, enrolments, actor, r
 const money = value => Number(value || 0).toLocaleString('en-US');
 
 /**
+ * What was paid on an item, per currency — [{ currency, total }]. A client who paid part in pounds and part in riyals is not owed one number: the message used to read
+ * SUM(amount) with MAX(currency), so 1,000 EGP and 200 SAR became «1,200 SAR».
+ */
+async function paidByCurrency(db, { tenantId, subscriberId, fromWhere, itemId }) {
+  const [rows] = await db.query(
+    `SELECT currency, COALESCE(SUM(amount),0) AS total FROM payments
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
+        AND payment_type IN ('COURSE','BUNDLE') AND ${fromWhere}
+      GROUP BY currency`,
+    [tenantId, subscriberId, itemId]);
+  return rows.filter(row => Number(row.total) > 0).map(row => ({ currency: row.currency || 'EGP', total: Number(row.total) }));
+}
+const paidText = rows => rows.map(row => `${money(row.total)} ${row.currency}`).join(' + ');
+const paidObject = rows => Object.fromEntries(rows.map(row => [row.currency, row.total]));
+
+/**
  * The item comes off the client. Money recorded against it stays where it is:
  * a refund returns money and a transfer moves it; a deletion does neither.
  */
@@ -129,11 +145,7 @@ async function transferClientCourse(db, { tenantId, subscriber, item, toItem, pr
   }, db);
 
   const fromWhere = from.bundleId ? 'bundle_id=?' : 'course_id=? AND bundle_id IS NULL';
-  const [[paid]] = await db.query(
-    `SELECT COALESCE(SUM(amount),0) AS total, MAX(currency) AS currency FROM payments
-      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
-        AND payment_type IN ('COURSE','BUNDLE') AND ${fromWhere}`,
-    [tenantId, subscriber.id, from.bundleId || from.courseId]);
+  const paid = await paidByCurrency(db, { tenantId, subscriberId: subscriber.id, fromWhere, itemId: from.bundleId || from.courseId });
   const [moved] = await db.query(
     `UPDATE payments SET course_id=?, bundle_id=?, item_title=?, course_expected=NULL,
             note=CONCAT(COALESCE(note,''), IF(note IS NULL OR note='', '', ' | '), ?)
@@ -147,14 +159,14 @@ async function transferClientCourse(db, { tenantId, subscriber, item, toItem, pr
   }
 
   const carried = [
-    Number(paid?.total) > 0 ? `${money(paid.total)} ${paid.currency || 'EGP'} مدفوعة اتنقلت معاه` : '',
+    paid.length ? `${paidText(paid)} مدفوعة اتنقلت معاه` : '',
     released.priorPaid ? `مدفوع قبل السيستم ${money(released.priorPaid)}` : '',
   ].filter(Boolean).join(' + ');
   await logClientEvent(db, {
     tenantId, subscriberId: subscriber.id, action: 'course_transferred', actor,
     label: `اتحوّل «${fromTitle}» إلى «${toTitle}»${carried ? ` — ${carried}` : ''}${reason ? ` — ${reason}` : ''}`,
   });
-  return { from: fromTitle, to: toTitle, paymentsMoved: moved.affectedRows || 0, paid: Number(paid?.total) || 0 };
+  return { from: fromTitle, to: toTitle, paymentsMoved: moved.affectedRows || 0, paid: paidObject(paid) };
 }
 
 /**
@@ -186,11 +198,7 @@ async function upgradeClientCourse(db, { tenantId, subscriber, item, toItem, pri
       WHERE tenant_id=? AND id IN (${enrolments.map(() => '?').join(',')})`,
     [to.bundleId, tenantId, ...enrolments.map(row => row.id)]);
   const fromWhere = from.bundleId ? 'bundle_id=?' : 'course_id=? AND bundle_id IS NULL';
-  const [[paid]] = await db.query(
-    `SELECT COALESCE(SUM(amount),0) AS total, MAX(currency) AS currency FROM payments
-      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
-        AND payment_type IN ('COURSE','BUNDLE') AND ${fromWhere}`,
-    [tenantId, subscriber.id, from.bundleId || from.courseId]);
+  const paid = await paidByCurrency(db, { tenantId, subscriberId: subscriber.id, fromWhere, itemId: from.bundleId || from.courseId });
   await db.query(
     `UPDATE payments SET bundle_id=?, course_expected=NULL,
             note=CONCAT(COALESCE(note,''), IF(note IS NULL OR note='', '', ' | '), ?)
@@ -201,14 +209,14 @@ async function upgradeClientCourse(db, { tenantId, subscriber, item, toItem, pri
   if (price !== null && price !== undefined && price !== '') {
     await setAgreedPrice(db, { tenantId, subscriberId: subscriber.id, ...to, price });
   }
-  const carried = Number(paid?.total) + released.priorPaid;
+  const carried = [paid.length ? paidText(paid) : '', released.priorPaid ? `مدفوع قبل السيستم ${money(released.priorPaid)}` : ''].filter(Boolean).join(' + ');
   await logClientEvent(db, {
     tenantId, subscriberId: subscriber.id, action: 'course_upgraded', actor,
     label: `تكملة: «${fromTitle}» بقى جزء من المسار «${toTitle}»`
-      + (carried > 0 ? ` — ${money(carried)} ${paid?.currency || 'EGP'} مدفوعة اتحسبت على المسار` : '')
+      + (carried ? ` — ${carried} مدفوعة اتحسبت على المسار` : '')
       + (Number(price) > 0 ? ` · سعر المسار ${money(price)}` : ''),
   });
-  return { from: fromTitle, to: toTitle, carried };
+  return { from: fromTitle, to: toTitle, paid: paidObject(paid), priorPaid: Number(released.priorPaid) || 0 };
 }
 
 module.exports = { isCourseManager, itemTitle, parseItem, removeClientCourse, transferClientCourse, upgradeClientCourse };

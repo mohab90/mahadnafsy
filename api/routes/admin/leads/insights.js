@@ -20,8 +20,10 @@ const {
   mapLeadRow,
 } = require('./_shared');
 
+const { CONVERTED_LEAD_STATUSES } = require('../../../lib/leadStatuses');
+const { salesPaymentSql } = require('../../../lib/salesMoney');
 const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueOn } = require('../../../lib/leadFollowUps');
-const { addDaysToDateOnly, cairoToday, monthRange } = require('../../../lib/dates');
+const { addDaysToDateOnly, cairoToday, cairoDayStartUtc, monthRange } = require('../../../lib/dates');
 const { hasPermission, PERMISSIONS } = require('../../../constants/permissions');
 const { cached } = require('../../../lib/db');
 const { toEgp } = require('../../../lib/staffClientsView');
@@ -64,7 +66,10 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
 
     const createdBound = from ? ' AND l.created_at >= ?' : '';
     const touchedBound = from ? ' AND COALESCE(l.updated_at, l.created_at) >= ?' : '';
-    const fromParam = from ? [from] : [];
+    // `from` is a Cairo day and created_at / updated_at are UTC instants: the bare date started the range at 00:00 UTC, 02:00-03:00 Cairo, so the
+    // leads of a month's first hours were counted in the month before (and a Saturday's in the Friday).
+    const fromParam = from ? [cairoDayStartUtc(from)] : [];
+    const paymentFromParam = from ? [from] : [];
 
     const byStaff = {};
     const entryFor = (id) => {
@@ -104,9 +109,9 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
            FROM leads l
           WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
             AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-            AND l.status IN ('contacted','interested','interested_booking','converted')${touchedBound}
+            AND l.status IN ('contacted','interested','interested_booking',${[...CONVERTED_LEAD_STATUSES].map(() => '?').join(',')})${touchedBound}
           GROUP BY l.assigned_sales_id`,
-        [...base, ...fromParam],
+        [...base, ...CONVERTED_LEAD_STATUSES, ...fromParam],
       ),
       pool.query(
         `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
@@ -120,9 +125,9 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
         ? pool.query(
           `SELECT p.staff_id AS staff_id, SUM(p.amount_egp) AS revenue
              FROM payments p
-            WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.staff_id IS NOT NULL AND p.deleted_at IS NULL${dateBound}
+            WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.staff_id IS NOT NULL AND p.deleted_at IS NULL AND ${salesPaymentSql('p')}${dateBound}
             GROUP BY p.staff_id`,
-          [req.tenantId, ...fromParam])
+          [req.tenantId, ...paymentFromParam])
         : Promise.resolve([[]]),
     ]);
     for (const r of createdRows) {
@@ -132,7 +137,8 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       const status = String(r.status || '').toLowerCase();
       entry.leads += count;
       if (status) entry.byStatus[status] = (entry.byStatus[status] || 0) + count;
-      if (status === 'converted') entry.converted += count;
+      // A sale is 'converted' or 'won' (CONVERTED_LEAD_STATUSES, as every report counts it): a rep whose leads were marked «won» showed none.
+      if (CONVERTED_LEAD_STATUSES.has(status)) entry.converted += count;
     }
     for (const r of contactedRows) {
       const entry = entryFor(r.staff_id);
@@ -184,7 +190,7 @@ router.get('/api/admin/leads/rep-revenue', requireAuth, requireAdminOrStaff, req
          JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
         WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND s.deleted_at IS NULL
           AND s.assigned_sales_id IS NOT NULL AND s.assigned_sales_id <> ''
-          AND (p.status IS NULL OR p.status = 'paid')
+          AND (p.status IS NULL OR p.status = 'paid') AND ${salesPaymentSql('p')}
           AND p.\`date\` >= ? AND p.\`date\` < ?${scopeSql}
         GROUP BY s.assigned_sales_id, p.currency`,
       [req.tenantId, range.startDate, range.endDate, ...scopeParams],

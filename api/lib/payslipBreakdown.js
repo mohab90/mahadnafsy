@@ -19,6 +19,8 @@ const parseJson = value => {
 function linesOfBonus(row) {
   const amount = money(row.amount);
   const base = { id: row.id, currency: row.currency || 'EGP' };
+  // 11 Nov 2026, the owner: the leave balance does not carry over — what is left at the year's end is paid, and the payslip names it (api/lib/leaveEncashment.js).
+  if (row.source === 'LEAVE_ENCASHMENT') return [{ ...base, kind: 'leave_encashment', label: 'بدل رصيد الإجازات', amount, reason: row.reason || null }];
   if (row.source !== 'BONUS_PLAN') return [{ ...base, kind: 'manual', label: 'مكافأة', amount, reason: row.reason || null }];
   const calc = parseJson(row.calc_json) || {};
   const lines = [];
@@ -61,8 +63,20 @@ function payslipBreakdown(item, rows, runStatus) {
   return {
     status: runStatus,
     base: money(item.base_salary), allowances: money(item.total_allowances), commission: money(item.commission), overtime: money(calc.overtimePay),
+    // Teaching fees the run paid with the salary (approved instructor fees): without this line an instructor's payslip did not add up to its net.
+    teachingFees: money(calc.instructorEarnings),
     bonus: money(item.bonus), bonusNote: item.bonus_note || null,
     lateDeduction: money(item.late_deductions), absenceDeduction: money(item.absence_deductions), advanceDeduction: money(item.advance_deductions),
+    // Which advances this payslip took from and what is still owed on them afterwards (11 Nov 2026): the split the run recorded, in each advance's own currency.
+    advances: (Array.isArray(calc.advances) ? calc.advances : []).filter(line => money(line.applied) > 0 || money(line.owedAfter) > 0).map(line => ({
+      id: line.id, currency: line.currency || 'EGP', amount: money(line.amount), dueMonth: line.dueMonth || null, dueYear: line.dueYear || null,
+      applied: money(line.applied), owedAfter: money(line.owedAfter),
+    })),
+    advanceOwedAfter: money(calc.advanceOwedAfter),
+    // Joined or left during the month (11 Nov 2026): paid for the days he belonged to, «من يوم X» / «لحد يوم Y», with the pro-rated basic above and the whole month's behind it.
+    proration: calc.proration && calc.proration.partial
+      ? { paidDays: Number(calc.proration.paidDays) || 0, monthDays: Number(calc.proration.monthDays) || 30, fromDay: calc.proration.fromDay || null, toDay: calc.proration.toDay || null, fullBase: money(calc.proration.fullBase) }
+      : null,
     // The manager's deductions (penalties); the rest of «other» is insurance and tax.
     administrativeDeduction: money(calc.deductionTotal),
     insuranceAndTax: money(Number(calc.dedSocial || 0) + Number(calc.dedTax || 0)),

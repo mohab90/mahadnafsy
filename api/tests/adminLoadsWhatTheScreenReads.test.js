@@ -117,6 +117,8 @@ test('a screen nobody has read through gets every list, as it had before', () =>
   assert.deepEqual([...listsForTab('online_clients')].sort(), ['daqqiRounds']);
   assert.deepEqual([...listsForTab('leads')], []);
   assert.deepEqual([...listsForTab('team_inbox')], []);
+  // «فريق المبيعات» reads the server's per-rep report alone; it no longer pulls the lead table to redo the count.
+  assert.ok(!listsForTab('sales_team').includes('leads'), 'sales_team must not load the leads');
   for (const tab of Object.keys(tabSiteLists)) {
     for (const list of tabSiteLists[tab]) assert.ok(SITE_LISTS.includes(list), `${tab}: no list called ${list}`);
   }

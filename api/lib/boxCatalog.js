@@ -21,8 +21,19 @@ const CATCH_ALL = 'أخرى';
 const collapse = value => String(value ?? '').replace(INVISIBLE, ' ').replace(/\s+/g, ' ').trim();
 const fold = value => collapse(value).replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660)).replace(/[إأآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').toLowerCase();
 
-/** The one currency a box holds, from its name. */
-const currencyOfName = name => (/سعود|ريال|sar/i.test(name) ? 'SAR' : /ويسترن|western|دولار|usd/i.test(name) ? 'USD' : 'EGP');
+/**
+ * The one currency a box holds, from its name. The settings list is plain names with no currency column, so the name has to say it. A Latin «sar» / «usd» counts
+ * only as a word of its own (never inside «Nasar»), and the Saudi banks that do not say «السعودية» in their name are named here — «بنك الراجحي» was read as
+ * pounds and shown as a pound box.
+ */
+const currencyOfName = name => (/سعود|ريال|راجحي|rajhi|(^|[^a-z])(sar|stc)([^a-z]|$)/i.test(name)
+  ? 'SAR'
+  : /ويسترن|western|دولار|(^|[^a-z])usd([^a-z]|$)/i.test(name) ? 'USD' : 'EGP');
+
+// Names the spelling rules (lib/paymentChannels.js) give to one specific box. Anything else they return for a name with no number in it is only the PROVIDER
+// («فودافون كاش» for «فودافون كاش مصري» and for «فودافون كاش السعودية», «تحويل بنكي» for «بنك الراجحي»): not an identity, so such a box keeps the name it was typed under.
+const SPECIFIC_NAMES = new Set(['أحمد السعودية', 'البنك السعودي', 'أونلاين', 'خزنة الدقي - كاش']);
+const isSpecific = canonical => SPECIFIC_NAMES.has(canonical) || /\d{3,}/.test(canonical);
 
 /**
  * @param {string[]} listed   the names as the settings list them
@@ -31,13 +42,15 @@ const currencyOfName = name => (/سعود|ريال|sar/i.test(name) ? 'SAR' : /�
  */
 function buildCatalog(listed, aliases = new Map()) {
   const names = [...new Set(listed.map(collapse).filter(Boolean))];
-  const drafts = names.map(name => ({ name, currency: currencyOfName(name), canonical: applyAlias(canonicalChannel(name), aliases), folded: fold(name) }));
-  // Two listed boxes that read the same under the spelling rules (the two bank transfers) keep their own names as their keys.
-  const sameReading = draft => drafts.filter(other => other.canonical === draft.canonical && other.currency === draft.currency).length > 1;
+  const drafts = names.map(name => ({ name, currency: currencyOfName(name), spelled: canonicalChannel(name), canonical: applyAlias(canonicalChannel(name), aliases), folded: fold(name) }));
+  // A box is named by what the owner typed unless the spelling rules found its specific name (its number, أحمد السعودية, the cash box) or a merge moved it: «بنك الراجحي» is
+  // not «تحويل بنكي» and «فودافون كاش السعودية» is not «فودافون كاش». Two listed boxes that read alike and hold one currency (the two bank transfers) keep their own names too.
+  const sameReading = draft => drafts.filter(other => other.spelled === draft.spelled && other.currency === draft.currency).length > 1;
+  const identity = draft => (isSpecific(draft.canonical) || draft.canonical !== draft.spelled ? draft.canonical : draft.name);
   const seen = new Set();
   const entries = [];
   for (const draft of drafts) {
-    const key = sameReading(draft) ? draft.name : draft.canonical;
+    const key = sameReading(draft) ? draft.name : identity(draft);
     if (seen.has(`${key}|${draft.currency}`)) continue;
     seen.add(`${key}|${draft.currency}`);
     entries.push({ ...draft, key });
@@ -48,7 +61,11 @@ function buildCatalog(listed, aliases = new Map()) {
 async function loadBoxCatalog(db, tenantId) {
   const aliases = await loadBoxAliases(db, tenantId);
   const { getTenantSetting } = require('./tenantSettings');
-  const content = await getTenantSetting('content', { tenantId, fallback: {}, db }).catch(() => ({}));
+  // A failed read reads as «no list» (the old reading), which shows every spelling as its own box — say so in the log, so a screen that looks wrong can be traced to it.
+  const content = await getTenantSetting('content', { tenantId, fallback: {}, db }).catch(error => {
+    require('./logger').warn('[boxCatalog] the payment-methods list could not be read; boxes are shown without it:', error.message);
+    return {};
+  });
   return buildCatalog(String(content?.['finance.payment_methods'] || '').split('||'), aliases);
 }
 
@@ -60,8 +77,16 @@ function boxOf(method, currency, catalog, { stored = false } = {}) {
   // A name already stored as a box (an opening, a withdrawal) is only read through the merges; a payment's typed method also through the spelling rules.
   if (!catalog?.active) return { box: stored ? applyAlias(String(method), catalog?.aliases) : applyAlias(canonicalChannel(method), catalog?.aliases), currency: cur };
   if (cur !== 'EGP') {
-    const own = catalog.entries.find(entry => entry.currency === cur);
-    return { box: own ? own.key : CATCH_ALL, currency: cur };
+    // The listed box of that currency the method names; with no such name, the currency's one box («فودافون كاش 4645 2,316 SAR» is on the riyal box — a Vodafone wallet never held
+    // riyals); with several boxes in the currency and no name to choose by, «أخرى» in that currency — never the first one listed, which took every other box's money.
+    const own = catalog.entries.filter(entry => entry.currency === cur);
+    const typed = fold(method);
+    const reading = applyAlias(canonicalChannel(method), catalog.aliases);
+    const named = own.find(entry => entry.folded === typed) || own.find(entry => entry.key === reading)
+      || (own.filter(entry => entry.canonical === reading).length === 1 ? own.find(entry => entry.canonical === reading) : null);
+    // The catch-all keeps its own name when it is read back as a stored box.
+    const chosen = named || (own.length === 1 && collapse(method) !== CATCH_ALL ? own[0] : null);
+    return { box: chosen ? chosen.key : CATCH_ALL, currency: cur };
   }
   const pounds = catalog.entries.filter(entry => entry.currency === 'EGP');
   const text = fold(method);

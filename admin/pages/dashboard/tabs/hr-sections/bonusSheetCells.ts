@@ -14,6 +14,17 @@ export const collectionCellText = (collection: NonNullable<SheetBonusPlan['colle
 export const bonusTotal = (plan: SheetBonusPlan | null, manual: { manualApproved?: number; manualPending?: number } = {}) =>
   Math.round(((plan ? plan.total : 0) + (manual.manualApproved || 0) + (manual.manualPending || 0)) * 100) / 100;
 
+/** «صافي الأساسي»: the basic salary less what absence and lateness cost — the payroll run's own figures once there is one, before it the days at a thirtieth of the salary. Null for an employee with no basic salary. */
+export function netBasicSalary({ base, run, chargedDays, paidDays = 30 }: { base: number; run: { base: number; attendanceDeductions: number } | null; chargedDays: number; paidDays?: number }): number | null {
+  if (run) return Math.max(0, Math.round((run.base - run.attendanceDeductions) * 100) / 100);
+  // Someone who joined or left during the month is paid for his days only (paidDays of 30); a day lost is still a thirtieth of the whole salary.
+  return base > 0 ? Math.max(0, Math.round(((base * Math.min(30, paidDays)) / 30 - (base / 30) * chargedDays) * 100) / 100) : null;
+}
+
+/** «إجمالي الراتب» before the payroll run: the net basic with the month's bonuses and overtime, less the extra deductions typed for the month. */
+export const estimatedMonthPay = ({ netBasic, bonuses, overtimePay, extraDeductions }: { netBasic: number; bonuses: number; overtimePay: number; extraDeductions: number }) =>
+  Math.max(0, Math.round((netBasic + bonuses + overtimePay - extraDeductions) * 100) / 100);
+
 export type SaveState = { kind: 'none' | 'unsaved' | 'differs' | 'pending' | 'approved'; saved: number | null };
 /** Where the plan's bonus stands towards payroll: not saved yet, saved but different from what is worked out now, waiting for approval, or approved. */
 export function saveState(plan: SheetBonusPlan | null, planSaved: { amount: number; approved: boolean } | null | undefined): SaveState {

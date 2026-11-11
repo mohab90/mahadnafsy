@@ -43,8 +43,9 @@ export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
   const decide = async (leave: Leave, status: 'APPROVED' | 'REJECTED') => {
     setBusy(leave.id);
     try {
-      await mysqlAdmin.adminPut(`/admin/hr/leaves/${encodeURIComponent(leave.id)}/status`, { status });
+      const answer = await mysqlAdmin.adminPut<{ warning?: { message?: string } }>(`/admin/hr/leaves/${encodeURIComponent(leave.id)}/status`, { status });
       notify('success', status === 'APPROVED' ? 'اتوافق على الطلب' : 'اترفض الطلب');
+      if (answer?.warning?.message) notify('info', answer.warning.message);
       load();
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر الحفظ'); } finally { setBusy(''); }
   };

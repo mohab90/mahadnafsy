@@ -90,6 +90,7 @@ function composeOwnerReport(report, parts = PART_KEYS) {
   ];
   if (want.has('income')) {
     lines.push('', '💰 *إجمالي الدخل*', `*${n(income.totalEgp)} ج.م* · ${n(income.payments)} دفعة`);
+    if (income.certificatesEgp) lines.push(`🎓 منها شهادات: *${n(income.certificatesEgp)}* ج.م (تحصيل مش مبيعات)`);
   }
   if (want.has('review')) {
     lines.push(

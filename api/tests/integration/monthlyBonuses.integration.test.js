@@ -8,7 +8,8 @@
  *   rep B         first target 15: c3 × 4 → 12, under it on her own; with the desk's two c2 bookings of her clients → 16 → 1,500
  *   desk C        collection + bookings, levels from 0 at 1%: records two c2 bookings (A's clients' ladder is not hers) → 150 × 2 = 300, + 1% of the
  *                 2,000 she took = 20 → 320
- *   collector D   levels 10,000 at 2%, 30,000 at 3%: instalments 35,000 (a certificate's 5,000 is not course money) → 1,050
+ *   collector D   levels 10,000 at 2%, 30,000 at 3%: instalments 35,000 + a certificate's 5,000 = 40,000 (11 Nov 2026: certificate money is collection, so a collector
+ *                 collects it) → 1,200
  *
  * Runs only with DB_* (or TEST_DB_*).
  */
@@ -107,9 +108,9 @@ test('each employee\'s September bonus by their scheme, from the payments', { sk
   assert.equal(who['desk-c'].deskBonus, 300);
   assert.equal(who['desk-c'].collection.collected, 2000);
   assert.equal(who['desk-c'].total, 320);
-  assert.equal(who['coll-d'].collection.collected, 35000, 'the certificate is not course money');
-  assert.equal(who['coll-d'].total, 1050);
-  assert.equal(result.total, 3870);
+  assert.equal(who['coll-d'].collection.collected, 40000, 'the certificate is collection: a collector collects it (it was left out, at 35,000, before 11 Nov 2026)');
+  assert.equal(who['coll-d'].total, 1200);
+  assert.equal(result.total, 4020);
 });
 
 test('the course page\'s sales bonus counts only while the plan switches it on', { skip }, async () => {
@@ -127,17 +128,17 @@ test('saved as one bonus per employee awaiting approval; saved again it replaces
     try { await conn.beginTransaction(); const result = await bonuses.saveMonthlyBonuses(conn, { tenantId: T, year: 2026, month: 9 }); await conn.commit(); return result; } finally { conn.release(); }
   };
   const first = await save();
-  assert.deepEqual(first.written.map(item => [item.staffId, item.amount]).sort(), [['coll-d', 1050], ['desk-c', 320], ['rep-a', 1000], ['rep-b', 1500]]);
+  assert.deepEqual(first.written.map(item => [item.staffId, item.amount]).sort(), [['coll-d', 1200], ['desk-c', 320], ['rep-a', 1000], ['rep-b', 1500]]);
   const rows = async () => (await pool.query("SELECT staff_id, amount, status FROM employee_bonuses WHERE tenant_id=? AND source='BONUS_PLAN' ORDER BY staff_id", [T]))[0]
     .map(row => [row.staff_id, Number(row.amount), row.status]);
-  assert.deepEqual(await rows(), [['coll-d', 1050, 'PENDING'], ['desk-c', 320, 'PENDING'], ['rep-a', 1000, 'PENDING'], ['rep-b', 1500, 'PENDING']]);
+  assert.deepEqual(await rows(), [['coll-d', 1200, 'PENDING'], ['desk-c', 320, 'PENDING'], ['rep-a', 1000, 'PENDING'], ['rep-b', 1500, 'PENDING']]);
   await pool.query("UPDATE employee_bonuses SET status='APPROVED' WHERE tenant_id=? AND staff_id='coll-d'", [T]);
   await pool.query("UPDATE staff SET collection_levels_json=? WHERE id='coll-d' AND tenant_id=?", [JSON.stringify([{ from: 0, kind: 'fixed', value: 700 }]), T]);
   await pool.query("UPDATE staff SET booking_first_target=15 WHERE id='rep-a' AND tenant_id=?", [T]);
   const second = await save();
-  assert.deepEqual(second.kept.map(item => [item.staffId, item.status, item.amount, item.now]), [['coll-d', 'APPROVED', 1050, 700]], 'an approved bonus is not rewritten; the new figure is said');
+  assert.deepEqual(second.kept.map(item => [item.staffId, item.status, item.amount, item.now]), [['coll-d', 'APPROVED', 1200, 700]], 'an approved bonus is not rewritten; the new figure is said');
   assert.deepEqual(second.cleared, ['rep-a'], 'rep A now under her first target: her pending bonus goes');
-  assert.deepEqual(await rows(), [['coll-d', 1050, 'APPROVED'], ['desk-c', 320, 'PENDING'], ['rep-b', 1500, 'PENDING']]);
+  assert.deepEqual(await rows(), [['coll-d', 1200, 'APPROVED'], ['desk-c', 320, 'PENDING'], ['rep-b', 1500, 'PENDING']]);
 });
 
 test('a rep\'s ladder per half month (9 Nov 2026): each round on the whole ladder, the bonus the two added; the collectors stay monthly', { skip }, async () => {

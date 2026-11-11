@@ -72,10 +72,10 @@ async function sumsByBox(db, { tenantId, since = null, catalog = null }) {
  * Every box's current balance: Map `${box}|${currency}` → { balance, opening, since }.
  * Boxes that have payments, boxes that have been reset or adjusted, and the general adjustment.
  */
-async function currentBalances(db, { tenantId, lock = false }) {
+async function currentBalances(db, { tenantId, lock = false, catalog: loaded = null }) {
   const [stored] = await db.query(
     `SELECT method, currency, opening_amount, baseline_at FROM box_balances WHERE tenant_id = ?${lock ? ' FOR UPDATE' : ''}`, [tenantId]);
-  const catalog = await loadBoxCatalog(db, tenantId);
+  const catalog = loaded || await loadBoxCatalog(db, tenantId);
   // An opening typed under an old spelling (or in the wrong currency) is read in the box it belongs to; two that land together add up, the later baseline wins.
   const baselines = new Map();
   for (const row of stored) {
@@ -115,6 +115,36 @@ async function configuredBoxes(db, tenantId) {
   const names = await loadBoxAliases(db, tenantId);
   const listed = String(content?.['finance.payment_methods'] || '').split('||').map(name => name.trim()).filter(Boolean);
   return [...new Set(listed.map(name => applyAlias(canonicalChannel(name), names)))];
+}
+
+/**
+ * THE list of boxes, for every screen that shows or offers one (the boxes report, the expense form's picker, the withdrawal's target): one row per box and currency,
+ * { method, currency, balance, listed, unlisted }, from three sources and nothing else —
+ *   - every box in the settings list, at zero if no money ever moved in it (listed: true);
+ *   - every box that holds a balance or has been reset or adjusted (it is on the list, or it is «أخرى»);
+ *   - «أخرى» in pounds whenever the list is in use, so money that belongs to no listed box has somewhere to show.
+ * «أخرى» is what a box that was removed from the settings is read as (lib/boxCatalog.js), so its balance is still on the screen: it carries unlisted: true. The currency of a
+ * row is the box's own — a box is never shown in the currency of another's movements.
+ * @returns {Promise<{ boxes: object[], catalog: object, balances: Map }>} `balances` is currentBalances', for the totals and the general adjustment.
+ */
+async function listBoxes(db, { tenantId, catalog: loaded = null }) {
+  const catalog = loaded || await loadBoxCatalog(db, tenantId);
+  const balances = await currentBalances(db, { tenantId, catalog });
+  const boxes = new Map();
+  const put = (method, currency, balance, listed) => {
+    const key = `${method}|${currency}`;
+    if (!boxes.has(key)) boxes.set(key, { method, currency, balance: 0, listed, unlisted: method === CATCH_ALL });
+    if (balance !== null) boxes.get(key).balance = balance;
+  };
+  for (const [key, value] of balances) {
+    if (key.startsWith(`${GENERAL}|`)) continue;
+    const cut = key.lastIndexOf('|');
+    put(key.slice(0, cut), key.slice(cut + 1), value.balance, false);
+  }
+  for (const entry of catalog.entries) put(entry.key, entry.currency, null, true);
+  if (catalog.active) put(CATCH_ALL, 'EGP', null, false);
+  for (const box of boxes.values()) if (catalog.entries.some(entry => entry.key === box.method && entry.currency === box.currency)) box.listed = true;
+  return { boxes: [...boxes.values()], catalog, balances };
 }
 
 const totalOf = (balances, currency) => round2([...balances].filter(([key]) => key.endsWith(`|${currency}`)).reduce((sum, [, value]) => sum + value.balance, 0));
@@ -226,4 +256,4 @@ async function recentEvents(db, { tenantId, limit = 30 }) {
   }));
 }
 
-module.exports = { GENERAL, configuredBoxes, currencyOfName, currentBalances, logEvent, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, sumsByBox, totalOf, writeBox };
+module.exports = { GENERAL, configuredBoxes, currencyOfName, currentBalances, listBoxes, logEvent, mergeBoxes, recentEvents, resetAll, resetBox, setBoxBalance, setTotalBalance, sumsByBox, totalOf, writeBox };

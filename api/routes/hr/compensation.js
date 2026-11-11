@@ -4,13 +4,15 @@ const { payslipBreakdown } = require('../../lib/payslipBreakdown');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
+const { HALF_DAY_CHARGED_DAYS } = require('../../lib/payrollCalc');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
 const { cairoToday, cairoYearMonth } = require('../../lib/dates');
 const { notifyBranchManagers } = require('../../lib/branchHr');
-const { PAY_MONTH_DAYS } = require('../../lib/payrollCalc');
+const { dayPayEgp } = require('../../lib/payrollSalary');
 const { leaveBalanceOf } = require('../../lib/leaveBalance');
 const { isOwnerRequest } = require('../../middleware/auth');
+const { isSelfMutation } = require('../../lib/hrSelfMutation');
 
 router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -78,7 +80,7 @@ router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
-    if (req.staffRecord?.id === req.params.staffId) {
+    if (isSelfMutation(req, req.params.staffId)) {
       return res.status(409).json({ error: 'لا يجوز تعديل أجر التدريب الخاص بك', code: 'HR_SELF_MUTATION' });
     }
     const { consultation_rate_type, consultation_rate_value, lecture_rate_per_hour, training_rate_per_hour, currency, notes } = req.body;
@@ -293,11 +295,17 @@ router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmi
   try {
     const { type, amount, currency, reason, for_month, for_year } = req.body;
     if (!amount) return res.status(400).json({ error: 'amount required' });
-    if (req.staffRecord?.id === req.params.staffId) {
+    if (isSelfMutation(req, req.params.staffId)) {
       return res.status(409).json({ error: 'لا يجوز إضافة مكافأة أو خصم لنفسك', code: 'HR_SELF_MUTATION' });
     }
     if (!['bonus', 'deduction'].includes(type || 'bonus') || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
       return res.status(400).json({ error: 'Invalid bonus or deduction values' });
+    }
+    // A month or year outside the calendar (13, 0) is never picked up by a payroll run: refused here instead of saved as a bonus that is never paid.
+    if (Number(amount) > 10_000_000 || !['EGP', 'SAR', 'USD'].includes(String(currency || 'EGP').toUpperCase())
+      || (for_month != null && for_month !== '' && !(Number.isInteger(Number(for_month)) && Number(for_month) >= 1 && Number(for_month) <= 12))
+      || (for_year != null && for_year !== '' && !(Number.isInteger(Number(for_year)) && Number(for_year) >= 2000 && Number(for_year) <= 2100))) {
+      return res.status(400).json({ error: 'المبلغ أو العملة أو الشهر أو السنة مش صحيحة' });
     }
     const id = uuidv4();
     const [created] = await pool.query(
@@ -305,7 +313,7 @@ router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmi
         (id,tenant_id,staff_id,type,amount,currency,reason,for_month,for_year,created_by,status)
        SELECT ?,?,?,?,?,?,?,?,?,?,'PENDING'
        FROM staff WHERE tenant_id=? AND id=? AND deleted_at IS NULL`,
-      [id, req.tenantId, req.params.staffId, type||'bonus', amount, currency||'EGP', reason||null, for_month||null, for_year||null, req.staffRecord?.id||null,
+      [id, req.tenantId, req.params.staffId, type||'bonus', amount, String(currency || 'EGP').toUpperCase(), reason||null, for_month||null, for_year||null, req.staffRecord?.id||null,
        req.tenantId, req.params.staffId]
     );
     if (!created.affectedRows) return res.status(404).json({ error: 'Staff record not found' });
@@ -339,12 +347,14 @@ router.post('/api/admin/hr/month-penalties', requireAuth, requireAdminOrStaff, r
     if ((given === null) === (days === null)) return res.status(400).json({ error: 'اكتب مبلغ أو عدد أيام، مش الاتنين' });
     if (given !== null && !(Number.isFinite(given) && given > 0 && given <= 10_000_000)) return res.status(400).json({ error: 'المبلغ لازم يكون رقم أكبر من صفر' });
     if (days !== null && !(Number.isFinite(days) && days > 0 && days <= 31)) return res.status(400).json({ error: 'عدد الأيام لازم يكون من ربع يوم لحد 31' });
-    if (req.staffRecord?.id === staffId) return res.status(409).json({ error: 'لا يجوز إضافة مكافأة أو خصم لنفسك', code: 'HR_SELF_MUTATION' });
+    if (isSelfMutation(req, staffId)) return res.status(409).json({ error: 'لا يجوز إضافة مكافأة أو خصم لنفسك', code: 'HR_SELF_MUTATION' });
     const [[staff]] = await pool.query(
-      'SELECT id, name, base_salary FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [req.tenantId, staffId]);
+      'SELECT id, name FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1', [req.tenantId, staffId]);
     if (!staff) return res.status(404).json({ error: 'الموظف مش موجود' });
-    if (days !== null && !(Number(staff.base_salary) > 0)) return res.status(409).json({ error: `الراتب الأساسي لـ ${staff.name} فاضي — اكتب مبلغ بدل الأيام` });
-    const amount = given ?? Math.round((Number(staff.base_salary) / PAY_MONTH_DAYS) * days * 100) / 100;
+    // The day is priced at the salary the payroll run will use for that month (lib/payrollSalary.js): the approved structure's basic when one covers it, else the file's.
+    const dayPay = days !== null ? await dayPayEgp(pool, req.tenantId, staffId, period.year, period.month, await getFxToEgp(req.tenantId)) : null;
+    if (days !== null && !(dayPay > 0)) return res.status(409).json({ error: `الراتب الأساسي لـ ${staff.name} فاضي — اكتب مبلغ بدل الأيام` });
+    const amount = given ?? Math.round(dayPay * days * 100) / 100;
     const actor = req.staffRecord?.id || req.user?.uid || null;
     const approved = isOwnerRequest(req);
     const id = uuidv4();
@@ -469,7 +479,7 @@ router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, r
       ? Number(fixed_amount)
       : (Number(hours || 0) * Number(rate_per_hour || 0));
     if (!Number.isFinite(total) || total <= 0) return res.status(400).json({ error: 'Positive fee total required' });
-    if (req.staffRecord?.id === staff_id) {
+    if (isSelfMutation(req, staff_id)) {
       return res.status(409).json({ error: 'لا يجوز إنشاء أجر تدريب لنفسك', code: 'HR_SELF_MUTATION' });
     }
     const id = uuidv4();
@@ -718,7 +728,8 @@ router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
     const rows = days.map(d => ({
       date: dateOnly(d.date), status: d.status, checkIn: hhmm(d.check_in), checkOut: hhmm(d.check_out),
       lateMinutes: Number(d.late_minutes) || 0, earlyLeaveMinutes: Number(d.early_leave_minutes) || 0,
-      deductionDays: d.deduction_days == null ? 0 : Number(d.deduction_days), permit: d.permit_used || null,
+      // A half day with no leave behind it costs half a day unless a figure was typed (lib/payrollCalc.js).
+      deductionDays: d.status === 'HALF_DAY' && !d.leave_id ? (Number(d.deduction_days) > 0 ? Number(d.deduction_days) : HALF_DAY_CHARGED_DAYS) : d.deduction_days == null ? 0 : Number(d.deduction_days), permit: d.permit_used || null,
       flag: d.review_flag || null, source: d.source, onLeave: Boolean(d.leave_id), note: d.notes || null,
     }));
     const money = value => Number(value) || 0;
@@ -728,7 +739,8 @@ router.get('/api/staff/me/month-detail', requireAuth, async (req, res) => {
     res.json({
       month, year, leaveBalance,
       summary: {
-        present: rows.filter(d => d.status !== 'ABSENT').length,
+        // The days payroll counts as attended (lib/payrollCalc.js PRESENT_DAYS_SQL): a leave day, a holiday or a free day is not one, a half day is half.
+        present: rows.reduce((sum, d) => sum + (['PRESENT', 'LATE', 'REMOTE'].includes(d.status) ? 1 : d.status === 'HALF_DAY' ? 0.5 : 0), 0),
         absent: rows.filter(d => d.status === 'ABSENT').length,
         lateDays: rows.filter(d => d.lateMinutes > 0).length,
         lateMinutes: rows.reduce((sum, d) => sum + d.lateMinutes, 0),

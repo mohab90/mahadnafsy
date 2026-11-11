@@ -46,7 +46,8 @@ test('the reps\' revenue on the sales hub and the staff performance screens is t
   }
   assert.equal(admin('pages', 'dashboard', 'tabs', 'SalesTeamTab.tsx').includes('orders.filter('), false);
   const lists = admin('pages', 'dashboard', 'tabSiteLists.ts');
-  for (const line of ["sales_hub: ['leads', 'subscribers'],", "sales_team: ['leads'],", "staff_performance: ['leads'],"]) assert.ok(lists.includes(line), line);
+  // 11 Nov 2026: the team and performance screens read the server's figures alone; the board keeps the page of leads only for its follow-ups list.
+  for (const line of ["sales_hub: ['leads'],", 'sales_team: [],', 'staff_performance: [],']) assert.ok(lists.includes(line), line);
 });
 
 test('the accounts, AI and activity screens no longer download the orders; the accounts overview is the server\'s breakdown', () => {

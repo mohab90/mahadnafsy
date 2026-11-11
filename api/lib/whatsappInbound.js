@@ -21,6 +21,7 @@ const { toIdentity, toDialable } = require('./phoneNumber');
 const { createNotification } = require('./notification');
 const { getNextSalesRep } = require('./leadAssignment');
 const { upsertThread, recordOnThread } = require('./inboxThreads');
+const { notifyInbox } = require('./inboxAccess');
 const { scheduleBotReply } = require('./inboxBot');
 const { setMarketingConsent, isSuppressed } = require('./marketingConsent');
 const logger = require('./logger');
@@ -260,18 +261,22 @@ async function recordInboundMessage({ tenantId, channelId = null, providerMessag
     : { optedOut: false, optedIn: false, replied: false };
   const { optedOut, optedIn } = consent;
 
-  // Notify the owner. Without a recipient this goes to everyone, which is the
-  // right fallback for an unassigned lead — better seen by all than by nobody.
+  // Notify the owner. With no owner it goes to the people who triage unlinked conversations (lib/inboxAccess.js) — not to every account
+  // that holds the leads permission, which put a stranger's message in front of reps who may not open it.
   // A first contact and a reply are different events for the rep: one needs
   // qualifying, the other needs answering.
-  await createNotification(
-    'whatsapp',
-    isNewLead ? '🆕 عميل جديد كلّمنا على الواتساب' : 'رد جديد على واتساب',
-    `${sender.name || 'عميل'}: ${text.slice(0, 120) || 'رسالة'}`,
-    { [sender.kind === 'lead' ? 'leadId' : 'subscriberId']: sender.id, communicationId: id },
+  const notice = {
+    type: 'whatsapp',
+    title: isNewLead ? '🆕 عميل جديد كلّمنا على الواتساب' : 'رد جديد على واتساب',
+    message: `${sender.name || 'عميل'}: ${text.slice(0, 120) || 'رسالة'}`,
+    data: { [sender.kind === 'lead' ? 'leadId' : 'subscriberId']: sender.id, communicationId: id },
     tenantId,
-    owner
-  );
+  };
+  if (owner) await createNotification(notice.type, notice.title, notice.message, notice.data, tenantId, owner);
+  else {
+    await notifyInbox({ ...notice, thread: { leadId: sender.kind === 'lead' ? sender.id : null, subscriberId: sender.kind === 'subscriber' ? sender.id : null } }, db)
+      .catch(error => logger.warn('[wa-inbound] notice failed', error.message));
+  }
 
   // The inbox bot answers a few seconds later, when it is on for this
   // conversation (lib/inboxBot.js). Not to someone who just opted out, nor on

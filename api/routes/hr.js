@@ -17,4 +17,5 @@ router.use(require('./hr/talent').router); // website join-us → recruiting bri
 router.use(require('./hr/recruitment-workflow')); // contact -> evaluate -> grade, and HR notes
 router.use(require('./hr/staff-file')); // document checklist + pay basis
 router.use(require('./hr/bonuses')); // «نظام المكافآت»: the plan and a month's bonuses
+router.use(require('./hr/leave-encashment')); // «بدل رصيد الإجازات»: the year's unused leave days paid at the salary
 module.exports = router;

@@ -9,6 +9,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requi
 const { hasPermission, PERMISSIONS } = require('../../constants/permissions');
 const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, monthRange, sqlCairoWall, addDaysToDateOnly } = require('../../lib/dates');
 const { leadScope } = require('../../lib/leadAccess');
+const { salesPaymentSql } = require('../../lib/salesMoney');
 const { financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -29,6 +30,9 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
     // from/to are Cairo days; leads.created_at is a UTC instant.
     const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
+    // The team is «sales» and «sales_collection_manager» (admin SalesTeamTab SALES_ROLES) plus the manager. The list named
+    // 'SALES_MANAGER', which is no role, so the sales-and-collection managers the screen draws never had a row here: their
+    // revenue read 0 and their lead counts came from whatever page of leads the browser held.
     const [staff] = await pool.query(`
       SELECT st.id, st.name, st.email, st.role, st.commission_rate,
         COALESCE(ld.total_leads, 0) AS total_leads, COALESCE(ld.converted, 0) AS converted_leads,
@@ -40,12 +44,12 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
         FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id
       ) ld ON ld.assigned_sales_id = st.id
       LEFT JOIN (
-        SELECT staff_id,
-          SUM(amount_egp) AS revenue_egp,
+        SELECT p.staff_id,
+          SUM(p.amount_egp) AS revenue_egp,
           COUNT(*) AS payment_count
-        FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? AND staff_id IS NOT NULL AND deleted_at IS NULL GROUP BY staff_id
+        FROM payments p WHERE p.tenant_id=? AND p.status IN ('paid','confirmed') AND DATE(p.\`date\`) BETWEEN ? AND ? AND p.staff_id IS NOT NULL AND p.deleted_at IS NULL AND ${salesPaymentSql('p')} GROUP BY p.staff_id
       ) rd ON rd.staff_id = st.id
-      WHERE st.tenant_id=? AND UPPER(st.role) IN ('SALES','SALES_MANAGER','MANAGER') AND st.is_active=1
+      WHERE st.tenant_id=? AND UPPER(st.role) IN ('SALES','SALES_COLLECTION_MANAGER','MANAGER') AND st.is_active=1
       ORDER BY revenue_egp DESC`, [req.tenantId, fromUtc, toUtc, req.tenantId, from, to, req.tenantId]);
 
     // Pay is a different question from performance. A caller who holds the
@@ -103,7 +107,7 @@ router.get('/api/admin/marketing/overview', requireAuth, requireAdminOrStaff, re
       const [[row]] = await pool.query(
         `SELECT COALESCE(SUM(p.amount_egp), 0) AS revenue, COUNT(*) AS payments
            FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-          WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}${when}`, params);
+          WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0 AND ${salesPaymentSql('p')}${moneyScope.sql}${when}`, params);
       return { revenue: Math.round(Number(row.revenue) || 0), payments: Number(row.payments) || 0 };
     };
 
@@ -122,7 +126,7 @@ router.get('/api/admin/marketing/overview', requireAuth, requireAdminOrStaff, re
       pool.query(
         `SELECT DATE_FORMAT(p.date, '%Y-%m-%d') AS day, COALESCE(SUM(p.amount_egp), 0) AS revenue
            FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-          WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}
+          WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0 AND ${salesPaymentSql('p')}${moneyScope.sql}
             AND p.date >= ? AND p.date < ? GROUP BY 1`, lineMoneyParams),
       leadRange.none ? [[{ n: 0 }]] : pool.query(
         `SELECT COUNT(*) AS n FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${leadRange.sql}
@@ -168,7 +172,7 @@ router.get('/api/admin/reports/sales-breakdown', requireAuth, requireAdminOrStaf
     // `p.date <= to` would stop at midnight of the last day: payments carry the time they were made (NOW()), so the last day's own money dropped out of the report.
     if (from) { moneyWhen = ' AND p.date >= ? AND p.date < ?'; moneyParams.push(from, addDaysToDateOnly(to, 1)); }
     const moneyFrom = `FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-        WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0${moneyScope.sql}${moneyWhen}`;
+        WHERE p.tenant_id = ? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount_egp > 0 AND ${salesPaymentSql('p')}${moneyScope.sql}${moneyWhen}`;
 
     const [[leadRows], [[total]], [staffRows], [itemRows]] = await Promise.all([
       leadRange.none ? [[]] : pool.query(
@@ -310,11 +314,11 @@ router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async 
     const goal = goalRows[0] || {};
 
     const [[{ actual_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp), 0) AS actual_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`, [req.tenantId, from, to]);
+      `SELECT COALESCE(SUM(p.amount_egp), 0) AS actual_revenue FROM payments p WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL AND ${salesPaymentSql('p')}`, [req.tenantId, from, to]);
     const [[{ actual_leads }]] = await pool.query(
       `SELECT COUNT(*) AS actual_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, from, to]);
     const [[{ actual_conversions }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_conversions FROM leads WHERE tenant_id=? AND status='converted' AND updated_at >= ? AND updated_at < ?`, [req.tenantId, from, to]);
+      `SELECT COUNT(*) AS actual_conversions FROM leads WHERE tenant_id=? AND status IN ${CONVERTED_SQL} AND updated_at >= ? AND updated_at < ?`, [req.tenantId, from, to]);
     const [[{ actual_new_clients }]] = await pool.query(
       `SELECT COUNT(*) AS actual_new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, from, to]);
 

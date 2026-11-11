@@ -4,6 +4,7 @@ import { mysqlAdmin, type BonusAdjustmentKind, type BonusPlan, type MonthlyBonus
 import HrSalesSheetReconcile from './HrSalesSheetReconcile';
 import HrCollectionSheetReconcile from './HrCollectionSheetReconcile';
 import HrLateBookings from './HrLateBookings';
+import HrPayrollCommissionCard from './HrPayrollCommissionCard';
 import { forgetBonusPlan } from './BonusSchemeFields';
 import { cairoDateTime, cairoMonthOnly } from '../../../../../shared/cairoDate';
 
@@ -105,6 +106,8 @@ export default function HrBonusPlanPanel({ notify, canEditPlan }: { notify: Noti
 
   return (
     <div className="space-y-5" dir="rtl">
+      <HrPayrollCommissionCard notify={notify} canEdit={canEditPlan} />
+
       {/* ── The month ── */}
       <section className="rounded-2xl border border-gray-200 bg-white p-4">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-gray-900"><Calculator size={16} className="text-indigo-600" /> حساب مكافآت الشهر</h3>

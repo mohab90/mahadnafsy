@@ -11,13 +11,14 @@
 //                    A late-uploaded booking can be counted in the month before or after its own for a rep (COUNT_IN_MONTH, lib/bonusAdjustments.js): there it counts
 //                    on the day the month nearest to its own ends (the last day of the month it is counted in when it was paid after it, the first when before), and
 //                    in its own month it is not counted for the reps. Nothing about the payment changes.
-//   collected        the course and track money (never a certificate's) an employee recorded, paid in the month, in EGP at the payment's own rate.
+//   collected        the money a collector recorded, paid in the month, in EGP at the payment's own rate: the course and track money AND the certificates' (11 Nov 2026, the
+//                    owner: certificate money is collection, not sales — it counts for a collector, never for a rep's bookings or revenue, lib/repRevenue.js).
 //   SALES_BOOKINGS        the booking ladder on the weighted bookings (+ the course page's sales bonus, only while the plan switches it on)
 //   COLLECTION            the collector's level on what they collected
 //   COLLECTION_BOOKINGS   the collector's level + each booking's desk bonus from its course page («المكافأة المسجلة داخل كل كورس»)
 
 const { getTenantSetting } = require('./tenantSettings');
-const { agreedPrice } = require('./agreedPrice');
+const { agreedPrices } = require('./agreedPrice');
 const { normalizeBonuses } = require('./priceTiers');
 const { addDaysToDateOnly, cairoDayOf, cairoDayStartUtc } = require('./dates');
 const { normalizePlan, bookingWeight, ladderBonus, normalizeLevels, collectionBonus, courseBonusAmount, splitDayOf, roundOfDay, roundLabels } = require('./bonusPlan');
@@ -37,14 +38,24 @@ async function loadPlan(db, tenantId) {
   return normalizePlan(await getTenantSetting('bonus_plan', { tenantId, fallback: {}, db }));
 }
 
-/** The month's bookings: one per client and item, at the first paid payment, with what it is worth in EGP. `include`: payments counted in this month although paid outside it. */
-async function bookingsOf(db, tenantId, { start, end }, { include = [] } = {}) {
+/**
+ * The bookings of one or more time ranges: one per client and item, at the first paid payment, with what it is worth in EGP. A booking belongs to a range when its first payment
+ * was paid inside it, or (`include`) was named to be counted there although paid outside it. Everything is read in a fixed number of queries whatever the number of bookings or
+ * ranges — the prices of all of them in one go (lib/agreedPrice.js agreedPrices) — so a month of 700 bookings costs what a month of 7 does.
+ * @param {{ start, end, include?: string[] }[]} ranges
+ * @returns {Promise<object[][]>} one list per range, in the order given
+ */
+async function bookingsInRanges(db, tenantId, ranges) {
+  const windows = ranges.map(range => ({ from: new Date(range.start).getTime(), to: new Date(range.end).getTime(), include: new Set(range.include || []) }));
+  const earliest = ranges.reduce((best, range) => (new Date(range.start) < new Date(best.start) ? range : best));
+  const latest = ranges.reduce((best, range) => (new Date(range.end) > new Date(best.end) ? range : best));
+  const include = [...new Set(ranges.flatMap(range => range.include || []))];
   const [clients] = await db.query(
     `SELECT DISTINCT subscriber_id FROM payments
       WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL AND payment_type IN ('COURSE','BUNDLE') AND subscriber_id IS NOT NULL
         AND (course_id IS NOT NULL OR bundle_id IS NOT NULL) AND (date >= ? AND date < ?${include.length ? ' OR id IN (?)' : ''})`,
-    [tenantId, start, end, ...(include.length ? [include] : [])]);
-  if (!clients.length) return [];
+    [tenantId, earliest.start, latest.end, ...(include.length ? [include] : [])]);
+  if (!clients.length) return ranges.map(() => []);
   const [rows] = await db.query(
     `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.staff_id, p.currency, p.fx_rate_to_egp, p.amount_egp, p.amount, p.date,
             s.assigned_sales_id, s.assigned_cs_id, s.name AS client_name, s.client_code,
@@ -56,30 +67,38 @@ async function bookingsOf(db, tenantId, { start, end }, { include = [] } = {}) {
       WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.payment_type IN ('COURSE','BUNDLE') AND p.subscriber_id IN (?)
         AND (p.course_id IS NOT NULL OR p.bundle_id IS NOT NULL)
       ORDER BY p.date, p.created_at, p.id`, [tenantId, clients.map(row => row.subscriber_id)]);
-  const includeSet = new Set(include);
   const first = new Map();
   for (const row of rows) {
     const key = `${row.subscriber_id}|${row.bundle_id ? `bundle:${row.bundle_id}` : row.course_id}`;
     if (!first.has(key)) first.set(key, row);
   }
-  const bookings = [];
+  const wanted = [];
   for (const row of first.values()) {
     const at = new Date(row.date);
-    if (!(at >= new Date(start) && at < new Date(end)) && !includeSet.has(row.id)) continue;
-    const currency = String(row.currency || 'EGP').toUpperCase();
+    const hit = windows.map(window => (at >= window.from && at < window.to) || window.include.has(row.id));
+    if (hit.some(Boolean)) wanted.push({ row, at, hit });
+  }
+  const currencyOf = row => String(row.currency || 'EGP').toUpperCase();
+  const agreed = await agreedPrices(db, {
+    tenantId, items: wanted.map(({ row }) => ({ subscriberId: row.subscriber_id, courseId: row.bundle_id ? null : row.course_id, bundleId: row.bundle_id || null, currency: currencyOf(row) })),
+  });
+  const built = wanted.map(({ row, at }, index) => {
+    const currency = currencyOf(row);
     const rate = currency === 'EGP' ? 1 : Number(row.fx_rate_to_egp) || (Number(row.amount) > 0 ? Number(row.amount_egp) / Number(row.amount) : 0);
-    const agreed = await agreedPrice(db, {
-      tenantId, subscriberId: row.subscriber_id, courseId: row.bundle_id ? null : row.course_id, bundleId: row.bundle_id || null, currency,
-    });
-    bookings.push({
+    return {
       paymentId: row.id, clientId: row.subscriber_id, client: row.client_name || '', clientCode: row.client_code || '',
       item: row.bundle_id ? `bundle:${row.bundle_id}` : row.course_id, title: row.item_title || '', day: cairoDayOf(at),
-      currency, price: money(agreed), priceEgp: money((Number(agreed) || 0) * rate),
+      currency, price: money(agreed[index]), priceEgp: money((Number(agreed[index]) || 0) * rate),
       recordedBy: row.staff_id || null, salesRep: row.assigned_sales_id || null, collector: row.assigned_cs_id || null,
       bonuses: normalizeBonuses(row.bonuses_json),
-    });
-  }
-  return bookings;
+    };
+  });
+  return ranges.map((_, rangeIndex) => wanted.flatMap((entry, index) => (entry.hit[rangeIndex] ? [{ ...built[index] }] : [])));
+}
+
+/** The month's bookings (see bookingsInRanges). `include`: payments counted in this month although paid outside it. */
+async function bookingsOf(db, tenantId, { start, end }, { include = [] } = {}) {
+  return (await bookingsInRanges(db, tenantId, [{ start, end, include }]))[0];
 }
 
 /**
@@ -119,7 +138,7 @@ async function computeMonthlyBonuses(db, { tenantId, year, month, applyAdjustmen
   const [collectedRows] = staff.some(row => row.bonus_scheme !== 'SALES_BOOKINGS') ? await db.query(
     `SELECT staff_id, COALESCE(SUM(amount_egp), 0) AS collected, COUNT(*) AS payments FROM payments
       WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL AND staff_id IS NOT NULL
-        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER')) AND date >= ? AND date < ?
+        AND (payment_type IS NULL OR payment_type IN ('COURSE','BUNDLE','OTHER','CERTIFICATE')) AND date >= ? AND date < ?
       GROUP BY staff_id`, [tenantId, bounds.start, bounds.end]) : [[]];
   const collected = new Map(collectedRows.map(row => [row.staff_id, { amount: money(row.collected), payments: Number(row.payments) }]));
 
@@ -274,12 +293,12 @@ async function adjustmentContext(db, { tenantId, year, month }) {
   const [staff] = await db.query("SELECT id, name, bonus_scheme FROM staff WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND bonus_scheme <> 'NONE'", [tenantId]);
   const live = await listAdjustments(db, { tenantId, year, month });
   const countedHere = new Map(live.filter(item => item.kind === 'COUNT_IN_MONTH').map(item => [item.paymentId, item.staffId]));
-  // The month's bookings include the ones counted here although paid in the month before or after.
-  const bookings = await bookingsOf(db, tenantId, bounds, { include: [...countedHere.keys()] });
-  // The first payments of the month before and after: the ones that can be counted here instead of in their own month.
+  // The first payments of the month before and after: the ones that can be counted here instead of in their own month. Read together with the month's own bookings
+  // (which include the ones counted here although paid in the month before or after), in one pass.
   const previous = monthBounds(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1);
   const following = monthBounds(month === 12 ? year + 1 : year, month === 12 ? 1 : month + 1);
-  const adjacentBookings = [...await bookingsOf(db, tenantId, previous), ...await bookingsOf(db, tenantId, following)];
+  const [bookings, before, after] = await bookingsInRanges(db, tenantId, [{ start: bounds.start, end: bounds.end, include: [...countedHere.keys()] }, previous, following]);
+  const adjacentBookings = [...before, ...after];
   const schemeOf = new Map(staff.map(row => [row.id, row.bonus_scheme]));
   const moves = new Map(live.filter(item => item.kind === 'REASSIGN_BOOKING').map(item => [item.paymentId, item.toStaffId]));
   const natural = (booking, scheme) => (scheme === 'SALES_BOOKINGS' ? [booking.salesRep, booking.recordedBy] : [booking.recordedBy, booking.collector]).find(id => id && schemeOf.get(id) === scheme) || null;
@@ -287,4 +306,4 @@ async function adjustmentContext(db, { tenantId, year, month }) {
   return { staff, bookings, adjacentBookings, plan: await loadPlan(db, tenantId), countedFor };
 }
 
-module.exports = { SOURCE, monthBounds, loadPlan, bookingsOf, adjustmentContext, computeMonthlyBonuses, saveMonthlyBonuses };
+module.exports = { SOURCE, monthBounds, loadPlan, bookingsOf, bookingsInRanges, adjustmentContext, computeMonthlyBonuses, saveMonthlyBonuses };

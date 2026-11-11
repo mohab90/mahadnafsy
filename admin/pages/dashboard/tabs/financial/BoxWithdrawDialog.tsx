@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Wallet } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { newIdempotencyKey } from '../../../../lib/idempotencyKey';
 
 type Account = { code: string; name: string; type: string; is_active: number | boolean };
 type Partner = { key: string; name: string };
@@ -25,6 +26,9 @@ export function BoxWithdrawDialog({ box, currency, balance, boxes, partners, onC
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [needsConfirm, setNeedsConfirm] = useState(false);
+  // One key for this dialog: a second press on «سحب» (or a retry after a timeout) is answered with the first withdrawal and takes nothing twice.
+  const idempotencyKey = useRef(newIdempotencyKey());
+  const inFlight = useRef(false);
 
   useEffect(() => {
     mysqlAdmin.adminGet<Account[]>('/admin/accounting/chart-of-accounts').then(list => setAccounts(list.filter(account => account.is_active)), () => setAccounts([]));
@@ -36,11 +40,13 @@ export function BoxWithdrawDialog({ box, currency, balance, boxes, partners, onC
   const ready = value > 0 && (kind !== 'expense' && kind !== 'other' ? true : Boolean(accountCode)) && (kind !== 'transfer' || Boolean(toMethod));
 
   const submit = async (force = false) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError('');
     try {
       await mysqlAdmin.adminPost('/admin/finance/boxes/withdraw', {
-        method: box, currency, amount: value, kind, date, note, force,
+        method: box, currency, amount: value, kind, date, note, force, idempotencyKey: idempotencyKey.current,
         ...(kind === 'partner' ? { partner: direction.slice('partner:'.length) } : {}),
         ...(kind === 'expense' || kind === 'other' ? { accountCode } : {}),
         ...(kind === 'transfer' ? { toMethod } : {}),
@@ -51,7 +57,7 @@ export function BoxWithdrawDialog({ box, currency, balance, boxes, partners, onC
       const message = err instanceof Error ? err.message : 'تعذر السحب';
       if (/الرصيد/.test(message) && /أقل من/.test(message)) setNeedsConfirm(true);
       setError(message);
-    } finally { setBusy(false); }
+    } finally { inFlight.current = false; setBusy(false); }
   };
 
   const field = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm';

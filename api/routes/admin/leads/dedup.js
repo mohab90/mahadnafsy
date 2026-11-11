@@ -26,7 +26,6 @@ const { cached } = require('../../../lib/db');
 
 const router = Router();
 
-// POST /api/admin/leads/dedup-cleanup — delete duplicate leads (leads matching subscriber phones + dup-phone leads)
 router.get('/api/admin/leads/duplicates', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   try {
     // A pass over every lead (3 s at 150,000, about three times that at the 520,000 production holds). Held for 30 s and dropped by
@@ -76,81 +75,37 @@ router.post('/api/admin/leads/unmerge', requireAuth, requireAdmin, requirePermis
 
 // Hides every lead it calls a duplicate, so it is a deletion under the owner's
 // rule even though it travels as a POST: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+// POST /api/admin/leads/dedup-cleanup — merges every duplicate group. The `legacyArchiveOnly` mode that hid leads after reading every lead and every
+// client phone into Node is gone (11 Nov 2026): no screen, tool or test called it, and merging is the only duplicate rule.
 router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, requireDeleteRight, async (req, res) => {
   try {
-    if (req.body?.legacyArchiveOnly !== true) {
-      // Merges (never deletes) every duplicate group — same phone identity or
-      // same email — into its best-ranked lead, each with its own audit row so
-      // it can be undone from "سجل الدمج". It used to stop after 100 groups.
-      // Requests are cut off at 45s, so work stops at ~35s and reports what is
-      // left; the caller simply calls again until `remaining` is 0.
-      const deadline = Date.now() + 35000;
-      const groups = await findLeadDuplicateGroups(req.tenantId);
-      const actorName = signerName(req);
-      let merged = 0, done = 0, failed = 0;
-      for (const group of groups) {
-        if (Date.now() > deadline) break;
-        const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== group.targetId);
-        try {
-          for (let i = 0; i < sourceIds.length; i += 100) {
-            const result = await mergeLeads({
-              tenantId: req.tenantId, targetId: group.targetId,
-              sourceIds: sourceIds.slice(i, i + 100), actor: actorName,
-            });
-            merged += result.merged;
-          }
-        } catch (error) {
-          failed += 1;
-          logger.warn('[dedup-cleanup] group failed', { targetId: group.targetId, error: error.message });
+    // Merges (never deletes) every duplicate group — same phone identity or
+    // same email — into its best-ranked lead, each with its own audit row so
+    // it can be undone from "سجل الدمج". It used to stop after 100 groups.
+    // Requests are cut off at 45s, so work stops at ~35s and reports what is
+    // left; the caller simply calls again until `remaining` is 0.
+    const deadline = Date.now() + 35000;
+    const groups = await findLeadDuplicateGroups(req.tenantId);
+    const actorName = signerName(req);
+    let merged = 0, done = 0, failed = 0;
+    for (const group of groups) {
+      if (Date.now() > deadline) break;
+      const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== group.targetId);
+      try {
+        for (let i = 0; i < sourceIds.length; i += 100) {
+          const result = await mergeLeads({
+            tenantId: req.tenantId, targetId: group.targetId,
+            sourceIds: sourceIds.slice(i, i + 100), actor: actorName,
+          });
+          merged += result.merged;
         }
-        done += 1;
+      } catch (error) {
+        failed += 1;
+        logger.warn('[dedup-cleanup] group failed', { targetId: group.targetId, error: error.message });
       }
-      return res.json({ ok: true, merged, groups: done, failed, remaining: groups.length - done, deleted: 0 });
+      done += 1;
     }
-    const normPhone = (p) => (p || '').replace(/\D/g, '').replace(/^00/, '').replace(/^20/, '').replace(/^0/, '');
-
-    // Load all subscribers' phones (normalized)
-    const [subs] = await pool.query('SELECT phone FROM subscribers WHERE tenant_id=? AND phone IS NOT NULL AND phone != ""', [req.tenantId]);
-    const subPhoneSet = new Set(subs.map(s => normPhone(s.phone)).filter(p => p.length >= 7));
-
-    // Load all leads ordered oldest-first (so we keep the oldest when deduping)
-    const [leads] = await pool.query(
-      'SELECT id, phone FROM leads WHERE tenant_id=? AND hidden=0 ORDER BY created_at ASC',
-      [req.tenantId]
-    );
-
-    const toDelete = new Set();
-
-    // a) Leads whose phone matches a subscriber (converted but not cleaned)
-    for (const lead of leads) {
-      const lp = normPhone(lead.phone);
-      if (lp.length >= 7 && subPhoneSet.has(lp)) toDelete.add(lead.id);
-    }
-
-    // b) Duplicate-phone leads (keep oldest = first seen per phone, delete the rest)
-    const seenPhones = new Map();
-    for (const lead of leads) {
-      if (toDelete.has(lead.id)) continue;
-      const lp = normPhone(lead.phone);
-      if (lp.length >= 7) {
-        if (seenPhones.has(lp)) toDelete.add(lead.id);
-        else seenPhones.set(lp, lead.id);
-      }
-    }
-
-    const ids = [...toDelete];
-    if (ids.length > 0) {
-      // Recoverable archive in batches of 500; CRM history must never be hard-deleted.
-      for (let i = 0; i < ids.length; i += 500) {
-        const batch = ids.slice(i, i + 500);
-        await pool.query(
-          `UPDATE leads SET hidden=1, updated_at=NOW() WHERE tenant_id=? AND id IN (${batch.map(() => '?').join(',')})`,
-          [req.tenantId, ...batch]
-        );
-      }
-    }
-
-    res.json({ ok: true, deleted: ids.length });
+    return res.json({ ok: true, merged, groups: done, failed, remaining: groups.length - done, deleted: 0 });
   } catch (e) { logger.error('[dedup-cleanup]', e.message); sendRouteError(res, e); }
 });
 

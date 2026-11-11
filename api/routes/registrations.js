@@ -80,10 +80,29 @@ function originForPhone(phone) {
 // unclaimed shown — a quiet cut once the site passed 2,000 accounts (1,726 on
 // 7 Oct 2026). The rows are four short columns; the leads and clients beside
 // them were always read whole.
+// The leads are not read whole any more: this asked for the email and phone of EVERY lead (600,000 rows, tens of megabytes
+// through Node) on each open of «التسجيلات», to learn about the few hundred accounts still unclaimed. The accounts' own numbers
+// and addresses are looked up instead, on idx_leads_tenant_phone_digits and the email index, in chunks of 500.
+const LEAD_LOOKUP_CHUNK = 500;
+async function leadIdentitiesAmong(tenantId, phones, emails) {
+  const found = { phones: new Set(), emails: new Set() };
+  for (let i = 0; i < phones.length; i += LEAD_LOOKUP_CHUNK) {
+    const [rows] = await pool.query(
+      'SELECT phone_digits FROM leads WHERE tenant_id=? AND phone_digits IN (?)', [tenantId, phones.slice(i, i + LEAD_LOOKUP_CHUNK)]);
+    for (const row of rows) found.phones.add(String(row.phone_digits));
+  }
+  for (let i = 0; i < emails.length; i += LEAD_LOOKUP_CHUNK) {
+    const [rows] = await pool.query(
+      'SELECT email FROM leads WHERE tenant_id=? AND email IN (?)', [tenantId, emails.slice(i, i + LEAD_LOOKUP_CHUNK)]);
+    for (const row of rows) found.emails.add(normEmail(row.email));
+  }
+  return found;
+}
+
 router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const tenantId = req.tenantId;
-    const [usersResult, subsResult, leadsResult, staffResult] = await Promise.all([
+    const [usersResult, subsResult, staffResult] = await Promise.all([
       pool.query(
         `SELECT id, email, phone, name, created_at FROM users
           WHERE tenant_id=? AND is_active=1 ORDER BY created_at DESC`,
@@ -91,19 +110,6 @@ router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, require
       ),
       pool.query(
         `SELECT firebase_uid, email, phone FROM subscribers WHERE tenant_id=?`,
-        [tenantId]
-      ),
-      // Archived leads count as known too. Matching only hidden=0 put every
-      // registration whose lead had been archived back at the top of this
-      // queue as if it were new: 202 rows where 94 needed action, so 108 were
-      // dismissed work reappearing, and converting one would have created a
-      // second lead for someone a colleague had deliberately archived.
-      //
-      // lib/reconcileChecks.js settled this question already — its own comment
-      // records the same hidden=0 comparison inflating its count from 53 to
-      // 173 — and this is the same question, so it gets the same answer.
-      pool.query(
-        `SELECT email, phone FROM leads WHERE tenant_id=?`,
         [tenantId]
       ),
       // Employees are users too — a staff login is a users row like any other,
@@ -118,27 +124,45 @@ router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, require
     ]);
     const [users] = usersResult;
     const [subs] = subsResult;
-    const [leads] = leadsResult;
     const [staffRows] = staffResult;
 
     const claimedUids = new Set(subs.map(s => s.firebase_uid).filter(Boolean));
     const claimedEmails = new Set([
       ...subs.map(s => normEmail(s.email)).filter(Boolean),
-      ...leads.map(l => normEmail(l.email)).filter(Boolean),
       ...staffRows.map(s => normEmail(s.email)).filter(Boolean),
     ]);
     const claimedPhones = new Set([
       ...subs.map(s => normPhone(s.phone)).filter(Boolean),
-      ...leads.map(l => normPhone(l.phone)).filter(Boolean),
       ...staffRows.map(s => normPhone(s.phone)).filter(Boolean),
     ]);
-
-    const rows = users.filter(u => {
-      if (claimedUids.has(u.id)) return false;
+    const claimedByClientOrStaff = u => {
+      if (claimedUids.has(u.id)) return true;
       const email = normEmail(u.email);
-      if (email && claimedEmails.has(email)) return false;
+      if (email && claimedEmails.has(email)) return true;
       const phone = normPhone(u.phone);
-      if (phone && claimedPhones.has(phone)) return false;
+      return Boolean(phone && claimedPhones.has(phone));
+    };
+    const open = users.filter(u => !claimedByClientOrStaff(u));
+
+    // Archived leads count as known too (no hidden filter). Matching only hidden=0 put every
+    // registration whose lead had been archived back at the top of this
+    // queue as if it were new: 202 rows where 94 needed action, so 108 were
+    // dismissed work reappearing, and converting one would have created a
+    // second lead for someone a colleague had deliberately archived.
+    //
+    // lib/reconcileChecks.js settled this question already — its own comment
+    // records the same hidden=0 comparison inflating its count from 53 to
+    // 173 — and this is the same question, so it gets the same answer.
+    const leadHas = await leadIdentitiesAmong(
+      tenantId,
+      [...new Set(open.map(u => normPhone(u.phone)).filter(Boolean))],
+      [...new Set(open.map(u => normEmail(u.email)).filter(Boolean))],
+    );
+    const rows = open.filter(u => {
+      const email = normEmail(u.email);
+      if (email && leadHas.emails.has(email)) return false;
+      const phone = normPhone(u.phone);
+      if (phone && leadHas.phones.has(phone)) return false;
       return true;
     }).map(u => ({ ...u, origin: originForPhone(u.phone) }));
 
@@ -244,6 +268,11 @@ router.post('/api/admin/registrations/:userId/convert-lead', requireAuth, requir
     // Converting by hand and converting on signup were two copies of this, and
     // the copy nobody reads is the one that drifts.
     const outcome = await ensureLeadForUser(conn, { tenantId, user, branch });
+    // A lead that was hidden or closed and has now come back is a change worth keeping: it is committed, not rolled back.
+    if (!outcome.created && outcome.reopened) {
+      await conn.commit();
+      return res.json({ ok: true, leadId: outcome.leadId, reopened: true });
+    }
     if (!outcome.created) {
       await conn.rollback();
       return res.status(409).json({ error: outcome.reason === 'already a client' ? 'Already a client' : 'Already a lead' });

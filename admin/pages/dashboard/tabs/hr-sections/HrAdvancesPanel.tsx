@@ -7,6 +7,7 @@ type Advance = {
   id: string;
   staff_name: string;
   amount: number;
+  recovered_amount?: number | string;
   currency: string;
   reason: string | null;
   status: 'PENDING' | 'APPROVED' | 'DISBURSED' | 'DEDUCTED' | 'REJECTED';
@@ -117,6 +118,10 @@ export default function HrAdvancesPanel({
                 <div className="text-xs text-gray-500">{advance.reason || 'بدون سبب مسجل'}</div>
               </div>
               <div className="font-black text-gray-800">{Number(advance.amount).toLocaleString('ar-EG-u-nu-latn')} {advance.currency}</div>
+              {(advance.status === 'DISBURSED' || advance.status === 'DEDUCTED') && (
+                // 11 Nov 2026: what the paid payroll runs took back so far, and what is still owed — an advance the salary could not carry comes round in the next run.
+                <div className="text-xs text-gray-600">اتسدد {Number(advance.recovered_amount || 0).toLocaleString('ar-EG-u-nu-latn')} — باقي {Math.max(0, Number(advance.amount) - Number(advance.recovered_amount || 0)).toLocaleString('ar-EG-u-nu-latn')} {advance.currency}</div>
+              )}
               <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-gray-600">{LABELS[advance.status]}</span>
               {!financeMode && advance.status === 'PENDING' && (
                 <div className="flex gap-2">

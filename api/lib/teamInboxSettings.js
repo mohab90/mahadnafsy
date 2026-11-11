@@ -16,17 +16,19 @@ const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 
 const SECTION = 'team_inbox';
 const MODES = ['pool', 'own'];
-const DEFAULTS = { repVisibility: 'pool', autoAssign: false, signReplies: false };
+const DEFAULTS = { repVisibility: 'pool', autoAssign: false, signReplies: false, triageStaffIds: [] };
 const TTL_MS = 30 * 1000;
 const cache = new Map();
 
-/** What is stored, as the three settings. «own» needs the automatic distribution, or a new conversation would be invisible to every rep. */
+/** What is stored, as the settings. «own» needs the automatic distribution, or a new conversation would be invisible to every rep. */
 function clean(input = {}) {
   const repVisibility = MODES.includes(input.repVisibility) ? input.repVisibility : DEFAULTS.repVisibility;
   return {
     repVisibility,
     autoAssign: repVisibility === 'own' ? true : Boolean(input.autoAssign),
     signReplies: Boolean(input.signReplies),
+    // Who besides the people who see everything answers a conversation linked to no lead and no client yet (lib/inboxAccess.js).
+    triageStaffIds: [...new Set((Array.isArray(input.triageStaffIds) ? input.triageStaffIds : []).map(String).filter(Boolean))].slice(0, 50),
   };
 }
 

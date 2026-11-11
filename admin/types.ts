@@ -899,6 +899,8 @@ export interface ExpenseItem {
   receiptUrl?: string;
   /** The box (خزنة) the money left — chosen when the expense is recorded. */
   boxMethod?: string;
+  /** One per opened form: a second save carrying it is answered with the first expense (api/lib/idempotency.js). */
+  idempotencyKey?: string;
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
   staffName?: string | null; // «القائم بالعملية» — who entered it

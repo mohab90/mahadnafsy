@@ -5,7 +5,7 @@
 // nobody notices until someone complains.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { computePayrollLine, PAY_MONTH_DAYS, UNEXCUSED_ABSENCE_DAYS } = require('../lib/payrollCalc');
+const { computePayrollLine, PAY_MONTH_DAYS, UNEXCUSED_ABSENCE_DAYS, ABSENCE_CHARGED_DAYS_SQL } = require('../lib/payrollCalc');
 
 const EMP = {
   housing_allowance: 1000,
@@ -32,7 +32,7 @@ test('a clean month: gross = base + allowances, net = gross - fixed deductions',
 
 test('absence is charged at the daily rate, and unpaid leave counts as absence', () => {
   const r = computePayrollLine(EMP, {
-    ...CTX, attendance: { absent_days: 2, unpaid_leave_days: 1 },
+    ...CTX, attendance: { absent_days: 2, absent_charged_days: 2, unpaid_leave_days: 1 },
   });
   assert.equal(r.absentDays, 3);                  // 2 absent + 1 unpaid leave
   assert.equal(r.dailyRate, 10000 / 30);
@@ -47,24 +47,19 @@ test('lateness is charged per minute, not per day', () => {
   assert.ok(r.lateDeduction < r.dailyRate);
 });
 
-test('crm_commissions wins over the flat rate when it has rows', () => {
-  const r = computePayrollLine(EMP, {
-    ...CTX, crmCommission: { amt: 3500, cnt: 4 }, totalSales: 100000,
-  });
-  assert.equal(r.commission, 3500);
-  assert.equal(r.commissionSource, 'crm_commissions');
-  assert.equal(r.commissionCount, 4);
-  // 10% of 100000 would have been 10000 — the rep must not be paid on both bases.
-  assert.notEqual(r.commission, 10000);
-});
-
-test('an empty crm_commissions row falls back to the percentage of sales', () => {
-  const r = computePayrollLine(EMP, {
-    ...CTX, crmCommission: { amt: 0, cnt: 0 }, totalSales: 100000,
-  });
-  assert.equal(r.commission, 10000);              // 10% of 100000
-  assert.equal(r.commissionSource, 'flat_rate');
-  assert.equal(r.commissionCount, null);
+test('10 Nov 2026: payroll works out no sales commission of its own — a percentage on the staff row and the month\'s sales change nothing', () => {
+  const plain = computePayrollLine(EMP, CTX);
+  for (const emp of [EMP, { ...EMP, commission_type: 'PERCENT', commission_rate: 10 }, { ...EMP, bonus_scheme: 'SALES_BOOKINGS' }]) {
+    const line = computePayrollLine(emp, { ...CTX, crmCommission: { amt: 3500, cnt: 4 }, totalSales: 100000 });
+    assert.equal(line.commission, 0);
+    assert.equal(line.grossSalary, plain.grossSalary);
+    assert.equal(line.netSalary, plain.netSalary);
+  }
+  assert.equal(computePayrollLine(EMP, { ...CTX, bonus: 900 }).grossSalary, plain.grossSalary + 900, 'the entered bonus is what is added');
+  // Switched on for the employee (lib/payrollCommission.js), the rule's amount is added and shown as commission.
+  const on = computePayrollLine(EMP, { ...CTX, commission: 1250 });
+  assert.equal(on.commission, 1250);
+  assert.equal(on.grossSalary, plain.grossSalary + 1250);
 });
 
 test('bonus and instructor earnings raise gross; advances and manual deductions lower net', () => {
@@ -80,7 +75,7 @@ test('net salary never goes negative', () => {
   // A large advance against a month of absence can exceed gross; a negative
   // payslip would post a reversed journal entry.
   const r = computePayrollLine(EMP, {
-    ...CTX, advanceDeduction: 999999, attendance: { absent_days: 26 },
+    ...CTX, advanceDeduction: 999999, attendance: { absent_days: 26, absent_charged_days: 26 },
   });
   assert.equal(r.netSalary, 0);
   // Deductions stop at gross rather than running past it: the advance is only
@@ -95,7 +90,7 @@ test('an advance larger than the salary is carried, not written off', () => {
   // advances receivable, from this figure. Recording the whole advance when the
   // salary could not pay it back forgave a debt the employee still owed.
   const r = computePayrollLine(EMP, {
-    ...CTX, advanceDeduction: 999999, attendance: { absent_days: 26 },
+    ...CTX, advanceDeduction: 999999, attendance: { absent_days: 26, absent_charged_days: 26 },
   });
   assert.equal(r.advanceDeduction, 999999, 'what was due is unchanged');
   assert.ok(r.advanceApplied < 999999, 'only part of it could be taken');
@@ -126,7 +121,6 @@ test('missing or malformed fields degrade to zero instead of NaN', () => {
   const r = computePayrollLine({}, { ...CTX, baseSalary: 5000 });
   assert.equal(r.totalAllowances, 0);
   assert.equal(r.dedSocial, 0);
-  assert.equal(r.commission, 0);
   assert.equal(r.netSalary, 5000);
   for (const [key, value] of Object.entries(r)) {
     if (typeof value === 'number') assert.ok(Number.isFinite(value), `${key} must be finite`);
@@ -143,15 +137,14 @@ test('a garbage attendance payload cannot silently wipe out a salary', () => {
 });
 
 test('the payslip detail fields survive the return, not just the arithmetic', () => {
-  // Regression: totalSales and unpaidLeaveDays are not used in the calculation
-  // but ARE written into calculation_details. They were in scope when this code
-  // lived inline in the route; after extraction the route referenced them as
-  // free variables and every payroll run threw a ReferenceError.
+  // Regression: unpaidLeaveDays is not used in the calculation but IS written
+  // into calculation_details. It was in scope when this code lived inline in
+  // the route; after extraction the route referenced it as a free variable and
+  // every payroll run threw a ReferenceError.
   const line = computePayrollLine(
-    { staff_id: 's1', base_salary: 10000, commission_rate: 5 },
-    { totalSales: 40000, attendance: { unpaid_leave_days: 3, absent_days: 1 } }
+    { staff_id: 's1', base_salary: 10000 },
+    { attendance: { unpaid_leave_days: 3, absent_days: 1, absent_charged_days: 1 } }
   );
-  assert.equal(line.totalSales, 40000, 'totalSales must be returned for the payslip');
   assert.equal(line.unpaidLeaveDays, 3, 'unpaidLeaveDays must be returned for the payslip');
 });
 
@@ -159,7 +152,6 @@ test('a payslip line never returns undefined for a detail field', () => {
   // Defaults matter: JSON.stringify drops undefined keys, so a payslip would be
   // silently missing the field rather than showing a zero.
   const line = computePayrollLine({ staff_id: 's1', base_salary: 5000 }, {});
-  assert.equal(typeof line.totalSales, 'number');
   assert.equal(typeof line.unpaidLeaveDays, 'number');
 });
 
@@ -192,7 +184,7 @@ test('a zero workday length cannot break the per-minute rate', () => {
 test('3 Nov 2026: a day is a thirtieth of the salary, whatever the policy says about working days', () => {
   for (const workDaysPerMonth of [20, 26, 31]) {
     const line = computePayrollLine(EMP, {
-      ...CTX, workDaysPerMonth, baseSalary: 9000, attendance: { absent_days: 1 },
+      ...CTX, workDaysPerMonth, baseSalary: 9000, attendance: { absent_days: 1, absent_charged_days: 1 },
     });
     assert.equal(line.dailyRate, 300);
     assert.equal(line.absenceDeduction, 300);
@@ -200,32 +192,29 @@ test('3 Nov 2026: a day is a thirtieth of the salary, whatever the policy says a
   assert.equal(PAY_MONTH_DAYS, 30);
 });
 
-test('a target earner is not paid a percentage of what they collected', () => {
-  const sales = { totalSales: 40000, crmCommission: null };
-  assert.equal(computePayrollLine({ ...EMP, commission_type: 'TARGET', commission_rate: 10 }, { ...CTX, ...sales }).commission, 0);
-  assert.equal(computePayrollLine({ ...EMP, commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000);
-  assert.equal(computePayrollLine({ ...EMP, commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000, 'a row from before commission_type keeps its rate');
-});
-
-test('9 Nov 2026: an employee on a bonus scheme is not paid a percentage of what they sold on top of the monthly bonus', () => {
-  const sales = { totalSales: 40000, crmCommission: null };
-  for (const bonus_scheme of ['SALES_BOOKINGS', 'COLLECTION', 'COLLECTION_BOOKINGS']) {
-    assert.equal(computePayrollLine({ ...EMP, bonus_scheme, commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 0, bonus_scheme);
-  }
-  assert.equal(computePayrollLine({ ...EMP, bonus_scheme: 'NONE', commission_type: 'PERCENT', commission_rate: 10 }, { ...CTX, ...sales }).commission, 4000, 'no scheme: the rate stands');
-  assert.equal(computePayrollLine({ ...EMP, bonus_scheme: 'SALES_BOOKINGS', commission_rate: 10 }, { ...CTX, totalSales: 40000, crmCommission: { amt: 900, cnt: 3 } }).commission, 900, 'commission rules written at payment time are not the flat rate');
-});
-
 test('4 Nov 2026: a day missed without permission costs two days of pay, a day missed with permission costs one', () => {
   const pay = attendance => computePayrollLine(EMP, { ...CTX, baseSalary: 9000, attendance });
-  const excused = pay({ absent_days: 2, unexcused_absent_days: 0 });
+  // absent_charged_days is what ABSENCE_CHARGED_DAYS_SQL sums: 2 per unexcused absence, 1 per excused one.
+  const excused = pay({ absent_days: 2, unexcused_absent_days: 0, absent_charged_days: 2 });
   assert.equal(excused.absenceDeduction, 600);
-  const unexcused = pay({ absent_days: 2, unexcused_absent_days: 2 });
+  const unexcused = pay({ absent_days: 2, unexcused_absent_days: 2, absent_charged_days: 4 });
   assert.equal(unexcused.absenceDeduction, 1200);
   assert.equal(unexcused.absentDays, 2, 'the days recorded stay the days recorded');
   assert.equal(unexcused.absenceChargedDays, 4);
-  const mixed = pay({ absent_days: 3, unexcused_absent_days: 1, unpaid_leave_days: 1 });
-  assert.equal(mixed.absenceDeduction, 300 * (3 + 1 + 1));
-  assert.equal(pay({ absent_days: 1, unexcused_absent_days: 5 }).absenceChargedDays, 2, 'cannot charge more unexcused days than were absent');
+  const mixed = pay({ absent_days: 3, unexcused_absent_days: 1, absent_charged_days: 4, unpaid_leave_days: 1 });
+  assert.equal(mixed.absenceDeduction, 300 * (4 + 1));
+  assert.equal(pay({ absent_days: 1, unexcused_absent_days: 5, absent_charged_days: 2 }).unexcusedAbsentDays, 1, 'cannot count more unexcused days than were absent');
   assert.equal(UNEXCUSED_ABSENCE_DAYS, 2);
+});
+
+test('an absence HR typed a figure on costs that figure, not the policy rate', () => {
+  const pay = attendance => computePayrollLine(EMP, { ...CTX, baseSalary: 9000, attendance });
+  assert.equal(pay({ absent_days: 1, unexcused_absent_days: 1, absent_charged_days: 0.5 }).absenceDeduction, 150);
+  assert.equal(pay({ absent_days: 1, unexcused_absent_days: 1, absent_charged_days: 1 }).absenceDeduction, 300);
+});
+
+test('ABSENCE_CHARGED_DAYS_SQL charges the typed figure, else 1 with permission and 2 without, and only on ABSENT rows', () => {
+  assert.ok(ABSENCE_CHARGED_DAYS_SQL.startsWith("CASE WHEN a.status='ABSENT' THEN"));
+  assert.ok(ABSENCE_CHARGED_DAYS_SQL.includes("IF(a.deduction_days > 0, a.deduction_days, IF(a.permit_used='excused', 1, 2))"));
+  assert.ok(ABSENCE_CHARGED_DAYS_SQL.endsWith('ELSE 0 END'));
 });

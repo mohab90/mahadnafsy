@@ -20,10 +20,11 @@ const POOL = visibility.clean({});
 const OWN = visibility.clean({ repVisibility: 'own' });
 
 test('the default is the shared pool, and «own» always carries the automatic distribution', () => {
-  assert.deepEqual(POOL, { repVisibility: 'pool', autoAssign: false, signReplies: false });
-  assert.deepEqual(OWN, { repVisibility: 'own', autoAssign: true, signReplies: false }, 'a conversation nobody can see would be a lost customer');
-  assert.deepEqual(visibility.clean({ repVisibility: 'own', autoAssign: false, signReplies: 1 }), { repVisibility: 'own', autoAssign: true, signReplies: true });
-  assert.deepEqual(visibility.clean({ repVisibility: 'everything', autoAssign: 'yes' }), { repVisibility: 'pool', autoAssign: true, signReplies: false }, 'an unknown mode is the pool');
+  assert.deepEqual(POOL, { repVisibility: 'pool', autoAssign: false, signReplies: false, triageStaffIds: [] });
+  assert.deepEqual(OWN, { repVisibility: 'own', autoAssign: true, signReplies: false, triageStaffIds: [] }, 'a conversation nobody can see would be a lost customer');
+  assert.deepEqual(visibility.clean({ repVisibility: 'own', autoAssign: false, signReplies: 1 }), { repVisibility: 'own', autoAssign: true, signReplies: true, triageStaffIds: [] });
+  assert.deepEqual(visibility.clean({ triageStaffIds: ['a', 'a', '', 7] }).triageStaffIds, ['a', '7'], 'the triage staff are a clean list of ids');
+  assert.deepEqual(visibility.clean({ repVisibility: 'everything', autoAssign: 'yes' }), { repVisibility: 'pool', autoAssign: true, signReplies: false, triageStaffIds: [] }, 'an unknown mode is the pool');
 });
 
 test('a rep opens her own conversations; in the pool also the ones nobody has taken; in «own» nobody else\'s; the people who see everything open all', () => {

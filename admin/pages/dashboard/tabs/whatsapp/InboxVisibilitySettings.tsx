@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Loader2, Users } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
-type Settings = { repVisibility: 'pool' | 'own'; autoAssign: boolean; signReplies: boolean };
+type Settings = { repVisibility: 'pool' | 'own'; autoAssign: boolean; signReplies: boolean; triageStaffIds: string[] };
+type Agent = { id: string; name: string };
 type Platform = { channel: { label: string; provider: string; status: string; displayNumber: string | null } | null; receives: boolean; webhookSecrets?: boolean | null; hint: string | null };
 type Readiness = { whatsapp: Platform; messenger: Platform; instagram: Platform };
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -17,11 +18,13 @@ export function InboxVisibilitySettings({ notify, onSaved }: { notify: NotifyFn;
   const [canEdit, setCanEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
 
   useEffect(() => {
     mysqlAdmin.adminGet<{ settings: Settings; canEdit: boolean }>('/admin/team-inbox/settings')
       .then(result => { setSettings(result.settings); setCanEdit(result.canEdit); }, () => notify('error', 'تعذر تحميل إعدادات الصندوق'));
     mysqlAdmin.adminGet<Readiness>('/admin/team-inbox/readiness').then(setReadiness, () => {});
+    mysqlAdmin.adminGet<Agent[]>('/admin/team-inbox/agents').then(setAgents, () => {});
   }, [notify]);
 
   const save = async (patch: Partial<Settings>) => {
@@ -60,6 +63,22 @@ export function InboxVisibilitySettings({ notify, onSaved }: { notify: NotifyFn;
           onChange={event => void save({ signReplies: event.target.checked })} />
         <span>اسم المندوبة تحت كل رد للعميل (مثال: «— منى»)</span>
       </label>
+      <div className="space-y-1 border-t border-gray-100 pt-3">
+        <p className="text-xs font-bold text-gray-600">مين يستلم المحادثات اللي لسه مش مربوطة بليد أو عميل (رقم غريب)</p>
+        <p className="text-xs text-gray-500">كل موظف بيشوف محادثات الليدز والعملاء بتوعه بس. الإدارة بتشوف الكل، ومحادثة رقم غريب بتظهر للإدارة وللأسماء اللي تختارها هنا.</p>
+        <div className="flex flex-wrap gap-2">
+          {agents.map(agent => {
+            const on = settings.triageStaffIds.includes(agent.id);
+            return (
+              <button key={agent.id} type="button" disabled={!canEdit || busy}
+                onClick={() => void save({ triageStaffIds: on ? settings.triageStaffIds.filter(id => id !== agent.id) : [...settings.triageStaffIds, agent.id] })}
+                className={`rounded-full border px-3 py-1 text-xs ${on ? 'border-indigo-300 bg-indigo-50 font-bold text-indigo-700' : 'border-gray-200 text-gray-500'}`}>
+                {agent.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {readiness && (
         <div className="space-y-1 border-t border-gray-100 pt-3">
           <p className="text-xs font-bold text-gray-600">القنوات اللي بتوصّل رسايل للصندوق</p>

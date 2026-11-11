@@ -89,6 +89,9 @@ test('the alerts: overdue instalments, open leads with no follow-up date, the co
   assert.deepEqual(alerts.overdueInstallments, { count: 2, clients: 2 });
   assert.equal(alerts.leadsWithoutFollowUp.count, 5);
   assert.ok(alerts.collection.collected >= 1500);
+  // Certificate money is collection (the owner, 11 Nov 2026): it is in the collected figure and shown apart; the course part is what it always was.
+  assert.ok(alerts.collection.certificateMoney >= 300);
+  assert.equal(alerts.collection.collected, alerts.collection.courseMoney + alerts.collection.certificateMoney);
   // No target set: the default 160,000 a month, far above the day's pace of what this ledger collected.
   assert.equal(alerts.collection.target, 160000);
   await pool.query("INSERT INTO sales_targets (tenant_id, staff_id, period, revenue_target) VALUES (?, '__collection__', ?, 1) ON DUPLICATE KEY UPDATE revenue_target=1", [T, cairoToday().slice(0, 7)]);

@@ -45,7 +45,8 @@ function businessDayBounds(date) {
 async function buildDailyIncomeReport({ tenantId, date, now = new Date() }, db = pool) {
   const { startUtc, endUtc } = businessDayBounds(date);
   const [byTeam] = await db.query(
-    `SELECT ${TEAM_OF} AS team, p.status AS status, COUNT(*) AS n, SUM(${MONEY_EGP}) AS money
+    `SELECT ${TEAM_OF} AS team, p.status AS status, COUNT(*) AS n, SUM(${MONEY_EGP}) AS money,
+            SUM(CASE WHEN UPPER(p.payment_type)='CERTIFICATE' THEN ${MONEY_EGP} ELSE 0 END) AS certificates
        FROM payments p
        LEFT JOIN staff st ON st.id=p.staff_id AND st.tenant_id=p.tenant_id
        LEFT JOIN subscribers sub ON sub.id=p.subscriber_id AND sub.tenant_id=p.tenant_id
@@ -69,9 +70,12 @@ async function buildDailyIncomeReport({ tenantId, date, now = new Date() }, db =
   const empty = () => ({ acceptedEgp: 0, acceptedN: 0, reviewEgp: 0, reviewN: 0 });
   const teams = { collection: empty(), daqqi: empty(), sales: empty(), tagamoa: empty(), other: empty() };
   let failedN = 0;
+  // Certificate money is collection, not sales (the owner, 11 Nov 2026): it is inside every figure here, and this is how much of the total it is.
+  let certificatesEgp = 0;
   for (const row of byTeam) {
     if (row.status === 'failed') { failedN += num(row.n); continue; }
     const team = teams[row.team] || teams.other;
+    certificatesEgp += num(row.certificates);
     if (row.status === 'paid') { team.acceptedEgp += num(row.money); team.acceptedN += num(row.n); }
     else { team.reviewEgp += num(row.money); team.reviewN += num(row.n); }
   }
@@ -90,7 +94,7 @@ async function buildDailyIncomeReport({ tenantId, date, now = new Date() }, db =
       payments: sum('acceptedN') + sum('reviewN'),
       acceptedEgp: Math.round(sum('acceptedEgp')), acceptedN: sum('acceptedN'),
       reviewEgp: Math.round(sum('reviewEgp')), reviewN: sum('reviewN'),
-      failedN,
+      failedN, certificatesEgp: Math.round(certificatesEgp),
     },
     teams: withTotals,
     counts: {

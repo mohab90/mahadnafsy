@@ -140,6 +140,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     // previous day, filing the payment and its journal entry in the wrong
     // month. lib/finance.js records 179 entries already filed a day early this
     // way; this is the same default in another route.
+    if (paidDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(paidDate))) return res.status(400).json({ error: 'تاريخ الدفع غير صحيح', code: 'PAYMENT_DATE_INVALID' });
     const effectiveDate = paidDate || dateOnlyInTimeZone();
 
     await conn.beginTransaction();
@@ -215,7 +216,9 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     );
     const journalId = await postPaymentJournal({
       paymentId: payId, amount: paidAmount, currency: plan.currency || 'EGP',
-      payType, actor: req.user?.email || 'system', tenantId: req.tenantId,
+      // The day the payment is dated, not the day it is recorded: with no date the entry was filed today, so an instalment
+      // taken on 30 Oct and confirmed on 2 Nov sat in October's payments and November's ledger.
+      payType, date: effectiveDate, actor: req.user?.email || 'system', tenantId: req.tenantId,
     }, conn);
     if (!journalId) throw new Error('Installment payment journal posting failed');
     // Every path that creates a paid payment writes the audit row. Six of the

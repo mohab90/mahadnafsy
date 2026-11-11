@@ -9,9 +9,10 @@ const { pool } = require('../lib/db');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { assertWritable } = require('../lib/periodLock');
 const { resolveFinancialScope } = require('../lib/financialScope');
-const { logFinancialAudit } = require('../lib/finance');
+const { logFinancialAudit, toPiastres } = require('../lib/finance');
 const logger = require('../lib/logger').child({ route: 'accounting-erp' });
 const { cairoToday } = require('../lib/dates');
+const { cleanIdempotencyKey, isDuplicateKey } = require('../lib/idempotency');
 
 const router = express.Router();
 
@@ -155,6 +156,12 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
   let transactionStarted = false;
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
+    // The same form pressed twice carries one key: the second press is answered with the first entry and posts nothing.
+    const idempotencyKey = cleanIdempotencyKey(req.body.idempotencyKey);
+    if (idempotencyKey) {
+      const [[earlier]] = await pool.query('SELECT id, branch, branch_id FROM journal_entries WHERE tenant_id=? AND idempotency_key=? LIMIT 1', [req.tenantId, idempotencyKey]);
+      if (earlier) return res.json({ ok: true, entry: { id: earlier.id, branch: earlier.branch, branch_id: earlier.branch_id }, repeated: true });
+    }
     const date = String(req.body.date || cairoToday()).slice(0, 10);
     // Written through unchecked before, so any string the caller sent reached
     // the ledger and MySQL turned what it could not read into a zero date.
@@ -178,8 +185,9 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
       .map((line) => ({
         account_code: String(line.account_code || '').trim(),
         account_name: String(line.account_name || '').trim(),
-        debit: Number(line.debit || 0),
-        credit: Number(line.credit || 0),
+        // To the piastre before the balance is judged — the lines are stored with two decimals.
+        debit: toPiastres(line.debit),
+        credit: toPiastres(line.credit),
       }))
       .filter((line) => VALID_ACCOUNT_CODE.test(line.account_code) && (line.debit > 0 || line.credit > 0));
 
@@ -192,9 +200,9 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
     )) {
       return res.status(400).json({ error: 'Each journal line must contain one finite debit or credit amount' });
     }
-    const totalDebit = cleanLines.reduce((sum, line) => sum + line.debit, 0);
-    const totalCredit = cleanLines.reduce((sum, line) => sum + line.credit, 0);
-    if (Math.abs(totalDebit - totalCredit) > 0.01 || totalDebit <= 0) {
+    const totalDebit = Number(cleanLines.reduce((sum, line) => sum + line.debit, 0).toFixed(2));
+    const totalCredit = Number(cleanLines.reduce((sum, line) => sum + line.credit, 0).toFixed(2));
+    if (Math.round(totalDebit * 100) !== Math.round(totalCredit * 100) || totalDebit <= 0) {
       return res.status(400).json({ error: 'القيد غير متوازن' });
     }
 
@@ -228,8 +236,8 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
     const entryId = uuidv4();
     await conn.query(
       `INSERT INTO journal_entries
-         (id, tenant_id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by, branch, branch_id)
-       VALUES (?, ?, 'manual', NULL, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, tenant_id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by, branch, branch_id, idempotency_key)
+       VALUES (?, ?, 'manual', NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         entryId,
         req.tenantId,
@@ -240,6 +248,7 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
         req.user?.email || req.user?.id || 'admin',
         scope.branch,
         scope.branchId,
+        idempotencyKey,
       ]
     );
     for (const line of cleanLines) {
@@ -264,6 +273,11 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
   } catch (error) {
     if (transactionStarted) {
       try { await conn.rollback(); } catch (_) {}
+    }
+    // Two presses at the same instant: the unique key let one in; the other gets that one's answer.
+    if (isDuplicateKey(error)) {
+      const [[earlier]] = await pool.query('SELECT id, branch, branch_id FROM journal_entries WHERE tenant_id=? AND idempotency_key=? LIMIT 1', [req.tenantId, cleanIdempotencyKey(req.body?.idempotencyKey)]).catch(() => [[]]);
+      if (earlier) return res.json({ ok: true, entry: { id: earlier.id, branch: earlier.branch, branch_id: earlier.branch_id }, repeated: true });
     }
     logger.error('journal-entry create failed', { error: error.message });
     res.status(error.status || 500).json({ error: error.status ? error.message : 'Internal server error' });

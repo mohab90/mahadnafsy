@@ -8,7 +8,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 type AttendanceRow = {
   id: string; name: string; role?: string; department_name?: string | null;
-  present_days: number; absent_days: number; excused_days: number; late_days: number; total_late_minutes: number; deduction_days: number; flagged_days: number;
+  present_days: number; absent_days: number; excused_days: number; absence_charged_days: number; late_days: number; total_late_minutes: number; deduction_days: number; flagged_days: number;
 };
 type SalesRow = { id: string; name: string; total_leads: number; converted_leads: number; revenue_egp: number; conversion_rate: number | null };
 
@@ -68,7 +68,7 @@ export function StaffOverviewSection({ notify }: { notify: NotifyFn }) {
     const unexcused = absent - excused;
     const lateMinutes = attendance.reduce((s, r) => s + num(r.total_late_minutes), 0);
     // The days of pay the month's absences cost, as payroll will charge them.
-    const costDays = excused + unexcused * UNEXCUSED_ABSENCE_DAYS;
+    const costDays = attendance.reduce((s, r) => s + num(r.absence_charged_days), 0);
     const watch = attendance
       .map(r => ({ ...r, unexcused: num(r.absent_days) - num(r.excused_days), score: (num(r.absent_days) - num(r.excused_days)) * UNEXCUSED_ABSENCE_DAYS + num(r.excused_days) + num(r.total_late_minutes) / 60 }))
       .filter(r => r.score > 0)

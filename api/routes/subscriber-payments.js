@@ -11,7 +11,7 @@ const { sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
 const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { recordPaymentCompensation } = require('../lib/paymentCompensation');
-const { logPaymentAudit, postPaymentJournal } = require('../lib/finance');
+const { logPaymentAudit, postPaymentJournal, toPiastres } = require('../lib/finance');
 const { ensureFreshFx, fxStaleError } = require('../lib/fxRefresh');
 const { logLeadEvent } = require('../lib/crm');
 const { convertLeadOfPayment } = require('../lib/leadState');
@@ -135,7 +135,8 @@ async function recordSubscriberPayment(req, res) {
     if ((!subscriber_id && !leadId && !createFromDraftRequested) || !payment) {
       return res.status(400).json({ error: 'بيانات الحجز ناقصة — اختر العميل وأدخل الدفعة وحاول تاني.', code: 'BOOKING_DATA_MISSING' });
     }
-    const paymentAmount = Number(payment.amount);
+    // To the piastre: the column keeps two decimals, so a 100.005 typed here was stored as 100.01 while the journal booked 100.00.
+    const paymentAmount = toPiastres(payment.amount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0 || paymentAmount > 10000000) {
       return res.status(400).json({ error: 'المبلغ لازم يكون رقم أكبر من صفر (وأقل من 10,000,000).', code: 'AMOUNT_INVALID' });
     }
@@ -1014,7 +1015,7 @@ async function recordSubscriberPayment(req, res) {
     // Post double-entry journal inside the same transaction. A paid payment is
     // not financially complete unless the accounting entry is persisted too.
     if (isPaid) {
-      const rawAmt = Number(payment.amount) || 0;
+      const rawAmt = paymentAmount;
       const journalId = await postPaymentJournal({
         paymentId: id, amount: rawAmt, currency: payment.currency, payType: safeType,
         date: resolvedDate, actor: req.user?.email || 'system', tenantId: paymentTenantId,
@@ -1234,9 +1235,11 @@ async function recordSubscriberPayment(req, res) {
     // resolveFinancialScope refuses with .status, not .statusCode: a branch
     // that does not exist (400) or one outside this account's reach (403) was
     // answered as a 500 «Internal server error».
-    const status = e?.statusCode || (e instanceof FinancialScopeError ? e.status : null);
+    // A closed accounting period (409) or a lock that cannot be read (503, lib/periodLock.js) is said to the desk in words too.
+    const periodStatus = ['ACCOUNTING_PERIOD_CLOSED', 'ACCOUNTING_PERIOD_LOCK_UNAVAILABLE'].includes(e?.code) ? e.status : null;
+    const status = e?.statusCode || periodStatus || (e instanceof FinancialScopeError ? e.status : null);
     res.status(status || 500).json(status
-      ? { error: e.message, ...(e instanceof FinancialScopeError || e?.code === 'PRICE_CHANGED' ? { code: e.code } : {}), ...(e?.code === 'PRICE_CHANGED' ? { price: e.price } : {}) }
+      ? { error: e.message, ...(e instanceof FinancialScopeError || e?.code === 'PRICE_CHANGED' || periodStatus ? { code: e.code } : {}), ...(e?.code === 'PRICE_CHANGED' ? { price: e.price } : {}) }
       : { error: 'Internal server error' });
   }
 }

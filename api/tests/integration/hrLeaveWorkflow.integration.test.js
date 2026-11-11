@@ -122,3 +122,75 @@ test('the HR policy and the staff branch the leave workflow stands on are in the
   assert.ok(await has('leaves', 'policy_id'));
   assert.ok(await has('attendance_logs', 'leave_id'));
 });
+
+test('a leave approved after its day was marked absent replaces the absence; a punched day still blocks', { skip }, async () => {
+  await pool.query(
+    `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, status, source) VALUES
+       (UUID(), ?, ?, '2027-05-04', 'ABSENT', 'AUTO_ABSENCE'), (UUID(), ?, ?, '2027-05-05', 'ABSENT', 'MANUAL_ENTRY')`, [T, EMPLOYEE.id, T, EMPLOYEE.id]);
+  const { id } = await request('SICK', '2027-05-04', '2027-05-05');
+  assert.equal((await status(id, 'APPROVED', HR)).statusCode, 200, 'it was a 409 ATTENDANCE_CONFLICT with no way to clear the days');
+  assert.deepEqual(await days(id), ['2027-05-04 LEAVE', '2027-05-05 LEAVE']);
+  const [[left]] = await pool.query("SELECT COUNT(*) n FROM attendance_logs WHERE tenant_id=? AND staff_id=? AND status='ABSENT' AND date BETWEEN '2027-05-04' AND '2027-05-05'", [T, EMPLOYEE.id]);
+  assert.equal(Number(left.n), 0, 'no absence is left charging those days');
+  // Cancelling gives the days back as plain days, not as absences.
+  assert.equal((await status(id, 'CANCELLED', HR)).statusCode, 200);
+  assert.deepEqual(await days(id), []);
+});
+
+test('11 Nov 2026: an annual leave past the balance left after the free days is not refused — the approval carries a warning and HR decides', { skip }, async () => {
+  const rows = Array.from({ length: 18 }, (_, i) => `(UUID(), '${T}', '${EMPLOYEE.id}', '2028-01-${String(i + 1).padStart(2, '0')}', 'HOLIDAY', 'free_day', 'MANUAL_ENTRY')`).join(',');
+  await pool.query(`INSERT INTO attendance_logs (id, tenant_id, staff_id, date, status, permit_used, source) VALUES ${rows}`);
+  const fits = await request('ANNUAL', '2028-06-11', '2028-06-13');
+  const within = await status(fits.id, 'APPROVED', HR);
+  assert.equal(within.statusCode, 200, 'three days fit exactly in the three that are left of the 21');
+  assert.equal(within.body.warning, undefined, 'nothing to warn about');
+  const tooLong = await request('ANNUAL', '2028-06-04', '2028-06-07');
+  const past = await status(tooLong.id, 'APPROVED', HR);
+  assert.equal(past.statusCode, 200, 'it is no longer refused: it was a 409 LEAVE_BALANCE_EXCEEDED');
+  assert.deepEqual(past.body.warning, { code: 'LEAVE_BALANCE_LOW', remaining: 0, requested: 4, message: 'الرصيد المتبقي 0 يوم — الإجازة هتعدّي الرصيد' });
+  assert.deepEqual(await days(tooLong.id), ['2028-06-04 LEAVE', '2028-06-05 LEAVE', '2028-06-06 LEAVE', '2028-06-07 LEAVE'], 'and its days are written');
+});
+
+test('the leaves of one type alone are still held to the allowance (the check that was always there)', { skip }, async () => {
+  const huge = await request('ANNUAL', '2029-01-01', '2029-02-28');
+  const refused = await status(huge.id, 'APPROVED', HR);
+  assert.equal(refused.statusCode, 409);
+  assert.equal(refused.body.code, 'LEAVE_BALANCE_EXCEEDED');
+});
+
+test('11 Nov 2026: a morning permission and an evening permission on the same day do not clash; overlapping hours, or a leave on that day, still do', { skip }, async () => {
+  const permit = (type, start_time, end_time, date = '2030-03-04') =>
+    call('post', '/api/admin/hr/leaves', { body: { staff_id: EMPLOYEE.id, type, start_date: date, end_date: date, start_time, end_time } });
+  const morning = await permit('LATE_PERMIT', '09:00', '10:30');
+  assert.equal(morning.statusCode, 200, JSON.stringify(morning.body));
+  const evening = await permit('EARLY_LEAVE', '15:00', '17:00');
+  assert.equal(evening.statusCode, 200, `it was a 409 (the same day): ${JSON.stringify(evening.body)}`);
+  assert.equal((await permit('EARLY_LEAVE', '16:00', '17:30')).statusCode, 409, 'hours that overlap the evening one');
+  assert.equal((await permit('LATE_PERMIT', '10:00', '11:00')).statusCode, 409, 'hours that overlap the morning one');
+  assert.equal((await permit('EARLY_LEAVE', '10:30', '12:00')).statusCode, 200, 'touching hours do not overlap');
+  const fullDay = await call('post', '/api/admin/hr/leaves', { body: { staff_id: EMPLOYEE.id, type: 'SICK', start_date: '2030-03-04', end_date: '2030-03-04' } });
+  assert.equal(fullDay.statusCode, 409, 'a leave on a day with permissions still conflicts');
+  const leave = await call('post', '/api/admin/hr/leaves', { body: { staff_id: EMPLOYEE.id, type: 'SICK', start_date: '2030-03-05', end_date: '2030-03-05' } });
+  assert.equal(leave.statusCode, 200);
+  assert.equal((await permit('LATE_PERMIT', '09:00', '10:00', '2030-03-05')).statusCode, 409, 'and a permission on a leave day conflicts');
+});
+
+test('11 Nov 2026: a leave across New Year spends the days that fall in each year, not all of them in the year it starts', { skip }, async () => {
+  const { leaveBalanceOf } = require('../../lib/leaveBalance');
+  // 15 days already taken in 2031 and 18 in 2032: seven days started on 28 Dec 2031 would be 22 in 2031 (refused) if counted whole, but are 4 + 3.
+  await pool.query(
+    `INSERT INTO leaves (id, tenant_id, staff_id, type, start_date, end_date, total_days, status) VALUES
+       ('lv-ny-2031', ?, ?, 'ANNUAL', '2031-03-02', '2031-03-20', 15, 'APPROVED'),
+       ('lv-ny-2032', ?, ?, 'ANNUAL', '2032-03-01', '2032-03-24', 18, 'APPROVED')`, [T, EMPLOYEE.id, T, EMPLOYEE.id]);
+  const crossing = await request('ANNUAL', '2031-12-28', '2032-01-04');
+  const approved = await status(crossing.id, 'APPROVED', HR);
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  assert.equal(approved.body.warning, undefined, 'it fits in both years');
+  assert.equal((await leaveBalanceOf(pool, { tenantId: T, staffId: EMPLOYEE.id, year: 2031, entitlement: 21 })).annualLeaveDays, 19, '15 + the 4 working days of 28-31 Dec');
+  assert.equal((await leaveBalanceOf(pool, { tenantId: T, staffId: EMPLOYEE.id, year: 2032, entitlement: 21 })).annualLeaveDays, 21, '18 + the 3 working days of 1-4 Jan (Friday is the weekly day off)');
+  // Another day in 2032 would pass the allowance of that year, and is refused on that year's own count.
+  const more = await request('ANNUAL', '2032-05-02', '2032-05-02');
+  const refused = await status(more.id, 'APPROVED', HR);
+  assert.equal(refused.statusCode, 409);
+  assert.equal(refused.body.code, 'LEAVE_BALANCE_EXCEEDED');
+});

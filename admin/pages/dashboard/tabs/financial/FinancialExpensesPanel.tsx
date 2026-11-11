@@ -3,6 +3,7 @@ import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Plus, Wallet } from 'lucide-react';
 import type { ExpenseItem } from '../../../../types';
 import { ExpenseForm } from './ExpenseForm';
+import { newIdempotencyKey } from '../../../../lib/idempotencyKey';
 import { ExpenseTable } from './ExpenseTable';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 
@@ -68,8 +69,13 @@ export function FinancialExpensesPanel({
   const closeForm = () => { setIsExpenseFormOpen(false); setEditingExpenseId(''); };
   const [saving, setSaving] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState('');
+  // One key for as long as a form stays open, so a second press on «حفظ» (the state above lags a click behind) saves nothing twice; a form opened again gets a new one.
+  const formKey = React.useRef('');
+  const submitting = React.useRef(false);
+  React.useEffect(() => { formKey.current = ''; }, [isExpenseFormOpen]);
   const submitExpense = async () => {
-    if (!expenseDraft.description.trim() || expenseDraft.amount <= 0 || saving) return;
+    if (!expenseDraft.description.trim() || expenseDraft.amount <= 0 || saving || submitting.current) return;
+    submitting.current = true;
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -77,13 +83,15 @@ export function FinancialExpensesPanel({
         await updateExpense({ ...expenseDraft, branchType: fixedBranch || expenseDraft.branchType, id: editingExpenseId, createdAt: now });
         setEditingExpenseId('');
       } else {
-        await addExpense({ ...expenseDraft, branchType: fixedBranch || expenseDraft.branchType, id: `exp-${Date.now()}`, createdAt: now });
+        if (!formKey.current) formKey.current = newIdempotencyKey();
+        await addExpense({ ...expenseDraft, branchType: fixedBranch || expenseDraft.branchType, id: `exp-${Date.now()}`, createdAt: now, idempotencyKey: formKey.current });
       }
       setIsExpenseFormOpen(false);
       notify('success', 'تم حفظ المصروف وقيده المحاسبي');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر حفظ المصروف');
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };

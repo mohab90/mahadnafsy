@@ -114,7 +114,7 @@ test('a message to the company number opens a conversation with the lead\'s own 
   const theirs = await call('get', '/api/admin/team-inbox/threads', { staffId: 'ti-rep-2', query: { view: 'all' } });
   assert.equal(theirs.body.threads.length, 0, 'a colleague does not see it');
   const peek = await call('get', '/api/admin/team-inbox/threads/:id', { staffId: 'ti-rep-2', params: { id: row.id } });
-  assert.equal(peek.statusCode, 403);
+  assert.equal(peek.statusCode, 404, 'a colleague\'s lead is outside her data scope: the conversation does not exist for her');
 
   const open = await call('get', '/api/admin/team-inbox/threads/:id', { staffId: 'ti-rep-1', params: { id: row.id } });
   assert.equal(open.body.messages.length, 1);
@@ -128,6 +128,12 @@ test('nobody\'s conversation is taken by whoever answers first; the reply carrie
   });
   const row = await thread(CLIENT_PHONE);
   assert.equal(row.assigned_staff_id, null, 'a client with no CS is nobody\'s yet');
+  // Nobody's client is nobody's conversation for a rep (data scope); the people who see everything have it in their queue.
+  const hidden = await call('get', '/api/admin/team-inbox/threads', { staffId: 'ti-rep-2', query: { view: 'unassigned' } });
+  assert.equal(hidden.body.threads.length, 0);
+  assert.deepEqual((await call('get', '/api/admin/team-inbox/threads', { staffId: 'ti-boss', all: true, query: { view: 'unassigned' } })).body.threads.map(t => t.id), [row.id]);
+  // Once the client is hers, it is her conversation to answer — and answering it takes it.
+  await pool.query("UPDATE subscribers SET assigned_sales_id='ti-rep-2' WHERE id='ti-client'");
   const queue = await call('get', '/api/admin/team-inbox/threads', { staffId: 'ti-rep-2', query: { view: 'unassigned' } });
   assert.deepEqual(queue.body.threads.map(t => t.id), [row.id]);
 
@@ -143,7 +149,7 @@ test('nobody\'s conversation is taken by whoever answers first; the reply carrie
   assert.equal(after.last_direction, 'OUT');
 
   const claim = await call('post', '/api/admin/team-inbox/threads/:id/claim', { staffId: 'ti-rep-1', params: { id: row.id } });
-  assert.equal(claim.statusCode, 403, 'already taken by a colleague');
+  assert.equal(claim.statusCode, 404, 'a colleague\'s client is outside her scope, taken or not');
 
   const [[out]] = await pool.query(
     "SELECT provider_message_id, delivery_status, thread_id, subscriber_id FROM communications WHERE tenant_id=? AND id=?",

@@ -1,4 +1,5 @@
 'use strict';
+const { isSelfMutation } = require('../../lib/hrSelfMutation');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
@@ -8,6 +9,7 @@ const { PERMISSIONS, normalizeDataScope } = require('../../constants/permissions
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireHr, staffReachSql } = require('../../lib/branchHr');
 const { sqlCairoToday, cairoYearMonth } = require('../../lib/dates');
+const { repMoneySql } = require('../../lib/repRevenue');
 
 
 // GET /api/admin/hr/employees — list all employees with HR info
@@ -15,10 +17,12 @@ const { sqlCairoToday, cairoYearMonth } = require('../../lib/dates');
 router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireHr('view'), async (req, res) => {
   try {
     const reach = staffReachSql(req.hrReach, 's');
+    // A branch manager reaches their branch's people, not their pay (same rule as the month sheet): the commission rate goes only to whoever holds view_hr.
+    const seesPay = Boolean(req.hrReach?.all);
     const [employees] = await pool.query(`
       SELECT s.id, s.name, s.email, s.phone, s.role, s.image, s.is_active,
              s.department_id, s.manager_id, s.employment_type, s.hire_date,
-             s.commission_rate, s.joined_at,
+             ${seesPay ? 's.commission_rate' : 'NULL AS commission_rate'}, s.joined_at,
              d.name AS department_name,
              m.name AS manager_name
       FROM staff s
@@ -104,7 +108,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
         WHERE p.staff_id = ?
           AND p.tenant_id = ?
           AND p.status = 'paid'
-          AND p.date >= ? AND p.date < ? AND p.deleted_at IS NULL
+          AND p.date >= ? AND p.date < ? AND p.deleted_at IS NULL AND ${repMoneySql('p')}
       `, [effectiveRate, id, req.tenantId, monthStart, nextMonthStart]);
       commissionFallback = fb ? { ...fb, usedRate: effectiveRate } : fb;
     }
@@ -126,7 +130,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
              COUNT(*) AS sales_count
       FROM payments p
       JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
-      WHERE p.staff_id=? AND p.tenant_id=? AND p.status='paid' AND p.date >= DATE_SUB(${sqlCairoToday()}, INTERVAL 6 MONTH) AND p.deleted_at IS NULL
+      WHERE p.staff_id=? AND p.tenant_id=? AND p.status='paid' AND p.date >= DATE_SUB(${sqlCairoToday()}, INTERVAL 6 MONTH) AND p.deleted_at IS NULL AND ${repMoneySql('p')}
       GROUP BY YEAR(p.date), MONTH(p.date)
       ORDER BY YEAR(p.date) DESC, MONTH(p.date) DESC
     `, [histRate, id, req.tenantId]);
@@ -176,7 +180,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       SELECT
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND created_at >= ? AND created_at < ?) AS leads_assigned,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ${CONVERTED_SQL} AND updated_at >= ? AND updated_at < ?) AS leads_converted,
-        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date >= ? AND date < ? AND deleted_at IS NULL) AS revenue_generated
+        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date >= ? AND date < ? AND deleted_at IS NULL AND ${repMoneySql('payments')}) AS revenue_generated
     `, [req.tenantId, id, monthStart, nextMonthStart, req.tenantId, id, monthStart, nextMonthStart, req.tenantId, id, monthStart, nextMonthStart]);
 
     res.json({
@@ -223,7 +227,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       'commission_rate', 'monthly_target', 'monthly_target_type', 'monthly_bonus', 'is_active',
       'permissions', 'permissions_json', 'data_scope', 'dataScope',
     ];
-    if (String(req.staffRecord?.id || '') === String(id) && protectedCompensation.some(key => req.body[key] !== undefined)) {
+    if (isSelfMutation(req, id) && protectedCompensation.some(key => req.body[key] !== undefined)) {
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: 'لا يجوز تعديل بياناتك التعويضية أو حالة حسابك بنفسك', code: 'HR_SELF_MUTATION' });
     }

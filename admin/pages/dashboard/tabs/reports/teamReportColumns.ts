@@ -17,7 +17,7 @@ export const TEAM_COLUMNS: Record<TeamKey, TeamColumn[]> = {
     { key: 'calls', label: 'مكالمات' }, { key: 'whatsapp', label: 'واتساب' }, { key: 'reached', label: 'عملاء اتكلموا' },
     { key: 'clients', label: 'عملاء مسئول عنهم' }, { key: 'received', label: 'اتسلموا في الفترة' },
     { key: 'payments', label: 'دفعات' }, { key: 'installments', label: 'أقساط' },
-    { key: 'collectedEgp', label: 'اللي اتحصّل', money: true }, { key: 'pendingReview', label: 'مستنية مراجعة' },
+    { key: 'collectedEgp', label: 'اللي اتحصّل', money: true }, { key: 'certificatesEgp', label: 'منه شهادات', money: true }, { key: 'pendingReview', label: 'مستنية مراجعة' },
   ],
   support: [
     { key: 'calls', label: 'مكالمات' }, { key: 'whatsapp', label: 'واتساب' }, { key: 'clientsReviewed', label: 'عملاء راجعهم' },
@@ -40,7 +40,7 @@ export const TEAM_COLUMNS: Record<TeamKey, TeamColumn[]> = {
 // The headline of each team, above its table.
 export const TEAM_TOTAL_LABELS: Record<TeamKey, Record<string, string>> = {
   sales: { newLeads: 'ليدز جديدة', newLeadsUnassigned: 'مستنية توزيع', calls: 'مكالمات', bookings: 'حجوزات', moneyEgp: 'فلوس (ج.م)', followUpsOverdue: 'متابعات متأخرة' },
-  online: { clients: 'عملاء الفريق', received: 'اتوزعوا في الفترة', collectedEgp: 'اتحصّل (ج.م)', onlineMoneyEgp: 'كل دخل الأونلاين (ج.م)' },
+  online: { clients: 'عملاء الفريق', received: 'اتوزعوا في الفترة', collectedEgp: 'اتحصّل (ج.م)', certificatesEgp: 'منه شهادات (ج.م)', onlineMoneyEgp: 'كل دخل الأونلاين (ج.م)' },
   support: {
     problemsOpened: 'مشاكل جديدة', problemsResolved: 'اتحلت', problemsOpen: 'لسه مفتوحة',
     certificatesRequested: 'شهادات اتطلبت', certificatesIssued: 'اتصدرت', certificatesWaiting: 'مستنية',

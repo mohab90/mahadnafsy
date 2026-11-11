@@ -98,8 +98,9 @@ async function buildOnlineTeamReport({ tenantId, from, to, today }, db = pool) {
     [b.startUtc, b.endUtc, tenantId]
   );
   const [collected] = await db.query(
+    // Certificate money is collection, not sales (the owner, 11 Nov 2026): it is in the officer's collected figure, and its own column says how much of it is certificates.
     `SELECT sub.assigned_cs_id AS rep, COUNT(*) AS payments, SUM(p.is_installment=1) AS installments,
-            SUM(${MONEY_EGP}) AS moneyEgp
+            SUM(${MONEY_EGP}) AS moneyEgp, SUM(CASE WHEN UPPER(p.payment_type)='CERTIFICATE' THEN ${MONEY_EGP} ELSE 0 END) AS certificatesEgp
        FROM payments p
        JOIN subscribers sub ON sub.id=p.subscriber_id AND sub.tenant_id=p.tenant_id
       WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND p.date >= ? AND p.date < ?
@@ -134,7 +135,7 @@ async function buildOnlineTeamReport({ tenantId, from, to, today }, db = pool) {
       id, name: officer.name,
       calls: num(c.calls), whatsapp: num(c.whatsapp), followUps: num(c.followUps), reached: num(c.reached),
       clients: num(l.clients), received: num(l.received),
-      payments: num(m.payments), installments: num(m.installments), collectedEgp: Math.round(num(m.moneyEgp)),
+      payments: num(m.payments), installments: num(m.installments), collectedEgp: Math.round(num(m.moneyEgp)), certificatesEgp: Math.round(num(m.certificatesEgp)),
       pendingReview: num(pendingBy.get(id)?.n),
     };
   });
@@ -143,7 +144,7 @@ async function buildOnlineTeamReport({ tenantId, from, to, today }, db = pool) {
     totals: {
       calls: sumRows(rows, 'calls'), whatsapp: sumRows(rows, 'whatsapp'), reached: sumRows(rows, 'reached'),
       clients: sumRows(rows, 'clients'), received: sumRows(rows, 'received'),
-      collectedEgp: sumRows(rows, 'collectedEgp'), payments: sumRows(rows, 'payments'),
+      collectedEgp: sumRows(rows, 'collectedEgp'), certificatesEgp: sumRows(rows, 'certificatesEgp'), payments: sumRows(rows, 'payments'),
       onlinePayments: num(online?.payments), onlineMoneyEgp: Math.round(num(online?.moneyEgp)),
     },
   };

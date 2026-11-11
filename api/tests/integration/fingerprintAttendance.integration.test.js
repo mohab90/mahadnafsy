@@ -90,6 +90,7 @@ test('the preview judges the month and writes nothing; the upload writes it', { 
   assert.equal(preview.body.employees.find(e => e.staffId === 'fp-ali').deductionDays, 0);
   assert.ok(!preview.body.employees.some(e => e.staffId === 'fp-remote'), 'no device number and not in the sheet: left alone');
   assert.deepEqual(preview.body.unmatched.map(u => u.bioNo), ['99']);
+  assert.deepEqual(preview.body.notOnDevice.map(p => p.staffId), ['fp-remote'], 'the one with no number is named, not dropped silently');
   const [[none]] = await pool.query('SELECT COUNT(*) n FROM attendance_logs WHERE tenant_id=?', [T]);
   assert.equal(Number(none.n), 0);
 
@@ -147,4 +148,23 @@ test('the free day: six months worked and the first absence of the month costs n
   assert.equal(skipped.statusCode, 200, JSON.stringify(skipped.body));
   assert.deepEqual(skipped.body.skippedNoSalary.map(s => s.id), ['fp-remote']);
   assert.ok(skipped.body.items.length >= 2 && !skipped.body.items.some(i => i.staff_id === 'fp-remote'));
+});
+
+test('an upload taken before the punches of today are in does not mark today absent', { skip }, async () => {
+  const { importAttendanceMonth } = require('../../lib/attendanceImport');
+  // Ali punched 1–9 Sept; today is the 10th (a Thursday) and he has not punched yet. Mona has a device number and no punch at all.
+  const punches = [];
+  for (const d of [1, 2, 3, 5, 6, 7, 8, 9]) {
+    const day = `2026-09-${String(d).padStart(2, '0')}`;
+    punches.push({ bioNo: '9', name: 'Ali', date: day, time: '10:50' }, { bioNo: '9', name: 'Ali', date: day, time: '18:31' });
+  }
+  const early = await importAttendanceMonth(pool, { tenantId: T, month: '2026-09', punches, dryRun: true, today: '2026-09-10' });
+  const ali = early.employees.find(e => e.staffId === 'fp-ali');
+  assert.equal(ali.workDays, 8, 'the 10th is not judged yet');
+  assert.equal(ali.absent, 0);
+  const monaDays = early.days.find(r => r.staffId === 'fp-mona').days.map(d => d.date);
+  assert.ok(monaDays.length > 0 && !monaDays.includes('2026-09-10'), 'no punch at all: the finished days are judged, today is not');
+  punches.push({ bioNo: '9', name: 'Ali', date: '2026-09-10', time: '10:55' });
+  const later = await importAttendanceMonth(pool, { tenantId: T, month: '2026-09', punches, dryRun: true, today: '2026-09-10' });
+  assert.equal(later.employees.find(e => e.staffId === 'fp-ali').workDays, 9, 'punched today: judged (one punch, flagged)');
 });

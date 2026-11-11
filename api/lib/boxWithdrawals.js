@@ -13,6 +13,9 @@
 const { uuidv4 } = require('./id');
 const finance = require('./finance');
 const { applyAlias, loadBoxAliases } = require('./boxAliases');
+const { loadBoxCatalog } = require('./boxCatalog');
+const { assertWritable } = require('./periodLock');
+const { cleanIdempotencyKey } = require('./idempotency');
 const { GENERAL, currentBalances, logEvent } = require('./boxBalances');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -67,6 +70,15 @@ async function directionOf(db, tenantId, input) {
 async function withdraw(db, { tenantId, actor = null, today, input }) {
   const kind = KINDS.includes(input.kind) ? input.kind : null;
   if (!kind) throw fail('اختار نوع السحب', 'WITHDRAW_KIND');
+  // The same dialog pressed twice carries one key: the second press finds the first withdrawal and writes nothing. The caller holds the tenant's box lock, so the two never run together.
+  const idempotencyKey = cleanIdempotencyKey(input.idempotencyKey);
+  if (idempotencyKey) {
+    const [[earlier]] = await db.query('SELECT id, journal_entry_id, method, currency FROM box_withdrawals WHERE tenant_id = ? AND idempotency_key = ? LIMIT 1', [tenantId, idempotencyKey]);
+    if (earlier) {
+      const now = (await currentBalances(db, { tenantId })).get(`${earlier.method}|${earlier.currency}`)?.balance ?? 0;
+      return { id: earlier.id, before: now, after: now, journalId: earlier.journal_entry_id || null, repeated: true };
+    }
+  }
   const currency = String(input.currency || 'EGP').toUpperCase();
   if (!['EGP', 'SAR', 'USD'].includes(currency)) throw fail('العملة لازم تكون EGP أو SAR أو USD', 'BOX_CURRENCY');
   const amount = round2(input.amount);
@@ -78,6 +90,16 @@ async function withdraw(db, { tenantId, actor = null, today, input }) {
   if (kind === 'transfer' && (!toMethod || toMethod === method)) throw fail('اختار خزنة تانية للتحويل', 'WITHDRAW_TARGET');
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(input.date || '')) ? String(input.date) : today;
   const note = String(input.note || '').trim().slice(0, 500) || null;
+  // Every kind of withdrawal is a dated movement of money — a transfer too, which posts no entry of its own — so the period is checked here by that date, once, and answers
+  // the period's own message (409). Left to postJournalEntry it answered a generic 500 for the kinds that post, and the transfer was never checked at all.
+  await assertWritable(date, db, tenantId);
+  if (kind === 'transfer') {
+    // The money goes to a box of the institute's list that holds this currency; a transfer to a pound box typed under a riyal amount would land in «أخرى».
+    const catalog = await loadBoxCatalog(db, tenantId);
+    if (catalog.active && !catalog.entries.some(entry => entry.key === toMethod && entry.currency === currency)) {
+      throw fail('الخزنة اللي بتحوّل ليها مش في قائمة الخزن أو مش بتشيل نفس العملة', 'WITHDRAW_TARGET_CURRENCY');
+    }
+  }
 
   const balances = await currentBalances(db, { tenantId, lock: true });
   const before = balances.get(`${method}|${currency}`)?.balance ?? 0;
@@ -98,10 +120,10 @@ async function withdraw(db, { tenantId, actor = null, today, input }) {
   }
   await db.query(
     `INSERT INTO box_withdrawals
-       (id, tenant_id, method, currency, amount, kind, partner, to_method, account_code, account_name, journal_entry_id, note, withdrawn_on, actor)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, tenant_id, method, currency, amount, kind, partner, to_method, account_code, account_name, journal_entry_id, note, withdrawn_on, actor, idempotency_key)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [id, tenantId, method, currency, amount, kind, kind === 'partner' ? input.partner : null, toMethod, direction?.code || null, direction?.name || null,
-      journalId, note, date, actor ? String(actor).slice(0, 255) : null]);
+      journalId, note, date, actor ? String(actor).slice(0, 255) : null, idempotencyKey]);
   await logEvent(db, {
     tenantId, method, currency, kind: kind === 'transfer' ? 'transfer' : 'withdraw', before, after: round2(before - amount),
     note: `${kind === 'partner' ? `سحب شخصي — ${partnerOf(input.partner).name}` : kind === 'transfer' ? `تحويل إلى ${toMethod}` : direction.name}${note ? ` — ${note}` : ''}`, actor,
@@ -114,6 +136,8 @@ async function voidWithdrawal(db, { tenantId, id, actor = null, today }) {
   const [[row]] = await db.query('SELECT * FROM box_withdrawals WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE', [tenantId, id]);
   if (!row) throw fail('السحب ده مش موجود', 'WITHDRAW_MISSING', 404);
   if (row.voided_at) throw fail('السحب ده اتلغى قبل كده', 'WITHDRAW_VOIDED', 409);
+  // The cancellation is a movement dated today, whatever the withdrawal's own date was.
+  await assertWritable(today, db, tenantId);
   if (row.journal_entry_id) {
     const egp = await finance.toEgp(Number(row.amount), row.currency, tenantId);
     const reversed = await finance.postJournalEntry('box_withdrawal_void', row.id, today, `إلغاء سحب من خزنة ${row.method} — ${row.account_name}`,

@@ -34,7 +34,7 @@ let pool, router;
 async function clean() {
   await pool.query('DELETE FROM journal_entry_lines WHERE entry_id IN (SELECT id FROM journal_entries WHERE tenant_id=?)', [T]).catch(() => {});
   for (const table of ['journal_entries', 'financial_audit_log', 'payroll_items', 'payroll_runs', 'payroll_period_locks',
-    'crm_commissions', 'salary_advances', 'employee_bonuses', 'salary_structures', 'attendance_logs', 'staff']) {
+    'crm_commissions', 'payments', 'subscribers', 'salary_advances', 'employee_bonuses', 'salary_structures', 'attendance_logs', 'staff']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [T]).catch(() => {});
   }
   await pool.query('DELETE FROM tenants WHERE id=?', [T]).catch(() => {});
@@ -59,6 +59,8 @@ before(async () => {
   router = require('../../routes/hr/payroll');
   await clean();
   await pool.query("INSERT INTO tenants (id, slug, name, status) VALUES (?, ?, 'Payroll IT', 'suspended')", [T, T]);
+  // The automatic commission is off unless the owner switches it on (lib/payrollCommission.js); here it is on for the team, from the commission rows.
+  await pool.query("INSERT INTO tenant_settings (id, tenant_id, section, config_json) VALUES ('ts-pr-commission', ?, 'payroll_commission', ?)", [T, JSON.stringify({ team: { mode: 'RULES' } })]);
   await pool.query(
     `INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at, base_salary, branch_id) VALUES
        ('pr-sara', ?, 'سارة', 'pr1@x.t', '1017000001', 'SALES', 1, '2025-01-01', NULL, 'branch-daqqi'),
@@ -122,6 +124,17 @@ test('recalculating rebuilds the same run with the same figures', { skip }, asyn
   assert.equal(again.body.run.total_amount, first.body.run.total_amount);
 });
 
+test('a run says what changed after it was calculated: an attendance day edited, a bonus approved', { skip }, async () => {
+  const detail = () => call('get', '/api/admin/hr/payroll/:runId', { actor: 'hr-calc', params: { runId } });
+  assert.deepEqual((await detail()).body.changedSinceCalculation, { attendanceStaff: 0, bonusStaff: 0 }, 'nothing moved since the calculation');
+  await pool.query(
+    `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, status, source, updated_at) VALUES ('at-late-edit', ?, 'pr-sara', '2026-08-03', 'ABSENT', 'MANUAL_ENTRY', NOW() + INTERVAL 1 HOUR)`, [T]);
+  await pool.query("UPDATE employee_bonuses SET approved_at = NOW() + INTERVAL 1 HOUR WHERE tenant_id=? AND id='bn-1'", [T]);
+  assert.deepEqual((await detail()).body.changedSinceCalculation, { attendanceStaff: 1, bonusStaff: 1 });
+  await pool.query("DELETE FROM attendance_logs WHERE tenant_id=? AND id='at-late-edit'", [T]);
+  await pool.query("UPDATE employee_bonuses SET approved_at = NULL WHERE tenant_id=? AND id='bn-1'", [T]);
+});
+
 test('a branch run cannot overlap the whole-institute run of the same month', { skip }, async () => {
   const branch = await calculate('hr-calc', { branch_id: 'branch-daqqi' });
   assert.equal(branch.statusCode, 409);
@@ -158,9 +171,9 @@ test('paying posts one balanced entry and settles commissions and the covered ad
 
   const [commissions] = await pool.query("SELECT id, status FROM crm_commissions WHERE tenant_id=? ORDER BY id", [T]);
   assert.deepEqual(commissions.map(c => c.status), ['PAID', 'PAID', 'PENDING']);
-  const [advances] = await pool.query('SELECT id, status FROM salary_advances WHERE tenant_id=? ORDER BY id', [T]);
-  assert.deepEqual(advances.map(a => [a.id, a.status]), [['adv-omar', 'DISBURSED'], ['adv-sara', 'DEDUCTED']],
-    'Omar still owes what his salary could not cover');
+  const [advances] = await pool.query('SELECT id, status, recovered_amount FROM salary_advances WHERE tenant_id=? ORDER BY id', [T]);
+  assert.deepEqual(advances.map(a => [a.id, a.status, Number(a.recovered_amount)]), [['adv-omar', 'DISBURSED', 2600], ['adv-sara', 'DEDUCTED', 1000]],
+    'Omar still owes what his salary could not cover (5,000 - the 2,600 taken); it comes round in the next run (payrollAdvanceRecovery.integration.test.js)');
   assert.equal((await setStatus('fin-other', runId, 'PAID')).statusCode, 409, 'paid once');
 });
 
@@ -168,6 +181,7 @@ test('cancelling a run hands its commissions back to the next one', { skip }, as
   // A fresh month for this: September.
   const sept = await call('post', '/api/admin/hr/payroll/calculate', { actor: 'hr-calc', body: { month: MONTH + 1, year: YEAR } });
   assert.equal(sept.statusCode, 200, JSON.stringify(sept.body));
+  assert.equal(item(sept, 'pr-omar').advance_deductions, 2400, 'the 2,400 of the August advance that Omar\'s salary could not carry is taken in September');
   await pool.query(
     "INSERT INTO crm_commissions (id, tenant_id, staff_id, payment_id, payment_amount, commission_amount, month, year, status) VALUES ('cm-sep', ?, 'pr-sara', 'pay-9', 1000, 50, ?, ?, 'PENDING')",
     [T, MONTH + 1, YEAR]);
@@ -177,4 +191,33 @@ test('cancelling a run hands its commissions back to the next one', { skip }, as
   const [[cm]] = await pool.query("SELECT status, payroll_run_id FROM crm_commissions WHERE tenant_id=? AND id='cm-sep'", [T]);
   assert.equal(cm.status, 'PENDING');
   assert.equal(cm.payroll_run_id, null);
+});
+
+test('10 Nov 2026: with the automatic commission off (as it is unless switched on) a run pays none and leaves the commission rows alone', { skip }, async () => {
+  const october = body => call('post', '/api/admin/hr/payroll/calculate', { actor: 'hr-calc', body: { month: MONTH + 2, year: YEAR, ...body } });
+  await pool.query(
+    "INSERT INTO crm_commissions (id, tenant_id, staff_id, payment_id, payment_amount, commission_amount, month, year, status) VALUES ('cm-oct', ?, 'pr-sara', 'pay-10', 4000, 200, ?, ?, 'PENDING')",
+    [T, MONTH + 2, YEAR]);
+  // On for the team but off for Sara herself: her own rule wins.
+  await pool.query("UPDATE tenant_settings SET config_json=? WHERE tenant_id=? AND section='payroll_commission'", [JSON.stringify({ team: { mode: 'RULES' }, staff: { 'pr-sara': { mode: 'OFF' } } }), T]);
+  const forHer = await october();
+  assert.equal(forHer.statusCode, 200, JSON.stringify(forHer.body));
+  assert.equal(item(forHer, 'pr-sara').commission, 0);
+  // Nothing stored at all: off for everyone.
+  await pool.query("DELETE FROM tenant_settings WHERE tenant_id=? AND section='payroll_commission'", [T]);
+  const off = await october();
+  assert.equal(item(off, 'pr-sara').commission, 0);
+  assert.equal(item(off, 'pr-sara').net_salary, 6500 + 500 - 300, 'the salary, the housing allowance, the insurance withheld — and nothing worked out from sales');
+  const [[row]] = await pool.query("SELECT status, payroll_run_id FROM crm_commissions WHERE tenant_id=? AND id='cm-oct'", [T]);
+  assert.deepEqual({ ...row }, { status: 'PENDING', payroll_run_id: null });
+  await pool.query("INSERT INTO subscribers (id, tenant_id, name, phone) VALUES ('pr-client', ?, 'عميلة', '1017000009')", [T]);
+  // A percentage of the month's course sales, switched on for her alone; a certificate payment is not a sale.
+  await pool.query(
+    `INSERT INTO payments (id, tenant_id, subscriber_id, staff_id, amount, amount_egp, currency, status, payment_type, date) VALUES
+       ('pay-oct-course', ?, 'pr-client', 'pr-sara', 10000, 10000, 'EGP', 'paid', 'COURSE', ?), ('pay-oct-cert', ?, 'pr-client', 'pr-sara', 3000, 3000, 'EGP', 'paid', 'CERTIFICATE', ?)`,
+    [T, `${YEAR}-${MONTH + 2}-10`, T, `${YEAR}-${MONTH + 2}-11`]);
+  await pool.query("INSERT INTO tenant_settings (id, tenant_id, section, config_json) VALUES ('ts-pr-commission-2', ?, 'payroll_commission', ?)", [T, JSON.stringify({ staff: { 'pr-sara': { mode: 'PERCENT', rate: 2 } } })]);
+  const percent = await october();
+  assert.equal(item(percent, 'pr-sara').commission, 200, 'two per cent of the 10,000 course payment; the certificate is left out');
+  assert.equal(item(percent, 'pr-omar').commission, 0);
 });

@@ -14,6 +14,7 @@ const { logLeadEvent } = require('./crm');
 const { getNextSalesRep, SINGLE_LEAD_LOADS_TTL_MS } = require('./leadAssignment');
 const { leadPhoneClause } = require('./leadMatching');
 const { completeForBranch, toIdentity, matchingSpellings } = require('./phoneNumber');
+const { bringBackReturningLead } = require('./leadReturn');
 const { logClientEvent } = require('./clientHistory');
 const { attributionValues, fillAttributionSql } = require('./visitAttribution');
 
@@ -53,7 +54,10 @@ async function fileLead({ tenantId, name, phone, notes, source, branch, attribut
     const identityMatch = leadPhoneClause(normPhone);
     if (identityMatch) {
       const [[existing]] = await conn.query(
-        `SELECT id FROM leads WHERE tenant_id=? AND ${identityMatch.sql} AND hidden = 0 LIMIT 1 FOR UPDATE`,
+        // A hidden or archived lead is still this person, and still holds the number: leads has a unique key on (tenant, phone), so a
+        // form that looked past it filed a second row, ran into that key and answered 500 — the visitor's message was lost. A visible
+        // one is preferred; a merged copy is never the answer (lib/leadMatching.js findLeadByContact).
+        `SELECT id, name, status, hidden, assigned_sales_id FROM leads WHERE tenant_id=? AND ${identityMatch.sql} AND merged_into_lead_id IS NULL ORDER BY hidden ASC, created_at DESC LIMIT 1 FOR UPDATE`,
         [tenantId, ...identityMatch.params]
       );
       if (existing) {
@@ -64,6 +68,11 @@ async function fileLead({ tenantId, name, phone, notes, source, branch, attribut
           [note, note, ...attributionValues(attribution), existing.id, tenantId]
         );
         await logLeadEvent(existing.id, 'note_added', 'Public form submitted again', { source: origin }, tenantId, conn);
+        // A hidden or closed lead that fills a form again is interested again: back to its rep (lib/leadReturn.js).
+        await bringBackReturningLead(conn, {
+          tenantId, lead: existing, via: 'نموذج الموقع',
+          pickRep: () => getNextSalesRep(tenantId, conn, { branch: normalizeBranch(branch, 'OTHER'), lead: { source: origin, courseIds: [] }, loadsTtlMs: SINGLE_LEAD_LOADS_TTL_MS }),
+        });
         await conn.commit();
         transactionStarted = false;
         return { id: existing.id, existing: true };

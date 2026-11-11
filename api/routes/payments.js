@@ -72,56 +72,69 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
-  try {
-    // `source` is read here, not just on /review.
-    //
-    // The باي موب screen asks for `?source=paymob` and this handler destructured
-    // four query keys, none of them source. An unread filter is not an empty
-    // filter: the condition never reached the WHERE clause, so the tab labelled
-    // "الدفع الإلكتروني — منفصل عن الدفعات اللي بيسجّلها الموظفين" was listing
-    // every payment in the database, hand-entered cash included, and adding them
-    // into its own "إجمالي المحصّل" heading.
-    const { startDate, endDate, channel, paymentType, source, status } = req.query;
-    const limit = Math.min(5000, Math.max(1, Number.parseInt(req.query.limit, 10) || 2000));
-    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
-    // Non-super-admin staff who are not managers/accountants can only see their own payments
-    const requestedBranch = req.query.branch && req.query.branch !== 'all' ? req.query.branch : null;
-    const scope = resolveFinancialScope(req, { requestedBranch, allowAssigned: true });
-    let sql = `SELECT p.*, s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code AS subscriber_client_code
-               FROM payments p
+/**
+ * The filters of the payments list AND of its summary — one function, so a total can never be taken over other rows than the list shows. Returns the conditions that follow
+ * «p.tenant_id = ? AND p.deleted_at IS NULL» (each starting with AND) and their parameters after the tenant id.
+ */
+function paymentListFilters(req, { startDate, endDate, channel, paymentType, source, status }) {
+  // `source` is read here, not just on /review.
+  //
+  // The باي موب screen asks for ?source=paymob and this handler destructured
+  // four query keys, none of them source. An unread filter is not an empty
+  // filter: the condition never reached the WHERE clause, so the tab labelled
+  // "الدفع الإلكتروني — منفصل عن الدفعات اللي بيسجّلها الموظفين" was listing
+  // every payment in the database, hand-entered cash included, and adding them
+  // into its own "إجمالي المحصّل" heading.
+  // Non-super-admin staff who are not managers/accountants can only see their own payments
+  const requestedBranch = req.query.branch && req.query.branch !== 'all' ? req.query.branch : null;
+  const scope = resolveFinancialScope(req, { requestedBranch, allowAssigned: true });
+  let sql = '';
+  const params = [];
+  // Cairo days, to the end of the last one: a plain <= '2026-10-31' stopped at its first second, so the day's payments were left out.
+  if (isValidDateOnly(String(startDate || '').slice(0, 10)))   { sql += ' AND p.date >= ?';  params.push(cairoDayStartUtc(String(startDate).slice(0, 10))); }
+  if (isValidDateOnly(String(endDate || '').slice(0, 10)))     { sql += ' AND p.date < ?';   params.push(cairoDayStartUtc(addDaysToDateOnly(String(endDate).slice(0, 10), 1))); }
+  if (channel)     { sql += ' AND p.payment_method = ?';  params.push(channel); }
+  if (paymentType) { sql += ' AND p.payment_type = ?';    params.push(String(paymentType).toUpperCase()); }
+  if (source && source !== 'all')  { sql += ' AND p.source = ?'; params.push(String(source)); }
+  if (status && status !== 'all') {
+    // 'paid' has to cover the legacy NULL, the way /review does — those rows
+    // are collected money and a status filter that hides them would under-
+    // report the total rather than merely narrow the list.
+    if (status === 'paid') sql += " AND (p.status = 'paid' OR p.status IS NULL)";
+    else { sql += ' AND p.status = ?'; params.push(String(status)); }
+  }
+  if (scope.branchId) {
+    // The branch's own clients (routes/finance.js, /finance/boxes): a payment
+    // filed under Dokki for an online client is not Dokki's money.
+    sql += ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)';
+    params.push(scope.branchId);
+  } else if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
+    const assignmentColumn = scope.kind === 'assigned_cs' ? 'assigned_cs_id' : 'assigned_sales_id';
+    // Show payments where this staff is recorded as the seller (staff_id match),
+    // OR where the subscriber is assigned to this staff — covers the 76% of payments
+    // that were entered without staff_id but belong to assigned clients.
+    sql += ` AND (p.staff_id = ? OR p.subscriber_id IN (
+      SELECT id FROM subscribers
+      WHERE tenant_id=? AND deleted_at IS NULL AND ${assignmentColumn} = ?
+    ))`;
+    params.push(scope.staffId, req.tenantId, scope.staffId);
+  }
+  return { sql, params };
+}
+
+const PAYMENT_LIST_FROM = `FROM payments p
                LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
                WHERE p.tenant_id = ? AND p.deleted_at IS NULL`;
-    const params = [req.tenantId];
-    // Cairo days, to the end of the last one: `<= '2026-10-31'` stopped at its first second, so the day's payments were left out.
-    if (isValidDateOnly(String(startDate || '').slice(0, 10)))   { sql += ' AND p.date >= ?';  params.push(cairoDayStartUtc(String(startDate).slice(0, 10))); }
-    if (isValidDateOnly(String(endDate || '').slice(0, 10)))     { sql += ' AND p.date < ?';   params.push(cairoDayStartUtc(addDaysToDateOnly(String(endDate).slice(0, 10), 1))); }
-    if (channel)     { sql += ' AND p.payment_method = ?';  params.push(channel); }
-    if (paymentType) { sql += ' AND p.payment_type = ?';    params.push(String(paymentType).toUpperCase()); }
-    if (source && source !== 'all')  { sql += ' AND p.source = ?'; params.push(String(source)); }
-    if (status && status !== 'all') {
-      // 'paid' has to cover the legacy NULL, the way /review does — those rows
-      // are collected money and a status filter that hides them would under-
-      // report the total rather than merely narrow the list.
-      if (status === 'paid') sql += " AND (p.status = 'paid' OR p.status IS NULL)";
-      else { sql += ' AND p.status = ?'; params.push(String(status)); }
-    }
-    if (scope.branchId) {
-      // The branch's own clients (routes/finance.js, /finance/boxes): a payment
-      // filed under Dokki for an online client is not Dokki's money.
-      sql += ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)';
-      params.push(scope.branchId);
-    } else if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
-      const assignmentColumn = scope.kind === 'assigned_cs' ? 'assigned_cs_id' : 'assigned_sales_id';
-      // Show payments where this staff is recorded as the seller (staff_id match),
-      // OR where the subscriber is assigned to this staff — covers the 76% of payments
-      // that were entered without staff_id but belong to assigned clients.
-      sql += ` AND (p.staff_id = ? OR p.subscriber_id IN (
-        SELECT id FROM subscribers
-        WHERE tenant_id=? AND deleted_at IS NULL AND ${assignmentColumn} = ?
-      ))`;
-      params.push(scope.staffId, req.tenantId, scope.staffId);
-    }
+
+router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const limit = Math.min(5000, Math.max(1, Number.parseInt(req.query.limit, 10) || 2000));
+    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+    const { startDate, endDate, channel, paymentType, source, status } = req.query;
+    const filters = paymentListFilters(req, { startDate, endDate, channel, paymentType, source, status });
+    let sql = `SELECT p.*, s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code AS subscriber_client_code
+               ${PAYMENT_LIST_FROM}${filters.sql}`;
+    const params = [req.tenantId, ...filters.params];
     sql += ' ORDER BY p.date DESC, p.id DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
     const [rows] = await pool.query(sql, params);
@@ -160,6 +173,43 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
         branch: p.branch || null,
       };
     }));
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
+
+// GET /api/admin/payments/summary — what the list above adds up to, over EVERY row it matches (same filters, same function), not over the 2,000–5,000 it can return. The screens
+// that total a list ask for this and draw the rows apart: past the cap a sum of the rows is a different figure and nothing says so.
+//   groups   paid (status paid, or none — collected money), refunded, uncollected (every other status — never added to the others)
+//   each     { count, totalEgp, courseEgp, certificateEgp, byCurrency, unconverted }: totalEgp is the stored pound value (amount_egp; a pound payment with none counts at its amount,
+//            a foreign one with none counts for nothing and is counted in unconverted); certificate money is collection, not course money (the owner, 11 Nov 2026), so it is apart.
+const PAYMENT_MONEY_EGP = "COALESCE(p.amount_egp, CASE WHEN p.currency = 'EGP' THEN p.amount ELSE 0 END)";
+router.get('/api/admin/payments/summary', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const { startDate, endDate, channel, paymentType, source, status } = req.query;
+    const filters = paymentListFilters(req, { startDate, endDate, channel, paymentType, source, status });
+    const [rows] = await pool.query(
+      `SELECT CASE WHEN p.status IS NULL OR p.status = 'paid' THEN 'paid' WHEN p.status = 'refunded' THEN 'refunded' ELSE 'uncollected' END AS grp,
+              COALESCE(p.currency, 'EGP') AS cur, (UPPER(COALESCE(p.payment_type, '')) = 'CERTIFICATE') AS is_cert,
+              COUNT(*) AS n, COALESCE(SUM(p.amount), 0) AS amount, COALESCE(SUM(${PAYMENT_MONEY_EGP}), 0) AS egp,
+              COALESCE(SUM(p.amount_egp IS NULL AND COALESCE(p.currency, 'EGP') <> 'EGP'), 0) AS unconverted
+         ${PAYMENT_LIST_FROM}${filters.sql}
+        GROUP BY grp, cur, is_cert`,
+      [req.tenantId, ...filters.params]);
+    const round2 = value => Math.round((Number(value) || 0) * 100) / 100;
+    const empty = () => ({ count: 0, totalEgp: 0, courseEgp: 0, certificateEgp: 0, byCurrency: {}, unconverted: 0 });
+    const groups = { paid: empty(), refunded: empty(), uncollected: empty() };
+    for (const row of rows) {
+      const group = groups[row.grp];
+      group.count += Number(row.n) || 0;
+      group.totalEgp = round2(group.totalEgp + Number(row.egp));
+      if (Number(row.is_cert)) group.certificateEgp = round2(group.certificateEgp + Number(row.egp));
+      else group.courseEgp = round2(group.courseEgp + Number(row.egp));
+      group.byCurrency[row.cur] = round2((group.byCurrency[row.cur] || 0) + Number(row.amount));
+      group.unconverted += Number(row.unconverted) || 0;
+    }
+    res.json({ groups });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });

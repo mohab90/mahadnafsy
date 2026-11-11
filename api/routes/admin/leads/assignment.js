@@ -25,6 +25,7 @@ const {
 } = require('./_shared');
 
 const { isArchiveSource } = require('../../../lib/leadArchive');
+const { handOutInChunks, notifyReps } = require('../../../lib/leadHandout');
 const { CONVERTED_LEAD_STATUSES } = require('../../../lib/leadStatuses');
 
 const router = Router();
@@ -32,24 +33,17 @@ const router = Router();
 // lead-status-subset: what a lead handed out of «محلي جديد» comes back from — archived by the cold-lead job, or hidden as not interested — as new
 const BACK_IN_PLAY = ['archived', 'not_interested_hidden'];
 
-// POST /api/admin/leads/bulk-assign — assign all unassigned NEW/INTERESTED leads to sales round-robin
+// POST /api/admin/leads/bulk-assign — assign the unassigned open leads to sales round-robin.
+// Works through at most HANDOUT_CAP leads per request, in short transactions (lib/leadHandout.js); the answer says how many are still
+// waiting (`remaining`) and `skip`, which the next request sends back to carry on past the leads no rep takes.
+// statusFilter, when given, must be an OPEN status: it used to be taken as typed, so «converted» handed customers' leads to reps.
 router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
   let conn = null;
-  let transactionStarted = false;
+  let lockName = null;
   try {
     // Desk work: a rep or a collection officer edits their own leads, not the pool.
     if (['sales', 'collection'].includes(String(req.staffRecord?.role || '').toLowerCase())) return res.status(403).json({ error: 'غير مصرح' });
-    const { statusFilter } = req.body || {};
-    conn = await pool.getConnection();
-    await conn.beginTransaction();
-    transactionStarted = true;
-    // Only the reps switched on in the CRM "التوزيع" screen.
-    const reps = await listDistributableReps(req.tenantId, conn);
-    if (!reps.length) {
-      await conn.rollback(); transactionStarted = false;
-      return res.status(400).json({ error: 'لا يوجد مندوب مبيعات مفعّل للتوزيع' });
-    }
-
+    const { statusFilter, skip } = req.body || {};
     // Get unassigned leads (excluding converted/lost/hidden)
     //
     // That is what this always meant, and it now says so. The list used to be
@@ -57,73 +51,58 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     // marked interested_booking, interested_followup, contacted or no_answer_wa
     // was silently left out of every distribution — the interested_booking ones
     // being the closest to buying of anything in the table.
-    const statusIn = statusFilter
-      ? [statusFilter]
-      : [...LEAD_STATUSES].filter(isOpenLeadStatus);
-    const placeholders = statusIn.map(() => '?').join(',');
+    let statusIn = [...LEAD_STATUSES].filter(isOpenLeadStatus);
+    if (statusFilter) {
+      const wanted = String(statusFilter).trim().toLowerCase();
+      if (!statusIn.includes(wanted)) return res.status(400).json({ error: 'حالة غير صالحة للتوزيع' });
+      statusIn = [wanted];
+    }
     const accessScope = leadScope(req, 'l');
-    if (accessScope.none) {
-      await conn.rollback(); transactionStarted = false;
-      return res.status(403).json({ error: 'Lead assignment is outside your data scope' });
-    }
+    if (accessScope.none) return res.status(403).json({ error: 'Lead assignment is outside your data scope' });
+    conn = await pool.getConnection();
+    lockName = `crm-distribute:${req.tenantId}`;
+    const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [lockName]);
+    if (Number(lock?.acquired) !== 1) { lockName = null; return res.status(409).json({ error: 'Lead distribution is already running' }); }
+    // Only the reps switched on in the CRM "التوزيع" screen.
+    const reps = await listDistributableReps(req.tenantId, conn);
+    if (!reps.length) return res.status(400).json({ error: 'لا يوجد مندوب مبيعات مفعّل للتوزيع' });
+
     const archive = excludeArchiveSourcesSql('l.source');
-    const [unassigned] = await conn.query(
-      `SELECT l.id,l.source,l.interested_course_ids_json,l.crm_json FROM leads l
-        WHERE l.tenant_id=? AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id = '')
+    const poolWhere = `l.tenant_id=? AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id = '')
           AND (l.assigned_cs_id IS NULL OR l.assigned_cs_id = '')
-          AND l.status IN (${placeholders}) AND l.hidden=0${accessScope.sql}${archive.sql}
-        FOR UPDATE`,
-      [req.tenantId, ...statusIn, ...accessScope.params, ...archive.params]
-    );
+          AND l.status IN (${statusIn.map(() => '?').join(',')}) AND l.hidden=0${accessScope.sql}${archive.sql}`;
+    const poolParams = [req.tenantId, ...statusIn, ...accessScope.params, ...archive.params];
 
-    if (!unassigned.length) {
-      await conn.commit(); transactionStarted = false;
-      return res.json({ assigned: 0, message: 'لا يوجد ليدز غير معيّنة' });
-    }
-
-    const updates = [];
     // In the order the «التوزيع» screen names; pressing the button is itself
     // the decision to distribute, so «بدون توزيع تلقائي» reads as in turn here.
     const mode = await distributionMode(req.tenantId, conn);
     const rotation = createRepRotation(reps, { mode: mode === 'least' ? 'least' : 'rr' });
-    for (const lead of unassigned) {
-      // null: nobody's course and source rules take this one — it stays in the pool.
-      const rep = rotation.next(lead);
-      if (!rep) continue;
-      updates.push({ id: lead.id, salesId: rep.id, salesName: rep.name });
-    }
-
-    // Batch update via CASE WHEN for efficiency
-    const BATCH = 500;
-    for (let i = 0; i < updates.length; i += BATCH) {
-      const batch = updates.slice(i, i + BATCH);
-      if (!batch.length) continue;
-      const caseId   = batch.map(u => `WHEN id = ? THEN ?`).join(' ');
-      const caseName = batch.map(u => `WHEN id = ? THEN ?`).join(' ');
-      const ids      = batch.map(u => u.id);
-      const valId    = batch.flatMap(u => [u.id, u.salesId]);
-      const valName  = batch.flatMap(u => [u.id, u.salesName]);
-      await conn.query(
-        `UPDATE leads SET assigned_sales_id = CASE ${caseId} END, assigned_sales_name = CASE ${caseName} END WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')})`,
-        [...valId, ...valName, req.tenantId, ...ids]
-      );
-    }
-    for (const update of updates) {
-      await logLeadEventStrict(
-        update.id, 'assigned', `تعيين جماعي لـ: ${update.salesName || update.salesId}`,
-        { fromSalesId: null, salesId: update.salesId, salesName: update.salesName, actor: req.user?.email || 'admin' },
-        req.tenantId, conn
-      );
-    }
-    await rotation.flush(conn, req.tenantId);
-    await conn.commit();
-    transactionStarted = false;
-
-    res.json({ assigned: updates.length, unassigned: unassigned.length - updates.length, reps: reps.length, message: `تم توزيع ${updates.length} ليد على ${reps.length} مندوب` });
+    const done = await handOutInChunks({
+      conn, tenantId: req.tenantId, label: 'تعيين جماعي لـ', actor: req.user?.email || 'admin', skip,
+      readChunk: async (db, offset, limit) => (await db.query(
+        `SELECT l.id,l.source,l.interested_course_ids_json,l.crm_json FROM leads l WHERE ${poolWhere}
+          ORDER BY l.created_at ASC, l.id ASC LIMIT ? OFFSET ? FOR UPDATE`, [...poolParams, limit, offset]))[0],
+      place: async rows => ({
+        // null: nobody's course and source rules take this one — it stays in the pool.
+        placements: rows.map(lead => ({ lead, rep: rotation.next(lead) })).filter(item => item.rep)
+          .map(({ lead, rep }) => ({ id: lead.id, salesId: rep.id, salesName: rep.name })),
+      }),
+      afterChunk: db => rotation.flush(db, req.tenantId),
+    });
+    await notifyReps(req.tenantId, done.perRep);
+    const [[left]] = await conn.query(`SELECT COUNT(*) AS n FROM leads l WHERE l.tenant_id=? AND ${poolWhere}`, [req.tenantId, ...poolParams]);
+    // The leads at the front that no rep takes are not work for the next request.
+    const remaining = done.exhausted ? 0 : Math.max(0, Number(left.n) - done.skip);
+    const message = done.assigned
+      ? `تم توزيع ${done.assigned} ليد على ${done.perRep.size} مندوب${remaining ? ` — فاضل ${remaining} كمان` : ''}`
+      : 'لا يوجد ليدز غير معيّنة';
+    res.json({ assigned: done.assigned, unassigned: done.scanned - done.assigned, remaining, skip: done.skip, reps: reps.length, message });
   } catch (e) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[bulk-assign]', e.message); sendRouteError(res, e);
-  } finally { conn?.release(); }
+  } finally {
+    if (lockName) await conn.query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
+    conn?.release();
+  }
 });
 
 // POST /api/admin/leads/assign-collection — hand chosen leads to one

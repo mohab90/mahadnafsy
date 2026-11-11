@@ -29,6 +29,18 @@ test('the total is the plan\'s month plus what was typed by hand, and an employe
   assert.equal(cells.bonusTotal(null), 0);
 });
 
+test('the net basic salary is the basic less absence and lateness, and the month\'s pay adds the bonuses to it', { skip }, () => {
+  // 5,000 with six days gone to absence and lateness (a thirtieth each) leaves 4,000.
+  assert.equal(cells.netBasicSalary({ base: 5000, run: null, chargedDays: 6 }), 4000);
+  assert.equal(cells.netBasicSalary({ base: 5000, run: null, chargedDays: 0 }), 5000);
+  assert.equal(cells.netBasicSalary({ base: 3000, run: null, chargedDays: 40 }), 0, 'never below nothing');
+  assert.equal(cells.netBasicSalary({ base: 0, run: null, chargedDays: 2 }), null, 'no basic salary: nothing to show');
+  assert.equal(cells.netBasicSalary({ base: 3000, run: null, chargedDays: 2, paidDays: 15 }), 1300, 'joined mid-month: 15 days of the salary, a lost day still a thirtieth of all of it');
+  assert.equal(cells.netBasicSalary({ base: 5000, run: { base: 5200, attendanceDeductions: 700 }, chargedDays: 6 }), 4500, 'once the payroll run exists its figures are the ones shown');
+  assert.equal(cells.estimatedMonthPay({ netBasic: 4000, bonuses: 1400, overtimePay: 250, extraDeductions: 150 }), 5500);
+  assert.equal(cells.estimatedMonthPay({ netBasic: 100, bonuses: 0, overtimePay: 0, extraDeductions: 500 }), 0);
+});
+
 test('where the plan\'s bonus stands towards payroll: not saved, saved but different, waiting, approved, or nothing to save', { skip }, () => {
   assert.equal(cells.saveState(plan(), null).kind, 'unsaved');
   assert.deepEqual(cells.saveState(plan(), { amount: 1000, approved: false }), { kind: 'differs', saved: 1000 });

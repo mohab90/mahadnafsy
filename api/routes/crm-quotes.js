@@ -60,15 +60,15 @@ router.get('/api/admin/crm/quotes', ...view, async (req, res) => {
       params.push(String(req.query.lead_id));
     }
     const [rows] = await pool.query(
+      // The items and the orders are counted on their own: joined side by side they multiplied each other (a converted
+      // quote of three items showed nine, and each order id three times).
       `SELECT q.*,l.name AS lead_name,l.email AS lead_email,l.phone AS lead_phone,
-              COUNT(qi.id) AS item_count,
-              GROUP_CONCAT(qo.order_id ORDER BY qo.created_at SEPARATOR ',') AS order_ids
+              (SELECT COUNT(*) FROM crm_quote_items qi WHERE qi.quote_id=q.id AND qi.tenant_id=q.tenant_id) AS item_count,
+              (SELECT GROUP_CONCAT(qo.order_id ORDER BY qo.created_at SEPARATOR ',')
+                 FROM crm_quote_orders qo WHERE qo.quote_id=q.id AND qo.tenant_id=q.tenant_id) AS order_ids
          FROM crm_quotes q
          JOIN leads l ON l.id=q.lead_id AND l.tenant_id=q.tenant_id
-         LEFT JOIN crm_quote_items qi ON qi.quote_id=q.id AND qi.tenant_id=q.tenant_id
-         LEFT JOIN crm_quote_orders qo ON qo.quote_id=q.id AND qo.tenant_id=q.tenant_id
         WHERE q.tenant_id=?${scope.sql}${filters}
-        GROUP BY q.id
         ORDER BY q.created_at DESC LIMIT 500`,
       params
     );

@@ -21,6 +21,7 @@
  */
 
 const { uuidv4 } = require('./id');
+const { bringBackReturningLead } = require('./leadReturn');
 const { findLeadByContact } = require('./leadMatching');
 const { getNextClientCode } = require('./mappers');
 const { getNextSalesRep } = require('./leadAssignment');
@@ -54,14 +55,21 @@ async function ensureLeadForUser(conn, { tenantId, user, branch, attribution = n
     : [[null]];
   if (client) return { created: false, leadId: null, reason: 'already a client' };
 
-  const existing = await findLeadByContact(conn, { tenantId, phone: user?.phone, email: user?.email });
+  // Hidden and archived leads count: they keep the number, and the unique key on it refused a second row, so the signup's
+  // lead failed (best-effort at signup) and «تحويل إلى ليد» answered 500 for a person the desk already has.
+  const existing = await findLeadByContact(conn, { tenantId, phone: user?.phone, email: user?.email, includeHidden: true });
   if (existing) {
     // The ad that brought them to sign up, on a lead that has none yet.
     if (existing.id && attribution && Object.keys(attribution).length) {
       await conn.query(`UPDATE leads SET ${fillAttributionSql()} WHERE id=? AND tenant_id=?`,
         [...attributionValues(attribution), existing.id, tenantId]);
     }
-    return { created: false, leadId: existing.id || null, reason: 'already a lead' };
+    // Signing up again with a hidden or closed lead behind the number brings it back to its rep (lib/leadReturn.js).
+    const returned = await bringBackReturningLead(conn, {
+      tenantId, lead: { ...existing, name: user?.name }, via: 'تسجيل حساب',
+      pickRep: () => getNextSalesRep(tenantId, conn, { branch: defaultDigitalBranch(branch), lead: { source: 'تسجيل دخول', courseIds: [] } }).catch(() => null),
+    });
+    return { created: false, leadId: existing.id || null, reason: 'already a lead', reopened: returned.reopened };
   }
 
   const resolvedBranch = defaultDigitalBranch(branch);

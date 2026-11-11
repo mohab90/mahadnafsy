@@ -28,6 +28,7 @@ const { loadSettings: loadBotSettings } = require('../lib/inboxBot');
 const { createNotification } = require('../lib/notification');
 const { resolveDataScope } = require('../constants/permissions');
 const { allowedView, mayOpenThread, saveTeamInboxSettings, signed, teamInboxSettings } = require('../lib/teamInboxSettings');
+const { inboxAccess, threadScopeSql } = require('../lib/inboxAccess');
 const { requireAuth, requireAdminOrStaff, requireChannel } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { canDelete, refusalMessage, resolveDeleteRights, REFUSAL_CODE } = require('../lib/deleteRights');
@@ -80,15 +81,19 @@ const present = row => ({
 /** A label as stored: trimmed, single-spaced, at most 30 characters. */
 const cleanLabel = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 30);
 
-/** One thread the caller may see, or a refusal. */
+/**
+ * One thread the caller may see, or a refusal. Two gates, both: their DATA SCOPE (lib/inboxAccess.js — only the conversations of their own
+ * leads and clients, or of their branch; an out-of-scope id answers 404 as if it did not exist), then the assignment rule below.
+ */
 async function visibleThread(req, id, db = pool) {
+  const access = await inboxAccess(req, db);
+  const scope = threadScopeSql(access);
   const [[thread]] = await db.query(
-    `SELECT ${THREAD_COLUMNS} FROM inbox_threads t ${THREAD_JOINS} WHERE t.tenant_id=? AND t.id=? LIMIT 1`,
-    [req.tenantId, id]);
+    `SELECT ${THREAD_COLUMNS} FROM inbox_threads t ${THREAD_JOINS} WHERE t.tenant_id=? AND t.id=?${scope.sql ? ` AND ${scope.sql}` : ''} LIMIT 1`,
+    [req.tenantId, id, ...scope.params]);
   if (!thread) throw refuse(404, 'المحادثة مش موجودة');
-  // «pool»: mine and the ones nobody has taken. «own»: only mine — the owner and the sales manager (data scope «everything») still see all.
-  const settings = await teamInboxSettings(req.tenantId, db);
-  if (!mayOpenThread({ seesAll: seesAll(req), me: me(req), thread, settings })) {
+  // «pool»: mine and the ones nobody has taken. «own»: only mine — whoever oversees others (everything, or a branch) still sees all of theirs.
+  if (!mayOpenThread({ seesAll: access.wide, me: me(req), thread, settings: access.settings })) {
     throw refuse(403, thread.assigned_staff_id ? `المحادثة دي مع ${thread.assigned_name || 'زميل تاني'}` : 'المحادثة دي لسه متوزعتش على مندوبة', 'THREAD_TAKEN');
   }
   return thread;
@@ -106,12 +111,16 @@ router.get('/api/admin/team-inbox/threads', ...guard, async (req, res) => {
   try {
     const where = ['1=1'];
     const params = [];
-    const settings = await teamInboxSettings(req.tenantId);
+    const access = await inboxAccess(req);
+    const { settings } = access;
+    // Only the conversations the caller's data scope reaches — every filter below (search included) narrows inside it.
+    const scope = threadScopeSql(access);
+    if (scope.sql) { where.push(scope.sql); params.push(...scope.params); }
     // In «own» a rep has one list — hers — whatever she asks for.
-    const view = allowedView({ seesAll: seesAll(req), requested: req.query.view, settings });
+    const view = allowedView({ seesAll: access.wide, requested: req.query.view, settings });
     if (view === 'mine') { where.push('t.assigned_staff_id = ?'); params.push(me(req)); }
     else if (view === 'unassigned') where.push('t.assigned_staff_id IS NULL');
-    else if (!seesAll(req)) { where.push('(t.assigned_staff_id = ? OR t.assigned_staff_id IS NULL)'); params.push(me(req)); }
+    else if (!access.wide) { where.push('(t.assigned_staff_id = ? OR t.assigned_staff_id IS NULL)'); params.push(me(req)); }
     if (PLATFORMS.includes(req.query.platform)) { where.push('t.platform = ?'); params.push(req.query.platform); }
     where.push('t.status = ?'); params.push(req.query.status === 'closed' ? 'closed' : 'open');
     if (req.query.unread === '1') where.push('t.unread_count > 0');
@@ -132,25 +141,29 @@ router.get('/api/admin/team-inbox/threads', ...guard, async (req, res) => {
         WHERE t.tenant_id = ? AND ${where.join(' AND ')}
         ORDER BY t.last_message_at DESC LIMIT ?`,
       [req.tenantId, ...params, limit]);
-    res.json({ threads: rows.map(present), hasMore: rows.length === limit, seesAll: seesAll(req), repVisibility: settings.repVisibility });
+    res.json({ threads: rows.map(present), hasMore: rows.length === limit, seesAll: access.wide, repVisibility: settings.repVisibility });
   } catch (error) { fail(res, error, '[team-inbox list]'); }
 });
 
 /** The badges: what is waiting on me, and what nobody has taken. */
 router.get('/api/admin/team-inbox/counts', ...guard, async (req, res) => {
   try {
+    // The badges count only what the caller may open: a rep's «غير مستلمة» is the unowned conversations of her own leads, not the company's.
+    const access = await inboxAccess(req);
+    const scope = threadScopeSql(access);
     const [[row]] = await pool.query(
-      `SELECT SUM(assigned_staff_id = ?) AS mine,
-              SUM(assigned_staff_id = ? AND unread_count > 0) AS mineUnread,
-              SUM(assigned_staff_id IS NULL) AS unassigned,
+      `SELECT SUM(t.assigned_staff_id = ?) AS mine,
+              SUM(t.assigned_staff_id = ? AND t.unread_count > 0) AS mineUnread,
+              SUM(t.assigned_staff_id IS NULL) AS unassigned,
               COUNT(*) AS allOpen
-         FROM inbox_threads WHERE tenant_id = ? AND status = 'open'`,
-      [me(req), me(req), req.tenantId]);
-    const ownOnly = !seesAll(req) && (await teamInboxSettings(req.tenantId)).repVisibility === 'own';
+         FROM inbox_threads t ${THREAD_JOINS}
+        WHERE t.tenant_id = ? AND t.status = 'open'${scope.sql ? ` AND ${scope.sql}` : ''}`,
+      [me(req), me(req), req.tenantId, ...scope.params]);
+    const ownOnly = !access.wide && access.settings.repVisibility === 'own';
     res.json({
       mine: Number(row.mine) || 0, mineUnread: Number(row.mineUnread) || 0,
       // In «own» the ones nobody has taken are not a rep's to know about.
-      unassigned: ownOnly ? 0 : Number(row.unassigned) || 0, all: seesAll(req) ? Number(row.allOpen) || 0 : null,
+      unassigned: ownOnly ? 0 : Number(row.unassigned) || 0, all: access.wide ? Number(row.allOpen) || 0 : null,
     });
   } catch (error) { fail(res, error, '[team-inbox counts]'); }
 });
@@ -189,6 +202,8 @@ router.post('/api/admin/team-inbox/threads/:id/claim', ...guard, async (req, res
     if (!seesAll(req) && (await teamInboxSettings(req.tenantId)).repVisibility === 'own') {
       throw refuse(403, 'المحادثات بتتوزع على المندوبات تلقائياً — مفيش استلام يدوي', 'AUTO_ASSIGNED');
     }
+    // Only a conversation the caller's data scope reaches can be taken (404 for any other).
+    await visibleThread(req, req.params.id);
     const [result] = await pool.query(
       `UPDATE inbox_threads SET assigned_staff_id=?, assigned_at=NOW()
         WHERE tenant_id=? AND id=? AND assigned_staff_id IS NULL`,
@@ -205,7 +220,7 @@ router.post('/api/admin/team-inbox/threads/:id/claim', ...guard, async (req, res
 router.post('/api/admin/team-inbox/threads/:id/assign', ...guard, async (req, res) => {
   try {
     const thread = await visibleThread(req, req.params.id);
-    if (!seesAll(req) && thread.assigned_staff_id !== me(req)) {
+    if (!(await inboxAccess(req)).wide && thread.assigned_staff_id !== me(req)) {
       throw refuse(403, 'استلم المحادثة الأول عشان تقدر تحوّلها', 'NOT_OWNER');
     }
     const staffId = req.body?.staffId ? String(req.body.staffId) : null;
@@ -332,9 +347,12 @@ router.post('/api/admin/team-inbox/threads/:id/labels', ...guard, async (req, re
 /** Every label in use, most used first — the suggestions under the label box. */
 router.get('/api/admin/team-inbox/labels', ...guard, async (req, res) => {
   try {
+    // The labels of the conversations the caller may see, not the whole company's.
+    const scope = threadScopeSql(await inboxAccess(req));
     const [rows] = await pool.query(
-      `SELECT labels FROM inbox_threads WHERE tenant_id=? AND labels IS NOT NULL ORDER BY last_message_at DESC LIMIT 2000`,
-      [req.tenantId]);
+      `SELECT t.labels FROM inbox_threads t ${THREAD_JOINS}
+        WHERE t.tenant_id=? AND t.labels IS NOT NULL${scope.sql ? ` AND ${scope.sql}` : ''} ORDER BY t.last_message_at DESC LIMIT 2000`,
+      [req.tenantId, ...scope.params]);
     const used = new Map();
     for (const row of rows) for (const label of parseLabels(row.labels)) used.set(label, (used.get(label) || 0) + 1);
     res.json([...used.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([label, count]) => ({ label, count })));
@@ -420,6 +438,11 @@ router.get('/api/admin/team-inbox/threads/:id/contact', ...guard, async (req, re
 router.get('/api/admin/team-inbox/stats', ...guard, async (req, res) => {
   try {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
+    // Only the conversations the caller may open, and — unless they oversee others (everything, or a branch) — only their own answers
+    // among them: how fast a colleague replies is that colleague's work.
+    const access = await inboxAccess(req);
+    const scope = threadScopeSql(access);
+    const scoped = scope.sql ? ` AND ${scope.sql}` : '';
     const [rows] = await pool.query(
       `SELECT x.staff_id, x.by_bot, st.name, COUNT(*) AS replies,
               AVG(TIMESTAMPDIFF(SECOND, x.prev_date, x.date)) AS avg_seconds,
@@ -429,19 +452,20 @@ router.get('/api/admin/team-inbox/stats', ...guard, async (req, res) => {
                   LAG(c.direction) OVER (PARTITION BY c.thread_id ORDER BY c.date) AS prev_direction,
                   LAG(c.date) OVER (PARTITION BY c.thread_id ORDER BY c.date) AS prev_date
              FROM communications c
-            WHERE c.tenant_id = ? AND c.thread_id IS NOT NULL AND c.date >= DATE_SUB(NOW(), INTERVAL ? DAY)
+            JOIN inbox_threads t ON t.id = c.thread_id AND t.tenant_id = c.tenant_id ${THREAD_JOINS}
+            WHERE c.tenant_id = ? AND c.thread_id IS NOT NULL AND c.date >= DATE_SUB(NOW(), INTERVAL ? DAY)${scoped}
          ) x
          LEFT JOIN staff st ON st.id = x.staff_id AND st.tenant_id = ?
-        WHERE x.direction = 'OUT' AND x.prev_direction = 'IN'
+        WHERE x.direction = 'OUT' AND x.prev_direction = 'IN'${access.wide ? '' : ' AND (x.staff_id = ? OR x.by_bot = 1)'}
         GROUP BY x.staff_id, x.by_bot, st.name
         ORDER BY replies DESC`,
-      [req.tenantId, days, req.tenantId]);
+      [req.tenantId, days, ...scope.params, req.tenantId, ...(access.wide ? [] : [me(req) || ''])]);
     const [[waiting]] = await pool.query(
-      `SELECT COUNT(*) AS n, MIN(last_inbound_at) AS oldest FROM inbox_threads
-        WHERE tenant_id=? AND status='open' AND last_direction='IN'`, [req.tenantId]);
+      `SELECT COUNT(*) AS n, MIN(t.last_inbound_at) AS oldest FROM inbox_threads t ${THREAD_JOINS}
+        WHERE t.tenant_id=? AND t.status='open' AND t.last_direction='IN'${scoped}`, [req.tenantId, ...scope.params]);
     const [[fresh]] = await pool.query(
-      'SELECT COUNT(*) AS n FROM inbox_threads WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)',
-      [req.tenantId, days]);
+      `SELECT COUNT(*) AS n FROM inbox_threads t ${THREAD_JOINS} WHERE t.tenant_id=? AND t.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${scoped}`,
+      [req.tenantId, days, ...scope.params]);
     const people = rows.map(row => ({
       staffId: row.by_bot ? 'bot' : row.staff_id,
       name: row.by_bot ? '🤖 البوت' : row.staff_id ? row.name || 'موظف' : 'الإدارة',
@@ -575,6 +599,8 @@ router.put('/api/admin/team-inbox/settings', ...guard, async (req, res) => {
     const body = req.body || {};
     const settings = await saveTeamInboxSettings(req.tenantId, {
       repVisibility: body.repVisibility, autoAssign: body.autoAssign, signReplies: body.signReplies,
+      // Only when sent: leaving it out keeps the people already named.
+      ...(Array.isArray(body.triageStaffIds) ? { triageStaffIds: body.triageStaffIds } : {}),
     }, { actorId: req.user?.uid || req.user?.email || null });
     // Switching the distribution on gives out what is waiting now, or those conversations would stay where no rep can see them.
     const given = settings.autoAssign && body.distributeWaiting !== false
