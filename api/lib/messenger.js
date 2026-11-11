@@ -103,13 +103,38 @@ async function verifyMessengerCredentials(credentials = {}) {
     // one the token actually belongs to — otherwise replies would silently go
     // out from a different page.
     if (credentials.pageId && String(credentials.pageId) !== String(data.id)) {
-      return { ok: false, reason: 'التوكن ده مش بتاع الصفحة المحددة' };
+      // 12 Nov 2026: the owner pasted the business (system user) token he uses for WhatsApp, and the channel just read «التوكن ده مش بتاع الصفحة المحددة».
+      // Such a token can hand over the page's own token when the page is one of its assets: ask for it, and use and keep that one.
+      const page = await pageTokenFrom(credentials.pageId, token);
+      if (!page.ok) return { ok: false, reason: page.reason };
+      const subscribed = await subscribePageToApp(credentials.pageId, page.token);
+      return {
+        ok: true, pageId: String(credentials.pageId), pageName: page.name, correctedPageToken: page.token,
+        subscribed: subscribed.ok, subscribedFields: subscribed.fields || null, subscribeError: subscribed.reason || null,
+      };
     }
     const subscription = await subscribePageToApp(data.id, token);
     return {
       ok: true, pageId: data.id, pageName: data.name,
       subscribed: subscription.ok, subscribedFields: subscription.fields || null, subscribeError: subscription.reason || null,
     };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+/** The page's own access token, asked for with a token that manages the page (a business system user's, or the admin's own). */
+async function pageTokenFrom(pageId, token) {
+  const steps = 'في Meta Business Settings ← System users: ضيف الصفحة كأصل (Add assets ← Pages) بصلاحية كاملة، وولّد التوكن بصلاحيات pages_messaging و pages_manage_metadata و pages_read_engagement';
+  try {
+    const response = await fetch(
+      `${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token,name&access_token=${encodeURIComponent(token)}`,
+      { signal: AbortSignal.timeout(Number(process.env.MESSENGER_TIMEOUT_MS || 8000)) }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data?.access_token) return { ok: true, token: data.access_token, name: data.name };
+    if (!response.ok && /timeout|abort/i.test(String(data?.error?.message || ''))) return { ok: false, reason: data.error.message };
+    return { ok: false, reason: `التوكن ده مش توكن الصفحة، ومش مسموح له يجيب توكنها. ${steps}. (رد فيسبوك: ${data?.error?.message || `HTTP ${response.status}`})` };
   } catch (error) {
     return { ok: false, reason: error.message };
   }

@@ -1,4 +1,5 @@
 'use strict';
+const { isTransientSendFailure } = require('./sendFailures');
 /**
  * Which identity do we send this from?
  *
@@ -128,8 +129,11 @@ async function getSendableChannel({ tenantId, channelId = null, staffId = null, 
 
   const attempts = [];
   // A named channel is also allowed to be 'pending': being untested is exactly
-  // the state a test send exists to resolve.
-  if (channelId) attempts.push(['id = ?', [channelId], "status IN ('connected','pending')"]);
+  // the state a test send exists to resolve. And 'error': the test button is how an
+  // errored channel is proved working again, and it answered «بيانات الاتصال غير
+  // محفوظة» for one, so a channel that had failed once could only be brought back by
+  // typing its credentials again (12 Nov 2026, «قنوات المراسلة بتقف»).
+  if (channelId) attempts.push(['id = ?', [channelId], "status IN ('connected','pending','error')"]);
   if (staffId) attempts.push(['owner_staff_id = ? AND kind = ?', [staffId, kind], "status='connected'"]);
   attempts.push(['is_default = 1 AND kind = ? AND owner_staff_id IS NULL', [kind], "status='connected'"]);
 
@@ -318,6 +322,8 @@ async function markChannelConnected(tenantId, id, db = pool, number = null) {
 }
 
 async function markChannelError(tenantId, id, message, db = pool) {
+  // A timeout or a throttled call while checking says nothing about the credentials: the channel keeps the state it had.
+  if (isTransientSendFailure(message)) return;
   await db.query(
     `UPDATE messaging_channels SET status='error', last_error=? WHERE tenant_id=? AND id=?`,
     [String(message || '').slice(0, 500), tenantId, id]

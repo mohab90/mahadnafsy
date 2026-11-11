@@ -410,7 +410,8 @@ router.post('/api/admin/ai/generate', requireAuth, requireAdminOrStaff, requireP
     // already taken anything resembling a key out of it.
     res.status(502).json({
       error: error.providerMessage
-        ? `مزود الذكاء الاصطناعي رفض الطلب (${error.providerStatus}): ${error.providerMessage}`
+        // 12 Nov 2026: a Google Cloud key (it starts «AQ.») answers 403 until one API is switched on in its project; say what to do, not only Google's sentence.
+        ? `مزود الذكاء الاصطناعي رفض الطلب (${error.providerStatus}): ${/has not been used in project|aiplatform.googleapis.com/i.test(error.providerMessage) ? 'مفتاح Google ده محتاج خدمة «Agent Platform API» تتفعّل في مشروعه: افتح اللينك اللي في الرسالة ودوس Enable واستنى 5 دقايق، أو استخدم مفتاح من Google AI Studio (بيبدأ بـ AIza). — ' : ''}${error.providerMessage}`
         : 'تعذر الوصول لمزود الذكاء الاصطناعي',
     });
   }

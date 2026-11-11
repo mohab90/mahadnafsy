@@ -1,4 +1,5 @@
 'use strict';
+const { isTransientSendFailure, isChannelLevelFailure } = require('./sendFailures');
 
 // Dropped in every API process at once, not only the one that took the save.
 const { shared } = require('./cacheBus');
@@ -391,8 +392,11 @@ async function sendWhatsApp(phone, message, options = {}) {
       // A send is the only honest proof the credentials work, so the channel's
       // status follows the result rather than whatever it was set at save time.
       if (result.ok) await channels.markChannelConnected(tenantId, resolved.row.id).catch(() => {});
-      else if (result.reason !== 'not_configured' && !isTransientSendFailure(result.reason)) {
+      else if (isChannelLevelFailure(resolved.row.provider, result.reason)) {
         await channels.markChannelError(tenantId, resolved.row.id, describeReason(result.reason)).catch(() => {});
+      } else if (result.reason !== 'not_configured' && result.reason !== 'category_disabled' && result.reason !== 'opted_out' && !isTransientSendFailure(result.reason)) {
+        // A refusal about this one message or this one person (lib/sendFailures.js): the channel stays in service.
+        logger.warn('[WhatsApp] message refused — channel left connected', { channelId: resolved.row.id, reason: describeReason(result.reason) });
       } else if (isTransientSendFailure(result.reason)) {
         // Leave the channel connected. Marking it errored takes WhatsApp OTP
         // down until a human notices and re-tests, which is how one throttled
@@ -646,29 +650,14 @@ function describeReason(reason) {
   return reason?.error?.message || reason?.message || JSON.stringify(reason).slice(0, 400);
 }
 
-/**
- * Will this failure still be a failure in a minute?
+/*
+ * Will this failure still be a failure in a minute? (now lib/sendFailures.js)
  *
  * Throttling, a timeout and a network blip say nothing about whether the
  * credentials are good — the next send may well succeed. A rejected key or a
  * missing instance will fail identically until someone changes the settings,
  * and only those deserve to take the channel out of service.
  */
-const TRANSIENT_PATTERNS = [
-  /too many attempts/i,
-  /rate.?limit/i,
-  /\b429\b/,
-  /timeout|timed out|abort/i,
-  /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|socket hang up/i,
-  /\b(502|503|504)\b/,
-  /bad gateway|service unavailable|gateway timeout/i,
-  /temporarily unavailable|try again/i,
-];
-function isTransientSendFailure(reason) {
-  const text = describeReason(reason);
-  return TRANSIENT_PATTERNS.some(pattern => pattern.test(text));
-}
-
 module.exports = {
   describeReason, getWaCfg, invalidateOutbound, invalidateWaCfg, isCategoryOpen, isTransientSendFailure,
   forTenant, metaTemplateAccess, verifyMetaCredentials, outboundState, providerCredentialState, resolveProvider, sendWhatsApp,

@@ -51,6 +51,12 @@ function selfStaffId(req) {
 /**
  * When Meta recognised the id typed as «Phone Number ID» as the account's (it was the WABA id), the right number's id is saved in its place, with the account id beside it.
  */
+/** The page's own token, when the one typed was a business token that could fetch it (lib/messenger.js): kept, so every send uses the page's. */
+async function saveCorrectedPageToken(tenantId, channelId, check) {
+  if (!check?.correctedPageToken) return;
+  await channels.updateChannel(tenantId, channelId, { credentials: { pageAccessToken: check.correctedPageToken } });
+}
+
 async function saveCorrectedPhoneId(tenantId, channelId, check) {
   if (!check?.correctedPhoneId) return;
   await channels.updateChannel(tenantId, channelId, { credentials: { metaPhoneId: check.correctedPhoneId, metaWabaId: check.wabaId } });
@@ -67,6 +73,7 @@ async function verifySaved(tenantId, channel) {
     let check;
     if (channel.kind === 'messenger') {
       check = await verifyMessengerCredentials(resolved.credentials);
+      await saveCorrectedPageToken(tenantId, channel.id, check);
       if (check.ok && !check.subscribed) check = { ok: false, reason: `الصفحة متربطتش بالتطبيق: ${check.subscribeError || 'رفض من فيسبوك'}` };
     } else if (channel.provider === 'wapilot') check = await verifyWapilot(resolved.credentials);
     else if (channel.provider === 'meta') { check = await verifyMetaCredentials(resolved.credentials); await saveCorrectedPhoneId(tenantId, channel.id, check); }
@@ -317,6 +324,7 @@ router.post('/api/messaging/channels/:id/test', ...selfChannel, bulkOperationLim
       });
       if (!resolved) return res.status(409).json({ error: 'بيانات الاتصال غير محفوظة' });
       const check = await verifyMessengerCredentials(resolved.credentials);
+      await saveCorrectedPageToken(req.tenantId, channel.id, check);
       if (!check.ok) {
         await channels.markChannelError(req.tenantId, channel.id,
           typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من التوكن');
