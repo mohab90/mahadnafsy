@@ -28,6 +28,9 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
   // The pending rows a transfer may be linked to, asked of the server when the dialog opens: the rows of the transfer's amount first, then the newest ones, then what a search finds.
   const [linkRows, setLinkRows] = useState<OrderItem[]>([]);
+  // The transfers ticked in the «ربط الدفعة بتحويل» dialog: a payment may need several (their sum must cover it).
+  const [pickedTransferIds, setPickedTransferIds] = useState<string[]>([]);
+  useEffect(() => { setPickedTransferIds([]); }, [linkOrderModal]);
   const transferToLink = linkTransferModal?.row;
   useEffect(() => {
     if (!transferToLink) { setLinkRows([]); return undefined; }
@@ -388,6 +391,12 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
                                   <span className="font-extrabold text-emerald-700 text-[12px]">{row.amount?.toLocaleString('ar-EG-u-nu-latn')}</span>
                                   <span className="text-[9px] text-gray-400 mr-0.5">{row.currency || 'EGP'}</span>
+                                  {/* Every transfer that confirmed the payment, not only the first. */}
+                                  {(row.linkedTransfers?.length ?? 0) > 1 && (
+                                    <span className="mt-0.5 block text-[9px] font-bold text-violet-600">
+                                      {row.linkedTransfers?.length} تحويلات: {row.linkedTransfers?.map(transfer => transfer.amount.toLocaleString('ar-EG-u-nu-latn')).join(' + ')}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
                                   {payMethodBadge(row.paymentMethod)}
@@ -599,7 +608,7 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
                             <div className="font-bold text-amber-800">الدفعة المحددة</div>
                             <div className="text-amber-600 text-xs mt-1">{order.customerName} — {order.itemTitle} — {order.amount?.toLocaleString('ar-EG-u-nu-latn')} {order.currency}</div>
                           </div>
-                          <p className="text-xs text-gray-500 flex-shrink-0">اختر تحويلاً من القائمة لربط هذه الدفعة به. سيتم تأكيد الدفعة تلقائياً. الأقرب (نفس الرقم/المبلغ/الاسم) فوق.</p>
+                          <p className="text-xs text-gray-500 flex-shrink-0">علّم على تحويل أو أكتر من القائمة (الدفعة ممكن تتدفع بأكتر من تحويل) لحد ما يغطوها، وبعدين اعتمدها. الأقرب (نفس الرقم/المبلغ/الاسم) فوق.</p>
                           {availableTransfers.length > 0 && (
                             <input value={linkQuery} onChange={e => setLinkQuery(e.target.value)} placeholder="بحث برقم العملية أو المحوِّل أو الاسم أو المبلغ…"
                               className="flex-shrink-0 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-200" />
@@ -610,20 +619,11 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
                             ) : rankedTransfers.length === 0 ? (
                               <div className="text-center py-8 text-gray-400 text-sm">مفيش تحويل بالبحث ده</div>
                             ) : rankedTransfers.map(({ transfer, reasons }) => (
-                              <button key={transfer.id}
-                                onClick={async () => {
-                                  try {
-                                    await confirmWithTransfer(order, transfer);
-                                    await Promise.all([reloadOrders(), reloadSubscribers(), ledger.reload()]);
-                                    notify('success', `✅ تم ربط دفعة ${order.customerName} بالتحويل #${transfer.reference || ''} وتأكيدها`);
-                                    setLinkOrderModal(null);
-                                    setOrderReviewTab('accepted');
-                                  } catch (error) {
-                                    notify('error', error instanceof Error ? error.message : 'تعذر ربط التحويل');
-                                  }
-                                }}
-                                className="w-full text-right border border-gray-200 hover:border-violet-400 hover:bg-violet-50 rounded-xl px-4 py-3 transition group">
-                                <div className="flex items-center justify-between gap-3">
+                              <label key={transfer.id}
+                                className={`flex w-full cursor-pointer items-center gap-3 text-right border rounded-xl px-4 py-3 transition group ${pickedTransferIds.includes(transfer.id) ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-violet-400 hover:bg-violet-50'}`}>
+                                <input type="checkbox" checked={pickedTransferIds.includes(transfer.id)} className="accent-violet-600"
+                                  onChange={() => setPickedTransferIds(list => (list.includes(transfer.id) ? list.filter(id => id !== transfer.id) : [...list, transfer.id]))} />
+                                <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="font-semibold text-gray-800 text-sm group-hover:text-violet-700 truncate">{transfer.senderName || transfer.senderPhone || 'غير محدد'}</div>
                                     <div className="text-xs text-gray-500 mt-0.5 truncate">{transfer.method}{transfer.reference ? ` · #${transfer.reference}` : ''}</div>
@@ -639,15 +639,47 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
                                     <div className="text-[10px] text-gray-400">{cairoDay(transfer.receivedOn)}</div>
                                   </div>
                                 </div>
-                              </button>
+                              </label>
                             ))}
                           </div>
-                          <div className="flex-shrink-0 pt-2 border-t border-gray-100">
-                            <button onClick={() => setLinkOrderModal(null)}
-                              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
-                              إلغاء
-                            </button>
-                          </div>
+                          {(() => {
+                            // The tick-boxes' sum against the payment, in piastres; the server refuses what does not cover it (TRANSFERS_SHORT).
+                            const cents = (value: number) => Math.round(Number(value) * 100);
+                            const chosen = availableTransfers.filter(transfer => pickedTransferIds.includes(transfer.id));
+                            const wrongCurrency = chosen.find(transfer => transfer.currency !== order.currency);
+                            const chosenCents = chosen.reduce((sum, transfer) => sum + cents(transfer.amount), 0);
+                            const restCents = cents(Number(order.amount)) - chosenCents;
+                            const covered = !wrongCurrency && chosenCents > 0 && restCents <= 1;
+                            const fmt = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
+                            return (
+                              <div className="flex-shrink-0 space-y-2 pt-2 border-t border-gray-100">
+                                <p className={`flex min-h-[2.25rem] items-center rounded-lg px-3 py-2 text-[11px] font-bold ${wrongCurrency ? 'bg-red-50 text-red-700' : covered ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+                                  {wrongCurrency
+                                    ? `فيه تحويل بعملة ${wrongCurrency.currency} والدفعة بعملة ${order.currency} — شيله.`
+                                    : `المختار ${fmt(chosenCents / 100)} من ${fmt(Number(order.amount))} ${order.currency}${restCents > 1 ? ` — باقي ${fmt(restCents / 100)}` : ''}${restCents < -1 ? ` — الباقي ${fmt(-restCents / 100)} هيتفصل كتحويل حر` : ''}${chosen.length > 1 ? ` (${chosen.length} تحويلات)` : ''}`}
+                                </p>
+                                <div className="flex gap-2">
+                                  <button type="button" disabled={!covered}
+                                    onClick={async () => {
+                                      try {
+                                        await confirmWithTransfer(order, chosen);
+                                        await Promise.all([reloadOrders(), reloadSubscribers(), ledger.reload()]);
+                                        notify('success', `✅ تم ربط دفعة ${order.customerName} بـ${chosen.length > 1 ? `${chosen.length} تحويلات` : `التحويل #${chosen[0]?.reference || ''}`} وتأكيدها`);
+                                        setLinkOrderModal(null);
+                                        setOrderReviewTab('accepted');
+                                      } catch (error) {
+                                        notify('error', error instanceof Error ? error.message : 'تعذر ربط التحويل');
+                                      }
+                                    }}
+                                    className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">ربط واعتماد</button>
+                                  <button onClick={() => setLinkOrderModal(null)}
+                                    className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                                    إلغاء
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     );

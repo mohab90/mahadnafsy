@@ -317,7 +317,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[patch-payment]', error.message);
     const statusCode = error.statusCode || error.status || 500;
-    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error', ...(statusCode < 500 && /^TRANSFER/.test(error.code || '') ? { code: error.code } : {}) });
   } finally {
     conn.release();
   }

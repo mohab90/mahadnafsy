@@ -87,21 +87,8 @@ test('a transfer confirms one payment, and a cash box needs none', async () => {
   assert.equal(isCashMethod('كاش'), true);
   assert.equal(isCashMethod('cashback wallet'), false);
   assert.throws(() => cleanTransfer({ amount: 100, method: 'انستا باي', reference: '' }), /رقم العملية/);
-  const fakeConn = row => ({
-    calls: [],
-    // The transfer row is read whole now: a bigger one is split against the payment (migration 266).
-    async query(sql, params) {
-      this.calls.push(sql);
-      if (/SELECT \* FROM incoming_transfers WHERE tenant_id=\? AND id=\?/.test(sql)) return [[row]];
-      if (/^\s*SELECT/.test(sql)) return [[]];
-      return [{ affectedRows: 1 }];
-    },
-  });
-  const taken = fakeConn({ id: 't1', payment_id: 'p-other' });
-  await assert.rejects(linkTransfer(taken, { tenantId: 'x', paymentId: 'p1', link: { transferId: 't1' } }), /متربط بدفعة تانية/);
-  const free = fakeConn({ id: 't1', payment_id: null });
-  assert.equal(await linkTransfer(free, { tenantId: 'x', paymentId: 'p1', link: { transferId: 't1' } }), 't1');
-  assert.ok(free.calls.some(sql => /UPDATE payments SET linked_transfer_id=\?/.test(sql)));
+  // Linking itself (taken, short, several, other currency) runs on a real database: tests/integration/transferSeveral.integration.test.js.
+  assert.equal(typeof linkTransfer, 'function');
 });
 
 

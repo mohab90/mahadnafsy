@@ -206,9 +206,19 @@ router.get('/api/admin/orders/page', requireAuth, requireAdminOrStaff, requirePe
       const first = firstDayOf.get(String(row.subscriber_id));
       return !first || first >= safeIsoString(row.at).slice(0, 10);
     };
+    // Every transfer that confirmed a row's payment (a payment may have several, migration 387) — one indexed query for the page, an order through the payment it produced.
+    const paymentKeys = [...new Set(tabRows.flatMap(row => (row.src === 'crm' ? [row.id] : [row.id, row.transaction_id])).filter(Boolean).map(String))];
+    const [tiedRows] = paymentKeys.length
+      ? await pool.query(
+        `SELECT payment_id, id, amount, currency, reference FROM incoming_transfers
+          WHERE tenant_id = ? AND payment_id IN (${paymentKeys.map(() => '?').join(',')}) ORDER BY linked_at, created_at, id`, [req.tenantId, ...paymentKeys])
+      : [[]];
+    const tiedBy = new Map();
+    for (const tied of tiedRows) tiedBy.set(String(tied.payment_id), [...(tiedBy.get(String(tied.payment_id)) || []), { id: tied.id, amount: Number(tied.amount) || 0, currency: tied.currency, reference: tied.reference || null }]);
     const rows = tabRows.map(row => {
       const crm = row.src === 'crm';
       return {
+        linked_transfers: tiedBy.get(String(row.id)) || (row.transaction_id ? tiedBy.get(String(row.transaction_id)) : null) || [],
         client_is_new: clientIsNew(row),
         id: row.id, type: row.type, status: row.status, amount: Number(row.amount) || 0, currency: row.currency,
         payment_method: row.payment_method, customer_name: row.customer_name || '', customer_email: row.customer_email || '', customer_phone: row.customer_phone || '',

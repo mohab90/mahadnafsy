@@ -92,12 +92,14 @@ export function useOrderActions(props: OrdersTabProps) {
     }
   };
 
-  // Confirm a pending row against a transfer on the ledger.
-  const confirmWithTransfer = async (row: OrderItem, transfer: IncomingTransfer) => {
+  // Confirm a pending row against the transfer(s) on the ledger: one, or several that together pay it («التحويل ب 11600»).
+  const confirmWithTransfer = async (row: OrderItem, picked: IncomingTransfer | IncomingTransfer[]) => {
+    const transfers = Array.isArray(picked) ? picked : [picked];
+    const ids = transfers.map(transfer => transfer.id);
     if (isDeskPayment(row)) {
-      await mysqlAdmin.updatePaymentStatus(row.id, 'paid', undefined, storedMethodOf(row) || transfer.method, { transferId: transfer.id });
+      await mysqlAdmin.updatePaymentStatus(row.id, 'paid', undefined, storedMethodOf(row) || transfers[0].method, ids.length === 1 ? { transferId: ids[0] } : { transferIds: ids });
     } else {
-      await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, { linkedTransferId: transfer.id });
+      await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, ids.length === 1 ? { linkedTransferId: ids[0] } : { linkedTransferIds: ids });
     }
   };
   return { paymentBoxes, navigate, ledger, linkQuery, setLinkQuery, matchesQuery, approveMethod, setApproveMethod, approverRole, canAcceptDirectly, isDeskPayment, storedMethodOf, messageOf, handleConfirmOrder, handleRejectOrder, confirmWithTransfer };

@@ -1244,7 +1244,7 @@ async function recordSubscriberPayment(req, res) {
     const periodStatus = ['ACCOUNTING_PERIOD_CLOSED', 'ACCOUNTING_PERIOD_LOCK_UNAVAILABLE'].includes(e?.code) ? e.status : null;
     const status = e?.statusCode || periodStatus || (e instanceof FinancialScopeError ? e.status : null);
     res.status(status || 500).json(status
-      ? { error: e.message, ...(e instanceof FinancialScopeError || e?.code === 'PRICE_CHANGED' || periodStatus ? { code: e.code } : {}), ...(e?.code === 'PRICE_CHANGED' ? { price: e.price } : {}) }
+      ? { error: e.message, ...(e instanceof FinancialScopeError || e?.code === 'PRICE_CHANGED' || periodStatus || /^TRANSFER/.test(e?.code || '') ? { code: e.code } : {}), ...(e?.code === 'PRICE_CHANGED' ? { price: e.price } : {}) }
       : { error: 'Internal server error' });
   }
 }

@@ -130,8 +130,10 @@ test('a desk payment takes the next receipt number of its branch, an online one 
   assert.ok(notices.length >= 1, 'the managers are told which receipt left a hole in the sequence');
 });
 
-test('a transfer carries one payment and one reference: the keys that stop two payments sharing it exist', { skip }, async () => {
+test('a transfer carries one reference, and a payment may be confirmed by several transfers (migration 387): the payment key is a plain index', { skip }, async () => {
   const keys = async name => (await pool.query("SELECT column_name AS c FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='incoming_transfers' AND index_name=? AND non_unique=0 ORDER BY seq_in_index", [name]))[0].map(row => row.c);
-  assert.deepEqual(await keys('uq_incoming_transfer_payment'), ['tenant_id', 'payment_id']);
+  assert.deepEqual(await keys('uq_incoming_transfer_payment'), [], 'no unique key on the payment any more');
+  const [plain] = await pool.query("SELECT column_name AS c FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='incoming_transfers' AND index_name='idx_incoming_transfers_payment' AND non_unique=1 ORDER BY seq_in_index");
+  assert.deepEqual(plain.map(row => row.c), ['tenant_id', 'payment_id']);
   assert.deepEqual(await keys('uq_incoming_transfer_ref'), ['tenant_id', 'method', 'reference']);
 });

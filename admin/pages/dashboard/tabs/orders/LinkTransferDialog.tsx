@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Link2 } from 'lucide-react';
+import { Link2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { isCashBox } from '../../../../../shared/paymentMethods';
@@ -9,9 +9,14 @@ import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { usePaymentBoxes } from '../../../../lib/paymentMethods';
 import { useStaticData } from '../../../../context/siteDataSlices';
 
+type NewTransfer = { amount: number; currency: string; method: string; reference: string; receivedOn: string; senderName?: string; senderPhone?: string; note?: string };
+/** One transfer on the ledger, several (with one typed in beside them if wanted), or just the one typed in. The server ties them all or none (api/lib/incomingTransfers.js). */
 export type TransferLink =
   | { transferId: string }
-  | { amount: number; currency: string; method: string; reference: string; receivedOn: string; senderName?: string; senderPhone?: string; note?: string };
+  | ({ transferIds: string[] } & Partial<NewTransfer>)
+  | NewTransfer;
+
+const money = (n: number) => Number(n).toLocaleString('ar-EG-u-nu-latn');
 
 type LedgerTransfer = {
   parentTransferId?: string | null; originalAmount?: number | null;
@@ -24,6 +29,12 @@ type LedgerTransfer = {
  * already put on the ledger, or the one they are looking at in the wallet now
  * (recorded as it is linked). The server refuses a transfer that already
  * confirmed another payment, and an operation number used twice on one box.
+ *
+ * «التحويل ب 11600» (12 Nov 2026): one payment may need several transfers, so
+ * the ledger rows are ticked, not picked. The running line says how much of the
+ * payment they cover; «ربط واعتماد» waits until they cover it (the server
+ * refuses a payment they do not cover), and what a transfer holds beyond it is
+ * split off as a free transfer.
  */
 export function LinkTransferDialog({ title, customerName, amount, currency, method, reference, date, busy, onConfirm, onClose }: {
   title: string; customerName?: string | null; amount: number; currency: string; method?: string | null; reference?: string | null; date?: string | null;
@@ -33,7 +44,7 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
   const boxes = usePaymentBoxes(content['finance.payment_methods']);
   const [mode, setMode] = useState<'new' | 'ledger'>('new');
   const [ledger, setLedger] = useState<LedgerTransfer[]>([]);
-  const [picked, setPicked] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState({
     amount: String(amount || ''), currency: currency || 'EGP', method: method || '', reference: reference || '',
@@ -49,7 +60,7 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
         // The payment's own operation number on the ledger is the one.
         const typed = String(reference || '').replace(/\s+/g, '');
         const same = typed ? list.find(transfer => transfer.reference === typed) : undefined;
-        if (same) setPicked(same.id);
+        if (same) setPicked([same.id]);
       })
       .catch(() => setLedger([]));
   }, [reference]);
@@ -66,8 +77,17 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
       .slice(0, 100);
   }, [ledger, query, amount, currency, method, reference, customerName, date]);
   const cash = isCashBox(method);
-  const ready = mode === 'ledger' ? !!picked
-    : Number(draft.amount) > 0 && !!draft.method.trim() && !!draft.reference.trim();
+  const draftReady = Number(draft.amount) > 0 && !!draft.method.trim() && !!draft.reference.trim();
+  // The typed-in transfer counts only while its tab is open; the ticked ones always do.
+  const useDraft = mode === 'new' && draftReady;
+  const chosenRows = ledger.filter(transfer => picked.includes(transfer.id));
+  const otherCurrency = chosenRows.find(transfer => transfer.currency !== currency) || (useDraft && draft.currency !== currency ? draft : null);
+  const cents = (value: number) => Math.round(Number(value) * 100);
+  const chosenCents = chosenRows.reduce((sum, transfer) => sum + cents(transfer.amount), 0) + (useDraft ? cents(Number(draft.amount)) : 0);
+  const restCents = cents(amount) - chosenCents;
+  const covered = !otherCurrency && chosenCents > 0 && restCents <= 1;
+  const ready = covered && (mode === 'ledger' || draftReady);
+  const toggle = (id: string) => setPicked(list => (list.includes(id) ? list.filter(item => item !== id) : [...list, id]));
 
   return (
     <Modal open onClose={onClose} size="sm" title="ربط بتحويل واعتماد" icon={<Link2 size={16} />} subtitle={title}>
@@ -90,8 +110,8 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
               {sorted.length === 0 && <p className="py-4 text-center text-xs text-gray-400">مفيش تحويل بالبحث ده</p>}
               {sorted.map(({ transfer, reasons }) => (
                 <label key={transfer.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition ${picked === transfer.id ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-violet-300'}`}>
-                  <input type="radio" name="transfer" checked={picked === transfer.id} onChange={() => setPicked(transfer.id)} className="accent-violet-600" />
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition ${picked.includes(transfer.id) ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-violet-300'}`}>
+                  <input type="checkbox" checked={picked.includes(transfer.id)} onChange={() => toggle(transfer.id)} className="accent-violet-600" />
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-gray-800">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency} · {transfer.method}
                       {transfer.parentTransferId && Number(transfer.originalAmount) > Number(transfer.amount) && (
@@ -109,16 +129,6 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
                 </label>
               ))}
             </div>
-            {(() => {
-              const chosen = ledger.find(transfer => transfer.id === picked);
-              if (!chosen || chosen.currency !== currency) return null;
-              const rest = Math.round((Number(chosen.amount) - amount) * 100) / 100;
-              return rest > 0
-                ? <p className="rounded-lg bg-orange-50 px-3 py-2 text-[11px] font-bold text-orange-800">التحويل أكبر من الدفعة — هيتربط منه {amount.toLocaleString('ar-EG-u-nu-latn')} ويتبقى {rest.toLocaleString('ar-EG-u-nu-latn')} {currency} متاح لدفعة تانية، عليه علامة «باقي من تحويل {Number(chosen.originalAmount || chosen.amount).toLocaleString('ar-EG-u-nu-latn')}».</p>
-                : rest < 0
-                ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">التحويل أقل من الدفعة بـ{Math.abs(rest).toLocaleString('ar-EG-u-nu-latn')} {currency} — اتأكد قبل الاعتماد.</p>
-                : null;
-            })()}
             </div>
           )
         ) : (
@@ -140,19 +150,23 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
               <input type="date" value={draft.receivedOn} onChange={e => setDraft(d => ({ ...d, receivedOn: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-3 py-2" /></label>
             <label className="block"><span className="mb-1 block text-xs font-bold text-gray-600">اسم المحوِّل</span>
               <input value={draft.senderName} onChange={e => setDraft(d => ({ ...d, senderName: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-3 py-2" /></label>
-            {Number(draft.amount) > 0 && Number(draft.amount) !== amount && (
-              <p className="col-span-2 flex items-center gap-1 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
-                <ArrowLeftRight size={12} /> المبلغ اللي وصل غير الدفعة ({amount.toLocaleString('ar-EG-u-nu-latn')} {currency}) — اتأكد قبل الاعتماد.
-              </p>
-            )}
           </div>
         )}
 
+        {/* One line for both tabs, always the same height: no layout shift as the figures change. */}
+        <p className={`flex min-h-[2.25rem] items-center rounded-lg px-3 py-2 text-[11px] font-bold ${otherCurrency ? 'bg-red-50 text-red-700' : covered ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+          {otherCurrency
+            ? `فيه تحويل بعملة ${otherCurrency.currency} والدفعة بعملة ${currency} — شيله.`
+            : `المختار ${money(chosenCents / 100)} من ${money(amount)} ${currency}${restCents > 1 ? ` — باقي ${money(restCents / 100)}` : ''}${restCents < -1 ? ` — الباقي ${money(-restCents / 100)} هيتفصل كتحويل حر` : ''}${picked.length > 1 ? ` (${picked.length} تحويلات)` : ''}`}
+        </p>
+
         <div className="flex flex-wrap gap-2 pt-1">
           <button type="button" disabled={busy || !ready}
-            onClick={() => onConfirm(mode === 'ledger'
-              ? { transferId: picked }
-              : { ...draft, amount: Number(draft.amount), senderName: draft.senderName || undefined, senderPhone: draft.senderPhone || undefined, note: draft.note || undefined })}
+            onClick={() => {
+              const typed = { ...draft, amount: Number(draft.amount), senderName: draft.senderName || undefined, senderPhone: draft.senderPhone || undefined, note: draft.note || undefined };
+              if (mode === 'ledger') onConfirm(picked.length === 1 ? { transferId: picked[0] } : { transferIds: picked });
+              else onConfirm(picked.length ? { transferIds: picked, ...typed } : typed);
+            }}
             className="flex-1 rounded-xl bg-violet-600 py-2.5 font-bold text-white hover:bg-violet-700 disabled:opacity-50">
             {busy ? 'جارٍ الاعتماد…' : 'ربط واعتماد'}
           </button>

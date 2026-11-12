@@ -16,7 +16,7 @@ const { safeIsoString, cairoToday, dateOnlyInTimeZone } = require('../lib/dates'
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
-const { linkTransfer } = require('../lib/incomingTransfers');
+const { linkTransfer, planTransferCover } = require('../lib/incomingTransfers');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { normalizeJourneyState } = require('../lib/journeyStates');
@@ -261,7 +261,10 @@ router.post('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermis
 router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_financial', 'confirm_transfers'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const { linkedTransferId } = req.body || {};
+    // One transfer (linkedTransferId) or several (linkedTransferIds): «التحويل ب 11600» paid for more than one thing, and one payment can need more than one transfer.
+    const transferIds = [...new Set([...(Array.isArray(req.body?.linkedTransferIds) ? req.body.linkedTransferIds : []), req.body?.linkedTransferId]
+      .map(id => String(id || '').trim()).filter(Boolean))].slice(0, 20);
+    const linkedTransferId = transferIds[0] || null;
     await conn.beginTransaction();
 
     const [[order]] = await conn.query(
@@ -307,6 +310,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
     // The transfer is one on the ledger (lib/incomingTransfers.js). It was an
     // order of type «transfer», which the orders ENUM cannot hold — so no
     // transfer was ever recorded and no link could succeed.
+    // The payment is booked on the first transfer's box and number; linkTransfer checks the rest (free, same currency, together covering the order).
     let transfer = null;
     if (linkedTransferId) {
       const [[row]] = await conn.query(
@@ -314,7 +318,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
         [linkedTransferId, req.tenantId]
       );
       if (!row) { await conn.rollback(); return res.status(404).json({ error: 'التحويل مش موجود' }); }
-      if (row.payment_id) { await conn.rollback(); return res.status(409).json({ error: 'التحويل ده متربط بدفعة تانية بالفعل' }); }
+      if (row.payment_id) { await conn.rollback(); return res.status(409).json({ error: 'التحويل ده متربط بدفعة تانية بالفعل', code: 'TRANSFER_ALREADY_LINKED' }); }
       transfer = { id: row.id, payment_method: row.method, transaction_id: row.reference };
     }
 
@@ -324,7 +328,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
       order, transfer, linkedTransferId, tenantId: req.tenantId,
       staffId: req.staffRecord?.id, staffName: req.staffRecord?.name, actorEmail: req.user?.email,
     }, conn);
-    if (transfer) await linkTransfer(conn, { tenantId: req.tenantId, paymentId, link: { transferId: transfer.id } });
+    if (transfer) await linkTransfer(conn, { tenantId: req.tenantId, paymentId, link: { transferIds }, actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email } });
 
     await conn.commit();
     queuePaymentReceipt(req.tenantId, paymentId);
@@ -337,7 +341,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
     await conn.rollback().catch(() => {});
     // statusCode from the refusals of the order path, status from a closed accounting period (lib/periodLock.js).
     const refused = Number(e.statusCode || e.status);
-    if (refused >= 400 && refused < 500) return res.status(refused).json({ error: e.message });
+    if (refused >= 400 && refused < 500) return res.status(refused).json({ error: e.message, ...(/^TRANSFER/.test(e.code || '') ? { code: e.code } : {}) });
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   } finally {
@@ -361,7 +365,7 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdminOrStaff, requireP
     // order.status and payments.status must never diverge — one transaction, all or nothing.
     await conn.beginTransaction();
     const [[order]] = await conn.query(
-      `SELECT o.id,o.status,o.branch_id,o.subscriber_id,s.assigned_sales_id,s.assigned_cs_id
+      `SELECT o.id,o.status,o.branch_id,o.subscriber_id,o.amount,o.currency,s.assigned_sales_id,s.assigned_cs_id
        FROM orders o
        LEFT JOIN subscribers s ON s.id=o.subscriber_id AND s.tenant_id=o.tenant_id
        WHERE o.id=? AND o.tenant_id=? AND o.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
@@ -389,21 +393,37 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdminOrStaff, requireP
     // confirms no payment and no other order yet (the body used to be written as it came, so a made-up or
     // foreign id was stored and the unique key answered a clash with a 500).
     const hasLink = Object.prototype.hasOwnProperty.call(req.body, 'linked_transfer_id');
-    const linkId = hasLink && req.body.linked_transfer_id ? String(req.body.linked_transfer_id).slice(0, 36) : null;
-    if (linkId) {
-      const [[transfer]] = await conn.query(
-        'SELECT id, payment_id FROM incoming_transfers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [linkId, req.tenantId]);
-      if (!transfer) { await conn.rollback(); return res.status(404).json({ error: 'التحويل مش موجود' }); }
-      const [[taken]] = await conn.query(
-        'SELECT id FROM orders WHERE linked_transfer_id=? AND tenant_id=? AND id<>? LIMIT 1', [linkId, req.tenantId, req.params.id]);
-      if (transfer.payment_id || taken) { await conn.rollback(); return res.status(409).json({ error: 'التحويل ده متربط بدفعة تانية بالفعل' }); }
+    // One transfer (linked_transfer_id) or several (linkedTransferIds, for an order that one transfer cannot pay): the order keeps the first, and the
+    // marker is refused when the picked ones do not add up to the order, like the confirmation is.
+    const pickedIds = [...new Set([...(Array.isArray(req.body.linkedTransferIds) ? req.body.linkedTransferIds : []), hasLink ? req.body.linked_transfer_id : null]
+      .map(id => String(id || '').trim().slice(0, 36)).filter(Boolean))].slice(0, 20);
+    const linkId = pickedIds[0] || null;
+    const hasMarker = hasLink || pickedIds.length > 0;
+    if (pickedIds.length) {
+      const [picked] = await conn.query(
+        'SELECT id, payment_id, amount, currency, reference FROM incoming_transfers WHERE tenant_id=? AND id IN (?) ORDER BY id FOR UPDATE', [req.tenantId, pickedIds]);
+      if (picked.length !== pickedIds.length) { await conn.rollback(); return res.status(404).json({ error: 'التحويل مش موجود' }); }
+      const [taken] = await conn.query(
+        'SELECT id FROM orders WHERE linked_transfer_id IN (?) AND tenant_id=? AND id<>? LIMIT 1', [pickedIds, req.tenantId, req.params.id]);
+      if (picked.some(transfer => transfer.payment_id) || taken.length) {
+        await conn.rollback(); return res.status(409).json({ error: 'التحويل ده متربط بدفعة تانية بالفعل', code: 'TRANSFER_ALREADY_LINKED' });
+      }
+      if (pickedIds.length > 1) {
+        const wrongCurrency = picked.find(transfer => String(transfer.currency).toUpperCase() !== String(order.currency || 'EGP').toUpperCase());
+        if (wrongCurrency) { await conn.rollback(); return res.status(409).json({ error: `التحويل رقم ${wrongCurrency.reference || wrongCurrency.id} بعملة ${wrongCurrency.currency} والطلب بعملة ${order.currency}`, code: 'TRANSFER_CURRENCY' }); }
+        const cover = planTransferCover({ paymentAmount: order.amount, free: pickedIds.map(id => picked.find(transfer => transfer.id === id)) });
+        if (cover.short > 1) {
+          await conn.rollback();
+          return res.status(409).json({ error: `التحويلات المختارة ${cover.chosen.toLocaleString('ar-EG')} والطلب ${cover.price.toLocaleString('ar-EG')} — ناقص ${(cover.short / 100).toLocaleString('ar-EG')}، اختار تحويل كمان`, code: 'TRANSFERS_SHORT' });
+        }
+      }
     }
     await conn.query(
       'UPDATE orders SET status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL',
       [newStatus, req.params.id, req.tenantId]
     );
     // Record the transfer↔payment reconciliation link when the accountant matches them.
-    if (hasLink) {
+    if (hasMarker) {
       await conn.query('UPDATE orders SET linked_transfer_id=? WHERE id=? AND tenant_id=?', [linkId, req.params.id, req.tenantId]);
     }
     await conn.commit();

@@ -36,6 +36,7 @@ export function normalizeOrders(rows: unknown): OrderItem[] {
     customerPhone: (row.customerPhone ?? row.customer_phone ?? undefined) as string | undefined,
     staffId: (row.staffId ?? row.staff_id ?? undefined) as string | undefined,
     staffName: (row.staffName ?? row.staff_name ?? undefined) as string | undefined,
+    linkedTransfers: (Array.isArray(row.linkedTransfers ?? row.linked_transfers) ? (row.linkedTransfers ?? row.linked_transfers) : undefined) as OrderItem['linkedTransfers'],
     linkedTransferId: (row.linkedTransferId ?? row.linked_transfer_id ?? undefined) as string | undefined,
     // Resolved server-side through the subscriber. The screen that reads it used
     // to look the lead up in the full leads array, which is what kept that array

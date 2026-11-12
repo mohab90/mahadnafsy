@@ -747,6 +747,8 @@ export interface OrderItem {
   couponCode?: string;
   staffId?: string;    // Staff who processed / confirmed this order
   staffName?: string;  // Display name
+  /** Every transfer that confirmed this payment (one payment may be paid by several): GET /api/admin/orders-page. */
+  linkedTransfers?: { id: string; amount: number; currency: string; reference: string | null }[];
   linkedTransferId?: string; // set once a bank transfer has confirmed this order (or vice versa) — a transfer can only be linked once
   // Legacy / extra server fields (may be present on older records)
   courseId?: string;

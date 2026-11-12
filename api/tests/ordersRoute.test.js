@@ -204,7 +204,7 @@ test('linking an order to a transfer: the transfer must exist in the tenant and 
 
   answerWith([orderRule, [/FROM incoming_transfers/, []]]);
   assert.equal((await patch('made-up')).status, 404, 'an id that is no transfer of this tenant');
-  assert.deepEqual(statements(/FROM incoming_transfers/)[0].params, ['made-up', TENANT], 'looked up inside the tenant');
+  assert.deepEqual(statements(/FROM incoming_transfers/)[0].params, [TENANT, ['made-up']], 'looked up inside the tenant');
   assert.equal(wrote().length, 0);
   assert.ok(h.state.transactions.includes('rollback'));
 

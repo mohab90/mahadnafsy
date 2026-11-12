@@ -6509,8 +6509,8 @@ CREATE TABLE `incoming_transfers` (
   `linked_at` datetime DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_incoming_transfer_payment` (`tenant_id`,`payment_id`),
   UNIQUE KEY `uq_incoming_transfer_ref` (`tenant_id`,`method`,`reference`),
+  KEY `idx_incoming_transfers_payment` (`tenant_id`,`payment_id`),
   KEY `idx_incoming_transfers_tenant` (`tenant_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

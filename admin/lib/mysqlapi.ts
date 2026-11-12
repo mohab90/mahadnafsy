@@ -1272,7 +1272,7 @@ export const mysqlAdmin = {
   // paymentMethod is only needed when settling a payment that was stored
   // without one — the API refuses to mark money received without saying how it
   // arrived, and nothing else can edit a stored method.
-  updatePaymentStatus: (id: string, status: 'paid' | 'failed' | 'pending', reviewNote?: string, paymentMethod?: string, transfer?: { transferId: string }) =>
+  updatePaymentStatus: (id: string, status: 'paid' | 'failed' | 'pending', reviewNote?: string, paymentMethod?: string, transfer?: { transferId: string } | { transferIds: string[] }) =>
     apiFetch<{ ok: boolean; id: string; status: string }>(
       `/admin/payments/${encodeURIComponent(id)}/status`,
       { method: 'PATCH', body: JSON.stringify({ status, reviewNote, paymentMethod, ...(transfer ? { transfer } : {}) }) },

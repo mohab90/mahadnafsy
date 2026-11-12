@@ -9782,7 +9782,7 @@
    {
     "file": "admin/lib/mysqlapi.ts",
     "must": {
-     "source": "updatePaymentStatus: \\(id: string, status: 'paid' \\| 'failed' \\| 'pending', reviewNote\\?: string, paymentMethod\\?: string, transfer\\?: \\{ transferId: string \\}\\)",
+     "source": "updatePaymentStatus: \\(id: string, status: 'paid' \\| 'failed' \\| 'pending', reviewNote\\?: string, paymentMethod\\?: string, transfer\\?: \\{ transferId: string \\} \\| \\{ transferIds: string\\[\\] \\}\\)",
      "flags": ""
     },
     "code": true
@@ -22386,7 +22386,7 @@
      "admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts"
     ],
     "must": {
-     "source": "updatePaymentStatus\\(row\\.id, 'paid', undefined, storedMethodOf\\(row\\) \\|\\| transfer\\.method, \\{ transferId: transfer\\.id \\}\\)",
+     "source": "updatePaymentStatus\\(row\\.id, 'paid', undefined, storedMethodOf\\(row\\) \\|\\| transfers\\[0\\]\\.method, ids\\.length === 1 \\? \\{ transferId: ids\\[0\\] \\} : \\{ transferIds: ids \\}\\)",
      "flags": ""
     }
    },

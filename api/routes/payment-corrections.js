@@ -18,6 +18,7 @@ const logger = require('../lib/logger').child({ module: 'payment-corrections' })
 const { pool } = require('../lib/db');
 const { canCorrectPayments, voidPayment, editPaymentDetails } = require('../lib/paymentCorrections');
 const { normalizeBranch } = require('../lib/branches');
+const { assertTransfersCover, linkTransfer } = require('../lib/incomingTransfers');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 const actorOf = req => signerName(req);
@@ -105,6 +106,9 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
       return res.json({ ok: true, mode: 'edited', ...result });
     }
 
+    // The transfers that confirmed it must still cover the new figure (and be in its currency): refused here, before the corrected payment is recorded, not after.
+    const confirmedBy = await assertTransfersCover(pool, { tenantId: req.tenantId, paymentId: pay.id, newAmount: amount, newCurrency: currency });
+
     // A different payment: recorded the way every payment is, then the old one voided.
     const keepsTxn = Boolean(pay.transaction_id) && (body.transactionId === undefined || body.transactionId === pay.transaction_id);
     const sameItemSamePrice = !currencyChanged && (courseId || null) === (pay.course_id || null) && (bundleId || null) === (pay.bundle_id || null);
@@ -148,15 +152,11 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
     try {
       await inTransaction(async conn => {
         await voidPayment(conn, { tenantId: req.tenantId, paymentId: pay.id, actor: actorOf(req), reason: `اتعدّلت: ${reason}` });
-        // The corrected payment is confirmed by the same transfer the old one was.
-        if (newId) {
-          const [[linked]] = await conn.query(
-            'SELECT linked_transfer_id FROM payments WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);
-          // Linked as any payment is — a smaller corrected amount leaves the rest free.
-          if (linked?.linked_transfer_id) {
-            await require('../lib/incomingTransfers').linkTransfer(conn, {
-              tenantId: req.tenantId, paymentId: newId, link: { transferId: linked.linked_transfer_id }, actor: { id: req.staffRecord?.id, name: actorOf(req) } });
-          }
+        // The corrected payment is confirmed by the same transfers the old one was (all of them, voiding freed them). Linked as any payment is: a smaller
+        // corrected amount leaves the rest of the last transfer free, one it no longer needs is free whole, and a bigger one that they do not cover was refused above.
+        if (newId && confirmedBy.length) {
+          await linkTransfer(conn, {
+            tenantId: req.tenantId, paymentId: newId, link: { transferIds: confirmedBy.map(row => row.id) }, actor: { id: req.staffRecord?.id, name: actorOf(req) } });
         }
         if (keepsTxn && newId) {
           await conn.query('UPDATE payments SET transaction_id=NULL WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);

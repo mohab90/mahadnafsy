@@ -7,9 +7,9 @@
  * «ربطه بتحويل»: a booking from a collection account is approved against a
  * transfer. Either one already on the ledger (picked by id) or the one the
  * manager is looking at in the wallet right now (its details), which is
- * recorded here in the same transaction. The unique keys in migration 224 do
- * the refusing: a transfer confirms one payment, and an operation number is
- * recorded once per box.
+ * recorded here in the same transaction. A transfer confirms one payment and an
+ * operation number is recorded once per box (migration 224); a payment may be
+ * confirmed by several transfers (migration 387).
  */
 
 const { uuidv4 } = require('./id');
@@ -55,42 +55,114 @@ async function recordTransfer(conn, { tenantId, transfer, actor = {} }) {
   return id;
 }
 
+const cents = value => Math.round(Number(value) * 100);
+const money = value => Number(value).toLocaleString('ar-EG', { maximumFractionDigits: 2 });
+const nameOf = row => `رقم ${row.reference || row.id}${row.method ? ` على ${row.method}` : ''}`;
+
 /**
- * Tie a transfer to a payment, inside the caller's transaction. `link` is
- * `{ transferId }` for one already recorded, or the transfer's own details.
- * Returns the transfer's id.
+ * «التحويل ب 11600» (12 Nov 2026, the owner): one wallet transfer can pay for
+ * several things and one payment can be paid by several transfers. Given what a
+ * payment costs, the transfers already tied to it and the free ones picked (in
+ * the order picked), decide what each does: tied whole while it fits in what is
+ * still uncovered, the one that passes it keeps only the uncovered part (its
+ * rest is split off as a free transfer), and any picked after the payment is
+ * covered are left alone. Pure — it writes nothing. `short` is the piastres
+ * still uncovered after all of them; more than one means the payment is not paid.
+ */
+function planTransferCover({ paymentAmount, tied = [], free = [] }) {
+  const price = cents(paymentAmount);
+  let need = price - tied.reduce((sum, row) => sum + cents(row.amount), 0);
+  const steps = [];
+  for (const row of free) {
+    const whole = cents(row.amount);
+    if (need <= 0) { steps.push({ row, action: 'skip', keep: 0, rest: 0 }); continue; }
+    if (whole <= need) { steps.push({ row, action: 'tie', keep: whole, rest: 0 }); need -= whole; continue; }
+    steps.push({ row, action: 'tie', keep: need, rest: whole - need });
+    need = 0;
+  }
+  const chosen = [...tied, ...free].reduce((sum, row) => sum + cents(row.amount), 0);
+  return { steps, short: Math.max(0, need), chosen: chosen / 100, price: price / 100 };
+}
+
+const shortMessage = plan =>
+  `التحويلات المختارة ${money(plan.chosen)} والدفعة ${money(plan.price)} — ناقص ${money(plan.short / 100)}، اختار تحويل كمان أو عدّل مبلغ الدفعة`;
+
+/** Every transfer tied to a payment, in the order they were tied. */
+async function tiedTransfers(conn, { tenantId, paymentId, lock = false }) {
+  const [rows] = await conn.query(
+    `SELECT * FROM incoming_transfers WHERE tenant_id=? AND payment_id=? ORDER BY linked_at, created_at, id${lock ? ' FOR UPDATE' : ''}`,
+    [tenantId, paymentId]);
+  return rows;
+}
+
+/**
+ * Tie transfers to a payment, inside the caller's transaction. `link` is
+ * `{ transferId }` for one already recorded, `{ transferIds: [...] }` for
+ * several (with the details of one new transfer beside them if it is also
+ * wanted), or just the details of the new transfer. Every transfer row is
+ * locked in id order, so two reviewers reaching for the same transfer meet at
+ * the lock and the second finds it taken. Returns the first transfer's id.
+ *
+ * The payment must end up covered (a piastre of slack): otherwise nothing is
+ * tied and the whole thing is refused with TRANSFERS_SHORT — a 2,000 transfer
+ * cannot confirm a 4,100 payment.
  */
 async function linkTransfer(conn, { tenantId, paymentId, link, actor = {} }) {
   if (!link || typeof link !== 'object') throw refused('اربط الدفعة بالتحويل اللي وصل', 400, 'TRANSFER_REQUIRED');
-  let transferId = link.transferId ? String(link.transferId) : null;
-  if (!transferId) transferId = await recordTransfer(conn, { tenantId, transfer: link, actor });
-  const [[row]] = await conn.query(
-    'SELECT * FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [tenantId, transferId]);
-  if (!row) throw refused('التحويل مش موجود', 404);
-  if (row.payment_id && String(row.payment_id) !== String(paymentId)) {
-    throw refused('التحويل ده متربط بدفعة تانية بالفعل', 409, 'TRANSFER_ALREADY_LINKED');
+  const ids = [...new Set([...(Array.isArray(link.transferIds) ? link.transferIds : []), ...(link.transferId ? [link.transferId] : [])]
+    .map(id => String(id || '').trim()).filter(Boolean))];
+  const hasDetails = ['amount', 'reference', 'method'].some(key => link[key] !== undefined && link[key] !== null && link[key] !== '');
+  if (!ids.length || hasDetails) ids.push(await recordTransfer(conn, { tenantId, transfer: link, actor }));
+
+  const [[payment]] = await conn.query(
+    'SELECT amount, currency FROM payments WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [tenantId, paymentId]);
+  if (!payment) throw refused('الدفعة مش موجودة', 404);
+  if (!(Number(payment.amount) > 0)) throw refused('مبلغ الدفعة غير صحيح', 400);
+  const currency = String(payment.currency || 'EGP').toUpperCase();
+
+  const [named] = await conn.query(
+    'SELECT * FROM incoming_transfers WHERE tenant_id=? AND id IN (?) ORDER BY id FOR UPDATE', [tenantId, ids]);
+  const byId = new Map(named.map(row => [String(row.id), row]));
+  const tied = await tiedTransfers(conn, { tenantId, paymentId, lock: true });
+  const tiedIds = new Set(tied.map(row => String(row.id)));
+  const free = [];
+  for (const id of ids) {
+    const row = byId.get(id);
+    if (!row) throw refused(`التحويل ${id} مش موجود`, 404, 'TRANSFER_NOT_FOUND');
+    if (String(row.currency || 'EGP').toUpperCase() !== currency) {
+      throw refused(`التحويل ${nameOf(row)} بعملة ${row.currency} والدفعة بعملة ${currency}`, 409, 'TRANSFER_CURRENCY');
+    }
+    if (tiedIds.has(String(row.id))) continue;
+    if (row.payment_id) throw refused(`التحويل ${nameOf(row)} متربط بدفعة تانية بالفعل`, 409, 'TRANSFER_ALREADY_LINKED');
+    free.push(row);
   }
-  if (!row.payment_id) await splitOffRemainder(conn, { tenantId, transfer: row, paymentId, actor });
-  await conn.query('UPDATE incoming_transfers SET payment_id=?, linked_at=NOW() WHERE tenant_id=? AND id=?', [paymentId, tenantId, transferId]);
-  await conn.query('UPDATE payments SET linked_transfer_id=? WHERE tenant_id=? AND id=?', [transferId, tenantId, paymentId]);
-  return transferId;
+  // Those already tied here are in the payment's currency too: they were checked when they were tied.
+  const plan = planTransferCover({ paymentAmount: payment.amount, tied, free });
+  if (plan.short > 1) throw refused(shortMessage(plan), 409, 'TRANSFERS_SHORT');
+
+  const newlyTied = [];
+  for (const step of plan.steps) {
+    if (step.action !== 'tie') continue;
+    if (step.rest > 0) await splitTransfer(conn, { tenantId, transfer: step.row, keep: step.keep / 100, actor });
+    await conn.query('UPDATE incoming_transfers SET payment_id=?, linked_at=NOW() WHERE tenant_id=? AND id=?', [paymentId, tenantId, step.row.id]);
+    newlyTied.push(String(step.row.id));
+  }
+  const first = tied[0]?.id || newlyTied[0] || null;
+  if (first) await conn.query('UPDATE payments SET linked_transfer_id=? WHERE tenant_id=? AND id=?', [first, tenantId, paymentId]);
+  return first;
 }
 
 /**
  * «يتبقي اتوماتك … ويبقي فيها علامة ان دا باقي مبلغ كبير» (10 Oct 2026). A
- * transfer bigger than the payment it confirms keeps only the payment's amount;
- * the rest becomes a free transfer of its own, marked with the transfer it came
- * from (parent_transfer_id, always the first one) and that one's full amount.
- * Its operation number is the first one's with «/باقي n», so the box's numbers
- * stay unique. Different currencies are not split: the amounts do not compare.
+ * transfer bigger than what it confirms keeps only that part (`keep`); the rest
+ * becomes a free transfer of its own, marked with the transfer it came from
+ * (parent_transfer_id, always the first one) and that one's full amount. Its
+ * operation number is the first one's with «/باقي n», so the box's numbers stay
+ * unique.
  */
-async function splitOffRemainder(conn, { tenantId, transfer, paymentId, actor = {} }) {
-  const [[payment]] = await conn.query(
-    'SELECT amount, currency FROM payments WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, paymentId]);
-  const paid = Number(payment?.amount);
+async function splitTransfer(conn, { tenantId, transfer, keep, actor = {} }) {
   const whole = Number(transfer.amount);
-  if (!payment || !(paid > 0) || String(payment.currency || 'EGP').toUpperCase() !== String(transfer.currency || 'EGP').toUpperCase()) return null;
-  const rest = Math.round((whole - paid) * 100) / 100;
+  const rest = Math.round((whole - keep) * 100) / 100;
   if (rest < 0.01) return null;
   const rootId = transfer.parent_transfer_id || transfer.id;
   const original = Number(transfer.original_amount) || whole;
@@ -114,11 +186,29 @@ async function splitOffRemainder(conn, { tenantId, transfer, paymentId, actor = 
       actor.id || transfer.recorded_by || null, actor.name || transfer.recorded_by_name || null, rootId, original]);
   await conn.query(
     'UPDATE incoming_transfers SET amount=?, original_amount=COALESCE(original_amount, ?) WHERE tenant_id=? AND id=?',
-    [paid, original, tenantId, transfer.id]);
+    [keep, original, tenantId, transfer.id]);
   return { id, amount: rest };
 }
 
-/** A voided payment's transfer is free again, for the payment that replaces it. */
+/**
+ * A payment's amount (or currency) is about to change after it was confirmed — a
+ * correction. The transfers tied to it must still cover the new figure: short,
+ * or in another currency, it is refused before anything is recorded. Over-
+ * covered is fine here: the replacement is tied by linkTransfer, which splits
+ * the last transfer's rest off. Reads only.
+ */
+async function assertTransfersCover(db, { tenantId, paymentId, newAmount, newCurrency }) {
+  const tied = await tiedTransfers(db, { tenantId, paymentId });
+  if (!tied.length) return tied;
+  const currency = String(newCurrency || 'EGP').toUpperCase();
+  const wrong = tied.find(row => String(row.currency || 'EGP').toUpperCase() !== currency);
+  if (wrong) throw refused(`التحويل ${nameOf(wrong)} بعملة ${wrong.currency} والدفعة بعملة ${currency}`, 409, 'TRANSFER_CURRENCY');
+  const plan = planTransferCover({ paymentAmount: newAmount, tied: [], free: tied });
+  if (plan.short > 1) throw refused(shortMessage(plan), 409, 'TRANSFERS_SHORT');
+  return tied;
+}
+
+/** A voided payment's transfers — all of them — are free again, for the payment that replaces it. */
 async function releaseTransfer(conn, { tenantId, paymentId }) {
   await conn.query('UPDATE incoming_transfers SET payment_id=NULL, linked_at=NULL WHERE tenant_id=? AND payment_id=?', [tenantId, paymentId]);
 }
@@ -189,4 +279,4 @@ async function deleteTransfer(conn, { tenantId, transferId }) {
   return before;
 }
 
-module.exports = { cleanTransfer, recordTransfer, linkTransfer, splitOffRemainder, releaseTransfer, importTransfers, updateTransfer, deleteTransfer, isCashMethod, IMPORT_LIMIT };
+module.exports = { cleanTransfer, recordTransfer, linkTransfer, planTransferCover, assertTransfersCover, tiedTransfers, releaseTransfer, importTransfers, updateTransfer, deleteTransfer, isCashMethod, IMPORT_LIMIT };
