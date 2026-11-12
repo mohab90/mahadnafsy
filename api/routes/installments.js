@@ -142,6 +142,8 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     // way; this is the same default in another route.
     if (paidDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(paidDate))) return res.status(400).json({ error: 'تاريخ الدفع غير صحيح', code: 'PAYMENT_DATE_INVALID' });
     const effectiveDate = paidDate || dateOnlyInTimeZone();
+    // A payment may be backdated, never dated ahead (12 Nov 2026, the owner's rule for every booking and payment).
+    if (effectiveDate > dateOnlyInTimeZone()) return res.status(400).json({ error: 'مينفعش تسجّل دفعة بتاريخ لسه ماجاش. اختار النهارده أو يوم قبله.', code: 'PAYMENT_DATE_IN_FUTURE' });
 
     await conn.beginTransaction();
     const [[plan]] = await conn.query(

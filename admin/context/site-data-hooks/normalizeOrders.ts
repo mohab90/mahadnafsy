@@ -47,6 +47,7 @@ export function normalizeOrders(rows: unknown): OrderItem[] {
     // course it was for.
     branchId: (row.branchId ?? row.branch_id ?? undefined) as string | undefined,
     isInstallment: Boolean(row.isInstallment ?? row.is_installment),
+    clientIsNew: (row.clientIsNew ?? row.client_is_new ?? undefined) as boolean | null | undefined,
     note: (row.note ?? row.notes ?? undefined) as string | undefined,
   }));
 }

@@ -20109,7 +20109,7 @@
    {
     "file": "admin/pages/dashboard/tabs/orders/ClientRequestRows.tsx",
     "must": {
-     "source": "\\/admin\\/subscriber-requests\\/\\$\\{encodeURIComponent\\(target\\.id\\)\\}\\/approve",
+     "source": "\\/admin\\/subscriber-requests\\/\\$\\{encodeURIComponent\\(row\\.id\\)\\}\\/approve",
      "flags": ""
     }
    },

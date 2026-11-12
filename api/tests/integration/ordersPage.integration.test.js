@@ -177,3 +177,15 @@ test('a branch asks for its own rows, an unknown one is refused, and the door is
   const source = require('node:fs').readFileSync(path.join(__dirname, '..', '..', 'routes', 'orders-page.js'), 'utf8');
   assert.ok(source.includes("requirePermission('view_orders')"), 'the same door as GET /api/admin/orders');
 });
+
+test('12 Nov 2026: each row says whether its client is new — nothing paid before that row\'s day — or old; a row with no client says neither', { skip }, async () => {
+  const all = [...(await page({ tab: 'accepted' })).rows, ...(await page({ tab: 'review' })).rows, ...(await page({ tab: 'failed' })).rows];
+  const flag = id => all.find(row => row.id === id)?.client_is_new;
+  // op-sub-1 first paid on 1 Nov (op-p1): what they paid on the 2nd and the 5th is an old client's money.
+  assert.equal(flag('op-p2'), false);
+  assert.equal(flag('op-p4'), false);
+  // op-sub-2 has never had a paid payment: the one waiting is a new client's.
+  assert.equal(flag('op-p3'), true);
+  // An order that names no client record says neither.
+  assert.equal(flag('op-o1'), null);
+});

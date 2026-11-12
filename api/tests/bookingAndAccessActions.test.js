@@ -202,6 +202,10 @@ test('no second screen records a customer payment', () => {
     // without the login, for the collection accounts and the Dokki desk, whose
     // submit goes through createClientWithPayment (the same booking endpoint).
     'admin/pages/dashboard/tabs/NewSubscriberModal.tsx',
+    // «تعديل» on a new client's booking that is still waiting for review (12 Nov 2026): it corrects the figure, the box and the transfer's
+    // details of a request before anyone accepts it (PATCH /admin/subscriber-requests/:id). It records no payment: the payment is still
+    // written by the one booking endpoint, when the request is accepted.
+    'admin/pages/dashboard/tabs/orders/ClientRequestRows.tsx',
     // «إضافة تحويل» in الحسابات: money that arrived, on the transfers ledger
     // (api/lib/incomingTransfers.js), before the payment it confirms. It was
     // an order of type 'transfer', which the orders table cannot hold. Not a

@@ -7,7 +7,7 @@ import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../share
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
 import { useAccess } from '../../../../hooks/useAccess';
-import { useClientRequests } from './ClientRequestRows';
+import { ClientAgeBadge, useClientRequests } from './ClientRequestRows';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { TransferProofLink } from '../../../../components/TransferProofLink';
 import { useCanDelete } from '../../../../hooks/useCanDelete';
@@ -48,6 +48,7 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
   const clientRequests = useClientRequests({
     // GET /api/admin/subscriber-requests needs manage_financial; canManageFinancial also holds confirm_transfers (the support desk), which it answers 403.
     enabled: canManageFinancial && access.can('manage_financial'), notify, onChanged: () => { void reloadSubscribers(); },
+    canAcceptDirectly, paymentBoxes,
     titleOf: (courseId, bundleId) => (bundleId ? bundles.find(bundle => bundle.id === bundleId)?.title : courses.find(course => course.id === courseId)?.title) || '—',
   });
   // A transfer a manager corrects (canAcceptDirectly is the manager's line).
@@ -379,7 +380,10 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
                                   {!row.transactionId && !row.senderName && !row.fromAccountNumber && !row.proofUrl && <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
-                                  {typeBadge(row.type)}
+                                  <div className="flex flex-col items-center gap-1">
+                                    {typeBadge(row.type)}
+                                    <ClientAgeBadge isNew={row.clientIsNew} />
+                                  </div>
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
                                   <span className="font-extrabold text-emerald-700 text-[12px]">{row.amount?.toLocaleString('ar-EG-u-nu-latn')}</span>
@@ -391,7 +395,7 @@ export function OrdersAdminView({ props, actions, desk }: { props: OrdersTabProp
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[10px] text-gray-500">
                                   {row.staffName || '—'}
                                 </td>
-                                <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[10px] text-gray-500 whitespace-nowrap" dir="ltr">
+                                <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap" dir="ltr">
                                   {fmtDate}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">

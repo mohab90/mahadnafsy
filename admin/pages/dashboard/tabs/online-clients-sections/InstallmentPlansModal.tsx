@@ -181,7 +181,7 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
                           {entry.paidAt ? <span className="text-emerald-700">✅ اتدفع {entry.paidAt}</span> : open ? (
                             <span className="flex flex-wrap items-center justify-end gap-1">
                               <input type="number" min="1" value={paying.amount} onChange={e => setPaying({ ...paying, amount: e.target.value })} className={`${field} w-24`} />
-                              <input type="date" value={paying.date} onChange={e => setPaying({ ...paying, date: e.target.value })} className={field} />
+                              <input type="date" max={today} value={paying.date} onChange={e => setPaying({ ...paying, date: e.target.value })} className={field} />
                               <select value={paying.box} onChange={e => setPaying({ ...paying, box: e.target.value })} className={field}>
                                 <option value="">— الخزنة —</option>
                                 {paymentBoxes.map(box => <option key={box} value={box}>{box}</option>)}

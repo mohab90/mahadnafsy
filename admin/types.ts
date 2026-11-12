@@ -762,6 +762,8 @@ export interface OrderItem {
   branchId?: string;
   /** A payment taken in instalments rather than a first booking. */
   isInstallment?: boolean;
+  /** The client had paid for nothing before this row's day (GET /api/admin/orders/page); null when the row names no client. */
+  clientIsNew?: boolean | null;
 }
 
 export interface TestimonialItem {

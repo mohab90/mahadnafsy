@@ -191,9 +191,25 @@ router.get('/api/admin/orders/page', requireAuth, requireAdminOrStaff, requirePe
         : [],
     ]);
     const proofOf = new Map(proofs.map(row => [row.order_id, row.proof_url]));
+    // «جمب كورس نكتب هو عميل جديد ولا قديم» (12 Nov 2026): a client is old on a row when they had paid for something before that row's day. One query for the
+    // page's clients, not one per row and not inside the union (it is counted over the whole book).
+    const clientIds = [...new Set(tabRows.map(row => row.subscriber_id).filter(Boolean))];
+    const [firstPaid] = clientIds.length
+      ? await pool.query(
+        `SELECT subscriber_id, MIN(date) AS first_day FROM payments
+          WHERE tenant_id = ? AND subscriber_id IN (${clientIds.map(() => '?').join(',')}) AND deleted_at IS NULL AND COALESCE(NULLIF(status, ''), 'paid') = 'paid' AND amount > 0
+          GROUP BY subscriber_id`, [req.tenantId, ...clientIds])
+      : [[]];
+    const firstDayOf = new Map(firstPaid.map(row => [String(row.subscriber_id), safeIsoString(row.first_day).slice(0, 10)]));
+    const clientIsNew = row => {
+      if (!row.subscriber_id) return null;
+      const first = firstDayOf.get(String(row.subscriber_id));
+      return !first || first >= safeIsoString(row.at).slice(0, 10);
+    };
     const rows = tabRows.map(row => {
       const crm = row.src === 'crm';
       return {
+        client_is_new: clientIsNew(row),
         id: row.id, type: row.type, status: row.status, amount: Number(row.amount) || 0, currency: row.currency,
         payment_method: row.payment_method, customer_name: row.customer_name || '', customer_email: row.customer_email || '', customer_phone: row.customer_phone || '',
         transaction_id: row.transaction_id || null, subscriber_id: row.subscriber_id, course_id: row.course_id || null, bundle_id: row.bundle_id || null,

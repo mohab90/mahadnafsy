@@ -40,6 +40,7 @@ const { clientHoldingPhone, phoneInUse, sharedPhoneSlot, recordSharedPhone } = r
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
+const { mustLinkTransfer } = require('../lib/paymentApprovalPolicy');
 const { seatInOwnTransaction } = require('../lib/daqqiHousing');
 const { resolveTierPrice, PRICE_TIERS } = require('../lib/priceTiers');
 const { priceMatches } = require('../lib/catalogPrice');
@@ -425,6 +426,10 @@ async function recordSubscriberPayment(req, res) {
     const resolvedDate = submittedDate ? cairoDayOf(submittedDate) : cairoToday();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(resolvedDate)) {
       return res.status(400).json({ error: 'تاريخ الدفعة غير صحيح.', code: 'PAYMENT_DATE_INVALID' });
+    }
+    // 12 Nov 2026, «مينفعش يعمل حجز بتاريخ لسه مجاش، ينفع يكون بتاريخ قديم لكن لسه مجاش لا»: a booking or a payment may be backdated, never dated ahead.
+    if (resolvedDate > cairoToday()) {
+      return res.status(400).json({ error: 'مينفعش تسجّل حجز أو دفعة بتاريخ لسه ماجاش. اختار النهارده أو يوم قبله.', code: 'PAYMENT_DATE_IN_FUTURE' });
     }
     const isPaid = storedStatus === 'paid';
     // A riyal or dollar payment is posted in pounds at today's rate. A stale
@@ -1252,7 +1257,7 @@ const requestRow = row => {
   const body = (() => { try { return JSON.parse(row.body_json || '{}'); } catch { return {}; } })();
   return {
     id: row.id, status: row.status, name: row.name, phone: row.phone, email: row.email,
-    amount: Number(row.amount) || 0, currency: row.currency, leadId: row.lead_id,
+    amount: Number(row.amount) || 0, currency: row.currency, leadId: row.lead_id, branch: body.subscriber?.branch || null,
     requestedBy: row.requested_by, requestedByName: row.requested_by_name,
     reviewNote: row.review_note, reviewedByName: row.reviewed_by_name, reviewedAt: row.reviewed_at,
     subscriberId: row.subscriber_id, paymentId: row.payment_id, createdAt: row.created_at,
@@ -1307,8 +1312,10 @@ router.post('/api/admin/subscriber-requests/:id/approve', requireAuth, requireAd
     const transfer = req.body?.transfer && typeof req.body.transfer === 'object' ? req.body.transfer : null;
     const suppliedMethod = req.body?.paymentMethod;
     const body = JSON.parse(request.body_json || '{}');
-    // Counted cash has no transfer to point at; every other box does.
-    if (!transfer && !isCashMethod(body.payment?.paymentMethod || suppliedMethod)) {
+    // Counted cash has no transfer to point at; every other box does — for everyone but those who accept a payment outright (the manager's line,
+    // lib/paymentApprovalPolicy.js). 12 Nov 2026, «انا محتاج اللي فيه قبول ورفض وربط وتعديل»: a new client's row takes the same four actions as any
+    // payment waiting, under the same rule; it used to offer «ربط واعتماد» alone, whoever was looking.
+    if (!transfer && mustLinkTransfer(req, body.payment?.paymentMethod || suppliedMethod)) {
       return res.status(400).json({ error: 'اربط الحجز بالتحويل اللي وصل قبل الاعتماد', code: 'TRANSFER_REQUIRED' });
     }
     // The money as the officer recorded it, credited to them; only the method
@@ -1322,6 +1329,47 @@ router.post('/api/admin/subscriber-requests/:id/approve', requireAuth, requireAd
     req.linkTransfer = transfer;
     return recordSubscriberPayment(req, res);
   } catch (e) { logger.error('[subscriber-requests/approve]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
+});
+
+// Correct a request before deciding on it: the money's figure, box, operation number, sender and day, and the note. The client and the course stay as the
+// officer sent them (a different course is a different booking: refuse it and let them send it again).
+router.patch('/api/admin/subscriber-requests/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    const [[request]] = await pool.query('SELECT * FROM subscriber_requests WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, req.params.id]);
+    if (!request) return res.status(404).json({ error: 'الطلب مش موجود' });
+    if (request.status !== 'pending') return res.status(409).json({ error: 'الطلب ده اتراجع بالفعل' });
+    const refusal = refuseReviewer(req, request);
+    if (refusal) return res.status(403).json({ error: refusal });
+    const body = JSON.parse(request.body_json || '{}');
+    const patch = req.body || {};
+    const payment = { ...(body.payment || {}) };
+    const changed = {};
+    if (patch.amount !== undefined) {
+      const amount = Math.round(Number(patch.amount) * 100) / 100;
+      if (!Number.isFinite(amount) || amount <= 0 || amount > 10000000) return res.status(400).json({ error: 'المبلغ لازم يكون رقم أكبر من صفر.', code: 'AMOUNT_INVALID' });
+      payment.amount = amount; changed.amount = amount;
+    }
+    if (patch.date !== undefined && patch.date !== null && patch.date !== '') {
+      const day = cairoDayOf(patch.date);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: 'تاريخ الدفعة غير صحيح.', code: 'PAYMENT_DATE_INVALID' });
+      if (day > cairoToday()) return res.status(400).json({ error: 'مينفعش تسجّل حجز أو دفعة بتاريخ لسه ماجاش. اختار النهارده أو يوم قبله.', code: 'PAYMENT_DATE_IN_FUTURE' });
+      payment.date = day; delete payment.at; changed.date = day;
+    }
+    for (const [key, max] of [['paymentMethod', 100], ['transactionId', 191], ['senderName', 200], ['fromAccountNumber', 60], ['note', 2000]]) {
+      if (patch[key] === undefined) continue;
+      const value = sanitize(String(patch[key] ?? '').trim(), max);
+      payment[key] = value || null; changed[key] = payment[key];
+    }
+    if (!Object.keys(changed).length) return res.status(400).json({ error: 'مفيش تعديل' });
+    await pool.query('UPDATE subscriber_requests SET amount=?, body_json=? WHERE tenant_id=? AND id=? AND status=?',
+      [payment.amount ?? request.amount, JSON.stringify({ ...body, payment }), req.tenantId, request.id, 'pending']);
+    await require('../lib/auditTrail').writeAuditEvent({
+      action: 'finance.subscriber_request_edited', entityType: 'subscriber_request', entityId: request.id, severity: 'warning', req,
+      metadata: { name: request.name, changed, before: { amount: Number(request.amount), ...Object.fromEntries(Object.keys(changed).filter(key => key !== 'amount').map(key => [key, body.payment?.[key] ?? null])) } },
+    }).catch(error => logger.warn('[subscriber-requests/edit] audit failed:', error.message));
+    const [[saved]] = await pool.query('SELECT * FROM subscriber_requests WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, request.id]);
+    res.json(requestRow(saved));
+  } catch (e) { logger.error('[subscriber-requests/edit]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/subscriber-requests/:id/reject', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
