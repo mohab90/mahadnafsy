@@ -834,6 +834,9 @@ export const mysqlAdmin = {
     apiFetch(`/admin/overview/revenue`, {}, A),
   // «نظرة عامة»'s top board: today against yesterday and last week, the alerts, who is in now (api/lib/overviewBoard.js).
   getOverviewBoard:        () => apiFetch<import('../pages/dashboard/tabs/overview/boardFigures').OverviewBoardData>(`/admin/overview/board`, {}, A),
+  // «تقارير الإدارة» on the overview page: what each employee did, and each branch's money (api/lib/managementReports.js). `query` is managementFigures.periodQuery.
+  getManagementEmployees:  (query: string) => apiFetch<import('../pages/dashboard/tabs/overview/managementFigures').EmployeeReport>(`/admin/reports/management/employees?${query}`, {}, A),
+  getManagementBranches:   (query: string) => apiFetch<import('../pages/dashboard/tabs/overview/managementFigures').BranchReport>(`/admin/reports/management/branches?${query}`, {}, A),
   // What the accounts overview draws (api/routes/finance-payments-register.js): revenue by type, course, month and box, summed by the database.
   // The orders desk, a page of it and its counts from the database (api/routes/orders-page.js).
   getOrdersPage:           (query: URLSearchParams): Promise<OrdersPage> => apiFetch(`/admin/orders/page?${query.toString()}`, {}, A),

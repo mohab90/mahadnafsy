@@ -9,4 +9,5 @@ router.use(require('./analytics/campaigns'));
 router.use(require('./analytics/sales'));
 router.use(require('./analytics/leads-scoring'));
 router.use(require('./analytics/dashboard'));
+router.use(require('./analytics/management-reports'));
 module.exports = router;

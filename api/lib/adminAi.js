@@ -65,13 +65,21 @@ async function providerJson(url, options, fetchImpl, apiKey = '') {
 // Vertex AI express mode («AQ.…») opens aiplatform.googleapis.com, and the
 // other door refuses it. The institute's key is the second kind, so every
 // request went to the door that refuses it.
-function geminiEndpoint(apiKey, model) {
-  const m = encodeURIComponent(model);
-  const k = encodeURIComponent(apiKey);
-  return String(apiKey).startsWith('AQ.')
-    ? `https://aiplatform.googleapis.com/v1/publishers/google/models/${m}:generateContent?key=${k}`
-    : `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`;
+const GEMINI_DOORS = {
+  vertex: (apiKey, model) => `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+  studio: (apiKey, model) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+};
+// 12 Nov 2026: the owner made a key in AI Studio and it too begins «AQ.» — the prefix no longer says which door a key opens. An «AQ.» key
+// is tried at the Vertex door first and, when that door refuses the key itself (401/403: «Agent Platform API has not been used in project…»),
+// at the AI Studio door; the door that answered is remembered for the key. Any other key goes to AI Studio only, as before.
+const workingGeminiDoor = new Map();
+function geminiDoors(apiKey) {
+  if (!String(apiKey).startsWith('AQ.')) return ['studio'];
+  const remembered = workingGeminiDoor.get(apiKey);
+  return remembered ? [remembered, ...['vertex', 'studio'].filter(door => door !== remembered)] : ['vertex', 'studio'];
 }
+/** The address a key is tried at first. */
+const geminiEndpoint = (apiKey, model) => GEMINI_DOORS[geminiDoors(apiKey)[0]](apiKey, model);
 
 // Models Google has retired answer 404; the settings held gemini-1.5-pro. A
 // retired or missing model falls through to current ones, and the one that
@@ -99,21 +107,31 @@ async function generateAdminAi(config, payload, fetchImpl = fetch) {
       generationConfig: { temperature: request.temperature, maxOutputTokens: request.maxTokens },
     });
     let lastError = null;
-    for (const model of geminiCandidates(request.apiKey, request.model)) {
-      try {
-        const data = await providerJson(geminiEndpoint(request.apiKey, model), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
-        }, fetchImpl, request.apiKey);
-        workingGeminiModel.set(`${request.apiKey}|${request.model}`, model);
-        return cleanText((data?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join(''), 100_000);
-      } catch (error) {
-        lastError = error;
-        // Only a missing model is worth another name; a refused key or an
-        // exhausted quota fails the same way for every model.
-        if (error.providerStatus !== 404) throw error;
+    let refusal = null;
+    const doors = geminiDoors(request.apiKey);
+    for (const door of doors) {
+      let refusedHere = false;
+      for (const model of geminiCandidates(request.apiKey, request.model)) {
+        try {
+          const data = await providerJson(GEMINI_DOORS[door](request.apiKey, model), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+          }, fetchImpl, request.apiKey);
+          workingGeminiModel.set(`${request.apiKey}|${request.model}`, model);
+          workingGeminiDoor.set(request.apiKey, door);
+          return cleanText((data?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join(''), 100_000);
+        } catch (error) {
+          lastError = error;
+          // A missing model is worth another name. A key this door refuses is worth the other door, when there is one. Anything else — an
+          // exhausted quota, a bad request — fails the same way everywhere.
+          if (error.providerStatus === 404) continue;
+          if ([401, 403].includes(error.providerStatus) && doors.length > 1) { refusedHere = true; refusal = refusal || error; break; }
+          throw error;
+        }
       }
+      if (!refusedHere && lastError) break;
     }
-    throw lastError;
+    // Both doors refused the key: the first door's reason is the one the admin can act on (it names the API to switch on).
+    throw refusal || lastError;
   }
   if (request.provider === 'claude') {
     const data = await providerJson('https://api.anthropic.com/v1/messages', {

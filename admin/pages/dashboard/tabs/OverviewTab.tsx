@@ -18,6 +18,7 @@ import { isCollected, toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 import OverviewBoard from './overview/OverviewBoard';
+import ManagementReportsSection from './overview/ManagementReportsSection';
 import { cardRows, enrollmentsFromStats, salesFromStats, sourcesFromStats, statusCounts, useNewestLeads, type ModalRow } from './overview/overviewFigures';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -628,11 +629,13 @@ export default function OverviewTab({
                   onDetail: () => setKpiModal({ title: 'منشورات المجتمع', rows: (communityPosts as CommunityPostSummary[]).slice(0, 30).map(p => ({ label: p.authorName || p.author_name || 'مجهول', sub: String(p.content || '').slice(0, 60) })) }),
                 },
                 {
-                  title: 'الإيراد التقريبي (ج.م)', value: totalRevenue.toLocaleString('ar-EG-u-nu-latn'), icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200',
-                  onDetail: () => setKpiModal({ title: 'تفاصيل الإيراد', rows: [
-                    { label: 'إجمالي المدفوعات', sub: `${totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م` },
-                    { label: 'عدد الطلبات المكتملة', sub: String(paidCount) },
-                    { label: 'متوسط قيمة الطلب', sub: paidCount ? `${Math.round(totalRevenue / paidCount).toLocaleString('ar-EG-u-nu-latn')} ج.م` : '0' },
+                  title: 'إجمالي المتحصَّل من أول يوم (ج.م)', value: totalRevenue.toLocaleString('ar-EG-u-nu-latn'), icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200',
+                  // Every paid payment in the books, certificates included, refunds taken out (GET /api/admin/overview/revenue). It used to be called an
+                  // estimate and divided by the count of ORDERS, a different population (payments recorded at the desk are not orders), so the
+                  // «average order» it showed was not an average of anything. The split by kind and the period comparison are in «تقارير الإدارة» below.
+                  onDetail: () => setKpiModal({ title: 'تفاصيل المتحصَّل', rows: [
+                    { label: 'إجمالي المتحصَّل', sub: `${totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م — كل المدفوعات (كورسات ومسارات وشهادات وغيرها) بعد خصم المسترد` },
+                    { label: 'التقسيم والمقارنة بالفترة اللي قبلها', sub: 'حجوزات / أقساط / شهادات / أخرى في «تقارير الإدارة» تحت' },
                   ] }),
                 },
                 ...(isAdmin ? [{
@@ -644,6 +647,8 @@ export default function OverviewTab({
                 <div className="space-y-6">
                   {/* ── The board: today against yesterday and last week, the alerts, who is in now (admin only) ── */}
                   {isAdmin && <OverviewBoard />}
+                  {/* ── «تقارير الإدارة»: loads nothing until opened; disappears for an account the server refuses ── */}
+                  <ManagementReportsSection />
                   {/* KPI Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                     {kpiCards.map(item => {
