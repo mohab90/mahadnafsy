@@ -15,6 +15,10 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'public-pricing-route' });
 const { pool, cached } = require('../lib/db');
 const { publicLimiter } = require('../middleware/rateLimits');
+const { optionalAuth } = require('../middleware/auth');
+const { loadTierPrices, resolveAudience } = require('../lib/egyptianPricing');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
+const { maskNationalId } = require('../lib/egyptianNationalId');
 const { resolveClientContext } = require('../lib/clientContext');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
 const { CURRENCIES, loadPricingContext, priceItem, resolveEffectivePrice } = require('../lib/effectivePrice');
@@ -33,14 +37,26 @@ function loadPublicPrices(tenantId) {
         'SELECT id, price_egp, price_sar, price_usd FROM bundles WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
       const [therapists] = await pool.query(
         'SELECT id, price_egp, price_sar, price_usd FROM therapists WHERE tenant_id=? AND is_active=1 AND is_consultation_enabled=1', [tenantId]);
-      const { discounts, content, rates } = await loadPricingContext(pool, tenantId);
+      const { discounts, content, rates, egyptianPricing } = await loadPricingContext(pool, tenantId);
+      // The Egypt site shows the non-Egyptian price when the owner switched that on and the item has one (lib/egyptianPricing.js); off, nothing here changes.
+      const tiers = {
+        course: egyptianPricing.enabled ? await loadTierPrices(pool, { tenantId, type: 'course', ids: courses.map(row => row.id) }) : new Map(),
+        bundle: egyptianPricing.enabled ? await loadTierPrices(pool, { tenantId, type: 'bundle', ids: bundles.map(row => row.id) }) : new Map(),
+      };
       const now = Date.now();
       const items = {};
       const add = (type, row, key = `${type}:${row.id}`, itemId = row.id) => {
         const entry = {};
         for (const currency of CURRENCIES) {
-          const base = Number(row[`price_${currency.toLowerCase()}`]) || 0;
+          let base = Number(row[`price_${currency.toLowerCase()}`]) || 0;
           if (!(base > 0)) continue;
+          const tier = currency === 'EGP' ? tiers[type]?.get(String(row.id)) : null;
+          if (tier?.foreign) {
+            base = tier.foreign;
+            const { list, discount } = priceItem({ type, itemId, currency, base, discounts, content, now, tierOffer: egyptianPricing.offerActive ? tier.foreignOffer || 0 : 0 });
+            entry[currency] = { base, price: list, discount, egyptianTier: true };
+            continue;
+          }
           const { list, discount } = priceItem({ type, itemId, currency, base, discounts, content, now });
           entry[currency] = { base, price: list, discount };
         }
@@ -51,7 +67,7 @@ function loadPublicPrices(tenantId) {
       therapists.forEach(row => add('consultation', row));
       add('consultation', Object.fromEntries(CURRENCIES.map(c => [`price_${c.toLowerCase()}`, expressPrice(content, c)])),
         'consultation:express', expressTarget(content));
-      return { items, rates };
+      return egyptianPricing.enabled ? { items, rates, egyptianPricing: { enabled: true } } : { items, rates };
   });
 }
 
@@ -67,7 +83,7 @@ router.get('/api/public/prices', publicLimiter, async (req, res) => {
   }
 });
 
-router.post('/api/public/price-quote', publicLimiter, scalarFields('itemType', 'itemId', 'payMode', 'promoCode', 'currency', 'subtype'), async (req, res) => {
+router.post('/api/public/price-quote', publicLimiter, optionalAuth, scalarFields('itemType', 'itemId', 'payMode', 'promoCode', 'currency', 'subtype', 'nationalId'), async (req, res) => {
   const tenantId = req.tenantId || DEFAULT_TENANT_ID;
   try {
     const { payMode, promoCode } = req.body || {};
@@ -87,11 +103,25 @@ router.post('/api/public/price-quote', publicLimiter, scalarFields('itemType', '
       itemId = expressTarget(content);
       if (!(base > 0)) return res.status(409).json({ error: 'السعر غير متاح بالعملة دي', code: 'PRICE_UNAVAILABLE' });
     }
+    const context = await loadPricingContext(pool, tenantId);
+    // Who the visitor is for the Egypt site's two prices: the national ID he typed, or what his record holds. Off, none of this is read.
+    let audience = null;
+    if (context.egyptianPricing.enabled && currency === 'EGP' && (type === 'course' || type === 'bundle')) {
+      const subscriber = req.user ? await resolveSubscriberRow(req, ['id']).catch(() => null) : null;
+      audience = await resolveAudience(pool, { tenantId, subscriberId: subscriber?.id || null, typedId: req.body?.nationalId, checkTyped: false });
+    }
     const quote = await resolveEffectivePrice(pool, {
-      type, itemId: String(itemId), currency, tenantId, payMode, promoCode: String(promoCode || '').slice(0, 50), base,
+      type, itemId: String(itemId), currency, tenantId, payMode, promoCode: String(promoCode || '').slice(0, 50), base, context,
+      egyptian: audience?.egyptian === true,
     });
     if (!quote) return res.status(409).json({ error: 'السعر غير متاح بالعملة دي', code: 'PRICE_UNAVAILABLE' });
-    res.json({ ok: true, ...quote });
+    if (!audience || !quote.egyptian) return res.json({ ok: true, ...quote });
+    // The ID is never sent back whole: its last three digits, so a signed-in client can see which one is on his record.
+    res.json({
+      ok: true, ...quote,
+      ...(audience.nationalId ? { nationalIdMasked: maskNationalId(audience.nationalId) } : {}),
+      ...(audience.error ? { nationalIdError: { code: audience.error.code, message: audience.error.message } } : {}),
+    });
   } catch (e) {
     logger.error('[public/price-quote]', e.message);
     res.status(500).json({ error: 'Internal server error' });

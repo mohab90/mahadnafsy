@@ -10,6 +10,7 @@ const router = Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
+const { applyShownPrices } = require('../lib/egyptianPricing');
 const { courseRating, courseRatings } = require('../lib/courseRatings');
 const { blockedDatesByTherapist } = require('../lib/therapistAvailability');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
@@ -176,7 +177,7 @@ function loadCourses(req, limit, offset) {
       // One argument on purpose: map would otherwise pass the index as
       // mapCourse's `materials`, and every course after the first shipped
       // `materials: <index>` — a number — to screens that iterate it.
-      return rows.map(row => mapCourse(row));
+      return applyShownPrices(pool, { tenantId: req.tenantId, type: 'course', items: rows.map(row => mapCourse(row)) });
   });
 }
 
@@ -340,7 +341,8 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
         WHERE ch.course_id = ? ORDER BY ch.sort_order ASC`, [req.tenantId, row.id]);
     const previewLimit = await getPreviewLimit(req.tenantId);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
-    res.json({ ...mapCourse(row), lectures: lectures.map(r => publicLecture(r, r.position_in_course, previewLimit)), chapters: chapters.map(mapChapter) });
+    const [shownCourse] = await applyShownPrices(pool, { tenantId: req.tenantId, type: 'course', items: [mapCourse(row)] });
+    res.json({ ...shownCourse, lectures: lectures.map(r => publicLecture(r, r.position_in_course, previewLimit)), chapters: chapters.map(mapChapter) });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -732,7 +734,9 @@ function loadBundles(req, limit) {
          ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
       );
       const [courses] = await pool.query(`SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1 AND tenant_id=?`, [req.tenantId]);
-      return rows.map(r => mapBundle(r, courses.map(row => mapCourse(row))));
+      const shownCourses = await applyShownPrices(pool, { tenantId: req.tenantId, type: 'course', items: courses.map(row => mapCourse(row)) });
+      const shownBundles = await applyShownPrices(pool, { tenantId: req.tenantId, type: 'bundle', items: rows.map(r => mapBundle(r, shownCourses)) });
+      return shownBundles;
   });
 }
 

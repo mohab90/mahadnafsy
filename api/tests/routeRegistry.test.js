@@ -8,7 +8,7 @@ test('route registry preserves one ordered mount for every router module', () =>
   // 96 since ../routes/email-webhook; 95 since ../routes/me-payments and ../routes/public-pricing; 93 since ../routes/lecturer-portal; 92 since ../routes/staff-announcements; 91 since ../routes/whatsapp-web-crm; 90 since ../routes/seo-pages and ../routes/me-next-step; 88 since ../routes/dokkiReports; 87 since ../routes/liveStreams; 86 since ../routes/instituteCertificates; 85 since ../routes/clientRatings; 84 since ../routes/payment-corrections; 83 with ../routes/page-audience (82 with ../routes/inbox-bot, 81 with ../routes/catalog-pricing). The count is pinned
   // so a module cannot be dropped from the registry unnoticed — a route file
   // that exists and is never mounted answers 404 with nothing anywhere saying why.
-  assert.equal(routeModules.length, 98); // 98 since ../routes/orders-page; 97 since ../routes/admin-bootstrap; 96 since ../routes/course-documents
+  assert.equal(routeModules.length, 99); // 99 since ../routes/egyptian-pricing; 98 since ../routes/orders-page; 97 since ../routes/admin-bootstrap; 96 since ../routes/course-documents
   assert.deepEqual(routeModules[0], ['/', '../routes/auth']);
   assert.deepEqual(routeModules.at(-1), ['/', '../routes/tenant-domains']);
 

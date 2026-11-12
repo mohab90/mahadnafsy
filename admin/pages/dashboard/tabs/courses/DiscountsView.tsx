@@ -6,6 +6,7 @@ import { useEnsureSiteLists } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { isExpiryActive, cairoDateOnly } from '../../../../../shared/cairoDate';
+import { EgyptianPricingCard } from './EgyptianPricingCard';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type PromoCode = { id: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: number; min_order_amount: number; max_uses: number | null; used_count: number; expires_at: string | null; active: number };
@@ -88,6 +89,8 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
             </div>
           </div>
         </div>
+
+        <EgyptianPricingCard notify={notify} />
 
         {/* Cash Discount Setting */}
         <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm">

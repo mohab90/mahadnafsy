@@ -25,6 +25,9 @@ const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
+const { resolveAudience, storeNationalId } = require('../lib/egyptianPricing');
+const { priceMatches } = require('../lib/catalogPrice');
+const { maskNationalId } = require('../lib/egyptianNationalId');
 const { leadPhoneClause, findLeadByContact } = require('../lib/leadMatching');
 const { bringBackReturningLead } = require('../lib/leadReturn');
 const { handOutInChunks, notifyReps } = require('../lib/leadHandout');
@@ -391,7 +394,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
   }
 });
 
-router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFields('itemId', 'itemType', 'itemTitle', 'customerName', 'customerEmail', 'customerPhone', 'paymentLinkToken', 'payMode', 'promoCode'), async (req, res) => {
+router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFields('itemId', 'itemType', 'itemTitle', 'customerName', 'customerEmail', 'customerPhone', 'paymentLinkToken', 'payMode', 'promoCode', 'nationalId', 'shownAmount'), async (req, res) => {
   let conn;
   let transactionStarted = false;
   let checkoutLock = null;
@@ -481,6 +484,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
     // A course or path is priced by lib/effectivePrice.js — the marketing discount the site shows,
     // the customer's code, then the pay mode — the same rule GET /api/public/prices showed them.
     const pricingContext = await loadPricingContext(conn, tenantId);
+    // The Egypt site's two prices (lib/egyptianPricing.js): which one this client is entitled to. Off — the default — nothing here is read.
+    let audience = null;
+    if (pricingContext.egyptianPricing.enabled && clientContext.currency === 'EGP' && (normalizedType === 'course' || normalizedType === 'bundle') && !paymentLink) {
+      audience = await resolveAudience(conn, { tenantId, subscriberId: identity?.id || null, typedId: req.body?.nationalId });
+      if (audience.error) return res.status(audience.error.status).json({ error: audience.error.message, code: audience.error.code });
+    }
     // A payment link carries its own agreed amount; a code has nothing to take off it.
     const wantedCode = paymentLinkToken ? '' : cleanCode(promoCode).slice(0, 50);
     let quote = null;
@@ -499,7 +508,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
       basePrice = Number(course[`price_${expectedCurrency.toLowerCase()}`]) || 0;
       quote = basePrice > 0 ? await resolveEffectivePrice(conn, {
         type: 'course', itemId, currency: expectedCurrency, tenantId, payMode: normalizedPayMode,
-        promoCode: wantedCode, base: basePrice, context: pricingContext,
+        promoCode: wantedCode, base: basePrice, context: pricingContext, egyptian: audience?.egyptian === true,
       }) : null;
       expectedAmount = quote ? quote.dueNow : 0;
       canonicalTitle = course.title_ar || course.title || canonicalTitle;
@@ -512,7 +521,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
       basePrice = Number(bundle[`price_${expectedCurrency.toLowerCase()}`]) || 0;
       quote = basePrice > 0 ? await resolveEffectivePrice(conn, {
         type: 'bundle', itemId, currency: expectedCurrency, tenantId, payMode: normalizedPayMode,
-        promoCode: wantedCode, base: basePrice, context: pricingContext,
+        promoCode: wantedCode, base: basePrice, context: pricingContext, egyptian: audience?.egyptian === true,
       }) : null;
       expectedAmount = quote ? quote.dueNow : 0;
       canonicalTitle = bundle.title || canonicalTitle;
@@ -629,6 +638,11 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
       return res.status(400).json({ error: quote.promoError.message, code: quote.promoError.code });
     }
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) return res.status(400).json({ error: 'A positive server-verifiable amount is required' });
+    // The page sends the figure it showed (only while the two prices are on): a different one means the page is stale — a stored ID, an offer that ended —
+    // and is told the price instead of being charged another one silently.
+    if (quote?.egyptian && req.body?.shownAmount != null && req.body.shownAmount !== '' && !priceMatches(req.body.shownAmount, expectedAmount)) {
+      return res.status(409).json({ error: 'السعر اتغيّر — راجع السعر الجديد وكمّل', code: 'PRICE_CHANGED', price: expectedAmount });
+    }
     if (paymentLink) {
       const linkCurrency = String(paymentLink.currency || '').toUpperCase();
       if (linkCurrency !== expectedCurrency) {
@@ -667,6 +681,16 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
         tenantId, uid, email: '', name: String(customerName || '').trim(), phone: accountPhone,
         fallbackBranch: branch, fallbackBranchId: branchId,
       });
+    }
+    // A national ID typed at this booking goes onto the client's record (never to a second client), so the next booking and the desk know him as Egyptian.
+    if (audience?.store && audience.nationalId) {
+      if (!subscriber) {
+        subscriber = await ensureSubscriberForOrder(conn, {
+          tenantId, uid, email: accountEmail, name: String(customerName || '').trim(), phone: contactPhone,
+          fallbackBranch: branch, fallbackBranchId: branchId,
+        });
+      }
+      await storeNationalId(conn, { tenantId, subscriberId: subscriber.id, nationalId: audience.nationalId });
     }
     if (paymentLink) {
       const [[lockedLink]] = await conn.query(
@@ -764,7 +788,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
       payMode: normalizedPayMode,
       planTotal: quote?.planTotal || null,
       // How the price was made, for whoever reads the order later.
-      pricing: quote ? { base: quote.base, price: quote.price, discount: quote.discount } : null,
+      pricing: quote ? { base: quote.base, price: quote.price, discount: quote.discount, ...(quote.egyptian ? { tier: quote.egyptian.tier } : {}) } : null,
       // The visitor's ad click, for the Purchase sent when Paymob's callback
       // marks the order paid — that request comes from Paymob, not from them.
       adContext: metaCapi.adContextFromRequest(req),
@@ -784,6 +808,15 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
        normalizedType === 'course' ? itemId : null, normalizedType === 'bundle' ? itemId : null,
        notes, quote?.discount?.code || null, tenantId, branchId, ...attributionValues(attribution)]
     );
+    // Which price tier the order was priced at and, for an Egyptian, what the discount was and that it rested on a national ID (or on his record).
+    // Written only while the two prices are on, so an order made with them off is the row it always was.
+    if (pricingContext.egyptianPricing.enabled) {
+      const egyptian = quote?.egyptian || null;
+      await conn.query(
+        'UPDATE orders SET price_tier=?, list_price=?, egyptian_discount=?, discount_basis=? WHERE id=? AND tenant_id=?',
+        [egyptian?.tier || null, egyptian ? egyptian.shown : null, egyptian?.discount > 0 ? egyptian.discount : null,
+          egyptian?.audience === 'egyptian' ? audience?.basis || null : null, orderId, tenantId]);
+    }
     if (paymentLink) {
       const [consumed] = await conn.query(
         `UPDATE payment_links
@@ -821,15 +854,16 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFie
     res.json({
       ok: true, orderId, amount: expectedAmount, currency: expectedCurrency,
       payMode: normalizedPayMode,
-      basePrice: basePrice || undefined,
+      basePrice: (quote?.egyptian ? quote.base : basePrice) || undefined,
       listPrice: quote && !paymentLink ? quote.price : undefined,
       discount: quote && !paymentLink ? quote.discount : undefined,
       planTotal: quote?.planTotal || undefined,
+      ...(quote?.egyptian ? { egyptian: { ...quote.egyptian, ...(audience?.nationalId ? { nationalIdMasked: maskNationalId(audience.nationalId) } : {}) } } : {}),
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[checkout-intent]', e.message);
-    res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not create checkout order' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not create checkout order', ...(e.code === 'NATIONAL_ID_TAKEN' ? { code: e.code } : {}) });
   } finally {
     if (checkoutLock && conn) await conn.query('SELECT RELEASE_LOCK(?)', [checkoutLock]).catch(() => {});
     if (conn) conn.release();

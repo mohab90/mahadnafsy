@@ -38,6 +38,7 @@ const { resolveCatalogPrice } = require('./catalogPrice');
 const { enrollmentRates, amountDueNow, installmentTotal } = require('./enrollmentPricing');
 const { cairoToday } = require('./dates');
 const { getTenantSetting } = require('./tenantSettings');
+const { loadSettings: loadEgyptianPricing, loadTierPrices } = require('./egyptianPricing');
 
 const CURRENCIES = ['EGP', 'SAR', 'USD'];
 const OFFER_DEFAULT_HOURS = 24;
@@ -100,7 +101,7 @@ const ruleDiscount = (rule, base) => ({
 });
 
 /** The automatic discounts running on one item in one currency, cheapest first is not assumed. */
-function automaticDiscounts({ type, itemId, currency, base, discounts = [], content = {}, now = Date.now() }) {
+function automaticDiscounts({ type, itemId, currency, base, discounts = [], content = {}, now = Date.now(), tierOffer = 0 }) {
   const today = cairoToday(new Date(now));
   const found = [];
   // Rules without a code. The item's own rule wins over «all courses», as the site always showed it.
@@ -121,6 +122,8 @@ function automaticDiscounts({ type, itemId, currency, base, discounts = [], cont
       found.push({ price: off(base, popupPct), source: 'popup', percent: popupPct, label: String(content['popup.title'] || ''), expiresAt: null });
     }
   }
+  // The price tier's own discount price, while the owner's offer is on (lib/egyptianPricing.js); 0 = none.
+  if (tierOffer > 0) found.push({ price: tierOffer, source: 'tier_offer', percent: null, label: '', expiresAt: null });
   return found.filter(d => d.price > 0 && d.price < base);
 }
 
@@ -174,8 +177,8 @@ const cheapest = list => list.reduce((best, d) => (!best || d.price < best.price
  * The price of one item in one currency: base, the automatic discount and the
  * list price it gives, the code (or why it was refused), and the price after it.
  */
-function priceItem({ type, itemId, currency, base, discounts, content, now = Date.now(), promoCode = '', promoRow = null }) {
-  const automatic = cheapest(automaticDiscounts({ type, itemId, currency, base, discounts, content, now }));
+function priceItem({ type, itemId, currency, base, discounts, content, now = Date.now(), promoCode = '', promoRow = null, tierOffer = 0 }) {
+  const automatic = cheapest(automaticDiscounts({ type, itemId, currency, base, discounts, content, now, tierOffer }));
   const list = automatic ? automatic.price : base;
   let promo = null;
   let promoError = null;
@@ -214,7 +217,11 @@ async function loadPricingContext(db, tenantId) {
     getTenantSetting('content', { tenantId, fallback: {}, db }).catch(() => ({})),
   ]);
   const safeContent = content && typeof content === 'object' ? content : {};
-  return { discounts: Array.isArray(discounts) ? discounts : [], content: safeContent, rates: enrollmentRates(safeContent) };
+  return {
+    discounts: Array.isArray(discounts) ? discounts : [], content: safeContent, rates: enrollmentRates(safeContent),
+    // Off unless the owner switched the Egyptian / non-Egyptian prices on (lib/egyptianPricing.js).
+    egyptianPricing: await loadEgyptianPricing(db, tenantId),
+  };
 }
 
 /**
@@ -244,7 +251,7 @@ async function findPromoRow(db, { tenantId, code }) {
  * The full quote for one course or bundle: null when the catalogue has no
  * price for it in this currency (not for sale in it).
  */
-async function resolveEffectivePrice(db, { type, itemId, currency = 'EGP', tenantId, payMode = 'cash', promoCode = '', base = null, context = null, now = Date.now() }) {
+async function resolveEffectivePrice(db, { type, itemId, currency = 'EGP', tenantId, payMode = 'cash', promoCode = '', base = null, context = null, now = Date.now(), egyptian = false }) {
   if (!['course', 'bundle', 'consultation'].includes(type) || !itemId) return null;
   const cur = String(currency || 'EGP').toUpperCase();
   if (!CURRENCIES.includes(cur)) return null;
@@ -254,8 +261,29 @@ async function resolveEffectivePrice(db, { type, itemId, currency = 'EGP', tenan
   if (!(listed > 0)) return null;
   const ctx = context || await loadPricingContext(db, tenantId);
   const promoRow = cleanCode(promoCode) && type !== 'consultation' ? await findPromoRow(db, { tenantId, code: promoCode }) : null;
-  const priced = priceItem({ type, itemId, currency: cur, base: listed, discounts: ctx.discounts, content: ctx.content, now, promoCode, promoRow });
-  return quoteItem(priced, { payMode, rates: ctx.rates, type });
+  // The Egypt site's two prices (lib/egyptianPricing.js): off by default, and an item without a non-Egyptian price is left exactly as it was.
+  const tier = await egyptianTier(db, ctx, { type, itemId, currency: cur, tenantId, egyptianPrice: listed, egyptian });
+  const priced = priceItem({ type, itemId, currency: cur, base: tier ? tier.chargedBase : listed, discounts: ctx.discounts, content: ctx.content, now, promoCode, promoRow, tierOffer: tier ? tier.offer : 0 });
+  const quote = quoteItem(priced, { payMode, rates: ctx.rates, type });
+  if (!tier) return quote;
+  // The shown price is the non-Egyptian one for both audiences; an Egyptian's «خصم المصريين» is what takes him down to his own.
+  return { ...quote, base: tier.shown, egyptian: { audience: tier.egyptian ? 'egyptian' : 'foreign', tier: tier.egyptian ? 'ONLINE_EGYPT' : 'ONLINE_EGYPT_FOREIGN', shown: tier.shown, discount: tier.egyptian ? tier.shown - listed : 0 } };
+}
+
+/**
+ * The tier an item is charged at on the Egypt site, or null when the feature is off, the currency is not pounds, the item is not a course or track,
+ * or it has no non-Egyptian price above the Egyptian one — the cases where nothing changes.
+ */
+async function egyptianTier(db, ctx, { type, itemId, currency, tenantId, egyptianPrice, egyptian }) {
+  if (!ctx.egyptianPricing?.enabled || currency !== 'EGP' || !['course', 'bundle'].includes(type)) return null;
+  const entry = (await loadTierPrices(db, { tenantId, type, ids: [String(itemId)] })).get(String(itemId));
+  if (!entry?.foreign || !(egyptianPrice > 0) || entry.foreign <= egyptianPrice) return null;
+  const offerOn = ctx.egyptianPricing.offerActive === true;
+  return {
+    egyptian: egyptian === true, shown: entry.foreign,
+    chargedBase: egyptian === true ? egyptianPrice : entry.foreign,
+    offer: offerOn ? (egyptian === true ? entry.egyptianOffer : entry.foreignOffer) || 0 : 0,
+  };
 }
 
 /** A doctor's session fee in the currency, as checkout charges it. */
@@ -270,5 +298,5 @@ async function therapistFee(db, { therapistId, currency, tenantId }) {
 
 module.exports = {
   CURRENCIES, automaticDiscounts, codeDiscount, priceItem, quoteItem,
-  loadPricingContext, findPromoRow, resolveEffectivePrice, cleanCode,
+  loadPricingContext, findPromoRow, resolveEffectivePrice, cleanCode, egyptianTier,
 };

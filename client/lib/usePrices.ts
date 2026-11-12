@@ -14,7 +14,8 @@ import { loadPublicBootstrap } from './publicBootstrap';
 // discount marketing aimed at consultations.
 
 type PriceDiscount = { source: string; percent: number | null; label: string; expiresAt: string | null; code?: string | null };
-type Entry = { base: number; price: number; discount: PriceDiscount | null };
+// egyptianTier: the item has a non-Egyptian price the site shows (api/lib/egyptianPricing.js) — only while the owner has the two prices on.
+type Entry = { base: number; price: number; discount: PriceDiscount | null; egyptianTier?: boolean };
 type PriceList = Record<string, Partial<Record<Currency, Entry>>>;
 
 // One request per page load, shared by every component; refreshed after a few

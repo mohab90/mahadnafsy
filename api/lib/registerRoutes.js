@@ -42,6 +42,7 @@ const routeModules = [
   ['/', '../routes/public-orders'],
   ['/', '../routes/public-pricing'],
   ['/', '../routes/catalog-pricing'],
+  ['/', '../routes/egyptian-pricing'],
   ['/', '../routes/imageProxy'],
   ['/', '../routes/media'],
   ['/', '../routes/certificates'],

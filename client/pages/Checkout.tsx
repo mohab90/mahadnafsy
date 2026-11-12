@@ -9,6 +9,9 @@ import { expressPrice, getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, enrollmentRates, installmentTotal, percentLabel, type PayMode } from '../../shared/enrollmentPricing';
+import PriceRows from '../components/checkout/PriceRows';
+import EgyptianIdLine from '../components/checkout/EgyptianIdLine';
+import { checkEgyptianNationalId, NATIONAL_ID_MESSAGES } from '../../shared/egyptianNationalId';
 import { useSeo } from '../lib/useSeo';
 import { effectivePrice, usePriceList } from '../lib/usePrices';
 import { rememberCheckoutOrder, trackInitiateCheckout } from '../lib/tracking';
@@ -86,6 +89,13 @@ const Checkout: React.FC = () => {
   const [promo, setPromo] = useState<{ code: string; price: number; label: string } | null>(null);
   const [promoMsg, setPromoMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
+  // The Egypt site's two prices (api/lib/egyptianPricing.js): the line, the ID typed, and the Egyptian price the server answered with. None of it exists while the owner has them off.
+  const [egyOpen, setEgyOpen] = useState(false);
+  const [egyInput, setEgyInput] = useState('');
+  const [egy, setEgy] = useState<{ price: number; discount: number; masked: string; auto: boolean } | null>(null);
+  const [egyMsg, setEgyMsg] = useState('');
+  const [egyLoading, setEgyLoading] = useState(false);
+  const [egyAutoTried, setEgyAutoTried] = useState(false);
   // Self-service receipt upload (after order is placed)
   const [proofImage, setProofImage] = useState('');
   const [proofMethod, setProofMethod] = useState('');
@@ -188,7 +198,7 @@ const Checkout: React.FC = () => {
   const discountable = itemPrice > 0 && !paymentLink && type !== 'certificate';
   const rates = enrollmentRates(content);
   // The price before the pay mode: the code's when one was accepted, else the running one.
-  const listPrice = promo && discountable ? promo.price : itemPrice;
+  const listPrice = promo && discountable ? promo.price : egy && discountable ? egy.price : itemPrice;
   const basePrice = Math.max(itemBase, itemPrice);
   // A session has no cash or instalment rate: the server charges its price as it
   // stands (less a consultation discount), so the page shows that, not a cash rate.
@@ -196,6 +206,54 @@ const Checkout: React.FC = () => {
   const finalAmount = serverAmount ?? displayAmount;
   const planTotal = serverPlanTotal ?? (discountable && type !== 'consultation' && payMode === 'installment' ? installmentTotal(listPrice, rates) : null);
   const promoAllowed = discountable && (type === 'course' || type === 'bundle' || type === 'consultation') && !orderId;
+
+  const egyptianAvailable = currency === 'EGP' && (type === 'course' || type === 'bundle') && !paymentLink && !orderId
+    && priceList[`${type}:${id}`]?.EGP?.egyptianTier === true;
+  const postQuote = async (extra: Record<string, string>) => {
+    const res = await fetch('/api/public/price-quote', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemType: type, itemId: id, payMode, currency, ...extra }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'تعذر حساب السعر');
+    return data;
+  };
+  const egyptianFrom = (data: { price?: number; egyptian?: { audience?: string; discount?: number }; nationalIdMasked?: string }, auto: boolean) => (
+    data.egyptian?.audience === 'egyptian'
+      ? { price: Number(data.price) || 0, discount: Number(data.egyptian.discount) || 0, masked: data.nationalIdMasked || '', auto }
+      : null);
+  // A signed-in client whose record already says he is Egyptian gets his price without being asked.
+  useEffect(() => {
+    if (!egyptianAvailable || !authUser || egyAutoTried) return;
+    setEgyAutoTried(true);
+    void postQuote({}).then(data => { const found = egyptianFrom(data, true); if (found) setEgy(found); }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [egyptianAvailable, authUser, egyAutoTried]);
+  const applyEgyptian = async () => {
+    const checked = checkEgyptianNationalId(egyInput);
+    if (!checked.ok) { setEgyMsg(NATIONAL_ID_MESSAGES[checked.problem]); return; }
+    setEgyLoading(true);
+    setEgyMsg('');
+    try {
+      const data = await postQuote({ nationalId: checked.value });
+      const found = egyptianFrom(data, false);
+      if (!found) { setEgyMsg(data.nationalIdError?.message || 'مقدرناش نطبق سعر المصريين — راجع الرقم وجرّب تاني'); return; }
+      setEgy(found);
+      if (promo) {
+        const withCode = await postQuote({ nationalId: checked.value, promoCode: promo.code });
+        if (withCode.discount?.code) setPromo({ code: withCode.discount.code, price: Number(withCode.price) || found.price, label: withCode.discount.label || '' });
+      }
+    } catch (err) {
+      setEgyMsg(err instanceof Error ? err.message : 'تعذر التحقق من الرقم');
+    } finally {
+      setEgyLoading(false);
+    }
+  };
+  const clearEgyptian = () => {
+    setEgy(null); setEgyMsg(''); setEgyInput(''); setEgyOpen(false);
+    // A code applied on top of the Egyptian price is priced again without it.
+    if (promo) void postQuote({ promoCode: promo.code }).then(data => { if (data.discount?.code) setPromo({ code: data.discount.code, price: Number(data.price) || itemPrice, label: data.discount.label || '' }); }).catch(() => setPromo(null));
+  };
 
   const applyPromo = async () => {
     const code = promoInput.trim().toUpperCase();
@@ -209,6 +267,7 @@ const Checkout: React.FC = () => {
           itemType: type, itemId: type === 'consultation' ? searchParams.get('therapistId') || '' : id,
           ...(type === 'consultation' ? { subtype: subtype || 'regular' } : {}),
           payMode, promoCode: code, currency,
+          ...(egy && !egy.auto ? { nationalId: egyInput } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -319,6 +378,9 @@ const Checkout: React.FC = () => {
           amount: itemPrice, currency,
           payMode: searchParams.get('payMode') === 'installment' ? 'installment' : 'cash',
           ...(promo ? { promoCode: promo.code } : {}),
+          // Only while the two prices are on: the figure the page showed (so a stale page is told the new price) and the ID the Egyptian price rests on.
+          ...(egyptianAvailable ? { shownAmount: finalAmount } : {}),
+          ...(egyptianAvailable && egy && !egy.auto ? { nationalId: egyInput } : {}),
           attribution: visitAttribution(),
           ...(type === 'consultation' ? {
             therapistId: searchParams.get('therapistId') || '',
@@ -335,7 +397,12 @@ const Checkout: React.FC = () => {
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.orderId) throw new Error(data.error || 'تعذّر إنشاء الطلب');
+      if (!response.ok || !data.orderId) {
+        // An ID another client holds, or one that does not match his record, takes the Egyptian price back; a changed price is read again.
+        if (['NATIONAL_ID_TAKEN', 'NATIONAL_ID_MISMATCH', 'NATIONAL_ID_INVALID'].includes(data.code)) { setEgy(null); setEgyMsg(String(data.error || '')); }
+        if (data.code === 'PRICE_CHANGED') { setEgy(null); setEgyAutoTried(false); }
+        throw new Error(data.error || 'تعذّر إنشاء الطلب');
+      }
       setOrderId(String(data.orderId));
       // For the Purchase /success fires if this ends in a card payment.
       rememberCheckoutOrder({
@@ -721,43 +788,9 @@ const Checkout: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="mb-4 space-y-2.5 text-sm text-muted-body">
-                    {/* Show the arithmetic. "3,300 → 767" with nothing in between
-                        reads as an error: the customer cannot tell a discount from a
-                        deposit, and only one of those leaves a balance owing. */}
-                        <div className="flex justify-between gap-3">
-                            <span>السعر الأساسي</span>
-                            <span className="tabular-nums text-ink">{discountable ? basePrice : itemPrice} {currencySymbol}</span>
-                        </div>
-                        {discountable && basePrice > listPrice && (
-                          <div className="flex justify-between gap-3 font-bold text-green-700">
-                            <span>{promo ? `كود الخصم ${promo.code}` : 'خصم العرض'}</span>
-                            <span className="tabular-nums">− {basePrice - listPrice} {currencySymbol}</span>
-                          </div>
-                        )}
-                        {discountable && payMode === 'cash' && listPrice > finalAmount && (
-                          <div className="flex justify-between gap-3 font-bold text-green-700">
-                            <span>خصم الدفع الكامل ({percentLabel(rates.cash)}%)</span>
-                            <span className="tabular-nums">− {listPrice - finalAmount} {currencySymbol}</span>
-                          </div>
-                        )}
-                        {discountable && payMode === 'installment' && planTotal && (
-                          <>
-                            <div className="flex justify-between gap-3 font-bold text-green-700">
-                              <span>خصم التقسيط ({percentLabel(rates.install)}%)</span>
-                              <span className="tabular-nums">− {listPrice - planTotal} {currencySymbol}</span>
-                            </div>
-                            <div className="flex justify-between gap-3 font-extrabold text-ink">
-                              <span>إجمالي الكورس بعد الخصم</span>
-                              <span className="tabular-nums">{planTotal} {currencySymbol}</span>
-                            </div>
-                            <div className="flex justify-between gap-3 font-bold text-gold-deep">
-                              <span>الباقي على أقساط</span>
-                              <span className="tabular-nums">{planTotal - finalAmount} {currencySymbol}</span>
-                            </div>
-                          </>
-                        )}
-                    </div>
+                    <PriceRows discountable={discountable} basePrice={basePrice} itemPrice={itemPrice} listPrice={listPrice} finalAmount={finalAmount}
+                      payMode={payMode} planTotal={planTotal} promoCode={promo?.code ?? null} rates={rates} currencySymbol={currencySymbol}
+                      egyptian={egy && discountable ? { discount: egy.discount } : null} />
 
                     {promoAllowed && (
                       <div className="mb-4">
@@ -779,6 +812,11 @@ const Checkout: React.FC = () => {
                         </div>
                         {promoMsg && <p role="status" className={`mt-1.5 text-xs font-bold ${promoMsg.ok ? 'text-green-700' : 'text-red-600'}`}>{promoMsg.text}</p>}
                       </div>
+                    )}
+
+                    {egyptianAvailable && discountable && (
+                      <EgyptianIdLine open={egyOpen} value={egyInput} applied={egy} message={egyMsg} loading={egyLoading} currencySymbol={currencySymbol}
+                        onOpen={() => setEgyOpen(true)} onChange={setEgyInput} onApply={() => void applyEgyptian()} onClear={clearEgyptian} />
                     )}
 
                     <div className="flex items-end justify-between gap-3 rounded-[22px] bg-ink p-5 text-white">
