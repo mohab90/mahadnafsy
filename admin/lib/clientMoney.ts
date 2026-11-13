@@ -6,7 +6,7 @@ import { CRM_CHANGED_EVENT } from './crmChanged';
 // the payment dialog and the receipt (7 Nov 2026: «سعر الكورس رقم في صفحة العميل ورقم تاني عند زر دفع وحجز»). A screen asks for it when it opens and again
 // whenever any screen announces a change (announceCrmChanged, lib/crmChanged.ts — every price or payment write does), so nothing here is a copy that can age.
 export interface MoneyItem {
-  item: string; kind: 'course' | 'track'; title: string; currency: string;
+  item: string; kind: 'course' | 'track'; partOf?: string | null; title: string; currency: string;
   catalogue: number; agreed: number; source: 'client' | 'booking' | 'catalogue' | 'none';
   paid: number; priorPaid: number; remaining: number;
 }

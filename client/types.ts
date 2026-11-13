@@ -373,6 +373,8 @@ export interface PaymentHistoryEntry {
 export interface ItemBalance {
   item: string;
   courseId: string | null;
+  /** A part of a bigger track he holds: only the money recorded on it (13 Nov 2026). */
+  partOf?: string | null;
   bundleId: string | null;
   title: string;
   currency: string;

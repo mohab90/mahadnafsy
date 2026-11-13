@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useStaticData } from '../../../context/siteDataSlices';
-import { moneyItemsOf } from '../../../lib/agreedPrice';
+import { moneyItemsOf, moneyLineTitle } from '../../../lib/agreedPrice';
 import { clientCurrency } from './onlineClientsUtils';
 import { itemBranch, PLACEMENT_BRANCHES } from '../../../lib/coursePlacement';
 import type { SubscriberItem } from '../../../types';
@@ -48,7 +48,7 @@ export function CoursePlacementForm({ row, onBack, onDone }: {
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">العميل ده مالوش كورسات مسجّلة لسه.</p>
       ) : items.map(item => (
         <label key={item.item} className="block rounded-xl border border-gray-200 p-3">
-          <span className="mb-1 block text-sm font-bold text-gray-800">{item.isTrack ? '📌 ' : '🎓 '}{item.title}</span>
+          <span className="mb-1 block text-sm font-bold text-gray-800">{item.isTrack ? '📌 ' : '🎓 '}{moneyLineTitle(item)}</span>
           <span className="mb-1 block text-[11px] text-gray-500">دلوقتي في: {branchName(itemBranch(row, item.item))}</span>
           <select value={chosen[item.item] || OWN} onChange={event => setChosen(current => ({ ...current, [item.item]: event.target.value }))}
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold">

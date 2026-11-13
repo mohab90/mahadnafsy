@@ -11,6 +11,8 @@ import type { PaymentHistoryEntry, SubscriberItem } from '../types';
 /** One course or track a client holds: the price agreed for it, where that came from, what was paid (here and before the system) and what is left. */
 export type MoneyLine = {
   item: string; title: string; isTrack: boolean; currency: string;
+  /** A track that is a part of a bigger one he holds (13 Nov 2026): kept only because it carries money recorded on it, so no balance moves — the lists name the whole, not the part. */
+  partOf?: string | null;
   /** The courses a track holds (empty for a course). */
   courseIds: string[];
   catalogue: number;
@@ -36,6 +38,9 @@ export const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymen
 
 /** What the server worked out for this client's row; nothing until the row has it. */
 export const moneyItemsOf = (subscriber: Pick<SubscriberItem, 'moneyItems'> | null | undefined): MoneyLine[] => subscriber?.moneyItems || [];
+
+/** What a line is called on screen: a part of a bigger track says so, and is never shown as a second track beside its whole. */
+export const moneyLineTitle = (line: Pick<MoneyLine, 'title' | 'partOf'>): string => (line.partOf ? `${line.title} (جزء من مسار أكبر)` : line.title);
 
 /** What one client paid for one course and still owes on it: the course's own line, or the line of the track that holds it. */
 export function courseMoneyFor(subscriber: Pick<SubscriberItem, 'moneyItems'>, courseId: string): MoneyLine | null {

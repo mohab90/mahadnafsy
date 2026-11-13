@@ -1192,7 +1192,7 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       rows.forEach(row => titles.set(`bundle:${row.id}`, row.title));
     }
     const balances = [...balanceMap.values()].map(entry => ({
-      item: entry.item, courseId: entry.courseId, bundleId: entry.bundleId,
+      item: entry.item, courseId: entry.courseId, bundleId: entry.bundleId, partOf: entry.partOf || null,
       title: titles.get(entry.item) || titles.get(String(entry.courseId)) || '', currency: entry.currency,
       expected: entry.expected, paid: entry.paid, priorPaid: entry.priorPaid, remaining: entry.remaining,
     }));

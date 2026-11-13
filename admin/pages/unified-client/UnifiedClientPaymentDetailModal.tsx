@@ -4,7 +4,7 @@ import { Modal } from '../../../shared/ui/Modal';
 
 import type { Bundle, Course, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
-import { moneyItemsOf } from '../../lib/agreedPrice';
+import { moneyItemsOf, moneyLineTitle } from '../../lib/agreedPrice';
 
 type PaidTotals = { EGP: number; SAR: number; USD: number };
 
@@ -87,7 +87,7 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
               const remaining = held.expected > 0 ? held.remaining : null;
               return (
                 <div key={held.item} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                  <p className="font-bold text-gray-800 text-sm mb-2">{held.title}</p>
+                  <p className="font-bold text-gray-800 text-sm mb-2">{moneyLineTitle(held)}</p>
                   <div className="grid grid-cols-3 gap-2 text-center text-xs">
                     {held.expected > 0 && (
                       <div>

@@ -25,7 +25,7 @@ const branchLabel = (value?: string | null): string => {
 const placeLabel = (row: SubscriberItem): string => (isOnlineClient(row) ? MARKET_LABELS[subscriberMarket(row)] : branchLabel(row.branch));
 import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { MARKET_LABELS, clientCurrency, isOnlineClient, subscriberMarket } from '../onlineClientsUtils';
-import { moneyItemsOf, itemKeyOf } from '../../../../lib/agreedPrice';
+import { moneyItemsOf, moneyLineTitle, itemKeyOf } from '../../../../lib/agreedPrice';
 import { isCollected } from '../../../../lib/money';
 import ClientNameCell from './ClientNameCell';
 import ClientCard, { type ClientCardAction } from './ClientCard';
@@ -139,7 +139,7 @@ export function ClientsTable({
             // «باقة» row, so the table could list items no other screen did.
             const courseRows = moneyItemsOf(row).filter(item => !itemVisible || itemVisible(row, item.item)).map(item => ({
               cid: item.item,
-              label: item.isTrack ? `📌 ${item.title}` : item.title,
+              label: item.isTrack ? `📌 ${moneyLineTitle(item)}` : item.title,
               expected: item.expected, paid: item.paid, pending: item.pending, remaining: item.remaining, cur: item.currency,
             }));
             const instPlans = row.installmentPlans || [];

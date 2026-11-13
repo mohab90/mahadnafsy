@@ -7,7 +7,7 @@ import type { Bundle, CommunicationRecord, Course, CustomerTimelineEvent, Instal
 import { commTypeMeta } from './constants';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
-import { moneyItemsOf } from '../../lib/agreedPrice';
+import { moneyItemsOf, moneyLineTitle } from '../../lib/agreedPrice';
 import { ClientJourneyTimeline } from './ClientJourneyTimeline';
 import { ClientSatisfactionCard } from './ClientSatisfactionCard';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
@@ -561,7 +561,7 @@ export function UnifiedClientOverviewTab({
     
                                       <span className="text-xl">🎓</span>
     
-                                      <p className="font-extrabold text-gray-800 text-sm">{held.title}</p>
+                                      <p className="font-extrabold text-gray-800 text-sm">{moneyLineTitle(held)}</p>
     
                                     </div>
     

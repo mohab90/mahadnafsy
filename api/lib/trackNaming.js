@@ -11,6 +11,11 @@
 // «المعالج النفسي المحترف» holds the courses of two smaller tracks, and a client
 // in it is in it, not in those. A course already under a track stays there.
 //
+// 13 Nov 2026 («مينفعش انت تروح محولهم لمسار العلاج الكامل»): only courses NO booked track covers are named. A client booked in «التشخيص» and later in
+// «العلاج» keeps those two even when together they hold every course of a bigger track; a track was booked when a payment, a price, money paid before the
+// system or an enrolment names it (the same evidence as lib/heldTracks.js reads). Before this, an enrolment of a booked track that had lost its track id
+// was named into the bigger one.
+//
 // The money comes along: «مدفوع قبل السيستم» for the courses adds up on the
 // track and their payments count for the track. Nobody's balance moves: when
 // any of the courses carried money — a price, a booking, a payment — the track
@@ -64,7 +69,17 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
       WHERE tenant_id=? AND subscriber_id=? AND status='active' AND bundle_id IS NULL AND course_id IS NOT NULL`,
     [tenantId, subscriberId]);
   if (!Array.isArray(enrolments) || enrolments.length < 2) return [];
-  const plan = planTracks(tracks || await loadTracks(db, tenantId), enrolments);
+  const [covered] = await db.query(
+    `SELECT DISTINCT bc.course_id FROM bundle_courses bc
+      WHERE bc.tenant_id=? AND bc.bundle_id IN (
+        SELECT bundle_id FROM payments WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND bundle_id IS NOT NULL
+        UNION SELECT bundle_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND status='active' AND bundle_id IS NOT NULL
+        UNION SELECT SUBSTRING(item_key, 8) FROM client_item_money WHERE tenant_id=? AND subscriber_id=? AND item_key LIKE 'bundle:%')`,
+    [tenantId, tenantId, subscriberId, tenantId, subscriberId, tenantId, subscriberId]);
+  const booked = new Set((Array.isArray(covered) ? covered : []).map(row => String(row.course_id)));
+  const loose = enrolments.filter(row => !booked.has(String(row.course_id)));
+  if (loose.length < 2) return [];
+  const plan = planTracks(tracks || await loadTracks(db, tenantId), loose);
   if (!plan.length || dryRun) return plan.map(({ track }) => ({ trackId: track.id, title: track.title, courses: track.courses.length }));
 
   // What each course costs them now, before any of it moves.

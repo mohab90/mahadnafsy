@@ -75,7 +75,7 @@ export function ViewTabsBar({
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
 }: Props) {
   // The items the table lists — a track as the track.
-  const courseTitles = (s: SubscriberItem) => moneyItemsOf(s).map(item => item.title).join(' | ');
+  const courseTitles = (s: SubscriberItem) => moneyItemsOf(s).filter(item => !item.partOf).map(item => item.title).join(' | ');
   const toExport = async () => {
     const source = loadForExport ? await loadForExport() : filtered;
     return collOnlineSelected.size > 0 ? source.filter(s => collOnlineSelected.has(s.id)) : source;

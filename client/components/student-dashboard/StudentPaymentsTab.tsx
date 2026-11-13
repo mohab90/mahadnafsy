@@ -162,7 +162,7 @@ export function StudentPaymentsTab({
               const pct = balance.expected > 0 ? Math.min(100, Math.round((paidAll / balance.expected) * 100)) : 100;
               return (
                 <div key={balance.item} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <p className="mb-3 line-clamp-1 text-sm font-bold text-gray-800">{balance.bundleId ? '📌 ' : ''}{balance.title}</p>
+                  <p className="mb-3 line-clamp-1 text-sm font-bold text-gray-800">{balance.bundleId ? '📌 ' : ''}{balance.title}{balance.partOf ? ' (جزء من مسار أكبر)' : ''}</p>
                   <div className="mb-3 space-y-1.5 text-xs">
                     <div className="flex justify-between">
                       <span className="text-gray-500">مدفوع</span>

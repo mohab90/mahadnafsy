@@ -12,7 +12,8 @@ export type CourseBalance = ItemBalance & { trackTitle?: string };
 export function balancesByCourse(balances: ItemBalance[], bundles: Bundle[]): Record<string, CourseBalance> {
   const byCourse: Record<string, CourseBalance> = {};
   balances.forEach(balance => { if (balance.courseId) byCourse[balance.courseId] = balance; });
-  balances.filter(balance => balance.bundleId).forEach(balance => {
+  // The track he holds names its courses; a part of it (13 Nov 2026) only keeps the money recorded on it and never speaks for a course the whole holds.
+  [...balances.filter(balance => balance.bundleId && !balance.partOf), ...balances.filter(balance => balance.bundleId && balance.partOf)].forEach(balance => {
     (bundles.find(bundle => bundle.id === balance.bundleId)?.courses || []).forEach(course => {
       if (!byCourse[course.id]) byCourse[course.id] = { ...balance, trackTitle: balance.title };
     });

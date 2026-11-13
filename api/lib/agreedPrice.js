@@ -21,6 +21,7 @@
 // row, no journal.
 
 const { resolveCatalogPrice, resolveCatalogPrices } = require('./catalogPrice');
+const { heldTracks } = require('./heldTracks');
 const { moneyOf, loadItemMoney, setItemMoney, priorPaidTotals } = require('./itemMoney');
 const { logClientEvent } = require('./clientHistory');
 const { clientCurrency } = require('./clientMarket');
@@ -159,11 +160,21 @@ async function itemBalances(db, { tenantId, subscriberId, foldTracks = true }) {
     const [rows] = await db.query(`SELECT bundle_id, course_id FROM bundle_courses WHERE tenant_id=? AND (${clauses.join(' OR ')})`, params);
     for (const row of rows) { const list = members.get(String(row.bundle_id)) || []; list.push(String(row.course_id)); members.set(String(row.bundle_id), list); }
   }
-  for (const [bundleId, courseIds] of members) {
-    if (items.has(`bundle:${bundleId}`) || courseIds.length < 2 || !courseIds.every(id => enrolledCourses.has(id))) continue;
-    touch(null, bundleId, courseIds.map(id => items.get(id)).find(entry => entry?.fromPayment)?.currency);
+  // Which tracks he holds, by the one rule (lib/heldTracks.js, 13 Nov 2026): the ones he was booked in as booked, a part never beside its whole, and the
+  // track his loose courses make. A part keeps its line only when it carries money — a payment, a price, money paid before the system — so no balance moves.
+  const { parts, derived } = heldTracks({
+    tracks: members,
+    recorded: [...items.values()].map(entry => entry.bundleId).filter(Boolean),
+    held: enrolledCourses,
+  });
+  for (const bundleId of derived) touch(null, bundleId, members.get(bundleId).map(id => items.get(id)).find(entry => entry?.fromPayment)?.currency);
+  for (const [partId, wholeId] of parts) {
+    const part = items.get(`bundle:${partId}`);
+    if (!part) continue;
+    if (part.fromPayment || Number(held.customPrices[part.item]) > 0 || Number(held.priorPaid[part.item]) > 0) part.partOf = `bundle:${wholeId}`;
+    else items.delete(part.item);
   }
-  for (const track of [...items.values()].filter(entry => entry.bundleId)) {
+  for (const track of [...items.values()].filter(entry => entry.bundleId && !entry.partOf)) {
     for (const courseId of members.get(String(track.bundleId)) || []) if (!holders.has(courseId)) holders.set(courseId, track.item);
   }
   for (const [courseId, trackItem] of holders) {

@@ -41,7 +41,7 @@ async function extraCatalogue(db, tenantId) {
  * @returns {Promise<{
  *   subscriberId: string,
  *   nationality: string|null,
- *   items: Array<{ item: string, kind: 'course'|'track', title: string, currency: string, catalogue: number, agreed: number, source: string,
+ *   items: Array<{ item: string, kind: 'course'|'track', partOf: string|null, title: string, currency: string, catalogue: number, agreed: number, source: string,
  *                  paid: number, priorPaid: number, remaining: number }>,
  *   certificates: Array<{ id: string, type: string, courseId: string|null, status: string, currency: string, list: number, agreed: number, source: string,
  *                         paid: number, remaining: number|null }>,
@@ -63,7 +63,7 @@ async function clientMoney(db, { tenantId, subscriberId }) {
   };
   const catalogue = await loadMoneyCatalogue(db, tenantId);
   const items = clientItems(client, catalogue, clientCurrency(client)).map(line => ({
-    item: line.item, kind: line.isTrack ? 'track' : 'course', title: line.title, currency: line.currency, catalogue: line.catalogue,
+    item: line.item, kind: line.isTrack ? 'track' : 'course', partOf: line.partOf || null, title: line.title, currency: line.currency, catalogue: line.catalogue,
     agreed: line.expected, source: line.source, paid: fromCents(cents(line.paid) - cents(line.priorPaid)), priorPaid: line.priorPaid, remaining: line.remaining,
   }));
 

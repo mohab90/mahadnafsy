@@ -6,7 +6,7 @@ import { cairoDateOnly, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { mapServerInstallmentPlan } from '../../../unified-client/installmentPlanMapper';
 import type { Bundle, Course, Currency, InstallmentPlan, SubscriberItem } from '../../../../types';
-import { moneyItemsOf } from '../../../../lib/agreedPrice';
+import { moneyItemsOf, moneyLineTitle } from '../../../../lib/agreedPrice';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type DraftEntry = { amount: string; dueDate: string };
@@ -212,7 +212,7 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
               <option value="">— كورس من كورسات العميل —</option>
               {items.map(item => (
                 <option key={item.item} value={item.item}>
-                  {item.isTrack ? '📌 ' : ''}{item.title} — باقي {item.remaining.toLocaleString('ar-EG-u-nu-latn')} {item.currency}
+                  {item.isTrack ? '📌 ' : ''}{moneyLineTitle(item)} — باقي {item.remaining.toLocaleString('ar-EG-u-nu-latn')} {item.currency}
                 </option>
               ))}
             </select>
