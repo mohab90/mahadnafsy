@@ -189,3 +189,24 @@ test('12 Nov 2026: each row says whether its client is new — nothing paid befo
   // An order that names no client record says neither.
   assert.equal(flag('op-o1'), null);
 });
+
+test('13 Nov 2026: what is waiting is listed as it was recorded, and is found by what the transfer says', { skip }, async () => {
+  // Two more payments waiting: one taken long ago and typed in just now, one dated today but recorded yesterday.
+  await pool.query(
+    `INSERT INTO payments (id, tenant_id, subscriber_id, amount, amount_egp, currency, payment_type, payment_method, status, transaction_id, sender_name, from_account, date, created_at) VALUES
+       ('op-p8', ?, 'op-sub-1', 300, 300, 'EGP', 'COURSE', 'TRANSFER', 'pending', 'OPREF-88001', 'محمود المحوّل', '01055550001', '2026-08-01', NOW()),
+       ('op-p9', ?, 'op-sub-2', 400, 400, 'EGP', 'COURSE', 'TRANSFER', 'pending', 'OPREF-99002', NULL, NULL, CURDATE(), NOW() - INTERVAL 1 DAY)`, [T, T]);
+  const review = await page({ tab: 'review' });
+  const order = review.rows.filter(row => row.source === 'crm').map(row => row.id);
+  assert.ok(order.indexOf('op-p8') < order.indexOf('op-p9'), `the one recorded last is first, whatever day it is dated: ${order.join(', ')}`);
+  assert.equal(order[0], 'op-p8');
+
+  const found = async q => ids((await page({ tab: 'review', q })).rows);
+  assert.deepEqual(await found('OPREF-88001'), ['op-p8'], 'by the operation number');
+  assert.deepEqual(await found('المحوّل'), ['op-p8'], 'by who sent it');
+  assert.deepEqual(await found('01055550001'), ['op-p8'], 'by the number it came from');
+  assert.ok((await found('01017770003')).includes('op-p9'), 'by the client\'s phone as people say it, with its leading zero');
+  assert.ok((await found('OP2')).includes('op-p9'), 'by the client\'s code');
+  assert.deepEqual(await found('no-such-thing-xyz'), []);
+  await pool.query("DELETE FROM payments WHERE tenant_id=? AND id IN ('op-p8','op-p9')", [T]);
+});

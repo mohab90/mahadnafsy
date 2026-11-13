@@ -42,7 +42,8 @@ function halvesOf(scopeFor, tenantId) {
            o.customer_phone AS customer_phone, o.transaction_id AS transaction_id, o.subscriber_id AS subscriber_id, o.course_id AS course_id,
            o.bundle_id AS bundle_id, o.item_id AS item_id, o.item_title AS item_title, o.staff_id AS staff_id, o.staff_name AS staff_name,
            COALESCE(NULLIF(o.staff_name, ''), '') AS staff, o.branch_id AS branch_id, o.created_at AS at, o.created_at AS created_at, o.paid_at AS paid_at,
-           o.notes AS note, 0 AS is_installment, NULL AS from_account, NULL AS sender_name, NULL AS proof_url, o.linked_transfer_id AS linked_transfer_id
+           o.notes AS note, 0 AS is_installment, NULL AS from_account, NULL AS sender_name, NULL AS proof_url, o.linked_transfer_id AS linked_transfer_id,
+           s.client_code AS client_code
       FROM orders o
       LEFT JOIN subscribers s ON s.id = o.subscriber_id AND s.tenant_id = o.tenant_id
      WHERE o.tenant_id = ? AND o.deleted_at IS NULL${orderScope.sql}`,
@@ -58,7 +59,7 @@ function halvesOf(scopeFor, tenantId) {
            CASE WHEN p.note IS NOT NULL AND p.note <> '' THEN LEFT(CONCAT(LOWER(COALESCE(p.payment_type, '')), ' — ', p.note), 80) ELSE COALESCE(NULLIF(p.payment_type, ''), 'دفعة يدوية') END AS item_title,
            p.staff_id AS staff_id, p.staff_name AS staff_name, COALESCE(st.name, NULLIF(p.staff_name, ''), '') AS staff, p.branch_id AS branch_id, p.date AS at, p.created_at AS created_at,
            NULL AS paid_at, p.note AS note, COALESCE(p.is_installment, 0) AS is_installment, p.from_account AS from_account, p.sender_name AS sender_name, p.proof_url AS proof_url,
-           NULL AS linked_transfer_id
+           NULL AS linked_transfer_id, s.client_code AS client_code
       FROM payments p
       LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
       LEFT JOIN staff st ON st.id = p.staff_id AND st.tenant_id = p.tenant_id
@@ -93,9 +94,21 @@ router.get('/api/admin/orders/page', requireAuth, requireAdminOrStaff, requirePe
     const filterParams = [];
     const search = String(req.query.q || '').trim().slice(0, 100);
     if (search) {
+      // 13 Nov 2026, «دفعات بتتسجل ومش بتظهر للحسابات»: the accounts desk looks a payment up by what the transfer says — its operation number, the
+      // number it came from, who sent it — or by the client's phone or code, and the search read none of those (only the row id, the item, the client's
+      // name and the employee's), so a payment that was there was «not found».
       const like = `%${escapeLike(search)}%`;
-      filters += ' AND (id LIKE ? OR item_title LIKE ? OR customer_name LIKE ? OR staff LIKE ?)';
-      filterParams.push(like, like, like, like);
+      const columns = ['id', 'item_title', 'customer_name', 'staff', 'transaction_id', 'customer_phone', 'customer_email', 'client_code', 'sender_name', 'from_account'];
+      const clauses = columns.map(column => `${column} LIKE ?`);
+      const params = columns.map(() => like);
+      // A phone is stored without its leading zero or country code («1062467048»): a number typed as people say it is tried without them too.
+      const digits = search.replace(/[\s()+-]/g, '');
+      const bare = /^\d{7,15}$/.test(digits) ? digits.replace(/^(?:0020|20|0)/, '') : '';
+      if (bare && bare !== search) {
+        for (const column of ['customer_phone', 'from_account']) { clauses.push(`${column} LIKE ?`); params.push(`%${bare}%`); }
+      }
+      filters += ` AND (${clauses.join(' OR ')})`;
+      filterParams.push(...params);
     }
     if (req.query.type && req.query.type !== 'all') { filters += ' AND type = ?'; filterParams.push(String(req.query.type).toLowerCase()); }
     // The amount a transfer arrived with: the pending rows it can be linked to (the «ربط» dialog).
@@ -146,15 +159,19 @@ router.get('/api/admin/orders/page', requireAuth, requireAdminOrStaff, requirePe
       };
     });
     const wanted = (page + 1) * pageSize;
+    // What is waiting is read in the order it was RECORDED: a payment taken last week and typed in today is today's work, and by its own date it sat
+    // pages down, under everything dated after it — the officer saw it «بانتظار المسئول» and the desk never met it (13 Nov 2026). The other tabs stay
+    // by the day the money is dated.
+    const newestBy = tab === 'review' ? 'created_at' : 'at';
     const [tabHalves, totalHalves, { statusRows, cellsOf, staffNames, methodNames }] = await Promise.all([
-      both('SELECT *', `WHERE ${TABS[tab]}${filters} ORDER BY at DESC, id LIMIT ?`, [...filterParams, wanted]),
+      both('SELECT *', `WHERE ${TABS[tab]}${filters} ORDER BY ${newestBy} DESC, id LIMIT ?`, [...filterParams, wanted]),
       both(`SELECT ${TAB_CASE} AS tab, currency, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS amount`, `WHERE 1=1${filters} GROUP BY tab, currency`, filterParams),
       book,
     ]);
     // «قيد المراجعة» shows the payments the desk recorded first, then the website's unpaid orders; every tab is newest first.
     const merged = [...tabHalves[0], ...tabHalves[1]].sort((a, b) =>
       (tab === 'review' ? Number(b.src === 'crm') - Number(a.src === 'crm') : 0)
-      || new Date(b.at).getTime() - new Date(a.at).getTime() || String(a.id).localeCompare(String(b.id)));
+      || new Date(b[newestBy]).getTime() - new Date(a[newestBy]).getTime() || String(a.id).localeCompare(String(b.id)));
     const tabRows = merged.slice(page * pageSize, wanted);
     const totalRows = totalHalves.flat();
 
